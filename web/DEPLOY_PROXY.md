@@ -39,7 +39,7 @@
 
 - Framework preset: `Vite`
 - Root Directory: `web`
-- Build Command: `bun install && bun run build`
+- Build Command: `bun run build`
 - Build Output Directory: `dist`
 - Pages Env:
   - `BACKEND_ORIGIN=https://api.example.com`
@@ -55,6 +55,7 @@
 
 `_redirects` 里的最后一条用于 React Router SPA fallback。
 如果 Cloudflare 仍先执行 `npm install`，`.npmrc` 已启用 `legacy-peer-deps=true` 作为兜底，避免 `@lobehub/icons` 的 peer 依赖解析中断构建。
+如果 Cloudflare 控制台仍配置成 `npm run build`，仓库当前的 `build` 脚本也会先执行 `bun install --frozen-lockfile`，然后再构建，避免 `vite: not found`。
 
 ## 什么时候需要直连模式
 
