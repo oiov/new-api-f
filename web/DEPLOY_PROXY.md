@@ -16,7 +16,8 @@
 ## Vercel
 
 - Root Directory: `web`
-- Build Command: `bun install && bun run build`
+- Install Command: `bun install`
+- Build Command: `bun run build`
 - Output Directory: `dist`
 - Runtime Env:
   - `BACKEND_ORIGIN=https://api.example.com`
@@ -32,6 +33,7 @@
 - `/v1/*` -> Go 后端 `/v1/*`
 - `/mj/*` -> Go 后端 `/mj/*`
 - `/pg/*` -> Go 后端 `/pg/*`
+- 其他不带扩展名的前端路由 -> `/index.html`
 
 ## Cloudflare Pages
 
@@ -49,8 +51,10 @@
 - [functions/mj/[[path]].js](/Users/admin/Developer/fishxcode/new-api/web/functions/mj/[[path]].js)
 - [functions/pg/[[path]].js](/Users/admin/Developer/fishxcode/new-api/web/functions/pg/[[path]].js)
 - [public/_redirects](/Users/admin/Developer/fishxcode/new-api/web/public/_redirects)
+- [.npmrc](/Users/admin/Developer/fishxcode/new-api/web/.npmrc)
 
 `_redirects` 里的最后一条用于 React Router SPA fallback。
+如果 Cloudflare 仍先执行 `npm install`，`.npmrc` 已启用 `legacy-peer-deps=true` 作为兜底，避免 `@lobehub/icons` 的 peer 依赖解析中断构建。
 
 ## 什么时候需要直连模式
 

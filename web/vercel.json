@@ -34,6 +34,10 @@
     {
       "source": "/pg/:path*",
       "destination": "/api/_proxy?__proxy_base=pg&__proxy_path=:path*"
+    },
+    {
+      "source": "/:path((?!api(?:/|$)|v1(?:/|$)|mj(?:/|$)|pg(?:/|$)|assets(?:/|$)|.*\\..*).*)",
+      "destination": "/index.html"
     }
   ]
 }
