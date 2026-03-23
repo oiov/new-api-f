@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.2.11",
   "dependencies": {
     "@douyinfe/semi-icons": "^2.63.1",
     "@douyinfe/semi-ui": "^2.69.1",

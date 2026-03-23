@@ -1,5 +1,39 @@
 {
   "github": {
     "silent": true
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api",
+      "destination": "/api/_proxy?__proxy_base=api"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/_proxy?__proxy_base=api&__proxy_path=:path*"
+    },
+    {
+      "source": "/v1",
+      "destination": "/api/_proxy?__proxy_base=v1"
+    },
+    {
+      "source": "/v1/:path*",
+      "destination": "/api/_proxy?__proxy_base=v1&__proxy_path=:path*"
+    },
+    {
+      "source": "/mj",
+      "destination": "/api/_proxy?__proxy_base=mj"
+    },
+    {
+      "source": "/mj/:path*",
+      "destination": "/api/_proxy?__proxy_base=mj&__proxy_path=:path*"
+    },
+    {
+      "source": "/pg",
+      "destination": "/api/_proxy?__proxy_base=pg"
+    },
+    {
+      "source": "/pg/:path*",
+      "destination": "/api/_proxy?__proxy_base=pg&__proxy_path=:path*"
+    }
+  ]
 }

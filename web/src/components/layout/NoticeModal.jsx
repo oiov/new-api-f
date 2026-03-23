@@ -27,14 +27,19 @@ import {
   Timeline,
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
-import { API, showError, getRelativeTime } from '../../helpers';
-import { marked } from 'marked';
+import { API } from '../../helpers/api';
+import { showError, getRelativeTime } from '../../helpers/utils';
 import {
   IllustrationNoContent,
   IllustrationNoContentDark,
 } from '@douyinfe/semi-illustrations';
 import { StatusContext } from '../../context/Status';
 import { Bell, Megaphone } from 'lucide-react';
+
+async function parseMarkdownToHtml(content) {
+  const { marked } = await import('marked');
+  return marked.parse(content);
+}
 
 const NoticeModal = ({
   visible,
@@ -47,6 +52,7 @@ const NoticeModal = ({
   const [noticeContent, setNoticeContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [renderedAnnouncementMap, setRenderedAnnouncementMap] = useState({});
 
   const [statusState] = useContext(StatusContext);
 
@@ -89,7 +95,7 @@ const NoticeModal = ({
       const { success, message, data } = res.data;
       if (success) {
         if (data !== '') {
-          const htmlNotice = marked.parse(data);
+          const htmlNotice = await parseMarkdownToHtml(data);
           setNoticeContent(htmlNotice);
         } else {
           setNoticeContent('');
@@ -115,6 +121,40 @@ const NoticeModal = ({
       setActiveTab(defaultTab);
     }
   }, [defaultTab, visible]);
+
+  useEffect(() => {
+    if (!visible || activeTab !== 'system') {
+      return;
+    }
+
+    let cancelled = false;
+
+    const renderAnnouncements = async () => {
+      const renderedEntries = await Promise.all(
+        processedAnnouncements.map(async (item) => [
+          item.key,
+          {
+            htmlContent: await parseMarkdownToHtml(item.content || ''),
+            htmlExtra: item.extra
+              ? await parseMarkdownToHtml(item.extra)
+              : '',
+          },
+        ]),
+      );
+
+      if (!cancelled) {
+        setRenderedAnnouncementMap(Object.fromEntries(renderedEntries));
+      }
+    };
+
+    renderAnnouncements().catch((error) => {
+      console.error('渲染系统公告 Markdown 失败:', error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, processedAnnouncements, visible]);
 
   const renderMarkdownNotice = () => {
     if (loading) {
@@ -170,18 +210,17 @@ const NoticeModal = ({
       <div className='max-h-[55vh] overflow-y-auto pr-2 card-content-scroll'>
         <Timeline mode='left'>
           {processedAnnouncements.map((item, idx) => {
-            const htmlContent = marked.parse(item.content || '');
-            const htmlExtra = item.extra ? marked.parse(item.extra) : '';
+            const rendered = renderedAnnouncementMap[item.key] || {};
             return (
               <Timeline.Item
                 key={idx}
                 type={item.type}
                 time={`${item.relative ? item.relative + ' ' : ''}${item.time}`}
                 extra={
-                  item.extra ? (
+                  rendered.htmlExtra ? (
                     <div
                       className='text-xs text-gray-500'
-                      dangerouslySetInnerHTML={{ __html: htmlExtra }}
+                      dangerouslySetInnerHTML={{ __html: rendered.htmlExtra }}
                     />
                   ) : null
                 }
@@ -190,7 +229,9 @@ const NoticeModal = ({
                 <div>
                   <div
                     className={item.isUnread ? 'shine-text' : ''}
-                    dangerouslySetInnerHTML={{ __html: htmlContent }}
+                    dangerouslySetInnerHTML={{
+                      __html: rendered.htmlContent || item.content || '',
+                    }}
                   />
                 </div>
               </Timeline.Item>

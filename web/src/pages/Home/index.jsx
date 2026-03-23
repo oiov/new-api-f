@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useContext, useEffect, useState } from 'react';
 import {
   Button,
   Typography,
@@ -25,12 +25,12 @@ import {
   ScrollList,
   ScrollItem,
 } from '@douyinfe/semi-ui';
-import { API, showError, copy, showSuccess } from '../../helpers';
+import { API } from '../../helpers/api';
+import { showError, copy, showSuccess } from '../../helpers/utils';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { API_ENDPOINTS } from '../../constants/common.constant';
 import { StatusContext } from '../../context/Status';
 import { useActualTheme } from '../../context/Theme';
-import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import {
   IconGithubLogo,
@@ -39,31 +39,15 @@ import {
   IconCopy,
 } from '@douyinfe/semi-icons';
 import { Link } from 'react-router-dom';
-import NoticeModal from '../../components/layout/NoticeModal';
-import {
-  Moonshot,
-  OpenAI,
-  XAI,
-  Zhipu,
-  Volcengine,
-  Cohere,
-  Claude,
-  Gemini,
-  Suno,
-  Minimax,
-  Wenxin,
-  Spark,
-  Qingyan,
-  DeepSeek,
-  Qwen,
-  Midjourney,
-  Grok,
-  AzureAI,
-  Hunyuan,
-  Xinference,
-} from '@lobehub/icons';
+const NoticeModal = lazy(() => import('../../components/layout/NoticeModal'));
+const ProviderLogos = lazy(() => import('./ProviderLogos'));
 
 const { Text } = Typography;
+
+async function parseMarkdownToHtml(content) {
+  const { marked } = await import('marked');
+  return marked.parse(content);
+}
 
 const Home = () => {
   const { t, i18n } = useTranslation();
@@ -88,7 +72,7 @@ const Home = () => {
     if (success) {
       let content = data;
       if (!data.startsWith('https://')) {
-        content = marked.parse(data);
+        content = await parseMarkdownToHtml(data);
       }
       setHomePageContent(content);
       localStorage.setItem('home_page_content', content);
@@ -150,11 +134,15 @@ const Home = () => {
 
   return (
     <div className='w-full overflow-x-hidden'>
-      <NoticeModal
-        visible={noticeVisible}
-        onClose={() => setNoticeVisible(false)}
-        isMobile={isMobile}
-      />
+      {noticeVisible && (
+        <Suspense fallback={null}>
+          <NoticeModal
+            visible={noticeVisible}
+            onClose={() => setNoticeVisible(false)}
+            isMobile={isMobile}
+          />
+        </Suspense>
+      )}
       {homePageContentLoaded && homePageContent === '' ? (
         <div className='w-full overflow-x-hidden'>
           {/* Banner 部分 */}
@@ -263,71 +251,9 @@ const Home = () => {
                     </Text>
                   </div>
                   <div className='flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 lg:gap-8 max-w-5xl mx-auto px-4'>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Moonshot size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <OpenAI size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <XAI size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Zhipu.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Volcengine.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Cohere.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Claude.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Gemini.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Suno size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Minimax.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Wenxin.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Spark.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Qingyan.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <DeepSeek.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Qwen.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Midjourney size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Grok size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <AzureAI.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Hunyuan.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Xinference.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Typography.Text className='!text-lg sm:!text-xl md:!text-2xl lg:!text-3xl font-bold'>
-                        30+
-                      </Typography.Text>
-                    </div>
+                    <Suspense fallback={null}>
+                      <ProviderLogos />
+                    </Suspense>
                   </div>
                 </div>
               </div>

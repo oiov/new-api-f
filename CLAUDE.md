@@ -1,5 +1,8 @@
 # CLAUDE.md — Project Conventions for new-api
 
+> Last initialized: 2026-03-24
+> Strategy: 根级简明 + 模块级详尽（可增量续扫）
+
 ## Overview
 
 This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.
@@ -17,25 +20,42 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 
 Layered architecture: Router -> Controller -> Service -> Model
 
+### Repository Structure (Mermaid)
+
+```mermaid
+graph TD
+  A[new-api 根目录]
+  A --> B[main.go / go.mod]
+  A --> C[router controller service model]
+  A --> D[relay/channel/*]
+  A --> E[middleware setting common dto constant types]
+  A --> F[web 模块]
+  A --> G[electron 模块]
+  A --> H[i18n oauth pkg]
+  F --> F1[web/src/index.jsx -> App/PageLayout]
+  G --> G1[electron/main.js -> preload.js]
 ```
-router/        — HTTP routing (API, relay, dashboard, web)
-controller/    — Request handlers
-service/       — Business logic
-model/         — Data models and DB access (GORM)
-relay/         — AI API relay/proxy with provider adapters
-  relay/channel/ — Provider-specific adapters (openai/, claude/, gemini/, aws/, etc.)
-middleware/    — Auth, rate limiting, CORS, logging, distribution
-setting/       — Configuration management (ratio, model, operation, system, performance)
-common/        — Shared utilities (JSON, crypto, Redis, env, rate-limit, etc.)
-dto/           — Data transfer objects (request/response structs)
-constant/      — Constants (API types, channel types, context keys)
-types/         — Type definitions (relay formats, file sources, errors)
-i18n/          — Backend internationalization (go-i18n, en/zh)
-oauth/         — OAuth provider implementations
-pkg/           — Internal packages (cachex, ionet)
-web/           — React frontend
-  web/src/i18n/  — Frontend internationalization (i18next, zh/en/fr/ru/ja/vi)
-```
+
+### 模块索引（根级简明）
+
+- `./`（Go 后端主模块）：统一网关主服务，入口 `main.go`
+- `web/`（前端模块）：React + Vite + Semi，入口 `web/src/index.jsx`
+- `electron/`（桌面壳模块）：Electron 主进程封装，入口 `electron/main.js`
+
+### 模块导航
+
+- 根文档：`/CLAUDE.md`
+- Web 模块：`/web/CLAUDE.md`
+- Electron 模块：`/electron/CLAUDE.md`
+
+### 初始化覆盖率（本轮）
+
+- 已扫描文件（估算）：约 `160`
+- 估算总文件数（tracked）：`991`
+- 文件覆盖率（估算）：约 `16%`
+- 模块覆盖率：`2/2`（已覆盖识别到的子模块：`web`、`electron`）
+- 忽略/跳过：`web/node_modules`、二进制资源文件、图片与构建产物、超大非关键文档
+
 
 ## Internationalization (i18n)
 
