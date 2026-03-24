@@ -46,6 +46,7 @@ import {
   IconCopy,
 } from '@douyinfe/semi-icons';
 import { Link } from 'react-router-dom';
+import IframeViewport from '../../components/common/IframeViewport';
 const NoticeModal = lazy(() => import('../../components/layout/NoticeModal'));
 const ProviderLogos = lazy(() => import('./ProviderLogos'));
 
@@ -92,7 +93,6 @@ const Home = () => {
   const iframeRef = useRef(null);
   const [homePageContentLoaded, setHomePageContentLoaded] = useState(false);
   const [homePageContent, setHomePageContent] = useState('');
-  const [iframeReady, setIframeReady] = useState(false);
   const [noticeVisible, setNoticeVisible] = useState(false);
   const isMobile = useIsMobile();
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;

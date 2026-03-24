@@ -27,6 +27,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
 import MarkdownRenderer from '../markdown/LazyMarkdownRenderer';
+import IframeViewport from '../IframeViewport';
 
 // 检查是否为 URL
 const isUrl = (content) => {
@@ -84,7 +85,6 @@ const DocumentRenderer = ({
   const [loading, setLoading] = useState(true);
   const [htmlStyles, setHtmlStyles] = useState('');
   const [processedHtmlContent, setProcessedHtmlContent] = useState('');
-  const [iframeReady, setIframeReady] = useState(false);
 
   const loadContent = async () => {
     if (directContent && directContent.trim() !== '') {
@@ -145,12 +145,6 @@ const DocumentRenderer = ({
     loadContent();
   }, []);
 
-  useEffect(() => {
-    if (isUrl(content)) {
-      setIframeReady(false);
-    }
-  }, [content]);
-
   // 处理HTML样式注入
   useEffect(() => {
     const styleId = `document-renderer-styles-${cacheKey}`;
@@ -202,25 +196,14 @@ const DocumentRenderer = ({
     );
   }
 
-  // 如果是 URL，使用 iframe 嵌入
   if (isUrl(content)) {
     return (
-      <div className='relative w-full h-screen bg-gray-50'>
-        {!iframeReady && (
-          <div className='absolute inset-0 z-10 flex items-center justify-center bg-semi-color-bg-0'>
-            <div className='flex flex-col items-center gap-3 text-semi-color-text-2'>
-              <div className='h-10 w-10 animate-spin rounded-full border-2 border-semi-color-border border-t-semi-color-primary' />
-              <span>{t('页面加载中...')}</span>
-            </div>
-          </div>
-        )}
-        <iframe
-          src={content.trim()}
-          title={title}
-          className='w-full h-screen border-none'
-          onLoad={() => setIframeReady(true)}
-        />
-      </div>
+      <IframeViewport
+        src={content.trim()}
+        title={title}
+        className='bg-gray-50'
+        loadingText={t('页面加载中...')}
+      />
     );
   }
 
