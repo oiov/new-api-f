@@ -41,7 +41,7 @@ const routerMap = {
   log: '/console/log',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
-  about: '/about',
+  about: '/status',
   detail: '/console',
   pricing: '/pricing',
   task: '/console/task',

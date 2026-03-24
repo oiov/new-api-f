@@ -60,9 +60,9 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
           ]
         : []),
       {
-        text: t('关于'),
+        text: t('Status'),
         itemKey: 'about',
-        to: '/about',
+        to: '/status',
       },
     ];
 

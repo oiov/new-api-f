@@ -341,7 +341,7 @@ function App() {
           }
         />
         <Route
-          path='/about'
+          path='/status'
           element={
             <Suspense fallback={<Loading></Loading>} key={location.pathname}>
               <About />
