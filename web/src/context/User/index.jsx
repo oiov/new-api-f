@@ -37,7 +37,10 @@ export const UserProvider = ({ children }) => {
       try {
         const settings = JSON.parse(state.user.setting);
         const normalizedLanguage = normalizeLanguage(settings.language);
-        if (normalizedLanguage && normalizedLanguage !== i18n.language) {
+        if (
+          normalizedLanguage &&
+          normalizedLanguage !== normalizeLanguage(i18n.language)
+        ) {
           i18n.changeLanguage(normalizedLanguage);
         }
         if (normalizedLanguage) {

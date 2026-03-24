@@ -22,7 +22,7 @@ import { Button, Dropdown } from '@douyinfe/semi-ui';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { useActualTheme } from '../../../context/Theme';
 
-const ThemeToggle = ({ theme, onThemeToggle, t }) => {
+const ThemeToggle = ({ theme, onThemeToggle, t, languageVersion }) => {
   const actualTheme = useActualTheme();
 
   const themeOptions = useMemo(
@@ -49,7 +49,7 @@ const ThemeToggle = ({ theme, onThemeToggle, t }) => {
         description: t('跟随系统主题设置'),
       },
     ],
-    [t],
+    [t, languageVersion],
   );
 
   const getItemClassName = (isSelected) =>

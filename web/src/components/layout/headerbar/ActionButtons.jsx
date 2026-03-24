@@ -32,6 +32,7 @@ const ActionButtons = ({
   onThemeToggle,
   currentLang,
   onLanguageChange,
+  languageVersion,
   userState,
   isLoading,
   isMobile,
@@ -50,7 +51,12 @@ const ActionButtons = ({
         t={t}
       />
 
-      <ThemeToggle theme={theme} onThemeToggle={onThemeToggle} t={t} />
+      <ThemeToggle
+        theme={theme}
+        onThemeToggle={onThemeToggle}
+        t={t}
+        languageVersion={languageVersion}
+      />
 
       <LanguageSelector
         currentLang={currentLang}

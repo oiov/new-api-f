@@ -340,6 +340,7 @@ const Home = () => {
                 </div>
               )}
               <iframe
+                key={`${homePageContent}:${i18n.language}`}
                 ref={iframeRef}
                 src={homePageContent}
                 title='Home Content Frame'

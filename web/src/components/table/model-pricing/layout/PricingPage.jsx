@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Layout, ImagePreview } from '@douyinfe/semi-ui';
+import { useTranslation } from 'react-i18next';
 import PricingSidebar from './PricingSidebar';
 import PricingContent from './content/PricingContent';
 import ModelDetailSideSheet from '../modal/ModelDetailSideSheet';
@@ -29,6 +30,7 @@ const PricingPage = () => {
   const pricingData = useModelPricingData();
   const { Sider, Content } = Layout;
   const isMobile = useIsMobile();
+  const { i18n } = useTranslation();
   const [showRatio, setShowRatio] = React.useState(false);
   const [viewMode, setViewMode] = React.useState('card');
   const allProps = {
@@ -37,6 +39,7 @@ const PricingPage = () => {
     setShowRatio,
     viewMode,
     setViewMode,
+    languageVersion: i18n.language,
   };
 
   return (

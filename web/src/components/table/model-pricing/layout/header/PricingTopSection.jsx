@@ -48,6 +48,7 @@ const PricingTopSection = memo(
     tokenUnit,
     setTokenUnit,
     t,
+    languageVersion,
   }) => {
     const [showFilterModal, setShowFilterModal] = useState(false);
 
@@ -77,6 +78,7 @@ const PricingTopSection = memo(
                 tokenUnit={tokenUnit}
                 setTokenUnit={setTokenUnit}
                 t={t}
+                languageVersion={languageVersion}
               />
             </div>
             <PricingFilterModal
@@ -112,6 +114,7 @@ const PricingTopSection = memo(
             setViewMode={setViewMode}
             tokenUnit={tokenUnit}
             setTokenUnit={setTokenUnit}
+            languageVersion={languageVersion}
           />
         )}
       </>

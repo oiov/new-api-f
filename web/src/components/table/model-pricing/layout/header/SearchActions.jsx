@@ -43,6 +43,7 @@ const SearchActions = memo(
     tokenUnit,
     setTokenUnit,
     t,
+    languageVersion,
   }) => {
     const supportsCurrencyDisplay = siteDisplayType !== 'TOKENS';
 

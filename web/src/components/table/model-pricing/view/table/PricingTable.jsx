@@ -45,6 +45,7 @@ const PricingTable = ({
   compactMode = false,
   openModelDetail,
   t,
+  languageVersion,
 }) => {
   const columns = useMemo(() => {
     return getPricingTableColumns({
@@ -62,6 +63,7 @@ const PricingTable = ({
     });
   }, [
     t,
+    languageVersion,
     selectedGroup,
     groupRatio,
     copyText,
@@ -137,6 +139,7 @@ const PricingTable = ({
       setPageSize,
       openModelDetail,
       t,
+      languageVersion,
       compactMode,
     ],
   );

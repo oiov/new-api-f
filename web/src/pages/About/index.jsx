@@ -63,7 +63,7 @@ function writeAboutCache(content) {
 }
 
 const About = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const actualTheme = useActualTheme();
   const iframeRef = useRef(null);
   const [about, setAbout] = useState('');
@@ -78,6 +78,7 @@ const About = () => {
         return;
       }
       iframeWindow.postMessage({ themeMode: actualTheme }, '*');
+      iframeWindow.postMessage({ lang: i18n.language }, '*');
     } catch {
       // 关于页允许跨域 iframe，这里无法访问时直接忽略
     }
@@ -129,7 +130,7 @@ const About = () => {
       setIframeReady(false);
       syncIframeState();
     }
-  }, [about, actualTheme]);
+  }, [about, actualTheme, i18n.language]);
 
   const emptyStyle = {
     padding: '24px',
@@ -240,6 +241,7 @@ const About = () => {
                 </div>
               )}
               <iframe
+                key={`${about}:${i18n.language}`}
                 ref={iframeRef}
                 src={about}
                 title='About Content Frame'

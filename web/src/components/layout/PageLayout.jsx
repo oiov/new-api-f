@@ -133,7 +133,7 @@ const PageLayout = () => {
 
     if (preferredLang) {
       localStorage.setItem('i18nextLng', preferredLang);
-      if (preferredLang !== i18n.language) {
+      if (preferredLang !== normalizeLanguage(i18n.language)) {
         i18n.changeLanguage(preferredLang);
       }
     }

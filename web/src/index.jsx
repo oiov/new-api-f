@@ -45,11 +45,14 @@ if (typeof window !== 'undefined') {
 
 function SemiLocaleWrapper({ children }) {
   const { i18n } = useTranslation();
-  const semiLocale = React.useMemo(
-    () => ({ zh: zh_CN, en: en_GB })[i18n.language] || zh_CN,
-    [i18n.language],
-  );
+  const semiLocale = React.useMemo(() => {
+    return i18n.language?.startsWith('zh') ? zh_CN : en_GB;
+  }, [i18n.language]);
   return <LocaleProvider locale={semiLocale}>{children}</LocaleProvider>;
+}
+
+function AppShell() {
+  return <PageLayout />;
 }
 
 // initialization
@@ -69,7 +72,7 @@ initI18n.finally(() => {
           >
             <ThemeProvider>
               <SemiLocaleWrapper>
-                <PageLayout />
+                <AppShell />
               </SemiLocaleWrapper>
             </ThemeProvider>
           </BrowserRouter>

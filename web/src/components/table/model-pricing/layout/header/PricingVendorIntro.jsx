@@ -156,6 +156,7 @@ const PricingVendorIntro = memo(
     setViewMode,
     tokenUnit,
     setTokenUnit,
+    languageVersion,
   }) => {
     const [currentOffset, setCurrentOffset] = useState(0);
     const [descModalVisible, setDescModalVisible] = useState(false);
@@ -292,6 +293,7 @@ const PricingVendorIntro = memo(
           tokenUnit={tokenUnit}
           setTokenUnit={setTokenUnit}
           t={t}
+          languageVersion={languageVersion}
         />
       ),
       [
@@ -314,6 +316,7 @@ const PricingVendorIntro = memo(
         tokenUnit,
         setTokenUnit,
         t,
+        languageVersion,
       ],
     );
 

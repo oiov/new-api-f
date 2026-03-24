@@ -23,7 +23,7 @@ import PricingVendorIntroSkeleton from './PricingVendorIntroSkeleton';
 import { useMinimumLoadingTime } from '../../../../../hooks/common/useMinimumLoadingTime';
 
 const PricingVendorIntroWithSkeleton = memo(
-  ({ loading = false, filterVendor, ...restProps }) => {
+  ({ loading = false, filterVendor, languageVersion, ...restProps }) => {
     const showSkeleton = useMinimumLoadingTime(loading);
 
     if (showSkeleton) {
@@ -35,7 +35,13 @@ const PricingVendorIntroWithSkeleton = memo(
       );
     }
 
-    return <PricingVendorIntro filterVendor={filterVendor} {...restProps} />;
+    return (
+      <PricingVendorIntro
+        filterVendor={filterVendor}
+        languageVersion={languageVersion}
+        {...restProps}
+      />
+    );
   },
 );
 

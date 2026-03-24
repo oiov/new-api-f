@@ -149,16 +149,22 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
 
   const handleLanguageChange = useCallback(
     async (lang) => {
+      const normalizedTargetLang = normalizeLanguage(lang);
       // Change language immediately for responsive UX
       const previousLang = normalizeLanguage(i18n.language);
-      i18n.changeLanguage(lang);
-      localStorage.setItem('i18nextLng', lang);
+      if (!normalizedTargetLang || normalizedTargetLang === previousLang) {
+        return;
+      }
+
+      await i18n.changeLanguage(normalizedTargetLang);
+      localStorage.setItem('i18nextLng', normalizedTargetLang);
+      setCurrentLang(normalizedTargetLang);
 
       // If user is logged in, save preference to backend
       if (userState?.user?.id) {
         try {
           const res = await API.put('/api/user/self', {
-            language: lang,
+            language: normalizedTargetLang,
           });
           if (res.data.success) {
             // Keep user preference and local cache in sync so route changes
@@ -172,7 +178,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
               }
             }
 
-            settings.language = lang;
+            settings.language = normalizedTargetLang;
             const nextUser = {
               ...userState.user,
               setting: JSON.stringify(settings),
@@ -184,10 +190,12 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
             });
             localStorage.setItem('user', JSON.stringify(nextUser));
           }
+
         } catch (error) {
           if (previousLang) {
-            i18n.changeLanguage(previousLang);
+            await i18n.changeLanguage(previousLang);
             localStorage.setItem('i18nextLng', previousLang);
+            setCurrentLang(previousLang);
           }
           console.error('Failed to save language preference:', error);
         }
@@ -246,5 +254,6 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     handleMobileMenuToggle,
     navigate,
     t,
+    languageVersion: normalizeLanguage(i18n.language),
   };
 };
