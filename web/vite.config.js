@@ -89,14 +89,6 @@ export default defineConfig(({ command }) => ({
           }
 
           if (
-            id.includes('@visactor/react-vchart') ||
-            id.includes('@visactor/vchart') ||
-            id.includes('@visactor/vchart-semi-theme')
-          ) {
-            return 'charts';
-          }
-
-          if (
             id.includes('react-markdown') ||
             id.includes('mermaid') ||
             id.includes('remark-') ||
