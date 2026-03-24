@@ -127,6 +127,14 @@ export default defineConfig(({ command }) => ({
         target: 'https://claud.fishxcode.com',
         changeOrigin: true,
       },
+      '/v1': {
+        target: 'https://claud.fishxcode.com',
+        changeOrigin: true,
+      },
+      '/v1beta': {
+        target: 'https://claud.fishxcode.com',
+        changeOrigin: true,
+      },
       '/mj': {
         target: 'https://claud.fishxcode.com',
         changeOrigin: true,

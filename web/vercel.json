@@ -2,42 +2,82 @@
   "github": {
     "silent": true
   },
-  "rewrites": [
+  "headers": [
     {
-      "source": "/api",
-      "destination": "https://claud.fishxcode.com/api"
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     },
     {
-      "source": "/api/:path*",
-      "destination": "https://claud.fishxcode.com/api/:path*"
+      "source": "/(.*\\.(?:png|jpg|jpeg|gif|webp|ico|svg|woff|woff2|ttf|txt))",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=2592000"
+        }
+      ]
     },
     {
-      "source": "/v1",
-      "destination": "https://claud.fishxcode.com/v1"
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "src": "^/api/?$",
+      "dest": "https://claud.fishxcode.com/api"
     },
     {
-      "source": "/v1/:path*",
-      "destination": "https://claud.fishxcode.com/v1/:path*"
+      "src": "^/api/(.*)$",
+      "dest": "https://claud.fishxcode.com/api/$1"
     },
     {
-      "source": "/mj",
-      "destination": "https://claud.fishxcode.com/mj"
+      "src": "^/v1/?$",
+      "dest": "https://claud.fishxcode.com/v1"
     },
     {
-      "source": "/mj/:path*",
-      "destination": "https://claud.fishxcode.com/mj/:path*"
+      "src": "^/v1/(.*)$",
+      "dest": "https://claud.fishxcode.com/v1/$1"
     },
     {
-      "source": "/pg",
-      "destination": "https://claud.fishxcode.com/pg"
+      "src": "^/v1beta/?$",
+      "dest": "https://claud.fishxcode.com/v1beta"
     },
     {
-      "source": "/pg/:path*",
-      "destination": "https://claud.fishxcode.com/pg/:path*"
+      "src": "^/v1beta/(.*)$",
+      "dest": "https://claud.fishxcode.com/v1beta/$1"
     },
     {
-      "source": "/:path((?!api(?:/|$)|v1(?:/|$)|mj(?:/|$)|pg(?:/|$)|assets(?:/|$)|.*\\..*).*)",
-      "destination": "/index.html"
+      "src": "^/mj/?$",
+      "dest": "https://claud.fishxcode.com/mj"
+    },
+    {
+      "src": "^/mj/(.*)$",
+      "dest": "https://claud.fishxcode.com/mj/$1"
+    },
+    {
+      "src": "^/pg/?$",
+      "dest": "https://claud.fishxcode.com/pg"
+    },
+    {
+      "src": "^/pg/(.*)$",
+      "dest": "https://claud.fishxcode.com/pg/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "^/(?!api(?:/|$)|v1(?:/|$)|v1beta(?:/|$)|mj(?:/|$)|pg(?:/|$)|assets(?:/|$)|.*\\..*).*$",
+      "dest": "/index.html"
     }
   ]
 }

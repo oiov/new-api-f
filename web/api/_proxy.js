@@ -1,6 +1,6 @@
 const DEFAULT_BACKEND_ORIGIN = 'https://claud.fishxcode.com';
 
-const ALLOWED_BASES = new Set(['api', 'v1', 'mj', 'pg']);
+const ALLOWED_BASES = new Set(['api', 'v1', 'v1beta', 'mj', 'pg']);
 
 const HOP_BY_HOP_HEADERS = [
   'connection',
@@ -13,6 +13,16 @@ const HOP_BY_HOP_HEADERS = [
   'trailer',
   'transfer-encoding',
   'upgrade',
+];
+
+const PUBLIC_CACHE_RULES = [
+  { pattern: /^\/api\/status\/?$/, ttl: 30 },
+  { pattern: /^\/api\/notice\/?$/, ttl: 60 },
+  { pattern: /^\/api\/about\/?$/, ttl: 300 },
+  { pattern: /^\/api\/user-agreement\/?$/, ttl: 300 },
+  { pattern: /^\/api\/privacy-policy\/?$/, ttl: 300 },
+  { pattern: /^\/api\/home_page_content\/?$/, ttl: 300 },
+  { pattern: /^\/api\/ratio_config\/?$/, ttl: 300 },
 ];
 
 function getBackendOrigin() {
@@ -58,12 +68,44 @@ function buildProxyHeaders(request) {
   return headers;
 }
 
+function getCacheTTL(request) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return 0;
+  }
+
+  const url = new URL(request.url);
+  const hasAuth =
+    request.headers.has('authorization') ||
+    request.headers.has('cookie') ||
+    request.headers.has('x-api-key');
+  if (hasAuth) {
+    return 0;
+  }
+
+  const matchedRule = PUBLIC_CACHE_RULES.find((rule) =>
+    rule.pattern.test(url.pathname),
+  );
+  return matchedRule ? matchedRule.ttl : 0;
+}
+
+function applyCacheHeaders(headers, ttl) {
+  if (!ttl) {
+    return;
+  }
+
+  const cacheValue = `public, max-age=0, s-maxage=${ttl}, stale-while-revalidate=${ttl * 5}`;
+  headers.set('Cache-Control', cacheValue);
+  headers.set('CDN-Cache-Control', cacheValue);
+  headers.set('Vercel-CDN-Cache-Control', cacheValue);
+}
+
 export const config = {
   runtime: 'edge',
 };
 
 export default async function handler(request) {
   try {
+    const cacheTTL = getCacheTTL(request);
     const upstreamUrl = buildUpstreamUrl(request.url);
     if (!upstreamUrl) {
       return new Response('Unsupported proxy base', { status: 400 });
@@ -82,6 +124,9 @@ export default async function handler(request) {
     const upstreamResponse = await fetch(upstreamUrl, init);
     const responseHeaders = new Headers(upstreamResponse.headers);
     HOP_BY_HOP_HEADERS.forEach((header) => responseHeaders.delete(header));
+    if (upstreamResponse.ok) {
+      applyCacheHeaders(responseHeaders, cacheTTL);
+    }
 
     return new Response(upstreamResponse.body, {
       status: upstreamResponse.status,

@@ -13,6 +13,16 @@ const HOP_BY_HOP_HEADERS = [
   'upgrade',
 ];
 
+const PUBLIC_CACHE_RULES = [
+  { pattern: /^\/api\/status\/?$/, ttl: 30 },
+  { pattern: /^\/api\/notice\/?$/, ttl: 60 },
+  { pattern: /^\/api\/about\/?$/, ttl: 300 },
+  { pattern: /^\/api\/user-agreement\/?$/, ttl: 300 },
+  { pattern: /^\/api\/privacy-policy\/?$/, ttl: 300 },
+  { pattern: /^\/api\/home_page_content\/?$/, ttl: 300 },
+  { pattern: /^\/api\/ratio_config\/?$/, ttl: 300 },
+];
+
 function getBackendOrigin(env) {
   const raw =
     env.BACKEND_ORIGIN ||
@@ -30,6 +40,36 @@ function getTailPath(params) {
     return params.path;
   }
   return '';
+}
+
+function getCacheTTL(request) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return 0;
+  }
+
+  const url = new URL(request.url);
+  const hasAuth =
+    request.headers.has('authorization') ||
+    request.headers.has('cookie') ||
+    request.headers.has('x-api-key');
+  if (hasAuth) {
+    return 0;
+  }
+
+  const matchedRule = PUBLIC_CACHE_RULES.find((rule) =>
+    rule.pattern.test(url.pathname),
+  );
+  return matchedRule ? matchedRule.ttl : 0;
+}
+
+function applyCacheHeaders(headers, ttl) {
+  if (!ttl) {
+    return;
+  }
+
+  const cacheValue = `public, max-age=0, s-maxage=${ttl}, stale-while-revalidate=${ttl * 5}`;
+  headers.set('Cache-Control', cacheValue);
+  headers.set('CDN-Cache-Control', cacheValue);
 }
 
 export async function proxyRequest(context, basePath) {
@@ -51,6 +91,7 @@ export async function proxyRequest(context, basePath) {
   }
 
   const requestUrl = new URL(context.request.url);
+  const cacheTTL = getCacheTTL(context.request);
   const tailPath = getTailPath(context.params);
   const upstreamPath = tailPath ? `${basePath}/${tailPath}` : basePath;
   const upstreamUrl = `${backendOrigin}${upstreamPath}${requestUrl.search}`;
@@ -73,6 +114,9 @@ export async function proxyRequest(context, basePath) {
   const upstreamResponse = await fetch(upstreamUrl, init);
   const responseHeaders = new Headers(upstreamResponse.headers);
   HOP_BY_HOP_HEADERS.forEach((header) => responseHeaders.delete(header));
+  if (upstreamResponse.ok) {
+    applyCacheHeaders(responseHeaders, cacheTTL);
+  }
 
   return new Response(upstreamResponse.body, {
     status: upstreamResponse.status,
