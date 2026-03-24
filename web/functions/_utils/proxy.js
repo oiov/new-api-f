@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_ORIGIN = 'https://fishxcode.com';
+const DEFAULT_BACKEND_ORIGIN = 'https://claud.fishxcode.com';
 
 const HOP_BY_HOP_HEADERS = [
   'connection',

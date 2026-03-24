@@ -5,35 +5,35 @@
   "rewrites": [
     {
       "source": "/api",
-      "destination": "https://fishxcode.com/api"
+      "destination": "https://claud.fishxcode.com/api"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://fishxcode.com/api/:path*"
+      "destination": "https://claud.fishxcode.com/api/:path*"
     },
     {
       "source": "/v1",
-      "destination": "https://fishxcode.com/v1"
+      "destination": "https://claud.fishxcode.com/v1"
     },
     {
       "source": "/v1/:path*",
-      "destination": "https://fishxcode.com/v1/:path*"
+      "destination": "https://claud.fishxcode.com/v1/:path*"
     },
     {
       "source": "/mj",
-      "destination": "https://fishxcode.com/mj"
+      "destination": "https://claud.fishxcode.com/mj"
     },
     {
       "source": "/mj/:path*",
-      "destination": "https://fishxcode.com/mj/:path*"
+      "destination": "https://claud.fishxcode.com/mj/:path*"
     },
     {
       "source": "/pg",
-      "destination": "https://fishxcode.com/pg"
+      "destination": "https://claud.fishxcode.com/pg"
     },
     {
       "source": "/pg/:path*",
-      "destination": "https://fishxcode.com/pg/:path*"
+      "destination": "https://claud.fishxcode.com/pg/:path*"
     },
     {
       "source": "/:path((?!api(?:/|$)|v1(?:/|$)|mj(?:/|$)|pg(?:/|$)|assets(?:/|$)|.*\\..*).*)",

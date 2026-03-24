@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_ORIGIN = 'https://fishxcode.com';
+const DEFAULT_BACKEND_ORIGIN = 'https://claud.fishxcode.com';
 
 const ALLOWED_BASES = new Set(['api', 'v1', 'mj', 'pg']);
 

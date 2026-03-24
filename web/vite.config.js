@@ -124,15 +124,15 @@ export default defineConfig(({ command }) => ({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'https://fishxcode.com',
+        target: 'https://claud.fishxcode.com',
         changeOrigin: true,
       },
       '/mj': {
-        target: 'https://fishxcode.com',
+        target: 'https://claud.fishxcode.com',
         changeOrigin: true,
       },
       '/pg': {
-        target: 'https://fishxcode.com',
+        target: 'https://claud.fishxcode.com',
         changeOrigin: true,
       },
     },
