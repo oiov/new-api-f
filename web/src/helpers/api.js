@@ -26,17 +26,105 @@ import {
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
-export let API = axios.create({
-  baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
-    ? import.meta.env.VITE_REACT_APP_SERVER_URL
-    : '',
-  headers: {
-    'New-API-User': getUserIdFromLocalStorage(),
-    'Cache-Control': 'no-store',
-  },
-});
+const DEFAULT_RELAY_ORIGIN = 'https://claud.fishxcode.com';
+const DIRECT_RELAY_PREFIXES = ['/v1', '/v1beta', '/pg', '/mj'];
 
+function trimTrailingSlash(url = '') {
+  return url.replace(/\/+$/, '');
+}
 
+function getFullDirectOrigin() {
+  return trimTrailingSlash(import.meta.env.VITE_REACT_APP_SERVER_URL || '');
+}
+
+function getRelayOrigin() {
+  const fullDirectOrigin = getFullDirectOrigin();
+  if (fullDirectOrigin) {
+    return fullDirectOrigin;
+  }
+  return trimTrailingSlash(
+    import.meta.env.VITE_REACT_APP_RELAY_SERVER_URL || DEFAULT_RELAY_ORIGIN,
+  );
+}
+
+function normalizeRequestPath(url) {
+  if (!url || typeof url !== 'string') {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return url;
+    }
+  }
+
+  return url.startsWith('/') ? url : `/${url}`;
+}
+
+function shouldUseDirectRelay(url) {
+  const path = normalizeRequestPath(url);
+  return DIRECT_RELAY_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
+
+function getRequestBaseURL(url) {
+  const fullDirectOrigin = getFullDirectOrigin();
+  if (fullDirectOrigin) {
+    return fullDirectOrigin;
+  }
+
+  if (shouldUseDirectRelay(url)) {
+    return getRelayOrigin();
+  }
+
+  return '';
+}
+
+export function resolveRequestUrl(url) {
+  if (!url || typeof url !== 'string' || /^https?:\/\//i.test(url)) {
+    return url;
+  }
+
+  const baseURL = getRequestBaseURL(url);
+  if (!baseURL) {
+    return url;
+  }
+
+  return `${baseURL}${url.startsWith('/') ? url : `/${url}`}`;
+}
+
+function createAPIClient() {
+  const instance = axios.create({
+    headers: {
+      'New-API-User': getUserIdFromLocalStorage(),
+      'Cache-Control': 'no-store',
+    },
+  });
+
+  instance.interceptors.request.use((config) => {
+    config.baseURL = getRequestBaseURL(config.url);
+    return config;
+  });
+
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.config && error.config.skipErrorHandler) {
+        return Promise.reject(error);
+      }
+      showError(error);
+      return Promise.reject(error);
+    },
+  );
+
+  patchAPIInstance(instance);
+  return instance;
+}
+
+export let API = createAPIClient();
 function redirectToOAuthUrl(url, options = {}) {
   const { openInNewTab = false } = options;
   const targetUrl = typeof url === 'string' ? url : url.toString();
@@ -48,8 +136,6 @@ function redirectToOAuthUrl(url, options = {}) {
 
   window.location.assign(targetUrl);
 }
-
-
 function patchAPIInstance(instance) {
   const originalGet = instance.get.bind(instance);
   const inFlightGetRequests = new Map();
@@ -78,33 +164,9 @@ function patchAPIInstance(instance) {
   };
 }
 
-patchAPIInstance(API);
-
 export function updateAPI() {
-  API = axios.create({
-    baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
-      ? import.meta.env.VITE_REACT_APP_SERVER_URL
-      : '',
-    headers: {
-      'New-API-User': getUserIdFromLocalStorage(),
-      'Cache-Control': 'no-store',
-    },
-  });
-
-  patchAPIInstance(API);
+  API = createAPIClient();
 }
-
-API.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // 如果请求配置中显式要求跳过全局错误处理，则不弹出默认错误提示
-    if (error.config && error.config.skipErrorHandler) {
-      return Promise.reject(error);
-    }
-    showError(error);
-    return Promise.reject(error);
-  },
-);
 
 // playground
 

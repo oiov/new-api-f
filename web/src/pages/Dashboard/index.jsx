@@ -17,12 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
-import Dashboard from '../../components/dashboard';
+import React, { Suspense, lazy } from 'react';
+
+const Dashboard = lazy(() => import('../../components/dashboard'));
 
 const Detail = () => (
   <div className='mt-[60px] px-2'>
-    <Dashboard />
+    <Suspense fallback={<div className='min-h-[60vh]' />}>
+      <Dashboard />
+    </Suspense>
   </div>
 );
 

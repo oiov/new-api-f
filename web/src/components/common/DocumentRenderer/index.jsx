@@ -26,7 +26,7 @@ import {
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
-import MarkdownRenderer from '../markdown/MarkdownRenderer';
+import MarkdownRenderer from '../markdown/LazyMarkdownRenderer';
 
 // 检查是否为 URL
 const isUrl = (content) => {

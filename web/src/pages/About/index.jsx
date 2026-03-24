@@ -19,13 +19,17 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useState } from 'react';
 import { API, showError } from '../../helpers';
-import { marked } from 'marked';
 import { Empty } from '@douyinfe/semi-ui';
 import {
   IllustrationConstruction,
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
+
+async function parseMarkdownToHtml(content) {
+  const { marked } = await import('marked');
+  return marked.parse(content);
+}
 
 const About = () => {
   const { t } = useTranslation();
@@ -40,7 +44,7 @@ const About = () => {
     if (success) {
       let aboutContent = data;
       if (!data.startsWith('https://')) {
-        aboutContent = marked.parse(data);
+        aboutContent = await parseMarkdownToHtml(data);
       }
       setAbout(aboutContent);
       localStorage.setItem('about', aboutContent);

@@ -24,6 +24,84 @@ import path from 'path';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
 
+function createManualChunk(id) {
+  if (!id.includes('node_modules')) {
+    return undefined;
+  }
+
+  if (
+    id.includes('/react/') ||
+    id.includes('/react-dom/') ||
+    id.includes('/react-router-dom/')
+  ) {
+    return 'react-core';
+  }
+
+  if (id.includes('@douyinfe/semi-icons')) {
+    return 'semi-icons';
+  }
+
+  if (id.includes('@douyinfe/semi-illustrations')) {
+    return 'semi-illustrations';
+  }
+
+  if (
+    id.includes('/axios/') ||
+    id.includes('/history/') ||
+    id.includes('/marked/') ||
+    id.includes('/sse.js/')
+  ) {
+    return 'tools';
+  }
+
+  if (
+    id.includes('/react-markdown/') ||
+    id.includes('/remark-') ||
+    id.includes('/mdast-') ||
+    id.includes('/micromark/') ||
+    id.includes('/unist-') ||
+    id.includes('/unified/') ||
+    id.includes('/vfile/')
+  ) {
+    return 'markdown-core';
+  }
+
+  if (
+    id.includes('/rehype-') ||
+    id.includes('/hast-') ||
+    id.includes('/property-information/') ||
+    id.includes('/space-separated-tokens/') ||
+    id.includes('/comma-separated-tokens/') ||
+    id.includes('/html-void-elements/')
+  ) {
+    return 'markdown-render';
+  }
+
+  if (id.includes('/katex/')) {
+    return 'markdown-katex';
+  }
+
+  if (id.includes('/highlight.js/')) {
+    return 'markdown-highlight';
+  }
+
+  if (id.includes('@douyinfe/semi-ui')) {
+    return 'semi-ui';
+  }
+
+  if (
+    id.includes('react-dropzone') ||
+    id.includes('react-fireworks') ||
+    id.includes('react-telegram-login') ||
+    id.includes('react-toastify') ||
+    id.includes('react-turnstile')
+  ) {
+    return 'react-components';
+  }
+
+  return undefined;
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => ({
   resolve: {
@@ -68,55 +146,7 @@ export default defineConfig(({ command }) => ({
     modulePreload: false,
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          if (!id.includes('node_modules')) {
-            return;
-          }
-
-          if (
-            id.includes('/react/') ||
-            id.includes('/react-dom/') ||
-            id.includes('/react-router-dom/')
-          ) {
-            return 'react-core';
-          }
-
-          if (
-            id.includes('@douyinfe/semi-ui') ||
-            id.includes('@douyinfe/semi-icons')
-          ) {
-            return 'semi-ui';
-          }
-
-          if (
-            id.includes('react-markdown') ||
-            id.includes('remark-') ||
-            id.includes('rehype-') ||
-            id.includes('/katex/') ||
-            id.includes('/highlight.js/')
-          ) {
-            return 'markdown';
-          }
-
-          if (
-            id.includes('/axios/') ||
-            id.includes('/history/') ||
-            id.includes('/marked/') ||
-            id.includes('/sse.js/')
-          ) {
-            return 'tools';
-          }
-
-          if (
-            id.includes('react-dropzone') ||
-            id.includes('react-fireworks') ||
-            id.includes('react-telegram-login') ||
-            id.includes('react-toastify') ||
-            id.includes('react-turnstile')
-          ) {
-            return 'react-components';
-          }
-        },
+        manualChunks: createManualChunk,
       },
     },
   },

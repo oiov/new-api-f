@@ -20,7 +20,6 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import i18next from 'i18next';
 import { Avatar } from '@douyinfe/semi-ui';
-import * as LobeIcons from '@lobehub/icons';
 import {
   OpenAI,
   Claude,
@@ -81,6 +80,41 @@ import {
   SiWechat,
   SiX,
 } from 'react-icons/si';
+
+const lobeIconMap = {
+  OpenAI,
+  Claude,
+  Gemini,
+  Moonshot,
+  Zhipu,
+  Qwen,
+  DeepSeek,
+  Minimax,
+  Wenxin,
+  Spark,
+  Midjourney,
+  Hunyuan,
+  Cohere,
+  Cloudflare,
+  Ai360,
+  Yi,
+  Jina,
+  Mistral,
+  XAI,
+  Ollama,
+  Doubao,
+  Suno,
+  Xinference,
+  OpenRouter,
+  Dify,
+  Coze,
+  SiliconCloud,
+  FastGPT,
+  Kling,
+  Jimeng,
+  Perplexity,
+  Replicate,
+};
 
 export const getModelCategories = (() => {
   let categoriesCache = null;
@@ -342,7 +376,7 @@ export function getLobeHubIcon(iconName, size = 14) {
 
   const segments = String(iconName).split('.');
   const baseKey = segments[0];
-  const baseIcon = LobeIcons[baseKey];
+  const baseIcon = lobeIconMap[baseKey];
 
   let IconComponent;
   let propStartIndex = 1;

@@ -17,23 +17,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect } from 'react';
+import React, { Suspense, lazy, useContext, useEffect, useState } from 'react';
 import { getRelativeTime } from '../../helpers';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 
 import DashboardHeader from './DashboardHeader';
 import StatsCards from './StatsCards';
-import ChartsPanel from './ChartsPanel';
 import ApiInfoPanel from './ApiInfoPanel';
 import AnnouncementsPanel from './AnnouncementsPanel';
 import FaqPanel from './FaqPanel';
 import UptimePanel from './UptimePanel';
 import SearchModal from './modals/SearchModal';
+const ChartsPanel = lazy(() => import('./ChartsPanel'));
 
 import { useDashboardData } from '../../hooks/dashboard/useDashboardData';
 import { useDashboardStats } from '../../hooks/dashboard/useDashboardStats';
-import { useDashboardCharts } from '../../hooks/dashboard/useDashboardCharts';
 
 import {
   CHART_CONFIG,
@@ -59,19 +58,7 @@ const Dashboard = () => {
 
   // ========== 主要数据管理 ==========
   const dashboardData = useDashboardData(userState, userDispatch, statusState);
-
-  // ========== 图表管理 ==========
-  const dashboardCharts = useDashboardCharts(
-    dashboardData.dataExportDefaultTime,
-    dashboardData.setTrendData,
-    dashboardData.setConsumeQuota,
-    dashboardData.setTimes,
-    dashboardData.setConsumeTokens,
-    dashboardData.setPieData,
-    dashboardData.setLineData,
-    dashboardData.setModelColors,
-    dashboardData.t,
-  );
+  const [chartData, setChartData] = useState([]);
 
   // ========== 统计数据 ==========
   const { groupedStatsData } = useDashboardStats(
@@ -89,7 +76,7 @@ const Dashboard = () => {
   const initChart = async () => {
     await dashboardData.loadQuotaData().then((data) => {
       if (data && data.length > 0) {
-        dashboardCharts.updateChartData(data);
+        setChartData(data);
       }
     });
     await dashboardData.loadUptimeData();
@@ -98,12 +85,12 @@ const Dashboard = () => {
   const handleRefresh = async () => {
     const data = await dashboardData.refresh();
     if (data && data.length > 0) {
-      dashboardCharts.updateChartData(data);
+      setChartData(data);
     }
   };
 
   const handleSearchConfirm = async () => {
-    await dashboardData.handleSearchConfirm(dashboardCharts.updateChartData);
+    await dashboardData.handleSearchConfirm(setChartData);
   };
 
   // ========== 数据准备 ==========
@@ -165,9 +152,7 @@ const Dashboard = () => {
       <StatsCards
         groupedStatsData={groupedStatsData}
         loading={dashboardData.loading}
-        getTrendSpec={getTrendSpec}
         CARD_PROPS={CARD_PROPS}
-        CHART_CONFIG={CHART_CONFIG}
       />
 
       {/* API信息和图表面板 */}
@@ -175,19 +160,32 @@ const Dashboard = () => {
         <div
           className={`grid grid-cols-1 gap-4 ${dashboardData.hasApiInfoPanel ? 'lg:grid-cols-4' : ''}`}
         >
-          <ChartsPanel
-            activeChartTab={dashboardData.activeChartTab}
-            setActiveChartTab={dashboardData.setActiveChartTab}
-            spec_line={dashboardCharts.spec_line}
-            spec_model_line={dashboardCharts.spec_model_line}
-            spec_pie={dashboardCharts.spec_pie}
-            spec_rank_bar={dashboardCharts.spec_rank_bar}
-            CARD_PROPS={CARD_PROPS}
-            CHART_CONFIG={CHART_CONFIG}
-            FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-            hasApiInfoPanel={dashboardData.hasApiInfoPanel}
-            t={dashboardData.t}
-          />
+          <Suspense
+            fallback={
+              <div
+                className={`min-h-[24rem] rounded-2xl border border-semi-color-border bg-semi-color-bg-0 ${dashboardData.hasApiInfoPanel ? 'lg:col-span-3' : ''}`}
+              />
+            }
+          >
+            <ChartsPanel
+              activeChartTab={dashboardData.activeChartTab}
+              setActiveChartTab={dashboardData.setActiveChartTab}
+              chartData={chartData}
+              dataExportDefaultTime={dashboardData.dataExportDefaultTime}
+              setTrendData={dashboardData.setTrendData}
+              setConsumeQuota={dashboardData.setConsumeQuota}
+              setTimes={dashboardData.setTimes}
+              setConsumeTokens={dashboardData.setConsumeTokens}
+              setPieData={dashboardData.setPieData}
+              setLineData={dashboardData.setLineData}
+              setModelColors={dashboardData.setModelColors}
+              CARD_PROPS={CARD_PROPS}
+              CHART_CONFIG={CHART_CONFIG}
+              FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
+              hasApiInfoPanel={dashboardData.hasApiInfoPanel}
+              t={dashboardData.t}
+            />
+          </Suspense>
 
           {dashboardData.hasApiInfoPanel && (
             <ApiInfoPanel

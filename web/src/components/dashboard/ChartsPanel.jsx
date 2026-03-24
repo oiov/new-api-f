@@ -17,24 +17,49 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Card, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { PieChart } from 'lucide-react';
 import { VChart } from '@visactor/react-vchart';
+import { useDashboardCharts } from '../../hooks/dashboard/useDashboardCharts';
 
 const ChartsPanel = ({
   activeChartTab,
   setActiveChartTab,
-  spec_line,
-  spec_model_line,
-  spec_pie,
-  spec_rank_bar,
+  chartData,
+  dataExportDefaultTime,
+  setTrendData,
+  setConsumeQuota,
+  setTimes,
+  setConsumeTokens,
+  setPieData,
+  setLineData,
+  setModelColors,
   CARD_PROPS,
   CHART_CONFIG,
   FLEX_CENTER_GAP2,
   hasApiInfoPanel,
   t,
 }) => {
+  const { spec_line, spec_model_line, spec_pie, spec_rank_bar, updateChartData } =
+    useDashboardCharts(
+      dataExportDefaultTime,
+      setTrendData,
+      setConsumeQuota,
+      setTimes,
+      setConsumeTokens,
+      setPieData,
+      setLineData,
+      setModelColors,
+      t,
+    );
+
+  useEffect(() => {
+    if (Array.isArray(chartData) && chartData.length > 0) {
+      updateChartData(chartData);
+    }
+  }, [chartData, updateChartData]);
+
   return (
     <Card
       {...CARD_PROPS}

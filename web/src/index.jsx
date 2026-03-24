@@ -26,7 +26,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import { StatusProvider } from './context/Status';
 import { ThemeProvider } from './context/Theme';
 import PageLayout from './components/layout/PageLayout';
-import './i18n/i18n';
+import { initI18n } from './i18n/i18n';
 import './index.css';
 import { LocaleProvider } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
@@ -55,23 +55,26 @@ function SemiLocaleWrapper({ children }) {
 // initialization
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <StatusProvider>
-      <UserProvider>
-        <BrowserRouter
-          future={{
-            v7_startTransition: true,
-            v7_relativeSplatPath: true,
-          }}
-        >
-          <ThemeProvider>
-            <SemiLocaleWrapper>
-              <PageLayout />
-            </SemiLocaleWrapper>
-          </ThemeProvider>
-        </BrowserRouter>
-      </UserProvider>
-    </StatusProvider>
-  </React.StrictMode>,
-);
+
+initI18n.finally(() => {
+  root.render(
+    <React.StrictMode>
+      <StatusProvider>
+        <UserProvider>
+          <BrowserRouter
+            future={{
+              v7_startTransition: true,
+              v7_relativeSplatPath: true,
+            }}
+          >
+            <ThemeProvider>
+              <SemiLocaleWrapper>
+                <PageLayout />
+              </SemiLocaleWrapper>
+            </ThemeProvider>
+          </BrowserRouter>
+        </UserProvider>
+      </StatusProvider>
+    </React.StrictMode>,
+  );
+});
