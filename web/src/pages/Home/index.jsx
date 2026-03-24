@@ -187,7 +187,6 @@ const Home = () => {
 
   useEffect(() => {
     if (homePageContent.startsWith('https://')) {
-      setIframeReady(false);
       syncIframeState();
     }
   }, [actualTheme, i18n.language, homePageContent]);
@@ -330,27 +329,16 @@ const Home = () => {
       ) : (
         <div className='overflow-x-hidden w-full'>
           {homePageContent.startsWith('https://') ? (
-            <div className='relative w-full h-screen'>
-              {!iframeReady && (
-                <div className='absolute inset-0 z-10 flex items-center justify-center bg-semi-color-bg-0'>
-                  <div className='flex flex-col items-center gap-3 text-semi-color-text-2'>
-                    <div className='h-10 w-10 animate-spin rounded-full border-2 border-semi-color-border border-t-semi-color-primary' />
-                    <span>{t('页面加载中...')}</span>
-                  </div>
-                </div>
-              )}
-              <iframe
-                key={`${homePageContent}:${i18n.language}`}
-                ref={iframeRef}
-                src={homePageContent}
-                title='Home Content Frame'
-                className='w-full h-screen border-none'
-                onLoad={() => {
-                  syncIframeState();
-                  setIframeReady(true);
-                }}
-              />
-            </div>
+            <IframeViewport
+              key={`${homePageContent}:${i18n.language}`}
+              ref={iframeRef}
+              src={homePageContent}
+              title='Home Content Frame'
+              onLoad={() => {
+                syncIframeState();
+              }}
+              loadingText={t('页面加载中...')}
+            />
           ) : (
             <div
               className='mt-[60px]'
