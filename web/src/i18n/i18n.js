@@ -35,6 +35,14 @@ const localeLoaders = {
 
 const loadedLanguages = new Set();
 
+function unwrapLocaleModule(module) {
+  const resource = module?.default ?? module;
+  if (resource && typeof resource === 'object' && resource.translation) {
+    return resource.translation;
+  }
+  return resource;
+}
+
 function getInitialLanguage() {
   if (typeof window === 'undefined') {
     return FALLBACK_LANGUAGE;
@@ -65,7 +73,7 @@ async function loadLanguageResource(language) {
 
   const loader = localeLoaders[targetLanguage] || localeLoaders[FALLBACK_LANGUAGE];
   const module = await loader();
-  const resource = module.default;
+  const resource = unwrapLocaleModule(module);
 
   if (i18n.isInitialized) {
     i18n.addResourceBundle(targetLanguage, 'translation', resource, true, true);
@@ -80,12 +88,16 @@ async function createInitialResources() {
   const resources = {};
 
   const fallbackModule = await localeLoaders[FALLBACK_LANGUAGE]();
-  resources[FALLBACK_LANGUAGE] = fallbackModule.default;
+  resources[FALLBACK_LANGUAGE] = {
+    translation: unwrapLocaleModule(fallbackModule),
+  };
   loadedLanguages.add(FALLBACK_LANGUAGE);
 
   if (initialLanguage !== FALLBACK_LANGUAGE) {
     const initialModule = await localeLoaders[initialLanguage]();
-    resources[initialLanguage] = initialModule.default;
+    resources[initialLanguage] = {
+      translation: unwrapLocaleModule(initialModule),
+    };
     loadedLanguages.add(initialLanguage);
   }
 

@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useState } from 'react';
 import { API, showError } from '../../../helpers';
-import { Empty, Card, Spin, Typography } from '@douyinfe/semi-ui';
+import { Empty, Spin, Typography } from '@douyinfe/semi-ui';
 const { Title } = Typography;
 import {
   IllustrationConstruction,
@@ -72,20 +72,39 @@ const sanitizeHtml = (html) => {
  * @param {string} cacheKey - 本地存储缓存键
  * @param {string} emptyMessage - 空内容时的提示消息
  */
-const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
+const DocumentRenderer = ({
+  apiEndpoint,
+  title,
+  cacheKey,
+  emptyMessage,
+  directContent,
+}) => {
   const { t } = useTranslation();
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [htmlStyles, setHtmlStyles] = useState('');
   const [processedHtmlContent, setProcessedHtmlContent] = useState('');
+  const [iframeReady, setIframeReady] = useState(false);
 
   const loadContent = async () => {
+    if (directContent && directContent.trim() !== '') {
+      setContent(directContent);
+      processContent(directContent);
+      setLoading(false);
+      return;
+    }
+
     // 先从缓存中获取
     const cachedContent = localStorage.getItem(cacheKey) || '';
     if (cachedContent) {
       setContent(cachedContent);
       processContent(cachedContent);
       setLoading(false);
+    }
+
+    if (!apiEndpoint) {
+      setLoading(false);
+      return;
     }
 
     try {
@@ -125,6 +144,12 @@ const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
   useEffect(() => {
     loadContent();
   }, []);
+
+  useEffect(() => {
+    if (isUrl(content)) {
+      setIframeReady(false);
+    }
+  }, [content]);
 
   // 处理HTML样式注入
   useEffect(() => {
@@ -177,45 +202,30 @@ const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
     );
   }
 
-  // 如果是 URL，显示链接卡片
+  // 如果是 URL，使用 iframe 嵌入
   if (isUrl(content)) {
     return (
-      <div className='flex justify-center items-center min-h-screen bg-gray-50 p-4'>
-        <Card className='max-w-md w-full'>
-          <div className='text-center'>
-            <Title heading={4} className='mb-4'>
-              {title}
-            </Title>
-            <p className='text-gray-600 mb-4'>
-              {t('管理员设置了外部链接，点击下方按钮访问')}
-            </p>
-            <a
-              href={content.trim()}
-              target='_blank'
-              rel='noopener noreferrer'
-              title={content.trim()}
-              aria-label={`${t('访问' + title)}: ${content.trim()}`}
-              className='inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors'
-            >
-              {t('访问' + title)}
-            </a>
+      <div className='relative w-full h-screen bg-gray-50'>
+        {!iframeReady && (
+          <div className='absolute inset-0 z-10 flex items-center justify-center bg-semi-color-bg-0'>
+            <div className='flex flex-col items-center gap-3 text-semi-color-text-2'>
+              <div className='h-10 w-10 animate-spin rounded-full border-2 border-semi-color-border border-t-semi-color-primary' />
+              <span>{t('页面加载中...')}</span>
+            </div>
           </div>
-        </Card>
+        )}
+        <iframe
+          src={content.trim()}
+          title={title}
+          className='w-full h-screen border-none'
+          onLoad={() => setIframeReady(true)}
+        />
       </div>
     );
   }
 
   // 如果是 HTML 内容，直接渲染
   if (isHtmlContent(content)) {
-    const { content: htmlContent, styles } = sanitizeHtml(content);
-
-    // 设置样式（如果有的话）
-    useEffect(() => {
-      if (styles && styles !== htmlStyles) {
-        setHtmlStyles(styles);
-      }
-    }, [content, styles, htmlStyles]);
-
     return (
       <div className='min-h-screen bg-gray-50'>
         <div className='max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8'>
@@ -225,7 +235,7 @@ const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
             </Title>
             <div
               className='prose prose-lg max-w-none'
-              dangerouslySetInnerHTML={{ __html: htmlContent }}
+              dangerouslySetInnerHTML={{ __html: processedHtmlContent }}
             />
           </div>
         </div>

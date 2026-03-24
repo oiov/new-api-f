@@ -59,6 +59,7 @@ const PersonalSetting = lazy(
   () => import('./components/settings/PersonalSetting'),
 );
 const Setup = lazy(() => import('./pages/Setup'));
+const Docs = lazy(() => import('./pages/Docs'));
 const SetupCheck = lazy(() => import('./components/layout/SetupCheck'));
 
 function DynamicOAuth2Callback() {
@@ -345,6 +346,14 @@ function App() {
           element={
             <Suspense fallback={<Loading></Loading>} key={location.pathname}>
               <About />
+            </Suspense>
+          }
+        />
+        <Route
+          path='/docs'
+          element={
+            <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <Docs />
             </Suspense>
           }
         />

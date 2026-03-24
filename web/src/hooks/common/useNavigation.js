@@ -59,8 +59,7 @@ export const useNavigation = (
             {
               text: t('文档'),
               itemKey: 'docs',
-              isExternal: true,
-              externalLink: docsLink,
+              to: '/docs',
             },
           ]
         : []),
