@@ -22,6 +22,7 @@ import { useTokenKeys } from '../../hooks/chat/useTokenKeys';
 import { Spin } from '@douyinfe/semi-ui';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import IframeViewport from '../../components/common/IframeViewport';
 
 const ChatPage = () => {
   const { t } = useTranslation();
@@ -54,17 +55,14 @@ const ChatPage = () => {
   const iframeSrc = keys.length > 0 ? comLink(keys[0]) : '';
 
   return !isLoading && iframeSrc ? (
-    <iframe
+    <IframeViewport
       src={iframeSrc}
-      style={{
-        width: '100%',
-        height: 'calc(100vh - 64px)',
-        border: 'none',
-        marginTop: '64px',
-      }}
       title='Token Frame'
-      allow='camera;microphone'
-      loading='lazy'
+      iframeProps={{
+        allow: 'camera;microphone',
+        loading: 'lazy',
+      }}
+      showLoading={false}
     />
   ) : (
     <div className='fixed inset-0 w-screen h-screen flex items-center justify-center bg-white/80 z-[1000] mt-[60px]'>

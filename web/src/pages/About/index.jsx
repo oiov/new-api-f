@@ -26,6 +26,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
 import { useActualTheme } from '../../context/Theme';
+import IframeViewport from '../../components/common/IframeViewport';
 
 const ABOUT_CACHE_KEY = 'about_cache_v2';
 const ABOUT_CACHE_TTL = 10 * 60 * 1000;
@@ -68,7 +69,6 @@ const About = () => {
   const iframeRef = useRef(null);
   const [about, setAbout] = useState('');
   const [aboutLoaded, setAboutLoaded] = useState(false);
-  const [iframeReady, setIframeReady] = useState(false);
   const currentYear = new Date().getFullYear();
 
   const syncIframeState = () => {
@@ -127,7 +127,6 @@ const About = () => {
 
   useEffect(() => {
     if (about.startsWith('https://')) {
-      setIframeReady(false);
       syncIframeState();
     }
   }, [about, actualTheme, i18n.language]);
@@ -209,7 +208,19 @@ const About = () => {
     </div>
   );
 
-  return (
+  return about.startsWith('https://') ? (
+    <IframeViewport
+      key={`${about}:${i18n.language}`}
+      ref={iframeRef}
+      src={about}
+      title='About Content Frame'
+      onLoad={() => {
+        syncIframeState();
+      }}
+      loadingText={t('页面加载中...')}
+      className='px-2'
+    />
+  ) : (
     <div className='mt-[60px] px-2'>
       {aboutLoaded && about === '' ? (
         <div className='flex justify-center items-center h-screen p-8'>
@@ -229,36 +240,10 @@ const About = () => {
           </Empty>
         </div>
       ) : (
-        <>
-          {about.startsWith('https://') ? (
-            <div className='relative w-full min-h-screen'>
-              {!iframeReady && (
-                <div className='absolute inset-0 z-10 flex items-center justify-center bg-semi-color-bg-0'>
-                  <div className='flex flex-col items-center gap-3 text-semi-color-text-2'>
-                    <div className='h-10 w-10 animate-spin rounded-full border-2 border-semi-color-border border-t-semi-color-primary' />
-                    <span>{t('页面加载中...')}</span>
-                  </div>
-                </div>
-              )}
-              <iframe
-                key={`${about}:${i18n.language}`}
-                ref={iframeRef}
-                src={about}
-                title='About Content Frame'
-                style={{ width: '100%', height: '100vh', border: 'none' }}
-                onLoad={() => {
-                  syncIframeState();
-                  setIframeReady(true);
-                }}
-              />
-            </div>
-          ) : (
-            <div
-              style={{ fontSize: 'larger' }}
-              dangerouslySetInnerHTML={{ __html: about }}
-            ></div>
-          )}
-        </>
+        <div
+          style={{ fontSize: 'larger' }}
+          dangerouslySetInnerHTML={{ __html: about }}
+        ></div>
       )}
     </div>
   );
