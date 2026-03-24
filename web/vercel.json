@@ -5,35 +5,35 @@
   "rewrites": [
     {
       "source": "/api",
-      "destination": "/api/_proxy?__proxy_base=api"
+      "destination": "https://fishxcode.com/api"
     },
     {
       "source": "/api/:path*",
-      "destination": "/api/_proxy?__proxy_base=api&__proxy_path=:path*"
+      "destination": "https://fishxcode.com/api/:path*"
     },
     {
       "source": "/v1",
-      "destination": "/api/_proxy?__proxy_base=v1"
+      "destination": "https://fishxcode.com/v1"
     },
     {
       "source": "/v1/:path*",
-      "destination": "/api/_proxy?__proxy_base=v1&__proxy_path=:path*"
+      "destination": "https://fishxcode.com/v1/:path*"
     },
     {
       "source": "/mj",
-      "destination": "/api/_proxy?__proxy_base=mj"
+      "destination": "https://fishxcode.com/mj"
     },
     {
       "source": "/mj/:path*",
-      "destination": "/api/_proxy?__proxy_base=mj&__proxy_path=:path*"
+      "destination": "https://fishxcode.com/mj/:path*"
     },
     {
       "source": "/pg",
-      "destination": "/api/_proxy?__proxy_base=pg"
+      "destination": "https://fishxcode.com/pg"
     },
     {
       "source": "/pg/:path*",
-      "destination": "/api/_proxy?__proxy_base=pg&__proxy_path=:path*"
+      "destination": "https://fishxcode.com/pg/:path*"
     },
     {
       "source": "/:path((?!api(?:/|$)|v1(?:/|$)|mj(?:/|$)|pg(?:/|$)|assets(?:/|$)|.*\\..*).*)",

@@ -1,3 +1,5 @@
+const DEFAULT_BACKEND_ORIGIN = 'https://fishxcode.com';
+
 const HOP_BY_HOP_HEADERS = [
   'connection',
   'content-length',
@@ -12,7 +14,10 @@ const HOP_BY_HOP_HEADERS = [
 ];
 
 function getBackendOrigin(env) {
-  const raw = env.BACKEND_ORIGIN || env.VITE_REACT_APP_SERVER_URL || '';
+  const raw =
+    env.BACKEND_ORIGIN ||
+    env.VITE_REACT_APP_SERVER_URL ||
+    DEFAULT_BACKEND_ORIGIN;
   return raw.replace(/\/+$/, '');
 }
 
@@ -33,8 +38,7 @@ export async function proxyRequest(context, basePath) {
     return new Response(
       JSON.stringify({
         success: false,
-        message:
-          'Missing BACKEND_ORIGIN. Keep VITE_REACT_APP_SERVER_URL empty when using platform proxy.',
+        message: 'Missing backend origin.',
       }),
       {
         status: 500,
