@@ -27,7 +27,6 @@ import RehypeKatex from 'rehype-katex';
 import RemarkGfm from 'remark-gfm';
 import RehypeHighlight from 'rehype-highlight';
 import { useRef, useState, useEffect, useMemo } from 'react';
-import mermaid from 'mermaid';
 import React from 'react';
 import { useDebouncedCallback } from 'use-debounce';
 import clsx from 'clsx';
@@ -37,28 +36,58 @@ import { rehypeSplitWordsIntoSpans } from '../../../helpers/markdownAnimation';
 import { IconCopy } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'default',
-  securityLevel: 'loose',
-});
+let mermaidLoader;
+
+async function loadMermaid() {
+  if (!mermaidLoader) {
+    mermaidLoader = import('mermaid').then((module) => {
+      const mermaid = module.default;
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose',
+      });
+      return mermaid;
+    });
+  }
+
+  return mermaidLoader;
+}
 
 export function Mermaid(props) {
   const ref = useRef(null);
   const [hasError, setHasError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+
     if (props.code && ref.current) {
-      mermaid
-        .run({
-          nodes: [ref.current],
-          suppressErrors: true,
+      setLoading(true);
+      loadMermaid()
+        .then((mermaid) =>
+          mermaid.run({
+            nodes: [ref.current],
+            suppressErrors: true,
+          }),
+        )
+        .then(() => {
+          if (active) {
+            setLoading(false);
+          }
         })
         .catch((e) => {
-          setHasError(true);
+          if (active) {
+            setHasError(true);
+            setLoading(false);
+          }
           console.error('[Mermaid] ', e.message);
         });
     }
+
+    return () => {
+      active = false;
+    };
   }, [props.code]);
 
   function viewSvgInNewWindow() {

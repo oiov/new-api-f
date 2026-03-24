@@ -27,11 +27,11 @@ import {
   showSuccess,
   updateAPI,
   getSystemName,
-  getOAuthProviderIcon,
   setUserData,
   onDiscordOAuthClicked,
   onCustomOAuthClicked,
 } from '../../helpers';
+import { getOAuthProviderIcon } from '../../helpers/providerIcons';
 import Turnstile from 'react-turnstile';
 import {
   Button,

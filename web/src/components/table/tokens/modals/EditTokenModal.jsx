@@ -25,9 +25,9 @@ import {
   timestamp2string,
   renderGroupOption,
   renderQuotaWithPrompt,
-  getModelCategories,
   selectFilter,
 } from '../../../../helpers';
+import { getModelCategories } from '../../../../helpers/providerIcons';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import {
   Button,

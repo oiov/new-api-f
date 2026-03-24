@@ -33,12 +33,12 @@ import {
   timestamp2string,
   renderGroup,
   renderQuota,
-  getChannelIcon,
   renderQuotaWithAmount,
   showSuccess,
   showError,
   showInfo,
 } from '../../../helpers';
+import { getChannelIcon } from '../../../helpers/providerIcons';
 import {
   CHANNEL_OPTIONS,
   MODEL_FETCHABLE_CHANNEL_TYPES,

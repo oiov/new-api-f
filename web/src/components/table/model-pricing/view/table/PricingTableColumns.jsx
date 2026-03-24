@@ -25,8 +25,8 @@ import {
   stringToColor,
   calculateModelPrice,
   getModelPriceItems,
-  getLobeHubIcon,
 } from '../../../../../helpers';
+import { getLobeHubIcon } from '../../../../../helpers/providerIcons';
 import {
   renderLimitedItems,
   renderDescription,

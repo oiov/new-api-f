@@ -37,9 +37,9 @@ import {
   timestamp2string,
   renderGroup,
   renderQuota,
-  getModelCategories,
   showError,
 } from '../../../helpers';
+import { getModelCategories } from '../../../helpers/providerIcons';
 import {
   IconTreeTriangleDown,
   IconCopy,

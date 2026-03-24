@@ -29,9 +29,9 @@ import {
 import {
   API,
   showError,
-  getModelCategories,
   selectFilter,
 } from '../../../helpers';
+import { getModelCategories } from '../../../helpers/providerIcons';
 import CardPro from '../../common/ui/CardPro';
 import TokensTable from './TokensTable';
 import TokensActions from './TokensActions';

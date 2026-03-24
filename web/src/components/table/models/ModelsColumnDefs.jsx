@@ -28,9 +28,9 @@ import {
 } from '@douyinfe/semi-ui';
 import {
   timestamp2string,
-  getLobeHubIcon,
   stringToColor,
 } from '../../../helpers';
+import { getLobeHubIcon } from '../../../helpers/providerIcons';
 import {
   renderLimitedItems,
   renderDescription,

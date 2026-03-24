@@ -25,16 +25,18 @@ import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
   plugins: [
-    codeInspectorPlugin({
-      bundler: 'vite',
-    }),
+    command === 'serve'
+      ? codeInspectorPlugin({
+          bundler: 'vite',
+        })
+      : null,
     {
       name: 'treat-js-files-as-jsx',
       async transform(code, id) {
@@ -42,8 +44,6 @@ export default defineConfig({
           return null;
         }
 
-        // Use the exposed transform from vite, instead of directly
-        // transforming with esbuild
         return transformWithEsbuild(code, id, {
           loader: 'jsx',
           jsx: 'automatic',
@@ -54,9 +54,8 @@ export default defineConfig({
     vitePluginSemi({
       cssLayer: true,
     }),
-  ],
+  ].filter(Boolean),
   optimizeDeps: {
-    force: true,
     esbuildOptions: {
       loader: {
         '.js': 'jsx',
@@ -65,24 +64,58 @@ export default defineConfig({
     },
   },
   build: {
+    cssCodeSplit: true,
+    modulePreload: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-core': ['react', 'react-dom', 'react-router-dom'],
-          'semi-ui': ['@douyinfe/semi-icons', '@douyinfe/semi-ui'],
-          tools: ['axios', 'history', 'marked'],
-          'react-components': [
-            'react-dropzone',
-            'react-fireworks',
-            'react-telegram-login',
-            'react-toastify',
-            'react-turnstile',
-          ],
-          i18n: [
-            'i18next',
-            'react-i18next',
-            'i18next-browser-languagedetector',
-          ],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return;
+          }
+
+          if (
+            id.includes('/react/') ||
+            id.includes('/react-dom/') ||
+            id.includes('/react-router-dom/')
+          ) {
+            return 'react-core';
+          }
+
+          if (
+            id.includes('@douyinfe/semi-ui') ||
+            id.includes('@douyinfe/semi-icons')
+          ) {
+            return 'semi-ui';
+          }
+
+          if (
+            id.includes('react-markdown') ||
+            id.includes('remark-') ||
+            id.includes('rehype-') ||
+            id.includes('/katex/') ||
+            id.includes('/highlight.js/')
+          ) {
+            return 'markdown';
+          }
+
+          if (
+            id.includes('/axios/') ||
+            id.includes('/history/') ||
+            id.includes('/marked/') ||
+            id.includes('/sse.js/')
+          ) {
+            return 'tools';
+          }
+
+          if (
+            id.includes('react-dropzone') ||
+            id.includes('react-fireworks') ||
+            id.includes('react-telegram-login') ||
+            id.includes('react-toastify') ||
+            id.includes('react-turnstile')
+          ) {
+            return 'react-components';
+          }
         },
       },
     },
@@ -104,4 +137,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

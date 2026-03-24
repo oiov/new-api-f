@@ -40,7 +40,8 @@ import {
   IconDelete,
   IconRefresh,
 } from '@douyinfe/semi-icons';
-import { API, showError, showSuccess, getOAuthProviderIcon } from '../../helpers';
+import { API, showError, showSuccess } from '../../helpers';
+import { getOAuthProviderIcon } from '../../helpers/providerIcons';
 import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
