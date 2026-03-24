@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { Suspense, lazy, useContext, useEffect, useState } from 'react';
+import React, {
+  Suspense,
+  lazy,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Button,
   Typography,
@@ -43,18 +50,49 @@ const NoticeModal = lazy(() => import('../../components/layout/NoticeModal'));
 const ProviderLogos = lazy(() => import('./ProviderLogos'));
 
 const { Text } = Typography;
+const HOME_PAGE_CACHE_KEY = 'home_page_content_cache_v2';
+const HOME_PAGE_CACHE_TTL = 5 * 60 * 1000;
 
 async function parseMarkdownToHtml(content) {
   const { marked } = await import('marked');
   return marked.parse(content);
 }
 
+function readHomePageCache() {
+  try {
+    const raw = localStorage.getItem(HOME_PAGE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed?.content !== 'string' ||
+      typeof parsed?.timestamp !== 'number'
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeHomePageCache(content) {
+  localStorage.setItem(
+    HOME_PAGE_CACHE_KEY,
+    JSON.stringify({
+      content,
+      timestamp: Date.now(),
+    }),
+  );
+}
+
 const Home = () => {
   const { t, i18n } = useTranslation();
   const [statusState] = useContext(StatusContext);
   const actualTheme = useActualTheme();
+  const iframeRef = useRef(null);
   const [homePageContentLoaded, setHomePageContentLoaded] = useState(false);
   const [homePageContent, setHomePageContent] = useState('');
+  const [iframeReady, setIframeReady] = useState(false);
   const [noticeVisible, setNoticeVisible] = useState(false);
   const isMobile = useIsMobile();
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
@@ -65,33 +103,55 @@ const Home = () => {
   const [endpointIndex, setEndpointIndex] = useState(0);
   const isChinese = i18n.language.startsWith('zh');
 
-  const displayHomePageContent = async () => {
-    setHomePageContent(localStorage.getItem('home_page_content') || '');
-    const res = await API.get('/api/home_page_content');
-    const { success, message, data } = res.data;
-    if (success) {
-      let content = data;
-      if (!data.startsWith('https://')) {
-        content = await parseMarkdownToHtml(data);
+  const syncIframeState = () => {
+    try {
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (!iframeWindow) {
+        return;
       }
-      setHomePageContent(content);
-      localStorage.setItem('home_page_content', content);
-
-      // 如果内容是 URL，则发送主题模式
-      if (data.startsWith('https://')) {
-        const iframe = document.querySelector('iframe');
-        if (iframe) {
-          iframe.onload = () => {
-            iframe.contentWindow.postMessage({ themeMode: actualTheme }, '*');
-            iframe.contentWindow.postMessage({ lang: i18n.language }, '*');
-          };
-        }
-      }
-    } else {
-      showError(message);
-      setHomePageContent('加载首页内容失败...');
+      iframeWindow.postMessage({ themeMode: actualTheme }, '*');
+      iframeWindow.postMessage({ lang: i18n.language }, '*');
+    } catch {
+      // 跨域 iframe 无法稳定访问时直接忽略
     }
-    setHomePageContentLoaded(true);
+  };
+
+  const displayHomePageContent = async () => {
+    const cached = readHomePageCache();
+    const hasFreshCache =
+      cached && Date.now() - cached.timestamp <= HOME_PAGE_CACHE_TTL;
+
+    if (cached) {
+      setHomePageContent(cached.content);
+      setHomePageContentLoaded(true);
+    }
+
+    if (hasFreshCache) {
+      return;
+    }
+
+    try {
+      const res = await API.get('/api/home_page_content');
+      const { success, message, data } = res.data;
+      if (success) {
+        let content = data;
+        if (!data.startsWith('https://')) {
+          content = await parseMarkdownToHtml(data);
+        }
+        setHomePageContent(content);
+        writeHomePageCache(content);
+      } else if (!cached) {
+        showError(message);
+        setHomePageContent('加载首页内容失败...');
+      }
+    } catch (error) {
+      if (!cached) {
+        showError(error);
+        setHomePageContent('加载首页内容失败...');
+      }
+    } finally {
+      setHomePageContentLoaded(true);
+    }
   };
 
   const handleCopyBaseURL = async () => {
@@ -124,6 +184,13 @@ const Home = () => {
   useEffect(() => {
     displayHomePageContent().then();
   }, []);
+
+  useEffect(() => {
+    if (homePageContent.startsWith('https://')) {
+      setIframeReady(false);
+      syncIframeState();
+    }
+  }, [actualTheme, i18n.language, homePageContent]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -263,10 +330,26 @@ const Home = () => {
       ) : (
         <div className='overflow-x-hidden w-full'>
           {homePageContent.startsWith('https://') ? (
-            <iframe
-              src={homePageContent}
-              className='w-full h-screen border-none'
-            />
+            <div className='relative w-full h-screen'>
+              {!iframeReady && (
+                <div className='absolute inset-0 z-10 flex items-center justify-center bg-semi-color-bg-0'>
+                  <div className='flex flex-col items-center gap-3 text-semi-color-text-2'>
+                    <div className='h-10 w-10 animate-spin rounded-full border-2 border-semi-color-border border-t-semi-color-primary' />
+                    <span>{t('页面加载中...')}</span>
+                  </div>
+                </div>
+              )}
+              <iframe
+                ref={iframeRef}
+                src={homePageContent}
+                title='Home Content Frame'
+                className='w-full h-screen border-none'
+                onLoad={() => {
+                  syncIframeState();
+                  setIframeReady(true);
+                }}
+              />
+            </div>
           ) : (
             <div
               className='mt-[60px]'

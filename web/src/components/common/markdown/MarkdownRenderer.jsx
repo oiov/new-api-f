@@ -37,6 +37,34 @@ import { IconCopy } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 
 let mermaidLoader;
+const htmlPreviewHeightCache = new Map();
+const HTML_PREVIEW_CACHE_LIMIT = 50;
+
+function readHtmlPreviewHeight(code) {
+  if (!htmlPreviewHeightCache.has(code)) {
+    return 150;
+  }
+
+  const cachedHeight = htmlPreviewHeightCache.get(code);
+  htmlPreviewHeightCache.delete(code);
+  htmlPreviewHeightCache.set(code, cachedHeight);
+  return cachedHeight;
+}
+
+function writeHtmlPreviewHeight(code, height) {
+  if (htmlPreviewHeightCache.has(code)) {
+    htmlPreviewHeightCache.delete(code);
+  }
+
+  htmlPreviewHeightCache.set(code, height);
+
+  if (htmlPreviewHeightCache.size > HTML_PREVIEW_CACHE_LIMIT) {
+    const oldestKey = htmlPreviewHeightCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      htmlPreviewHeightCache.delete(oldestKey);
+    }
+  }
+}
 
 async function loadMermaid() {
   if (!mermaidLoader) {
@@ -125,7 +153,11 @@ export function Mermaid(props) {
 
 function SandboxedHtmlPreview({ code }) {
   const iframeRef = useRef(null);
-  const [iframeHeight, setIframeHeight] = useState(150);
+  const [iframeHeight, setIframeHeight] = useState(() => readHtmlPreviewHeight(code));
+
+  useEffect(() => {
+    setIframeHeight(readHtmlPreviewHeight(code));
+  }, [code]);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -137,7 +169,9 @@ function SandboxedHtmlPreview({ code }) {
         if (doc) {
           const height =
             doc.documentElement.scrollHeight || doc.body.scrollHeight;
-          setIframeHeight(Math.min(Math.max(height + 16, 60), 600));
+          const nextHeight = Math.min(Math.max(height + 16, 60), 600);
+          writeHtmlPreviewHeight(code, nextHeight);
+          setIframeHeight(nextHeight);
         }
       } catch {
         // sandbox restrictions may prevent access, that's fine
@@ -154,6 +188,7 @@ function SandboxedHtmlPreview({ code }) {
       sandbox='allow-same-origin'
       srcDoc={code}
       title='HTML Preview'
+      loading='lazy'
       style={{
         width: '100%',
         height: `${iframeHeight}px`,

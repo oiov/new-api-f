@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { API, showError } from '../../helpers';
 import { Empty } from '@douyinfe/semi-ui';
 import {
@@ -25,39 +25,111 @@ import {
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
+import { useActualTheme } from '../../context/Theme';
+
+const ABOUT_CACHE_KEY = 'about_cache_v2';
+const ABOUT_CACHE_TTL = 10 * 60 * 1000;
 
 async function parseMarkdownToHtml(content) {
   const { marked } = await import('marked');
   return marked.parse(content);
 }
 
+function readAboutCache() {
+  try {
+    const raw = localStorage.getItem(ABOUT_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed?.content !== 'string' ||
+      typeof parsed?.timestamp !== 'number'
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeAboutCache(content) {
+  localStorage.setItem(
+    ABOUT_CACHE_KEY,
+    JSON.stringify({
+      content,
+      timestamp: Date.now(),
+    }),
+  );
+}
+
 const About = () => {
   const { t } = useTranslation();
+  const actualTheme = useActualTheme();
+  const iframeRef = useRef(null);
   const [about, setAbout] = useState('');
   const [aboutLoaded, setAboutLoaded] = useState(false);
+  const [iframeReady, setIframeReady] = useState(false);
   const currentYear = new Date().getFullYear();
 
-  const displayAbout = async () => {
-    setAbout(localStorage.getItem('about') || '');
-    const res = await API.get('/api/about');
-    const { success, message, data } = res.data;
-    if (success) {
-      let aboutContent = data;
-      if (!data.startsWith('https://')) {
-        aboutContent = await parseMarkdownToHtml(data);
+  const syncIframeState = () => {
+    try {
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (!iframeWindow) {
+        return;
       }
-      setAbout(aboutContent);
-      localStorage.setItem('about', aboutContent);
-    } else {
-      showError(message);
-      setAbout(t('加载关于内容失败...'));
+      iframeWindow.postMessage({ themeMode: actualTheme }, '*');
+    } catch {
+      // 关于页允许跨域 iframe，这里无法访问时直接忽略
     }
-    setAboutLoaded(true);
+  };
+
+  const displayAbout = async () => {
+    const cached = readAboutCache();
+    const hasFreshCache = cached && Date.now() - cached.timestamp <= ABOUT_CACHE_TTL;
+
+    if (cached) {
+      setAbout(cached.content);
+      setAboutLoaded(true);
+    }
+
+    if (hasFreshCache) {
+      return;
+    }
+
+    try {
+      const res = await API.get('/api/about');
+      const { success, message, data } = res.data;
+      if (success) {
+        let aboutContent = data;
+        if (!data.startsWith('https://')) {
+          aboutContent = await parseMarkdownToHtml(data);
+        }
+        setAbout(aboutContent);
+        writeAboutCache(aboutContent);
+      } else if (!cached) {
+        showError(message);
+        setAbout(t('加载关于内容失败...'));
+      }
+    } catch (error) {
+      if (!cached) {
+        showError(error);
+        setAbout(t('加载关于内容失败...'));
+      }
+    } finally {
+      setAboutLoaded(true);
+    }
   };
 
   useEffect(() => {
     displayAbout().then();
   }, []);
+
+  useEffect(() => {
+    if (about.startsWith('https://')) {
+      setIframeReady(false);
+      syncIframeState();
+    }
+  }, [about, actualTheme]);
 
   const emptyStyle = {
     padding: '24px',
@@ -158,10 +230,26 @@ const About = () => {
       ) : (
         <>
           {about.startsWith('https://') ? (
-            <iframe
-              src={about}
-              style={{ width: '100%', height: '100vh', border: 'none' }}
-            />
+            <div className='relative w-full min-h-screen'>
+              {!iframeReady && (
+                <div className='absolute inset-0 z-10 flex items-center justify-center bg-semi-color-bg-0'>
+                  <div className='flex flex-col items-center gap-3 text-semi-color-text-2'>
+                    <div className='h-10 w-10 animate-spin rounded-full border-2 border-semi-color-border border-t-semi-color-primary' />
+                    <span>{t('页面加载中...')}</span>
+                  </div>
+                </div>
+              )}
+              <iframe
+                ref={iframeRef}
+                src={about}
+                title='About Content Frame'
+                style={{ width: '100%', height: '100vh', border: 'none' }}
+                onLoad={() => {
+                  syncIframeState();
+                  setIframeReady(true);
+                }}
+              />
+            </div>
           ) : (
             <div
               style={{ fontSize: 'larger' }}
