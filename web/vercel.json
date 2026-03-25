@@ -190,7 +190,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "/api/proxy?__proxy_base=api&__proxy_path=:path"
+      "destination": "/api/proxy?__proxy_base=api&__proxy_path=:path*"
     },
     {
       "source": "/v1",
@@ -198,7 +198,7 @@
     },
     {
       "source": "/v1/:path*",
-      "destination": "/api/proxy?__proxy_base=v1&__proxy_path=:path"
+      "destination": "/api/proxy?__proxy_base=v1&__proxy_path=:path*"
     },
     {
       "source": "/v1beta",
@@ -206,7 +206,7 @@
     },
     {
       "source": "/v1beta/:path*",
-      "destination": "/api/proxy?__proxy_base=v1beta&__proxy_path=:path"
+      "destination": "/api/proxy?__proxy_base=v1beta&__proxy_path=:path*"
     },
     {
       "source": "/mj",
@@ -214,7 +214,7 @@
     },
     {
       "source": "/mj/:path*",
-      "destination": "/api/proxy?__proxy_base=mj&__proxy_path=:path"
+      "destination": "/api/proxy?__proxy_base=mj&__proxy_path=:path*"
     },
     {
       "source": "/pg",
@@ -222,7 +222,7 @@
     },
     {
       "source": "/pg/:path*",
-      "destination": "/api/proxy?__proxy_base=pg&__proxy_path=:path"
+      "destination": "/api/proxy?__proxy_base=pg&__proxy_path=:path*"
     },
     {
       "source": "/((?!api(?:/|$)|v1(?:/|$)|v1beta(?:/|$)|mj(?:/|$)|pg(?:/|$)|assets(?:/|$)|.*\\..*).*)",
