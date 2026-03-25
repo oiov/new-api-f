@@ -33,22 +33,52 @@ import { StatusContext } from '../../../context/Status';
 
 const { Text } = Typography;
 
+const createDefaultHeaderNavModules = () => ({
+  home: true,
+  console: true,
+  pricing: {
+    enabled: true,
+    requireAuth: false,
+  },
+  docs: true,
+  about: true,
+  contact: true,
+});
+
+const normalizeHeaderNavModules = (modules) => {
+  const normalized = {
+    ...createDefaultHeaderNavModules(),
+    ...(modules || {}),
+  };
+
+  if (typeof normalized.pricing === 'boolean') {
+    normalized.pricing = {
+      enabled: normalized.pricing,
+      requireAuth: false,
+    };
+  } else {
+    normalized.pricing = {
+      ...createDefaultHeaderNavModules().pricing,
+      ...(normalized.pricing || {}),
+    };
+  }
+
+  if (typeof normalized.contact !== 'boolean') {
+    normalized.contact = true;
+  }
+
+  return normalized;
+};
+
 export default function SettingsHeaderNavModules(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [statusState, statusDispatch] = useContext(StatusContext);
 
   // 顶栏模块管理状态
-  const [headerNavModules, setHeaderNavModules] = useState({
-    home: true,
-    console: true,
-    pricing: {
-      enabled: true,
-      requireAuth: false, // 默认不需要登录鉴权
-    },
-    docs: true,
-    about: true,
-  });
+  const [headerNavModules, setHeaderNavModules] = useState(
+    createDefaultHeaderNavModules(),
+  );
 
   // 处理顶栏模块配置变更
   function handleHeaderNavModuleChange(moduleKey) {
@@ -79,17 +109,7 @@ export default function SettingsHeaderNavModules(props) {
 
   // 重置顶栏模块为默认配置
   function resetHeaderNavModules() {
-    const defaultModules = {
-      home: true,
-      console: true,
-      pricing: {
-        enabled: true,
-        requireAuth: false,
-      },
-      docs: true,
-      about: true,
-    };
-    setHeaderNavModules(defaultModules);
+    setHeaderNavModules(createDefaultHeaderNavModules());
     showSuccess(t('已重置为默认配置'));
   }
 
@@ -129,35 +149,17 @@ export default function SettingsHeaderNavModules(props) {
   }
 
   useEffect(() => {
-    // 从 props.options 中获取配置
     if (props.options && props.options.HeaderNavModules) {
       try {
         const modules = JSON.parse(props.options.HeaderNavModules);
-
-        // 处理向后兼容性：如果pricing是boolean，转换为对象格式
-        if (typeof modules.pricing === 'boolean') {
-          modules.pricing = {
-            enabled: modules.pricing,
-            requireAuth: false, // 默认不需要登录鉴权
-          };
-        }
-
-        setHeaderNavModules(modules);
+        setHeaderNavModules(normalizeHeaderNavModules(modules));
       } catch (error) {
-        // 使用默认配置
-        const defaultModules = {
-          home: true,
-          console: true,
-          pricing: {
-            enabled: true,
-            requireAuth: false,
-          },
-          docs: true,
-          about: true,
-        };
-        setHeaderNavModules(defaultModules);
+        setHeaderNavModules(createDefaultHeaderNavModules());
       }
+      return;
     }
+
+    setHeaderNavModules(createDefaultHeaderNavModules());
   }, [props.options]);
 
   // 模块配置数据
@@ -187,6 +189,11 @@ export default function SettingsHeaderNavModules(props) {
       key: 'about',
       title: t('关于'),
       description: t('关于系统的详细信息'),
+    },
+    {
+      key: 'contact',
+      title: t('联系我们'),
+      description: t('官方联系方式入口'),
     },
   ];
 

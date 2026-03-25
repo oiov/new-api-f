@@ -33,42 +33,81 @@ import { StatusContext } from '../../../context/Status';
 
 const { Text } = Typography;
 
+const createDefaultSidebarModulesAdmin = () => ({
+  chat: {
+    enabled: true,
+    playground: true,
+    chat: true,
+  },
+  console: {
+    enabled: true,
+    detail: true,
+    token: true,
+    log: true,
+    midjourney: true,
+    task: true,
+  },
+  personal: {
+    enabled: true,
+    topup: true,
+    personal: true,
+  },
+  public: {
+    enabled: true,
+    about: true,
+    contact: true,
+  },
+  admin: {
+    enabled: true,
+    channel: true,
+    models: true,
+    deployment: true,
+    redemption: true,
+    user: true,
+    subscription: true,
+    setting: true,
+  },
+});
+
+const normalizeSidebarModulesAdmin = (modules) => {
+  const normalized = {
+    ...createDefaultSidebarModulesAdmin(),
+    ...(modules || {}),
+  };
+
+  normalized.chat = {
+    ...createDefaultSidebarModulesAdmin().chat,
+    ...(normalized.chat || {}),
+  };
+  normalized.console = {
+    ...createDefaultSidebarModulesAdmin().console,
+    ...(normalized.console || {}),
+  };
+  normalized.personal = {
+    ...createDefaultSidebarModulesAdmin().personal,
+    ...(normalized.personal || {}),
+  };
+  normalized.public = {
+    ...createDefaultSidebarModulesAdmin().public,
+    ...(normalized.public || {}),
+  };
+  normalized.admin = {
+    ...createDefaultSidebarModulesAdmin().admin,
+    ...(normalized.admin || {}),
+  };
+
+  return normalized;
+};
+
 export default function SettingsSidebarModulesAdmin(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [statusState, statusDispatch] = useContext(StatusContext);
 
   // 左侧边栏模块管理状态（管理员全局控制）
-  const [sidebarModulesAdmin, setSidebarModulesAdmin] = useState({
-    chat: {
-      enabled: true,
-      playground: true,
-      chat: true,
-    },
-    console: {
-      enabled: true,
-      detail: true,
-      token: true,
-      log: true,
-      midjourney: true,
-      task: true,
-    },
-    personal: {
-      enabled: true,
-      topup: true,
-      personal: true,
-    },
-    admin: {
-      enabled: true,
-      channel: true,
-      models: true,
-      deployment: true,
-      redemption: true,
-      user: true,
-      subscription: true,
-      setting: true,
-    },
-  });
+  const [sidebarModulesAdmin, setSidebarModulesAdmin] = useState(
+    createDefaultSidebarModulesAdmin(),
+  );
 
   // 处理区域级别开关变更
   function handleSectionChange(sectionKey) {
@@ -100,37 +139,7 @@ export default function SettingsSidebarModulesAdmin(props) {
 
   // 重置为默认配置
   function resetSidebarModules() {
-    const defaultModules = {
-      chat: {
-        enabled: true,
-        playground: true,
-        chat: true,
-      },
-      console: {
-        enabled: true,
-        detail: true,
-        token: true,
-        log: true,
-        midjourney: true,
-        task: true,
-      },
-      personal: {
-        enabled: true,
-        topup: true,
-        personal: true,
-      },
-      admin: {
-        enabled: true,
-        channel: true,
-        models: true,
-        deployment: true,
-        redemption: true,
-        user: true,
-        subscription: true,
-        setting: true,
-      },
-    };
-    setSidebarModulesAdmin(defaultModules);
+    setSidebarModulesAdmin(createDefaultSidebarModulesAdmin());
     showSuccess(t('已重置为默认配置'));
   }
 
@@ -174,34 +183,14 @@ export default function SettingsSidebarModulesAdmin(props) {
     if (props.options && props.options.SidebarModulesAdmin) {
       try {
         const modules = JSON.parse(props.options.SidebarModulesAdmin);
-        setSidebarModulesAdmin(modules);
+        setSidebarModulesAdmin(normalizeSidebarModulesAdmin(modules));
       } catch (error) {
-        // 使用默认配置
-        const defaultModules = {
-          chat: { enabled: true, playground: true, chat: true },
-          console: {
-            enabled: true,
-            detail: true,
-            token: true,
-            log: true,
-            midjourney: true,
-            task: true,
-          },
-          personal: { enabled: true, topup: true, personal: true },
-          admin: {
-            enabled: true,
-            channel: true,
-            models: true,
-            deployment: true,
-            redemption: true,
-            user: true,
-            subscription: true,
-            setting: true,
-          },
-        };
-        setSidebarModulesAdmin(defaultModules);
+        setSidebarModulesAdmin(createDefaultSidebarModulesAdmin());
       }
+      return;
     }
+
+    setSidebarModulesAdmin(createDefaultSidebarModulesAdmin());
   }, [props.options]);
 
   // 区域配置数据
@@ -245,6 +234,19 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'personal',
           title: t('个人设置'),
           description: t('个人信息设置'),
+        },
+      ],
+    },
+    {
+      key: 'public',
+      title: t('公开入口区域'),
+      description: t('公开页面入口显示控制'),
+      modules: [
+        { key: 'about', title: t('关于'), description: t('系统状态与介绍页面') },
+        {
+          key: 'contact',
+          title: t('联系我们'),
+          description: t('官方联系方式页面入口'),
         },
       ],
     },

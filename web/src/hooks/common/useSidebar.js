@@ -44,6 +44,11 @@ export const DEFAULT_ADMIN_CONFIG = {
     topup: true,
     personal: true,
   },
+  public: {
+    enabled: true,
+    about: true,
+    contact: true,
+  },
   admin: {
     enabled: true,
     channel: true,

@@ -42,6 +42,7 @@ const routerMap = {
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/status',
+  contact: '/contact',
   detail: '/console',
   pricing: '/pricing',
   task: '/console/task',
@@ -141,6 +142,27 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       const configVisible = isModuleVisible('personal', item.itemKey);
       return configVisible;
     });
+
+    return filteredItems;
+  }, [t, isModuleVisible]);
+
+  const publicItems = useMemo(() => {
+    const items = [
+      {
+        text: t('关于'),
+        itemKey: 'about',
+        to: '/status',
+      },
+      {
+        text: t('联系我们'),
+        itemKey: 'contact',
+        to: '/contact',
+      },
+    ];
+
+    const filteredItems = items.filter((item) =>
+      isModuleVisible('public', item.itemKey),
+    );
 
     return filteredItems;
   }, [t, isModuleVisible]);
@@ -471,6 +493,19 @@ const SiderBar = ({ onNavigate = () => {} }) => {
                   <div className='sidebar-group-label'>{t('个人中心')}</div>
                 )}
                 {financeItems.map((item) => renderNavItem(item))}
+              </div>
+            </>
+          )}
+
+          {/* 公开入口区域 */}
+          {hasSectionVisibleModules('public') && (
+            <>
+              <Divider className='sidebar-divider' />
+              <div>
+                {!collapsed && (
+                  <div className='sidebar-group-label'>{t('公开入口')}</div>
+                )}
+                {publicItems.map((item) => renderNavItem(item))}
               </div>
             </>
           )}
