@@ -52,7 +52,7 @@ const routerMap = {
   personal: '/console/personal',
 };
 
-const SiderBar = ({ onNavigate = () => {} }) => {
+const SiderBar = ({ onNavigate = () => { } }) => {
   const { t } = useTranslation();
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const {
@@ -149,7 +149,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   const publicItems = useMemo(() => {
     const items = [
       {
-        text: t('关于'),
+        text: t('状态'),
         itemKey: 'about',
         to: '/status',
       },

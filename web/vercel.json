@@ -31,202 +31,53 @@
       ]
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/admin",
-      "destination": "/hello-hack.txt"
+      "src": "^/api/?$",
+      "dest": "https://claud.fishxcode.com/api"
     },
     {
-      "source": "/admin/:path*",
-      "destination": "/hello-hack.txt"
+      "src": "^/api/(.*)$",
+      "dest": "https://claud.fishxcode.com/api/$1"
     },
     {
-      "source": "/administrator",
-      "destination": "/hello-hack.txt"
+      "src": "^/v1/?$",
+      "dest": "https://claud.fishxcode.com/v1"
     },
     {
-      "source": "/administrator/:path*",
-      "destination": "/hello-hack.txt"
+      "src": "^/v1/(.*)$",
+      "dest": "https://claud.fishxcode.com/v1/$1"
     },
     {
-      "source": "/manage",
-      "destination": "/hello-hack.txt"
+      "src": "^/v1beta/?$",
+      "dest": "https://claud.fishxcode.com/v1beta"
     },
     {
-      "source": "/manage/:path*",
-      "destination": "/hello-hack.txt"
+      "src": "^/v1beta/(.*)$",
+      "dest": "https://claud.fishxcode.com/v1beta/$1"
     },
     {
-      "source": "/cpanel",
-      "destination": "/hello-hack.txt"
+      "src": "^/mj/?$",
+      "dest": "https://claud.fishxcode.com/mj"
     },
     {
-      "source": "/cpanel/:path*",
-      "destination": "/hello-hack.txt"
+      "src": "^/mj/(.*)$",
+      "dest": "https://claud.fishxcode.com/mj/$1"
     },
     {
-      "source": "/webadmin",
-      "destination": "/hello-hack.txt"
+      "src": "^/pg/?$",
+      "dest": "https://claud.fishxcode.com/pg"
     },
     {
-      "source": "/webadmin/:path*",
-      "destination": "/hello-hack.txt"
+      "src": "^/pg/(.*)$",
+      "dest": "https://claud.fishxcode.com/pg/$1"
     },
     {
-      "source": "/adminer",
-      "destination": "/hello-hack.txt"
+      "handle": "filesystem"
     },
     {
-      "source": "/adminer/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/phpmyadmin",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/phpmyadmin/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/pma",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/pma/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/wp-admin",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/wp-admin/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/wp_admin",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/wp_admin/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/wp-login.php",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/wp_login.php",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/wp-content/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/wp-includes/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/xmlrpc.php",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/.env",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/.env.local",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/.env.production",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/.git",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/.git/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/.svn/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/.hg/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/server-status",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/swagger",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/swagger/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/graphql",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/api/proxy",
-      "destination": "/api/proxy"
-    },
-    {
-      "source": "/api/_proxy",
-      "destination": "/api/proxy"
-    },
-    {
-      "source": "/api",
-      "destination": "/api/proxy?__proxy_base=api"
-    },
-    {
-      "source": "/api/:path*",
-      "destination": "/api/proxy?__proxy_base=api&__proxy_path=:path*"
-    },
-    {
-      "source": "/v1",
-      "destination": "/api/proxy?__proxy_base=v1"
-    },
-    {
-      "source": "/v1/:path*",
-      "destination": "/api/proxy?__proxy_base=v1&__proxy_path=:path*"
-    },
-    {
-      "source": "/v1beta",
-      "destination": "/api/proxy?__proxy_base=v1beta"
-    },
-    {
-      "source": "/v1beta/:path*",
-      "destination": "/api/proxy?__proxy_base=v1beta&__proxy_path=:path*"
-    },
-    {
-      "source": "/mj",
-      "destination": "/api/proxy?__proxy_base=mj"
-    },
-    {
-      "source": "/mj/:path*",
-      "destination": "/api/proxy?__proxy_base=mj&__proxy_path=:path*"
-    },
-    {
-      "source": "/pg",
-      "destination": "/api/proxy?__proxy_base=pg"
-    },
-    {
-      "source": "/pg/:path*",
-      "destination": "/api/proxy?__proxy_base=pg&__proxy_path=:path*"
-    },
-    {
-      "source": "/((?!api(?:/|$)|v1(?:/|$)|v1beta(?:/|$)|mj(?:/|$)|pg(?:/|$)|assets(?:/|$)|.*\\..*).*)",
-      "destination": "/index.html"
+      "src": "^/(?!api(?:/|$)|v1(?:/|$)|v1beta(?:/|$)|mj(?:/|$)|pg(?:/|$)|assets(?:/|$)|.*\\..*).*$",
+      "dest": "/index.html"
     }
   ]
 }

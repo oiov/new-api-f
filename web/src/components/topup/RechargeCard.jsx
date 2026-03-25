@@ -617,6 +617,14 @@ const RechargeCard = ({
     </Space>
   );
 
+  const tabContentStyle = {
+    height: 'clamp(240px, 52vh, 560px)',
+    overflowY: 'auto',
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingRight: 4,
+  };
+
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
       {/* 卡片头部 */}
@@ -652,7 +660,7 @@ const RechargeCard = ({
             }
             itemKey='subscription'
           >
-            <div className='py-2'>
+            <div style={tabContentStyle}>
               <SubscriptionPlansCard
                 t={t}
                 loading={subscriptionLoading}
@@ -679,7 +687,7 @@ const RechargeCard = ({
             }
             itemKey='topup'
           >
-            <div className='py-2'>{topupContent}</div>
+            <div style={tabContentStyle}>{topupContent}</div>
           </TabPane>
         </Tabs>
       ) : (
