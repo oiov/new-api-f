@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-const DEFAULT_BACKEND_ORIGIN = 'https://claud.fishxcode.com';
+const DEFAULT_BACKEND_ORIGIN = 'https://www.fishxcode.com';
 
 const ALLOWED_BASES = new Set(['api', 'v1', 'v1beta', 'mj', 'pg']);
 
@@ -47,6 +47,7 @@ const PUBLIC_CACHE_RULES = [
 function getBackendOrigin() {
   const raw =
     process.env.BACKEND_ORIGIN ||
+    process.env.VITE_REACT_APP_BACKEND_ORIGIN ||
     process.env.VITE_REACT_APP_SERVER_URL ||
     DEFAULT_BACKEND_ORIGIN;
   return raw.replace(/\/+$/, '');

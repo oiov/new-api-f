@@ -26,7 +26,7 @@ import {
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
-const DEFAULT_RELAY_ORIGIN = 'https://claud.fishxcode.com';
+const DEFAULT_RELAY_ORIGIN = 'https://www.fishxcode.com';
 const DIRECT_RELAY_PREFIXES = ['/v1', '/v1beta', '/pg', '/mj'];
 
 function trimTrailingSlash(url = '') {
@@ -43,7 +43,9 @@ function getRelayOrigin() {
     return fullDirectOrigin;
   }
   return trimTrailingSlash(
-    import.meta.env.VITE_REACT_APP_RELAY_SERVER_URL || DEFAULT_RELAY_ORIGIN,
+    import.meta.env.VITE_REACT_APP_BACKEND_ORIGIN ||
+      import.meta.env.VITE_REACT_APP_RELAY_SERVER_URL ||
+      DEFAULT_RELAY_ORIGIN,
   );
 }
 

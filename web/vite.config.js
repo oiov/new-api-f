@@ -23,6 +23,12 @@ import pkg from '@douyinfe/vite-plugin-semi';
 import path from 'path';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
+const DEFAULT_PROXY_TARGET = 'https://www.fishxcode.com';
+const proxyTarget =
+  process.env.BACKEND_ORIGIN ||
+  process.env.VITE_REACT_APP_BACKEND_ORIGIN ||
+  process.env.VITE_REACT_APP_SERVER_URL ||
+  DEFAULT_PROXY_TARGET;
 
 function createManualChunk(id) {
   if (!id.includes('node_modules')) {
@@ -154,23 +160,23 @@ export default defineConfig(({ command }) => ({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'https://claud.fishxcode.com',
+        target: proxyTarget,
         changeOrigin: true,
       },
       '/v1': {
-        target: 'https://claud.fishxcode.com',
+        target: proxyTarget,
         changeOrigin: true,
       },
       '/v1beta': {
-        target: 'https://claud.fishxcode.com',
+        target: proxyTarget,
         changeOrigin: true,
       },
       '/mj': {
-        target: 'https://claud.fishxcode.com',
+        target: proxyTarget,
         changeOrigin: true,
       },
       '/pg': {
-        target: 'https://claud.fishxcode.com',
+        target: proxyTarget,
         changeOrigin: true,
       },
     },
