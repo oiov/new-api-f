@@ -72,11 +72,14 @@ function buildUpstreamUrl(requestUrl) {
     );
   }
 
+  const hasTrailingSlash = proxyPath.endsWith('/');
   const normalizedPath = proxyPath
     .split('/')
     .filter(Boolean)
     .join('/');
-  const pathname = normalizedPath ? `/${base}/${normalizedPath}` : `/${base}`;
+  const pathname = normalizedPath
+    ? `/${base}/${normalizedPath}${hasTrailingSlash ? '/' : ''}`
+    : `/${base}`;
   return `${backendOrigin}${pathname}${url.search}`;
 }
 
