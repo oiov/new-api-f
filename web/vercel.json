@@ -57,14 +57,6 @@
       "destination": "/hello-hack.txt"
     },
     {
-      "source": "/dashboard",
-      "destination": "/hello-hack.txt"
-    },
-    {
-      "source": "/dashboard/:path*",
-      "destination": "/hello-hack.txt"
-    },
-    {
       "source": "/cpanel",
       "destination": "/hello-hack.txt"
     },
