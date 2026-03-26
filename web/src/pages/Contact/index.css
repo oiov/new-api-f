@@ -9,7 +9,8 @@
     linear-gradient(180deg, #f8fbff 0%, #ffffff 38%, #f5f7fb 100%);
 }
 
-.contact-shell {
+.contact-shell,
+.app-page-shell.contact-shell {
   width: min(1240px, calc(100% - 32px));
   margin: 0 auto;
 }
@@ -615,7 +616,8 @@
     padding: 76px 0 40px;
   }
 
-  .contact-shell {
+  .contact-shell,
+  .app-page-shell.contact-shell {
     width: min(100%, calc(100% - 20px));
   }
 

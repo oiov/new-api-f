@@ -30,6 +30,8 @@ import {
   Users,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import SeoMeta from '../../components/common/seo/SeoMeta';
+import { getContactSeo } from '../../helpers/seo';
 import { copy, showError, showSuccess } from '../../helpers/utils';
 import './index.css';
 
@@ -115,9 +117,10 @@ const SUPPORT_NOTES = [
 ];
 
 const Contact = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [previewImage, setPreviewImage] = useState('');
   const [loadFailedMap, setLoadFailedMap] = useState({});
+  const seo = getContactSeo(i18n.language);
 
   const cards = useMemo(() => CONTACT_CARDS, []);
   const heroFeatures = useMemo(() => HERO_FEATURES, []);
@@ -138,7 +141,8 @@ const Contact = () => {
 
   return (
     <div className='contact-page'>
-      <div className='contact-shell'>
+      <SeoMeta {...seo} />
+      <div className='app-page-shell contact-shell'>
         <section className='contact-hero'>
           <div className='contact-hero__content'>
             <div className='contact-eyebrow'>{t('官方联系通道')}</div>

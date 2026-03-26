@@ -20,7 +20,6 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import '@douyinfe/semi-ui/dist/css/semi.css';
 import { UserProvider } from './context/User';
 import 'react-toastify/dist/ReactToastify.css';
 import { StatusProvider } from './context/Status';
@@ -55,11 +54,9 @@ function AppShell() {
   return <PageLayout />;
 }
 
-// initialization
-
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
-initI18n.finally(() => {
+function renderApp() {
   root.render(
     <React.StrictMode>
       <StatusProvider>
@@ -80,4 +77,12 @@ initI18n.finally(() => {
       </StatusProvider>
     </React.StrictMode>,
   );
-});
+}
+
+initI18n
+  .catch((error) => {
+    console.error('i18n 初始化失败:', error);
+  })
+  .finally(() => {
+    renderApp();
+  });

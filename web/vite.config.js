@@ -60,49 +60,8 @@ function createManualChunk(id) {
     return 'tools';
   }
 
-  if (
-    id.includes('/react-markdown/') ||
-    id.includes('/remark-') ||
-    id.includes('/mdast-') ||
-    id.includes('/micromark/') ||
-    id.includes('/unist-') ||
-    id.includes('/unified/') ||
-    id.includes('/vfile/')
-  ) {
-    return 'markdown-core';
-  }
-
-  if (
-    id.includes('/rehype-') ||
-    id.includes('/hast-') ||
-    id.includes('/property-information/') ||
-    id.includes('/space-separated-tokens/') ||
-    id.includes('/comma-separated-tokens/') ||
-    id.includes('/html-void-elements/')
-  ) {
-    return 'markdown-render';
-  }
-
-  if (id.includes('/katex/')) {
-    return 'markdown-katex';
-  }
-
-  if (id.includes('/highlight.js/')) {
-    return 'markdown-highlight';
-  }
-
   if (id.includes('@douyinfe/semi-ui')) {
     return 'semi-ui';
-  }
-
-  if (
-    id.includes('react-dropzone') ||
-    id.includes('react-fireworks') ||
-    id.includes('react-telegram-login') ||
-    id.includes('react-toastify') ||
-    id.includes('react-turnstile')
-  ) {
-    return 'react-components';
   }
 
   return undefined;
@@ -149,7 +108,6 @@ export default defineConfig(({ command }) => ({
   },
   build: {
     cssCodeSplit: true,
-    modulePreload: false,
     rollupOptions: {
       output: {
         manualChunks: createManualChunk,

@@ -26,7 +26,7 @@ import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useTranslation } from 'react-i18next';
 import { API } from '../../helpers/api';
 import { getLogo, getSystemName, showError } from '../../helpers/utils';
-import { setStatusData } from '../../helpers/data';
+import { getStatusCacheAge, readStatusData, setStatusData } from '../../helpers/data';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useLocation } from 'react-router-dom';
@@ -35,6 +35,7 @@ const { Sider, Content, Header } = Layout;
 const HeaderBar = lazy(() => import('./headerbar'));
 const FooterBar = lazy(() => import('./Footer'));
 const SiderBar = lazy(() => import('./SiderBar'));
+const STATUS_CACHE_MAX_AGE = 5 * 60 * 1000;
 
 const PageLayout = () => {
   const [userState, userDispatch] = useContext(UserContext);
@@ -62,10 +63,26 @@ const PageLayout = () => {
   const shouldInnerPadding =
     location.pathname.includes('/console') &&
     !location.pathname.startsWith('/console/chat') &&
-    location.pathname !== '/console/playground';
+    location.pathname !== '/console/playground' &&
+    location.pathname !== '/console/models';
 
   const isConsoleRoute = location.pathname.startsWith('/console');
   const showSider = isConsoleRoute && (!isMobile || drawerOpen);
+
+  const applyBranding = (status) => {
+    const systemName = status?.system_name || getSystemName();
+    if (systemName) {
+      document.title = systemName;
+    }
+
+    const logo = status?.logo || getLogo();
+    if (logo) {
+      const linkElement = document.querySelector("link[rel~='icon']");
+      if (linkElement) {
+        linkElement.href = logo;
+      }
+    }
+  };
 
   useEffect(() => {
     if (isMobile && drawerOpen && collapsed) {
@@ -88,6 +105,7 @@ const PageLayout = () => {
       if (success) {
         statusDispatch({ type: 'set', payload: data });
         setStatusData(data);
+        applyBranding(data);
       } else {
         showError('Unable to connect to server');
       }
@@ -98,18 +116,24 @@ const PageLayout = () => {
 
   useEffect(() => {
     loadUser();
-    loadStatus().catch(console.error);
-    let systemName = getSystemName();
-    if (systemName) {
-      document.title = systemName;
+
+    const cachedStatus = readStatusData();
+    if (cachedStatus) {
+      statusDispatch({ type: 'set', payload: cachedStatus });
+      applyBranding(cachedStatus);
+    } else {
+      applyBranding();
     }
-    let logo = getLogo();
-    if (logo) {
-      let linkElement = document.querySelector("link[rel~='icon']");
-      if (linkElement) {
-        linkElement.href = logo;
-      }
-    }
+
+    const cacheAge = getStatusCacheAge();
+    const refreshDelay = cachedStatus && cacheAge <= STATUS_CACHE_MAX_AGE ? 300 : 0;
+    const refreshTask = window.setTimeout(() => {
+      loadStatus().catch(console.error);
+    }, refreshDelay);
+
+    return () => {
+      window.clearTimeout(refreshTask);
+    };
   }, []);
 
   useEffect(() => {
@@ -133,7 +157,10 @@ const PageLayout = () => {
 
     if (preferredLang) {
       localStorage.setItem('i18nextLng', preferredLang);
-      if (preferredLang !== normalizeLanguage(i18n.language)) {
+      if (
+        typeof i18n?.changeLanguage === 'function' &&
+        preferredLang !== normalizeLanguage(i18n.language)
+      ) {
         i18n.changeLanguage(preferredLang);
       }
     }

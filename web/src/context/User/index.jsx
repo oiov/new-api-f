@@ -39,6 +39,7 @@ export const UserProvider = ({ children }) => {
         const normalizedLanguage = normalizeLanguage(settings.language);
         if (
           normalizedLanguage &&
+          typeof i18n?.changeLanguage === 'function' &&
           normalizedLanguage !== normalizeLanguage(i18n.language)
         ) {
           i18n.changeLanguage(normalizedLanguage);

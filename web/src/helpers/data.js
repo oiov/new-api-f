@@ -17,8 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+const STATUS_CACHE_KEY = 'status';
+const STATUS_CACHE_TIMESTAMP_KEY = 'status_timestamp';
+
 export function setStatusData(data) {
-  localStorage.setItem('status', JSON.stringify(data));
+  localStorage.setItem(STATUS_CACHE_KEY, JSON.stringify(data));
+  localStorage.setItem(STATUS_CACHE_TIMESTAMP_KEY, Date.now().toString());
   localStorage.setItem('system_name', data.system_name);
   localStorage.setItem('logo', data.logo);
   localStorage.setItem('footer_html', data.footer_html);
@@ -54,6 +58,31 @@ export function setStatusData(data) {
   } else {
     localStorage.removeItem('docs_link');
   }
+}
+
+export function readStatusData() {
+  try {
+    const raw = localStorage.getItem(STATUS_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') {
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function getStatusCacheAge() {
+  const rawTimestamp = localStorage.getItem(STATUS_CACHE_TIMESTAMP_KEY);
+  const timestamp = Number(rawTimestamp);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Date.now() - timestamp;
 }
 
 export function setUserData(data) {

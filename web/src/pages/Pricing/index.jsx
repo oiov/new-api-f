@@ -18,12 +18,21 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
+import SeoMeta from '../../components/common/seo/SeoMeta';
 import ModelPricingPage from '../../components/table/model-pricing/layout/PricingPage';
+import { getPricingSeo } from '../../helpers/seo';
 
-const Pricing = () => (
-  <>
-    <ModelPricingPage />
-  </>
-);
+const Pricing = () => {
+  const { i18n } = useTranslation();
+  const seo = getPricingSeo(i18n.language);
+
+  return (
+    <>
+      <SeoMeta {...seo} />
+      <ModelPricingPage />
+    </>
+  );
+};
 
 export default Pricing;

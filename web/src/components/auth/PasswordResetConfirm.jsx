@@ -30,11 +30,13 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { Button, Card, Form, Typography, Banner } from '@douyinfe/semi-ui';
 import { IconMail, IconLock, IconCopy } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
+import SeoMeta from '../common/seo/SeoMeta';
+import { getAuthSeo } from '../../helpers/seo';
 
 const { Text, Title } = Typography;
 
 const PasswordResetConfirm = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [inputs, setInputs] = useState({
     email: '',
     token: '',
@@ -51,6 +53,7 @@ const PasswordResetConfirm = () => {
 
   const logo = getLogo();
   const systemName = getSystemName();
+  const seo = getAuthSeo(i18n.language, 'resetConfirm');
 
   useEffect(() => {
     let token = searchParams.get('token');
@@ -105,6 +108,7 @@ const PasswordResetConfirm = () => {
 
   return (
     <div className='relative overflow-hidden bg-gray-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8'>
+      <SeoMeta {...seo} />
       {/* 背景模糊晕染球 */}
       <div
         className='blur-ball blur-ball-indigo'

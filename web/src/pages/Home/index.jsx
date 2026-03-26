@@ -47,6 +47,13 @@ import {
 } from '@douyinfe/semi-icons';
 import { Link } from 'react-router-dom';
 import IframeViewport from '../../components/common/IframeViewport';
+import SeoMeta from '../../components/common/seo/SeoMeta';
+import {
+  buildOrganizationJsonLd,
+  buildServiceJsonLd,
+  buildWebsiteJsonLd,
+  getHomeSeo,
+} from '../../helpers/seo';
 const NoticeModal = lazy(() => import('../../components/layout/NoticeModal'));
 const ProviderLogos = lazy(() => import('./ProviderLogos'));
 
@@ -102,6 +109,12 @@ const Home = () => {
   const endpointItems = API_ENDPOINTS.map((e) => ({ value: e }));
   const [endpointIndex, setEndpointIndex] = useState(0);
   const isChinese = i18n.language.startsWith('zh');
+  const seo = getHomeSeo(i18n.language);
+  const seoJsonLd = [
+    buildOrganizationJsonLd(),
+    buildWebsiteJsonLd(i18n.language),
+    buildServiceJsonLd(i18n.language),
+  ];
 
   const syncIframeState = () => {
     try {
@@ -200,6 +213,7 @@ const Home = () => {
 
   return (
     <div className='w-full overflow-x-hidden'>
+      <SeoMeta {...seo} jsonLd={seoJsonLd} />
       {noticeVisible && (
         <Suspense fallback={null}>
           <NoticeModal

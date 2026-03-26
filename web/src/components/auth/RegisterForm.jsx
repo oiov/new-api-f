@@ -59,15 +59,17 @@ import {
 import OIDCIcon from '../common/logo/OIDCIcon';
 import LinuxDoIcon from '../common/logo/LinuxDoIcon';
 import WeChatIcon from '../common/logo/WeChatIcon';
+import SeoMeta from '../common/seo/SeoMeta';
 import TelegramLoginButton from 'react-telegram-login/src';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord } from 'react-icons/si';
+import { getAuthSeo } from '../../helpers/seo';
 
 const RegisterForm = () => {
   let navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const githubButtonTextKeyByState = {
     idle: '使用 GitHub 继续',
     redirecting: '正在跳转 GitHub...',
@@ -113,6 +115,7 @@ const RegisterForm = () => {
 
   const logo = getLogo();
   const systemName = getSystemName();
+  const seo = getAuthSeo(i18n.language, 'register');
 
   let affCode = new URLSearchParams(window.location.search).get('aff');
   if (affCode) {
@@ -771,6 +774,7 @@ const RegisterForm = () => {
 
   return (
     <div className='relative overflow-hidden bg-gray-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8'>
+      <SeoMeta {...seo} />
       {/* 背景模糊晕染球 */}
       <div
         className='blur-ball blur-ball-indigo'

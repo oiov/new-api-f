@@ -27,6 +27,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useActualTheme } from '../../context/Theme';
 import IframeViewport from '../../components/common/IframeViewport';
+import SeoMeta from '../../components/common/seo/SeoMeta';
+import { getStatusSeo } from '../../helpers/seo';
 
 const ABOUT_CACHE_KEY = 'about_cache_v2';
 const ABOUT_CACHE_TTL = 10 * 60 * 1000;
@@ -70,6 +72,7 @@ const About = () => {
   const [about, setAbout] = useState('');
   const [aboutLoaded, setAboutLoaded] = useState(false);
   const currentYear = new Date().getFullYear();
+  const seo = getStatusSeo(i18n.language);
 
   const syncIframeState = () => {
     try {
@@ -208,44 +211,49 @@ const About = () => {
     </div>
   );
 
-  return about.startsWith('https://') ? (
-    <IframeViewport
-      key={`${about}:${i18n.language}`}
-      ref={iframeRef}
-      src={about}
-      title='About Content Frame'
-      onLoad={() => {
-        syncIframeState();
-      }}
-      loadingText={t('页面加载中...')}
-      className='px-2'
-    />
-  ) : (
-    <div className='mt-[60px] px-2'>
-      {aboutLoaded && about === '' ? (
-        <div className='flex justify-center items-center h-screen p-8'>
-          <Empty
-            image={
-              <IllustrationConstruction style={{ width: 150, height: 150 }} />
-            }
-            darkModeImage={
-              <IllustrationConstructionDark
-                style={{ width: 150, height: 150 }}
-              />
-            }
-            description={t('管理员暂时未设置任何关于内容')}
-            style={emptyStyle}
-          >
-            {customDescription}
-          </Empty>
-        </div>
+  return (
+    <>
+      <SeoMeta {...seo} />
+      {about.startsWith('https://') ? (
+        <IframeViewport
+          key={`${about}:${i18n.language}`}
+          ref={iframeRef}
+          src={about}
+          title='About Content Frame'
+          onLoad={() => {
+            syncIframeState();
+          }}
+          loadingText={t('页面加载中...')}
+          className='px-2'
+        />
       ) : (
-        <div
-          style={{ fontSize: 'larger' }}
-          dangerouslySetInnerHTML={{ __html: about }}
-        ></div>
+        <div className='mt-[60px] px-2'>
+          {aboutLoaded && about === '' ? (
+            <div className='flex justify-center items-center h-screen p-8'>
+              <Empty
+                image={
+                  <IllustrationConstruction style={{ width: 150, height: 150 }} />
+                }
+                darkModeImage={
+                  <IllustrationConstructionDark
+                    style={{ width: 150, height: 150 }}
+                  />
+                }
+                description={t('管理员暂时未设置任何关于内容')}
+                style={emptyStyle}
+              >
+                {customDescription}
+              </Empty>
+            </div>
+          ) : (
+            <div
+              style={{ fontSize: 'larger' }}
+              dangerouslySetInnerHTML={{ __html: about }}
+            ></div>
+          )}
+        </div>
       )}
-    </div>
+    </>
   );
 };
 

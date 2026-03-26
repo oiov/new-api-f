@@ -31,6 +31,11 @@ body {
   background-color: var(--semi-color-bg-0);
 }
 
+.app-page-shell {
+  width: min(1240px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
 .app-layout {
   height: 100vh;
   height: 100dvh;
@@ -861,6 +866,10 @@ html.dark .with-pastel-balls::before {
 }
 
 @media (max-width: 767px) {
+  .app-page-shell {
+    width: min(100%, calc(100% - 20px));
+  }
+
   .table-scroll-card {
     height: calc(100vh - 77px);
     max-height: calc(100vh - 77px);

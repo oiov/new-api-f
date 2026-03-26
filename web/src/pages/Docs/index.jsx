@@ -20,20 +20,26 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import DocumentRenderer from '../../components/common/DocumentRenderer';
+import SeoMeta from '../../components/common/seo/SeoMeta';
 import { StatusContext } from '../../context/Status';
+import { getDocsSeo } from '../../helpers/seo';
 
 const Docs = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [statusState] = useContext(StatusContext);
   const docsLink = statusState?.status?.docs_link || '';
+  const seo = getDocsSeo(i18n.language);
 
   return (
-    <DocumentRenderer
-      title={t('文档')}
-      cacheKey='docs_link'
-      emptyMessage={t('加载文档内容失败...')}
-      directContent={docsLink}
-    />
+    <>
+      <SeoMeta {...seo} />
+      <DocumentRenderer
+        title={t('文档')}
+        cacheKey='docs_link'
+        emptyMessage={t('加载文档内容失败...')}
+        directContent={docsLink}
+      />
+    </>
   );
 };
 
