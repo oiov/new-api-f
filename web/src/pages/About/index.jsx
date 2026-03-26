@@ -216,14 +216,18 @@ const About = () => {
       <SeoMeta {...seo} />
       {about.startsWith('https://') ? (
         <IframeViewport
-          key={`${about}:${i18n.language}`}
           ref={iframeRef}
           src={about}
+          enableCache={true}
+          cacheKey='public-status-frame'
           title='About Content Frame'
           onLoad={() => {
             syncIframeState();
           }}
           loadingText={t('页面加载中...')}
+          timeoutText={t('状态页面加载较慢，你可以直接在新窗口打开。')}
+          openInNewTabText={t('新窗口打开')}
+          continueWaitingText={t('继续等待')}
           className='px-2'
         />
       ) : (

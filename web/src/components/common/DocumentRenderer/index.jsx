@@ -200,6 +200,8 @@ const DocumentRenderer = ({
     return (
       <IframeViewport
         src={content.trim()}
+        enableCache={true}
+        cacheKey={`document-frame:${cacheKey}`}
         title={title}
         className='bg-gray-50'
         loadingText={t('页面加载中...')}

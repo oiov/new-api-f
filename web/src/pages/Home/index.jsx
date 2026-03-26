@@ -344,14 +344,18 @@ const Home = () => {
         <div className='overflow-x-hidden w-full'>
           {homePageContent.startsWith('https://') ? (
             <IframeViewport
-              key={`${homePageContent}:${i18n.language}`}
               ref={iframeRef}
               src={homePageContent}
+              enableCache={true}
+              cacheKey='public-home-frame'
               title='Home Content Frame'
               onLoad={() => {
                 syncIframeState();
               }}
               loadingText={t('页面加载中...')}
+              timeoutText={t('首页内容加载较慢，你可以直接在新窗口打开。')}
+              openInNewTabText={t('新窗口打开')}
+              continueWaitingText={t('继续等待')}
             />
           ) : (
             <div

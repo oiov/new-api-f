@@ -60,7 +60,6 @@ const ChatPage = () => {
       title='Token Frame'
       iframeProps={{
         allow: 'camera;microphone',
-        loading: 'lazy',
       }}
       showLoading={false}
     />
