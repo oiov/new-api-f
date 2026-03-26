@@ -54,8 +54,8 @@ function createManualChunk(id) {
   if (
     id.includes('/axios/') ||
     id.includes('/history/') ||
-    id.includes('/marked/') ||
-    id.includes('/sse.js/')
+    id.includes('/sse.js/') ||
+    id.includes('/marked/')
   ) {
     return 'tools';
   }
