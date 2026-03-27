@@ -101,6 +101,11 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		if relayInfo.SubscriptionId != 0 {
 			other["subscription_id"] = relayInfo.SubscriptionId
 		}
+		resourceType := relayInfo.SubscriptionResourceType
+		if resourceType == "" {
+			resourceType = "quota"
+		}
+		other["subscription_resource_type"] = resourceType
 		if relayInfo.SubscriptionPreConsumed > 0 {
 			other["subscription_pre_consumed"] = relayInfo.SubscriptionPreConsumed
 		}
@@ -114,21 +119,28 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		if relayInfo.SubscriptionPlanTitle != "" {
 			other["subscription_plan_title"] = relayInfo.SubscriptionPlanTitle
 		}
-		// Compute "this request" subscription consumed + remaining
 		consumed := relayInfo.SubscriptionPreConsumed + relayInfo.SubscriptionPostDelta
-		usedFinal := relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
 		if consumed < 0 {
 			consumed = 0
+		}
+		var usedFinal int64
+		var total int64
+		if resourceType == "request_count" {
+			usedFinal = relayInfo.SubscriptionRequestCountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
+			total = relayInfo.SubscriptionRequestCountTotal
+		} else {
+			usedFinal = relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
+			total = relayInfo.SubscriptionAmountTotal
 		}
 		if usedFinal < 0 {
 			usedFinal = 0
 		}
-		if relayInfo.SubscriptionAmountTotal > 0 {
-			remain := relayInfo.SubscriptionAmountTotal - usedFinal
+		if total > 0 {
+			remain := total - usedFinal
 			if remain < 0 {
 				remain = 0
 			}
-			other["subscription_total"] = relayInfo.SubscriptionAmountTotal
+			other["subscription_total"] = total
 			other["subscription_used"] = usedFinal
 			other["subscription_remain"] = remain
 		}

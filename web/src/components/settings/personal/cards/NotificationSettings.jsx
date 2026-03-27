@@ -263,6 +263,7 @@ const NotificationSettings = ({
       description: t('数据管理和日志查看'),
       modules: [
         { key: 'detail', title: t('数据看板'), description: t('系统数据统计') },
+        { key: 'package', title: t('套餐管理'), description: t('订阅套餐查看与购买') },
         { key: 'token', title: t('令牌管理'), description: t('API令牌管理') },
         { key: 'log', title: t('使用日志'), description: t('API使用记录') },
         {
@@ -278,7 +279,8 @@ const NotificationSettings = ({
       title: t('个人中心区域'),
       description: t('用户个人功能'),
       modules: [
-        { key: 'topup', title: t('钱包管理'), description: t('余额充值管理') },
+        { key: 'topup', title: t('额度充值'), description: t('余额与兑换码充值') },
+        { key: 'invite', title: t('邀请拉新'), description: t('邀请链接与奖励管理') },
         {
           key: 'personal',
           title: t('个人设置'),

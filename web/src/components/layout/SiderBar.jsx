@@ -33,9 +33,11 @@ import { Nav, Divider, Button } from '@douyinfe/semi-ui';
 const routerMap = {
   home: '/',
   channel: '/console/channel',
+  package: '/console/package',
   token: '/console/token',
   redemption: '/console/redemption',
   topup: '/console/topup',
+  invite: '/console/invite',
   user: '/console/user',
   subscription: '/console/subscription',
   log: '/console/log',
@@ -79,6 +81,11 @@ const SiderBar = ({ onNavigate = () => { } }) => {
           localStorage.getItem('enable_data_export') === 'true'
             ? ''
             : 'tableHiddle',
+      },
+      {
+        text: t('套餐管理'),
+        itemKey: 'package',
+        to: '/package',
       },
       {
         text: t('令牌管理'),
@@ -126,9 +133,14 @@ const SiderBar = ({ onNavigate = () => { } }) => {
   const financeItems = useMemo(() => {
     const items = [
       {
-        text: t('钱包管理'),
+        text: t('额度充值'),
         itemKey: 'topup',
         to: '/topup',
+      },
+      {
+        text: t('邀请拉新'),
+        itemKey: 'invite',
+        to: '/invite',
       },
       {
         text: t('个人设置'),

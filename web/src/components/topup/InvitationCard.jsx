@@ -48,9 +48,9 @@ const InvitationCard = ({
         </Avatar>
         <div>
           <Typography.Text className='text-lg font-medium'>
-            {t('邀请奖励')}
+            {t('邀请拉新')}
           </Typography.Text>
-          <div className='text-xs'>{t('邀请好友获得额外奖励')}</div>
+          <div className='text-xs'>{t('分享注册链接，查看拉新收益与邀请人数')}</div>
         </div>
       </div>
 
@@ -74,7 +74,7 @@ const InvitationCard = ({
               <div className='relative z-10 h-full flex flex-col justify-between p-4'>
                 <div className='flex justify-between items-center'>
                   <Text strong style={{ color: 'white', fontSize: '16px' }}>
-                    {t('收益统计')}
+                    {t('拉新数据')}
                   </Text>
                   <Button
                     type='primary'

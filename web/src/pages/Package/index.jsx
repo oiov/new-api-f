@@ -19,6 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 
 import TopUp from '../../components/topup';
 
-const TopUpPage = () => <TopUp mode='topup' />;
+const PackagePage = () => <TopUp mode='package' />;
 
-export default TopUpPage;
+export default PackagePage;

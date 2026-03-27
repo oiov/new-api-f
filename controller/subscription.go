@@ -62,6 +62,49 @@ func GetSubscriptionSelf(c *gin.Context) {
 	})
 }
 
+func GetSubscriptionSelfConsumeLogs(c *gin.Context) {
+	userId := c.GetInt("id")
+	pageInfo := common.GetPageQuery(c)
+	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
+	planId, _ := strconv.Atoi(c.Query("plan_id"))
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+
+	if subscriptionId > 0 {
+		sub, err := model.GetUserSubscriptionById(subscriptionId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if sub.UserId != userId {
+			common.ApiErrorMsg(c, "无权查看该订阅消耗记录")
+			return
+		}
+	}
+
+	logs, total, summary, err := model.GetSubscriptionConsumeLogs(
+		userId,
+		subscriptionId,
+		planId,
+		"",
+		startTimestamp,
+		endTimestamp,
+		pageInfo.GetStartIdx(),
+		pageInfo.GetPageSize(),
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"page":      pageInfo.Page,
+		"page_size": pageInfo.PageSize,
+		"total":     total,
+		"items":     logs,
+		"summary":   summary,
+	})
+}
+
 func UpdateSubscriptionPreference(c *gin.Context) {
 	userId := c.GetInt("id")
 	var req BillingPreferenceRequest
@@ -336,6 +379,51 @@ func AdminListUserSubscriptions(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, subs)
+}
+
+func AdminListAllUserSubscriptions(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	username := c.Query("username")
+	group := c.Query("group")
+	status := c.Query("status")
+	items, total, err := model.GetAdminUserSubscriptions(pageInfo, username, group, status)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func AdminListSubscriptionConsumeLogs(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
+	planId, _ := strconv.Atoi(c.Query("plan_id"))
+	username := c.Query("username")
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	logs, total, summary, err := model.GetSubscriptionConsumeLogs(
+		0,
+		subscriptionId,
+		planId,
+		username,
+		startTimestamp,
+		endTimestamp,
+		pageInfo.GetStartIdx(),
+		pageInfo.GetPageSize(),
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"page":      pageInfo.Page,
+		"page_size": pageInfo.PageSize,
+		"total":     total,
+		"items":     logs,
+		"summary":   summary,
+	})
 }
 
 type AdminCreateUserSubscriptionRequest struct {

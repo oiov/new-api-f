@@ -291,6 +291,12 @@ type SubscriptionSummary struct {
 	Subscription *UserSubscription `json:"subscription"`
 }
 
+type AdminUserSubscriptionSummary struct {
+	Subscription *UserSubscription `json:"subscription"`
+	Username     string            `json:"username"`
+	UserGroup    string            `json:"user_group"`
+}
+
 type SubscriptionMigrationFilter struct {
 	TargetPlanId        int
 	UserGroup           string
@@ -786,6 +792,17 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+func GetUserSubscriptionById(userSubscriptionId int) (*UserSubscription, error) {
+	if userSubscriptionId <= 0 {
+		return nil, errors.New("invalid userSubscriptionId")
+	}
+	var sub UserSubscription
+	if err := DB.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+		return nil, err
+	}
+	return &sub, nil
+}
+
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}
@@ -798,6 +815,70 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 		})
 	}
 	return result
+}
+
+type adminUserSubscriptionListRow struct {
+	UserSubscription
+	Username  string `gorm:"column:username"`
+	UserGroup string `gorm:"column:user_group"`
+}
+
+func GetAdminUserSubscriptions(pageInfo *common.PageInfo, username string, userGroup string, status string) ([]AdminUserSubscriptionSummary, int64, error) {
+	if pageInfo == nil {
+		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
+	}
+	username = strings.TrimSpace(username)
+	userGroup = strings.TrimSpace(userGroup)
+	status = strings.TrimSpace(status)
+	now := common.GetTimestamp()
+
+	baseQuery := DB.Table("user_subscriptions").
+		Select("user_subscriptions.*, users.username as username, users." + commonGroupCol + " as user_group").
+		Joins("left join users on users.id = user_subscriptions.user_id")
+
+	if username != "" {
+		if keywordInt, err := strconv.Atoi(username); err == nil {
+			baseQuery = baseQuery.Where("users.id = ? OR users.username LIKE ?", keywordInt, "%"+username+"%")
+		} else {
+			baseQuery = baseQuery.Where("users.username LIKE ?", "%"+username+"%")
+		}
+	}
+	if userGroup != "" {
+		baseQuery = baseQuery.Where("users."+commonGroupCol+" = ?", userGroup)
+	}
+	switch status {
+	case "active":
+		baseQuery = baseQuery.Where("user_subscriptions.status = ? AND user_subscriptions.end_time > ?", "active", now)
+	case "expired":
+		baseQuery = baseQuery.Where("(user_subscriptions.status = ? OR (user_subscriptions.status = ? AND user_subscriptions.end_time <= ?))", "expired", "active", now)
+	case "cancelled":
+		baseQuery = baseQuery.Where("user_subscriptions.status = ?", "cancelled")
+	}
+
+	var total int64
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var rows []adminUserSubscriptionListRow
+	if err := baseQuery.
+		Order("user_subscriptions.id desc").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]AdminUserSubscriptionSummary, 0, len(rows))
+	for _, row := range rows {
+		subCopy := row.UserSubscription
+		items = append(items, AdminUserSubscriptionSummary{
+			Subscription: &subCopy,
+			Username:     row.Username,
+			UserGroup:    row.UserGroup,
+		})
+	}
+	return items, total, nil
 }
 
 func normalizeSubscriptionMigrationFilter(filter SubscriptionMigrationFilter) SubscriptionMigrationFilter {
@@ -1806,7 +1887,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 			record.Status = "refunded"
 			return tx.Save(&record).Error
 		}
-		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed); err != nil {
+		if err := postConsumeUserSubscriptionDeltaTx(tx, record.UserSubscriptionId, -record.PreConsumed); err != nil {
 			return err
 		}
 		record.Status = "refunded"
@@ -1905,32 +1986,45 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		return nil
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId).
-			First(&sub).Error; err != nil {
-			return err
-		}
-		resourceType := NormalizeSubscriptionResourceType(sub.ResourceType)
-		if resourceType == SubscriptionResourceRequestCount {
-			newUsed := sub.RequestCountUsed + delta
-			if newUsed < 0 {
-				newUsed = 0
-			}
-			if sub.RequestCountTotal > 0 && newUsed > sub.RequestCountTotal {
-				return fmt.Errorf("subscription request count exceeds total, used=%d total=%d", newUsed, sub.RequestCountTotal)
-			}
-			sub.RequestCountUsed = newUsed
-		} else {
-			newUsed := sub.AmountUsed + delta
-			if newUsed < 0 {
-				newUsed = 0
-			}
-			if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
-				return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
-			}
-			sub.AmountUsed = newUsed
-		}
-		return tx.Save(&sub).Error
+		return postConsumeUserSubscriptionDeltaTx(tx, userSubscriptionId, delta)
 	})
+}
+
+func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, delta int64) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	if delta == 0 {
+		return nil
+	}
+	var sub UserSubscription
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("id = ?", userSubscriptionId).
+		First(&sub).Error; err != nil {
+		return err
+	}
+	resourceType := NormalizeSubscriptionResourceType(sub.ResourceType)
+	if resourceType == SubscriptionResourceRequestCount {
+		newUsed := sub.RequestCountUsed + delta
+		if newUsed < 0 {
+			newUsed = 0
+		}
+		if sub.RequestCountTotal > 0 && newUsed > sub.RequestCountTotal {
+			return fmt.Errorf("subscription request count exceeds total, used=%d total=%d", newUsed, sub.RequestCountTotal)
+		}
+		sub.RequestCountUsed = newUsed
+	} else {
+		newUsed := sub.AmountUsed + delta
+		if newUsed < 0 {
+			newUsed = 0
+		}
+		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
+			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
+		}
+		sub.AmountUsed = newUsed
+	}
+	return tx.Save(&sub).Error
 }

@@ -45,6 +45,8 @@ const Channel = lazy(() => import('./pages/Channel'));
 const Token = lazy(() => import('./pages/Token'));
 const Redemption = lazy(() => import('./pages/Redemption'));
 const TopUp = lazy(() => import('./pages/TopUp'));
+const PackagePage = lazy(() => import('./pages/Package'));
+const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Chat2Link = lazy(() => import('./pages/Chat2Link'));
@@ -266,6 +268,16 @@ function App() {
           }
         />
         <Route
+          path='/console/package'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <PackagePage />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
           path='/console/personal'
           element={
             <PrivateRoute>
@@ -281,6 +293,16 @@ function App() {
             <PrivateRoute>
               <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                 <TopUp />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/invite'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <InvitePage />
               </Suspense>
             </PrivateRoute>
           }

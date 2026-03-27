@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useContext, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   API,
   showError,
@@ -29,27 +29,27 @@ import {
   copy,
   getQuotaPerUnit,
 } from '../../helpers';
-import { Modal, Toast, Tabs } from '@douyinfe/semi-ui';
+import { Card, Button, Modal, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 
 import RechargeCard from './RechargeCard';
 import InvitationCard from './InvitationCard';
+import SubscriptionPlansCard from './SubscriptionPlansCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 
-const MAIN_TAB_ACCOUNT = 'account';
-const MAIN_TAB_INVITE = 'invite';
+const VIEW_SUBSCRIPTION = 'subscription';
+const VIEW_TOPUP = 'topup';
+const VIEW_INVITE = 'invite';
+const VIEW_PACKAGE = 'package';
 
-const normalizeMainTab = (value) =>
-  value === MAIN_TAB_INVITE ? MAIN_TAB_INVITE : MAIN_TAB_ACCOUNT;
-
-const TopUp = () => {
+const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeMainTab, setActiveMainTab] = useState(MAIN_TAB_ACCOUNT);
+  const navigate = useNavigate();
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
 
@@ -118,6 +118,11 @@ const TopUp = () => {
     amount_options: [],
     discount: {},
   });
+  const isSubscriptionPage = mode === VIEW_SUBSCRIPTION;
+  const isTopupPage = mode === VIEW_TOPUP;
+  const isInvitePage = mode === VIEW_INVITE;
+  const isPackagePage = mode === VIEW_PACKAGE;
+  const shouldLoadTopupData = isTopupPage || isPackagePage;
 
   const topUp = async () => {
     if (redemptionCode === '') {
@@ -577,20 +582,15 @@ const TopUp = () => {
     showSuccess(t('邀请链接已复制到剪切板'));
   };
 
-  // URL 参数自动打开账单弹窗（支付回跳时触发）
   useEffect(() => {
+    if (!shouldLoadTopupData) return;
     if (searchParams.get('show_history') === 'true') {
       setOpenHistory(true);
       const nextSearchParams = new URLSearchParams(searchParams);
       nextSearchParams.delete('show_history');
       setSearchParams(nextSearchParams, { replace: true });
     }
-  }, []);
-
-  useEffect(() => {
-    const urlTab = normalizeMainTab(searchParams.get('tab'));
-    setActiveMainTab(urlTab);
-  }, [searchParams]);
+  }, [shouldLoadTopupData, searchParams, setSearchParams]);
 
   useEffect(() => {
     // 始终获取最新用户数据，确保余额等统计信息准确
@@ -599,17 +599,21 @@ const TopUp = () => {
   }, []);
 
   useEffect(() => {
+    if (!isInvitePage) return;
     if (affFetchedRef.current) return;
     affFetchedRef.current = true;
     getAffLink().then();
-  }, []);
+  }, [isInvitePage]);
 
-  // 在 statusState 可用时获取充值信息
   useEffect(() => {
-    getTopupInfo().then();
-    getSubscriptionPlans().then();
-    getSubscriptionSelf().then();
-  }, []);
+    if (shouldLoadTopupData) {
+      getTopupInfo().then();
+    }
+    if (isSubscriptionPage || isPackagePage) {
+      getSubscriptionPlans().then();
+      getSubscriptionSelf().then();
+    }
+  }, [isSubscriptionPage, shouldLoadTopupData, isPackagePage]);
 
   useEffect(() => {
     if (statusState?.status) {
@@ -622,6 +626,17 @@ const TopUp = () => {
       setStatusLoading(false);
     }
   }, [statusState?.status]);
+
+  const goToTopupPage = () => {
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete('tab');
+    navigate({
+      pathname: '/console/topup',
+      search: nextSearchParams.toString()
+        ? `?${nextSearchParams.toString()}`
+        : '',
+    });
+  };
 
   const renderAmount = () => {
     return amount + ' ' + t('元');
@@ -699,19 +714,6 @@ const TopUp = () => {
   const handleCreemCancel = () => {
     setCreemOpen(false);
     setSelectedCreemProduct(null);
-  };
-
-  const handleMainTabChange = (tabKey) => {
-    const normalizedTab = normalizeMainTab(tabKey);
-    setActiveMainTab(normalizedTab);
-
-    const nextSearchParams = new URLSearchParams(searchParams);
-    if (normalizedTab === MAIN_TAB_INVITE) {
-      nextSearchParams.set('tab', MAIN_TAB_INVITE);
-    } else {
-      nextSearchParams.delete('tab');
-    }
-    setSearchParams(nextSearchParams, { replace: true });
   };
 
   // 选择预设充值额度
@@ -806,70 +808,122 @@ const TopUp = () => {
       </Modal>
 
       {/* 主布局区域 */}
-      <Tabs type='line' activeKey={activeMainTab} onChange={handleMainTabChange}>
-        <Tabs.TabPane tab={t('账户充值')} itemKey={MAIN_TAB_ACCOUNT}>
-          <div className='pt-4'>
-            <RechargeCard
+      <div className='pt-4 space-y-4'>
+        {isPackagePage && (
+          <>
+            <Card className='!rounded-2xl shadow-sm border-0' bodyStyle={{ padding: 16 }}>
+              <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+                <div>
+                  <Typography.Title heading={5} style={{ margin: 0 }}>
+                    {t('套餐中心')}
+                  </Typography.Title>
+                  <Typography.Text type='tertiary'>
+                    {activeSubscriptions.length > 0
+                      ? t('当前页面仅展示套餐与订阅信息，充值与兑换请前往额度充值页。')
+                      : t('建议先购买订阅套餐，充值与兑换功能请在额度充值页完成。')}
+                  </Typography.Text>
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  <Tag color='blue' shape='circle'>
+                    {t('生效订阅')} {activeSubscriptions.length}
+                  </Tag>
+                  <Tag color='cyan' shape='circle'>
+                    {t('钱包余额')} {renderQuota(userState?.user?.quota || 0)}
+                  </Tag>
+                </div>
+              </div>
+              <div className='mt-4 flex flex-wrap gap-2'>
+                <Button theme='solid' type='primary' onClick={goToTopupPage}>
+                  {t('去额度充值页')}
+                </Button>
+              </div>
+            </Card>
+
+            <SubscriptionPlansCard
               t={t}
+              loading={subscriptionLoading}
+              plans={subscriptionPlans}
+              payMethods={payMethods}
               enableOnlineTopUp={enableOnlineTopUp}
               enableStripeTopUp={enableStripeTopUp}
               enableCreemTopUp={enableCreemTopUp}
-              creemProducts={creemProducts}
-              creemPreTopUp={creemPreTopUp}
-              enableWaffoTopUp={enableWaffoTopUp}
-              waffoTopUp={waffoTopUp}
-              waffoPayMethods={waffoPayMethods}
-              presetAmounts={presetAmounts}
-              selectedPreset={selectedPreset}
-              selectPresetAmount={selectPresetAmount}
-              formatLargeNumber={formatLargeNumber}
-              priceRatio={priceRatio}
-              topUpCount={topUpCount}
-              minTopUp={minTopUp}
-              renderQuotaWithAmount={renderQuotaWithAmount}
-              getAmount={getAmount}
-              setTopUpCount={setTopUpCount}
-              setSelectedPreset={setSelectedPreset}
-              renderAmount={renderAmount}
-              amountLoading={amountLoading}
-              payMethods={payMethods}
-              preTopUp={preTopUp}
-              paymentLoading={paymentLoading}
-              payWay={payWay}
-              redemptionCode={redemptionCode}
-              setRedemptionCode={setRedemptionCode}
-              topUp={topUp}
-              isSubmitting={isSubmitting}
-              topUpLink={topUpLink}
-              openTopUpLink={openTopUpLink}
-              userState={userState}
-              renderQuota={renderQuota}
-              statusLoading={statusLoading}
-              topupInfo={topupInfo}
-              onOpenHistory={handleOpenHistory}
-              subscriptionLoading={subscriptionLoading}
-              subscriptionPlans={subscriptionPlans}
               billingPreference={billingPreference}
               onChangeBillingPreference={updateBillingPreference}
               activeSubscriptions={activeSubscriptions}
               allSubscriptions={allSubscriptions}
               reloadSubscriptionSelf={getSubscriptionSelf}
             />
-          </div>
-        </Tabs.TabPane>
-        <Tabs.TabPane tab={t('邀请奖励')} itemKey={MAIN_TAB_INVITE}>
-          <div className='pt-4'>
-            <InvitationCard
-              t={t}
-              userState={userState}
-              renderQuota={renderQuota}
-              setOpenTransfer={setOpenTransfer}
-              affLink={affLink}
-              handleAffLinkClick={handleAffLinkClick}
-            />
-          </div>
-        </Tabs.TabPane>
-      </Tabs>
+          </>
+        )}
+
+        {isSubscriptionPage && (
+          <SubscriptionPlansCard
+            t={t}
+            loading={subscriptionLoading}
+            plans={subscriptionPlans}
+            payMethods={payMethods}
+            enableOnlineTopUp={enableOnlineTopUp}
+            enableStripeTopUp={enableStripeTopUp}
+            enableCreemTopUp={enableCreemTopUp}
+            billingPreference={billingPreference}
+            onChangeBillingPreference={updateBillingPreference}
+            activeSubscriptions={activeSubscriptions}
+            allSubscriptions={allSubscriptions}
+            reloadSubscriptionSelf={getSubscriptionSelf}
+          />
+        )}
+        {isTopupPage && (
+          <RechargeCard
+            t={t}
+            enableOnlineTopUp={enableOnlineTopUp}
+            enableStripeTopUp={enableStripeTopUp}
+            enableCreemTopUp={enableCreemTopUp}
+            creemProducts={creemProducts}
+            creemPreTopUp={creemPreTopUp}
+            enableWaffoTopUp={enableWaffoTopUp}
+            waffoTopUp={waffoTopUp}
+            waffoPayMethods={waffoPayMethods}
+            presetAmounts={presetAmounts}
+            selectedPreset={selectedPreset}
+            selectPresetAmount={selectPresetAmount}
+            formatLargeNumber={formatLargeNumber}
+            priceRatio={priceRatio}
+            topUpCount={topUpCount}
+            minTopUp={minTopUp}
+            renderQuotaWithAmount={renderQuotaWithAmount}
+            getAmount={getAmount}
+            setTopUpCount={setTopUpCount}
+            setSelectedPreset={setSelectedPreset}
+            renderAmount={renderAmount}
+            amountLoading={amountLoading}
+            payMethods={payMethods}
+            preTopUp={preTopUp}
+            paymentLoading={paymentLoading}
+            payWay={payWay}
+            redemptionCode={redemptionCode}
+            setRedemptionCode={setRedemptionCode}
+            topUp={topUp}
+            isSubmitting={isSubmitting}
+            topUpLink={topUpLink}
+            openTopUpLink={openTopUpLink}
+            userState={userState}
+            renderQuota={renderQuota}
+            statusLoading={statusLoading}
+            topupInfo={topupInfo}
+            onOpenHistory={handleOpenHistory}
+          />
+        )}
+        {isInvitePage && (
+          <InvitationCard
+            t={t}
+            userState={userState}
+            renderQuota={renderQuota}
+            setOpenTransfer={setOpenTransfer}
+            affLink={affLink}
+            handleAffLinkClick={handleAffLinkClick}
+          />
+        )}
+      </div>
     </div>
   );
 };

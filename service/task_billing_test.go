@@ -104,6 +104,23 @@ func seedSubscription(t *testing.T, id int, userId int, amountTotal int64, amoun
 	require.NoError(t, model.DB.Create(sub).Error)
 }
 
+func seedRequestCountSubscription(t *testing.T, id int, userId int, total int64, used int64) {
+	t.Helper()
+	seedSubscriptionPlan(t, id, model.SubscriptionResourceRequestCount)
+	sub := &model.UserSubscription{
+		Id:                id,
+		UserId:            userId,
+		PlanId:            id,
+		ResourceType:      model.SubscriptionResourceRequestCount,
+		RequestCountTotal: total,
+		RequestCountUsed:  used,
+		Status:            "active",
+		StartTime:         time.Now().Unix(),
+		EndTime:           time.Now().Add(30 * 24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+}
+
 func seedSubscriptionPlan(t *testing.T, id int, resourceType string) {
 	t.Helper()
 	plan := &model.SubscriptionPlan{
@@ -186,6 +203,13 @@ func getSubscriptionUsed(t *testing.T, id int) int64 {
 	return sub.AmountUsed
 }
 
+func getSubscriptionRequestCountUsed(t *testing.T, id int) int64 {
+	t.Helper()
+	var sub model.UserSubscription
+	require.NoError(t, model.DB.Select("request_count_used").Where("id = ?", id).First(&sub).Error)
+	return sub.RequestCountUsed
+}
+
 func getLastLog(t *testing.T) *model.Log {
 	t.Helper()
 	var log model.Log
@@ -265,6 +289,34 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestRefundTaskQuota_RequestCountSubscription(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID, subID = 21, 21, 21, 21
+	const requestUsed int64 = 5
+	const tokenRemain = 8000
+
+	seedUser(t, userID, 0)
+	seedToken(t, tokenID, userID, "sk-sub-request-count", tokenRemain)
+	seedChannel(t, channelID)
+	seedRequestCountSubscription(t, subID, userID, 100, requestUsed)
+
+	task := makeTask(userID, channelID, 4800, tokenID, BillingSourceSubscription, subID)
+	task.PrivateData.SubscriptionResourceType = model.SubscriptionResourceRequestCount
+	task.PrivateData.SubscriptionPreConsumed = 1
+
+	RefundTaskQuota(ctx, task, "request_count task failed")
+
+	assert.Equal(t, requestUsed-1, getSubscriptionRequestCountUsed(t, subID))
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, 1, log.Quota)
 }
 
 func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
@@ -508,6 +560,79 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestRecalculate_RequestCountSubscription_SkipsDelta(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID, subID = 22, 22, 22, 22
+	const requestUsed int64 = 1
+	const tokenRemain = 9000
+
+	seedUser(t, userID, 0)
+	seedToken(t, tokenID, userID, "sk-request-count-recalc", tokenRemain)
+	seedChannel(t, channelID)
+	seedRequestCountSubscription(t, subID, userID, 100, requestUsed)
+
+	task := makeTask(userID, channelID, 5000, tokenID, BillingSourceSubscription, subID)
+	task.PrivateData.SubscriptionResourceType = model.SubscriptionResourceRequestCount
+	task.PrivateData.SubscriptionPreConsumed = 1
+
+	RecalculateTaskQuota(ctx, task, 9000, "request_count exact one success")
+
+	assert.Equal(t, requestUsed, getSubscriptionRequestCountUsed(t, subID))
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, int64(0), countLogs(t))
+	assert.Equal(t, 9000, task.Quota)
+}
+
+func TestRefundSubscriptionPreConsume_RequestCountMarksRecordRefunded(t *testing.T) {
+	truncate(t)
+
+	const userID = 23
+	const subID = 23
+	const requestID = "req-request-count-refund"
+
+	seedUser(t, userID, 0)
+	seedRequestCountSubscription(t, subID, userID, 100, 0)
+
+	res, err := model.PreConsumeUserSubscription(requestID, userID, "test-model", "", 0, 6000)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.Equal(t, model.SubscriptionResourceRequestCount, res.ResourceType)
+	require.Equal(t, int64(1), res.PreConsumed)
+	require.Equal(t, int64(1), getSubscriptionRequestCountUsed(t, subID))
+
+	require.NoError(t, model.RefundSubscriptionPreConsume(requestID))
+	assert.Equal(t, int64(0), getSubscriptionRequestCountUsed(t, subID))
+
+	var record model.SubscriptionPreConsumeRecord
+	require.NoError(t, model.DB.Where("request_id = ?", requestID).First(&record).Error)
+	assert.Equal(t, "refunded", record.Status)
+}
+
+func TestAppendBillingInfo_RequestCountSubscriptionUsesRequestCountTotals(t *testing.T) {
+	relayInfo := &relaycommon.RelayInfo{
+		BillingSource:                               BillingSourceSubscription,
+		SubscriptionId:                              24,
+		SubscriptionResourceType:                    model.SubscriptionResourceRequestCount,
+		SubscriptionPreConsumed:                     1,
+		SubscriptionPlanId:                          2401,
+		SubscriptionPlanTitle:                       "按次套餐",
+		SubscriptionRequestCountTotal:               100,
+		SubscriptionRequestCountUsedAfterPreConsume: 8,
+	}
+
+	other := map[string]interface{}{}
+	appendBillingInfo(relayInfo, other)
+
+	assert.Equal(t, "subscription", other["billing_source"])
+	assert.Equal(t, model.SubscriptionResourceRequestCount, other["subscription_resource_type"])
+	assert.Equal(t, int64(100), other["subscription_total"])
+	assert.Equal(t, int64(8), other["subscription_used"])
+	assert.Equal(t, int64(92), other["subscription_remain"])
+	assert.Equal(t, int64(1), other["subscription_consumed"])
 }
 
 // ===========================================================================

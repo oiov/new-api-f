@@ -18,13 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useContext, useState } from 'react';
-import { Banner } from '@douyinfe/semi-ui';
+import { Banner, Button } from '@douyinfe/semi-ui';
 import CardPro from '../../common/ui/CardPro';
 import SubscriptionsTable from './SubscriptionsTable';
 import SubscriptionsActions from './SubscriptionsActions';
 import SubscriptionsDescription from './SubscriptionsDescription';
+import AdminUserSubscriptionsFilters from './AdminUserSubscriptionsFilters';
+import AdminUserSubscriptionsTable from './AdminUserSubscriptionsTable';
 import AddEditSubscriptionModal from './modals/AddEditSubscriptionModal';
 import SubscriptionMigrationModal from './modals/SubscriptionMigrationModal';
+import SubscriptionConsumeLogsModal from './modals/SubscriptionConsumeLogsModal';
 import { useSubscriptionsData } from '../../../hooks/subscriptions/useSubscriptionsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -35,6 +38,7 @@ const SubscriptionsPage = () => {
   const isMobile = useIsMobile();
   const [statusState] = useContext(StatusContext);
   const [showMigration, setShowMigration] = useState(false);
+  const [consumeLogsFilter, setConsumeLogsFilter] = useState(null);
   const enableEpay = !!statusState?.status?.enable_online_topup;
 
   const {
@@ -63,6 +67,19 @@ const SubscriptionsPage = () => {
         visible={showMigration}
         handleClose={() => setShowMigration(false)}
         refresh={refresh}
+        t={t}
+      />
+      <SubscriptionConsumeLogsModal
+        visible={!!consumeLogsFilter}
+        onCancel={() => setConsumeLogsFilter(null)}
+        initialFilter={consumeLogsFilter}
+        planOptions={(subscriptionsData.allPlans || []).map((item) => ({
+          label: item?.plan?.title || `#${item?.plan?.id}`,
+          value: item?.plan?.id,
+        }))}
+        planMetaMap={new Map(
+          (subscriptionsData.allPlans || []).map((item) => [item?.plan?.id, item?.plan]),
+        )}
         t={t}
       />
 
@@ -108,6 +125,59 @@ const SubscriptionsPage = () => {
       >
         <SubscriptionsTable {...subscriptionsData} enableEpay={enableEpay} />
       </CardPro>
+
+      <div className='mt-4'>
+        <CardPro
+          type='type1'
+          descriptionArea={
+            <SubscriptionsDescription
+              compactMode={compactMode}
+              setCompactMode={setCompactMode}
+              t={t}
+            />
+          }
+          actionsArea={
+            <div className='flex items-center justify-between gap-2 w-full'>
+              <div className='text-sm text-gray-500'>
+                {t('管理员可在此查看所有用户的订阅记录与当前状态')}
+              </div>
+              <Button size='small' onClick={() => setConsumeLogsFilter({})}>
+                {t('全部订阅消耗')}
+              </Button>
+            </div>
+          }
+          searchArea={
+            <AdminUserSubscriptionsFilters
+              formInitValues={subscriptionsData.userSubscriptionsFormInitValues}
+              setFormApi={subscriptionsData.setUserSubscriptionsFormApi}
+              searchUserSubscriptions={subscriptionsData.searchUserSubscriptions}
+              loading={subscriptionsData.userSubscriptionsLoading}
+              groupOptions={subscriptionsData.groupOptions}
+              t={t}
+            />
+          }
+          paginationArea={createCardProPagination({
+            currentPage: subscriptionsData.userSubscriptionsPage,
+            pageSize: subscriptionsData.userSubscriptionsPageSize,
+            total: subscriptionsData.userSubscriptionsTotal,
+            onPageChange: subscriptionsData.handleUserSubscriptionsPageChange,
+            onPageSizeChange:
+              subscriptionsData.handleUserSubscriptionsPageSizeChange,
+            isMobile,
+            t: subscriptionsData.t,
+          })}
+          t={t}
+        >
+          <AdminUserSubscriptionsTable
+            dataSource={subscriptionsData.userSubscriptions}
+            loading={subscriptionsData.userSubscriptionsLoading}
+            compactMode={compactMode}
+            planTitleMap={subscriptionsData.planTitleMap}
+            openConsumeLogs={(filter) => setConsumeLogsFilter(filter)}
+            t={t}
+          />
+        </CardPro>
+      </div>
     </>
   );
 };
