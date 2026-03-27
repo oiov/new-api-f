@@ -33,16 +33,20 @@ import {
   Tag,
   TabPane,
   Tabs,
+  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess, renderQuota } from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
 import {
   BarChart3,
+  BookOpen,
   CalendarClock,
+  ChevronRight,
   Check,
   Clock,
   Crown,
+  History,
   Package,
   RefreshCw,
   ShieldCheck,
@@ -52,6 +56,7 @@ import {
 } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
 import SubscriptionConsumeLogsModal from '../table/subscriptions/modals/SubscriptionConsumeLogsModal';
+import CardTable from '../common/ui/CardTable';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
