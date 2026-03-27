@@ -42,7 +42,9 @@ func TestMain(m *testing.M) {
 		&model.Token{},
 		&model.Log{},
 		&model.Channel{},
+		&model.SubscriptionPlan{},
 		&model.UserSubscription{},
+		&model.SubscriptionPreConsumeRecord{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -62,6 +64,8 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM tokens")
 		model.DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
+		model.DB.Exec("DELETE FROM subscription_pre_consume_records")
+		model.DB.Exec("DELETE FROM subscription_plans")
 		model.DB.Exec("DELETE FROM user_subscriptions")
 	})
 }
@@ -98,6 +102,23 @@ func seedSubscription(t *testing.T, id int, userId int, amountTotal int64, amoun
 		EndTime:     time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	require.NoError(t, model.DB.Create(sub).Error)
+}
+
+func seedSubscriptionPlan(t *testing.T, id int, resourceType string) {
+	t.Helper()
+	plan := &model.SubscriptionPlan{
+		Id:                id,
+		Title:             "test_plan",
+		PriceAmount:       1,
+		Currency:          "USD",
+		DurationUnit:      model.SubscriptionDurationMonth,
+		DurationValue:     1,
+		Enabled:           true,
+		TotalAmount:       100000,
+		ResourceType:      resourceType,
+		RequestCountTotal: 100,
+	}
+	require.NoError(t, model.DB.Create(plan).Error)
 }
 
 func seedChannel(t *testing.T, id int) {
@@ -262,6 +283,68 @@ func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
 
 	// No log created
 	assert.Equal(t, int64(0), countLogs(t))
+}
+
+func TestPreConsumeUserSubscription_PrefersEarliestRequestCountThenQuota(t *testing.T) {
+	truncate(t)
+
+	const userID = 10
+	seedUser(t, userID, 10000)
+
+	seedSubscriptionPlan(t, 101, model.SubscriptionResourceQuota)
+	seedSubscriptionPlan(t, 102, model.SubscriptionResourceRequestCount)
+	seedSubscriptionPlan(t, 103, model.SubscriptionResourceRequestCount)
+
+	now := time.Now()
+	quotaSub := &model.UserSubscription{
+		Id:          101,
+		UserId:      userID,
+		PlanId:      101,
+		AmountTotal: 10000,
+		AmountUsed:  0,
+		Status:      "active",
+		StartTime:   now.Unix(),
+		EndTime:     now.Add(24 * time.Hour).Unix(),
+	}
+	requestSubLate := &model.UserSubscription{
+		Id:                102,
+		UserId:            userID,
+		PlanId:            102,
+		ResourceType:      model.SubscriptionResourceRequestCount,
+		RequestCountTotal: 10,
+		RequestCountUsed:  0,
+		Status:            "active",
+		StartTime:         now.Unix(),
+		EndTime:           now.Add(48 * time.Hour).Unix(),
+	}
+	requestSubEarly := &model.UserSubscription{
+		Id:                103,
+		UserId:            userID,
+		PlanId:            103,
+		ResourceType:      model.SubscriptionResourceRequestCount,
+		RequestCountTotal: 10,
+		RequestCountUsed:  0,
+		Status:            "active",
+		StartTime:         now.Unix(),
+		EndTime:           now.Add(12 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(quotaSub).Error)
+	require.NoError(t, model.DB.Create(requestSubLate).Error)
+	require.NoError(t, model.DB.Create(requestSubEarly).Error)
+
+	res, err := model.PreConsumeUserSubscription("req-prefers-request-count", userID, "test-model", 0, 500)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, requestSubEarly.Id, res.UserSubscriptionId)
+	assert.Equal(t, int64(1), res.PreConsumed)
+	assert.Equal(t, model.SubscriptionResourceRequestCount, res.ResourceType)
+
+	var refreshedQuota model.UserSubscription
+	var refreshedRequest model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", quotaSub.Id).First(&refreshedQuota).Error)
+	require.NoError(t, model.DB.Where("id = ?", requestSubEarly.Id).First(&refreshedRequest).Error)
+	assert.Equal(t, int64(0), refreshedQuota.AmountUsed)
+	assert.Equal(t, int64(1), refreshedRequest.RequestCountUsed)
 }
 
 func TestRefundTaskQuota_NoToken(t *testing.T) {

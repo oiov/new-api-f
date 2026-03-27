@@ -316,6 +316,11 @@ type TokenBatch struct {
 	Ids []int `json:"ids"`
 }
 
+type DeleteInvalidTokensRequest struct {
+	Keyword string `json:"keyword"`
+	Token   string `json:"token"`
+}
+
 func DeleteTokenBatch(c *gin.Context) {
 	tokenBatch := TokenBatch{}
 	if err := c.ShouldBindJSON(&tokenBatch); err != nil || len(tokenBatch.Ids) == 0 {
@@ -324,6 +329,25 @@ func DeleteTokenBatch(c *gin.Context) {
 	}
 	userId := c.GetInt("id")
 	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    count,
+	})
+}
+
+func DeleteInvalidTokenBatch(c *gin.Context) {
+	req := DeleteInvalidTokensRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	userId := c.GetInt("id")
+	count, err := model.BatchDeleteInvalidTokensByFilter(userId, req.Keyword, req.Token)
 	if err != nil {
 		common.ApiError(c, err)
 		return

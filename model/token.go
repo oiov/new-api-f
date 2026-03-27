@@ -85,6 +85,56 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	return tokens, err
 }
 
+func buildUserTokenSearchQuery(userId int, keyword string, token string) (*gorm.DB, error) {
+	if token != "" {
+		token = strings.TrimPrefix(token, "sk-")
+	}
+
+	maxTokens := operation_setting.GetMaxUserTokens()
+	hasFuzzy := strings.Contains(keyword, "%") || strings.Contains(token, "%")
+	if hasFuzzy {
+		count, err := CountUserTokens(userId)
+		if err != nil {
+			common.SysLog("failed to count user tokens: " + err.Error())
+			return nil, errors.New("获取令牌数量失败")
+		}
+		if int(count) > maxTokens {
+			return nil, errors.New("令牌数量超过上限，仅允许精确搜索，请勿使用 % 通配符")
+		}
+	}
+
+	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	if keyword != "" {
+		keywordPattern, err := sanitizeLikePattern(keyword)
+		if err != nil {
+			return nil, err
+		}
+		baseQuery = baseQuery.Where("name LIKE ? ESCAPE '!'", keywordPattern)
+	}
+	if token != "" {
+		tokenPattern, err := sanitizeLikePattern(token)
+		if err != nil {
+			return nil, err
+		}
+		baseQuery = baseQuery.Where(commonKeyCol+" LIKE ? ESCAPE '!'", tokenPattern)
+	}
+	return baseQuery, nil
+}
+
+func applyInvalidTokenFilter(query *gorm.DB, now int64) *gorm.DB {
+	if query == nil {
+		return nil
+	}
+	return query.Where(
+		"status <> ? OR (expired_time <> ? AND expired_time < ?) OR (unlimited_quota = ? AND remain_quota <= ?)",
+		common.TokenStatusEnabled,
+		-1,
+		now,
+		false,
+		0,
+	)
+}
+
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。
 // 规则：
 //  1. 转义 ! 和 _（使用 ! 作为 ESCAPE 字符，兼容 MySQL/PostgreSQL/SQLite）
@@ -133,43 +183,13 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		offset = 0
 	}
 
-	if token != "" {
-		token = strings.TrimPrefix(token, "sk-")
-	}
-
-	// 超量用户（令牌数超过上限）只允许精确搜索，禁止模糊搜索
-	maxTokens := operation_setting.GetMaxUserTokens()
-	hasFuzzy := strings.Contains(keyword, "%") || strings.Contains(token, "%")
-	if hasFuzzy {
-		count, err := CountUserTokens(userId)
-		if err != nil {
-			common.SysLog("failed to count user tokens: " + err.Error())
-			return nil, 0, errors.New("获取令牌数量失败")
-		}
-		if int(count) > maxTokens {
-			return nil, 0, errors.New("令牌数量超过上限，仅允许精确搜索，请勿使用 % 通配符")
-		}
-	}
-
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
-
-	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
-	if keyword != "" {
-		keywordPattern, err := sanitizeLikePattern(keyword)
-		if err != nil {
-			return nil, 0, err
-		}
-		baseQuery = baseQuery.Where("name LIKE ? ESCAPE '!'", keywordPattern)
-	}
-	if token != "" {
-		tokenPattern, err := sanitizeLikePattern(token)
-		if err != nil {
-			return nil, 0, err
-		}
-		baseQuery = baseQuery.Where(commonKeyCol+" LIKE ? ESCAPE '!'", tokenPattern)
+	baseQuery, err := buildUserTokenSearchQuery(userId, keyword, token)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	// 先查匹配总数（用于分页，受 maxTokens 上限保护，避免全表 COUNT）
+	maxTokens := operation_setting.GetMaxUserTokens()
 	err = baseQuery.Limit(maxTokens).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count search tokens: " + err.Error())
@@ -183,6 +203,50 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		return nil, 0, errors.New("搜索令牌失败")
 	}
 	return tokens, total, nil
+}
+
+func BatchDeleteInvalidTokensByFilter(userId int, keyword string, token string) (int, error) {
+	baseQuery, err := buildUserTokenSearchQuery(userId, keyword, token)
+	if err != nil {
+		return 0, err
+	}
+	baseQuery = applyInvalidTokenFilter(baseQuery, common.GetTimestamp())
+
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return 0, tx.Error
+	}
+
+	var tokens []Token
+	if err := baseQuery.Session(&gorm.Session{}).Find(&tokens).Error; err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+	if len(tokens) == 0 {
+		tx.Rollback()
+		return 0, nil
+	}
+
+	ids := make([]int, 0, len(tokens))
+	for _, token := range tokens {
+		ids = append(ids, token.Id)
+	}
+	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+	if err := tx.Commit().Error; err != nil {
+		return 0, err
+	}
+
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			for _, token := range tokens {
+				_ = cacheDeleteToken(token.Key)
+			}
+		})
+	}
+	return len(tokens), nil
 }
 
 func ValidateUserToken(key string) (token *Token, err error) {

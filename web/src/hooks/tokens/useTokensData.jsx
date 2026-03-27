@@ -33,6 +33,10 @@ import { fetchTokenKey as fetchTokenKeyById } from '../../helpers/token';
 
 export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const { t } = useTranslation();
+  const emptyFilters = {
+    searchKeyword: '',
+    searchToken: '',
+  };
 
   // Basic state
   const [tokens, setTokens] = useState([]);
@@ -42,6 +46,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [searching, setSearching] = useState(false);
   const [searchMode, setSearchMode] = useState(false); // 是否处于搜索结果视图
+  const [appliedFilters, setAppliedFilters] = useState(emptyFilters);
 
   // Selection state
   const [selectedKeys, setSelectedKeys] = useState([]);
@@ -61,10 +66,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Form state
   const [formApi, setFormApi] = useState(null);
-  const formInitValues = {
-    searchKeyword: '',
-    searchToken: '',
-  };
+  const formInitValues = emptyFilters;
 
   // Get form values helper function
   const getFormValues = () => {
@@ -98,6 +100,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const loadTokens = async (page = 1, size = pageSize) => {
     setLoading(true);
     setSearchMode(false);
+    setAppliedFilters(emptyFilters);
     const res = await API.get(`/api/token/?p=${page}&size=${size}`);
     const { success, message, data } = res.data;
     if (success) {
@@ -110,7 +113,11 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Refresh function
   const refresh = async (page = activePage) => {
-    await loadTokens(page);
+    if (searchMode) {
+      await searchTokens(page, pageSize, appliedFilters);
+    } else {
+      await loadTokens(page);
+    }
     setSelectedKeys([]);
   };
 
@@ -281,15 +288,19 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   };
 
   // Search tokens function
-  const searchTokens = async (page = 1, size = pageSize) => {
+  const searchTokens = async (page = 1, size = pageSize, filters = null) => {
     const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
     const normalizedSize =
       Number.isInteger(size) && size > 0 ? size : pageSize;
 
-    const { searchKeyword, searchToken } = getFormValues();
+    const {
+      searchKeyword = '',
+      searchToken = '',
+    } = filters || getFormValues();
     if (searchKeyword === '' && searchToken === '') {
       setSearchMode(false);
-      await loadTokens(1);
+      setAppliedFilters(emptyFilters);
+      await loadTokens(1, normalizedSize);
       return;
     }
     setSearching(true);
@@ -299,6 +310,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     const { success, message, data } = res.data;
     if (success) {
       setSearchMode(true);
+      setAppliedFilters({
+        searchKeyword,
+        searchToken,
+      });
       syncPageData(data);
     } else {
       showError(message);
@@ -361,25 +376,61 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     }
   };
 
-  // Batch delete tokens
-  const batchDeleteTokens = async () => {
-    if (selectedKeys.length === 0) {
-      showError(t('请先选择要删除的令牌！'));
+  const deleteTokensByIds = async (ids, successMessage) => {
+    if (!ids || ids.length === 0) {
+      showError(t('没有可删除的令牌！'));
       return;
     }
     setLoading(true);
     try {
-      const ids = selectedKeys.map((token) => token.id);
       const res = await API.post('/api/token/batch', { ids });
       if (res?.data?.success) {
         const count = res.data.data || 0;
-        showSuccess(t('已删除 {{count}} 个令牌！', { count }));
+        showSuccess(successMessage || t('已删除 {{count}} 个令牌！', { count }));
         await refresh();
         setTimeout(() => {
           if (tokens.length === 0 && activePage > 1) {
             refresh(activePage - 1);
           }
         }, 100);
+      } else {
+        showError(res?.data?.message || t('删除失败'));
+      }
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Batch delete tokens
+  const batchDeleteTokens = async () => {
+    if (selectedKeys.length === 0) {
+      showError(t('请先选择要删除的令牌！'));
+      return;
+    }
+    await deleteTokensByIds(
+      selectedKeys.map((token) => token.id),
+      t('已删除 {{count}} 个令牌！', { count: selectedKeys.length }),
+    );
+  };
+
+  const batchDeleteInvalidTokens = async () => {
+    const { searchKeyword, searchToken } = appliedFilters;
+    setLoading(true);
+    try {
+      const res = await API.post('/api/token/batch/invalid', {
+        keyword: searchKeyword,
+        token: searchToken,
+      });
+      if (res?.data?.success) {
+        const count = res.data.data || 0;
+        if (count === 0) {
+          showError(t('当前筛选条件下没有无效令牌可删除！'));
+          return;
+        }
+        showSuccess(t('已删除 {{count}} 个无效令牌！', { count }));
+        await refresh(1);
       } else {
         showError(res?.data?.message || t('删除失败'));
       }
@@ -474,6 +525,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     rowSelection,
     handleRow,
     batchDeleteTokens,
+    batchDeleteInvalidTokens,
     batchCopyTokens,
     syncPageData,
 

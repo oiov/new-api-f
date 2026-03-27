@@ -995,6 +995,83 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, _ 
 	return tx.Save(sub).Error
 }
 
+func isUserSubscriptionEligibleForPreConsume(sub *UserSubscription, amount int64) (bool, int64, string) {
+	if sub == nil {
+		return false, 0, SubscriptionResourceQuota
+	}
+	resourceType := NormalizeSubscriptionResourceType(sub.ResourceType)
+	required := amount
+	if resourceType == SubscriptionResourceRequestCount {
+		required = 1
+		if sub.RequestCountTotal > 0 {
+			remain := sub.RequestCountTotal - sub.RequestCountUsed
+			if remain < required {
+				return false, required, resourceType
+			}
+		}
+		return true, required, resourceType
+	}
+	if sub.AmountTotal > 0 {
+		remain := sub.AmountTotal - sub.AmountUsed
+		if remain < required {
+			return false, required, resourceType
+		}
+	}
+	return true, required, resourceType
+}
+
+func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int, sub *UserSubscription, required int64, resourceType string, returnValue *SubscriptionPreConsumeResult) error {
+	if tx == nil || sub == nil || returnValue == nil {
+		return errors.New("invalid pre-consume args")
+	}
+	usedBefore := sub.AmountUsed
+	requestCountBefore := sub.RequestCountUsed
+	record := &SubscriptionPreConsumeRecord{
+		RequestId:          requestId,
+		UserId:             userId,
+		UserSubscriptionId: sub.Id,
+		PreConsumed:        required,
+		Status:             "consumed",
+	}
+	if err := tx.Create(record).Error; err != nil {
+		var dup SubscriptionPreConsumeRecord
+		if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
+			if dup.Status == "refunded" {
+				return errors.New("subscription pre-consume already refunded")
+			}
+			returnValue.UserSubscriptionId = sub.Id
+			returnValue.PreConsumed = dup.PreConsumed
+			returnValue.AmountTotal = sub.AmountTotal
+			returnValue.AmountUsedBefore = sub.AmountUsed
+			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.ResourceType = resourceType
+			returnValue.RequestCountTotal = sub.RequestCountTotal
+			returnValue.RequestCountBefore = sub.RequestCountUsed
+			returnValue.RequestCountAfter = sub.RequestCountUsed
+			return nil
+		}
+		return err
+	}
+	if resourceType == SubscriptionResourceRequestCount {
+		sub.RequestCountUsed += required
+	} else {
+		sub.AmountUsed += required
+	}
+	if err := tx.Save(sub).Error; err != nil {
+		return err
+	}
+	returnValue.UserSubscriptionId = sub.Id
+	returnValue.PreConsumed = required
+	returnValue.AmountTotal = sub.AmountTotal
+	returnValue.AmountUsedBefore = usedBefore
+	returnValue.AmountUsedAfter = sub.AmountUsed
+	returnValue.ResourceType = resourceType
+	returnValue.RequestCountTotal = sub.RequestCountTotal
+	returnValue.RequestCountBefore = requestCountBefore
+	returnValue.RequestCountAfter = sub.RequestCountUsed
+	return nil
+}
+
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
 func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
@@ -1046,6 +1123,8 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
 		}
+		requestCountCandidates := make([]UserSubscription, 0, len(subs))
+		quotaCandidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
 			sub := candidate
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
@@ -1055,70 +1134,23 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
-			resourceType := NormalizeSubscriptionResourceType(sub.ResourceType)
-			usedBefore := sub.AmountUsed
-			requestCountBefore := sub.RequestCountUsed
-			required := amount
-			if resourceType == SubscriptionResourceRequestCount {
-				required = 1
-				if sub.RequestCountTotal > 0 {
-					remain := sub.RequestCountTotal - requestCountBefore
-					if remain < required {
-						continue
-					}
-				}
-			} else {
-				if sub.AmountTotal > 0 {
-					remain := sub.AmountTotal - usedBefore
-					if remain < required {
-						continue
-					}
-				}
-			}
-			record := &SubscriptionPreConsumeRecord{
-				RequestId:          requestId,
-				UserId:             userId,
-				UserSubscriptionId: sub.Id,
-				PreConsumed:        required,
-				Status:             "consumed",
-			}
-			if err := tx.Create(record).Error; err != nil {
-				var dup SubscriptionPreConsumeRecord
-				if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
-					if dup.Status == "refunded" {
-						return errors.New("subscription pre-consume already refunded")
-					}
-					returnValue.UserSubscriptionId = sub.Id
-					returnValue.PreConsumed = dup.PreConsumed
-					returnValue.AmountTotal = sub.AmountTotal
-					returnValue.AmountUsedBefore = sub.AmountUsed
-					returnValue.AmountUsedAfter = sub.AmountUsed
-					returnValue.ResourceType = resourceType
-					returnValue.RequestCountTotal = sub.RequestCountTotal
-					returnValue.RequestCountBefore = sub.RequestCountUsed
-					returnValue.RequestCountAfter = sub.RequestCountUsed
-					return nil
-				}
-				return err
+			eligible, _, resourceType := isUserSubscriptionEligibleForPreConsume(&sub, amount)
+			if !eligible {
+				continue
 			}
 			if resourceType == SubscriptionResourceRequestCount {
-				sub.RequestCountUsed += required
+				requestCountCandidates = append(requestCountCandidates, sub)
 			} else {
-				sub.AmountUsed += required
+				quotaCandidates = append(quotaCandidates, sub)
 			}
-			if err := tx.Save(&sub).Error; err != nil {
-				return err
-			}
-			returnValue.UserSubscriptionId = sub.Id
-			returnValue.PreConsumed = required
-			returnValue.AmountTotal = sub.AmountTotal
-			returnValue.AmountUsedBefore = usedBefore
-			returnValue.AmountUsedAfter = sub.AmountUsed
-			returnValue.ResourceType = resourceType
-			returnValue.RequestCountTotal = sub.RequestCountTotal
-			returnValue.RequestCountBefore = requestCountBefore
-			returnValue.RequestCountAfter = sub.RequestCountUsed
-			return nil
+		}
+		if len(requestCountCandidates) > 0 {
+			selected := requestCountCandidates[0]
+			return applyUserSubscriptionPreConsumeTx(tx, requestId, userId, &selected, 1, SubscriptionResourceRequestCount, returnValue)
+		}
+		if len(quotaCandidates) > 0 {
+			selected := quotaCandidates[0]
+			return applyUserSubscriptionPreConsumeTx(tx, requestId, userId, &selected, amount, SubscriptionResourceQuota, returnValue)
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
 	})
