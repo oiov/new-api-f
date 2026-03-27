@@ -288,6 +288,55 @@ type SubscriptionSummary struct {
 	Subscription *UserSubscription `json:"subscription"`
 }
 
+type SubscriptionMigrationFilter struct {
+	TargetPlanId         int
+	UserGroup            string
+	SourceGroup          string
+	SourceResourceType   string
+	ExcludeDurationUnit  string
+	SourcePlanIds        []int
+}
+
+type SubscriptionMigrationPreviewItem struct {
+	UserSubscriptionId   int               `json:"user_subscription_id"`
+	UserId               int               `json:"user_id"`
+	Username             string            `json:"username"`
+	UserGroup            string            `json:"user_group"`
+	OldPlanId            int               `json:"old_plan_id"`
+	OldPlanTitle         string            `json:"old_plan_title"`
+	OldDurationUnit      string            `json:"old_duration_unit"`
+	OldResourceType      string            `json:"old_resource_type"`
+	OldUpgradeGroup      string            `json:"old_upgrade_group"`
+	OldStartTime         int64             `json:"old_start_time"`
+	OldEndTime           int64             `json:"old_end_time"`
+	OldAmountTotal       int64             `json:"old_amount_total"`
+	OldAmountUsed        int64             `json:"old_amount_used"`
+	OldRequestCountTotal int64             `json:"old_request_count_total"`
+	OldRequestCountUsed  int64             `json:"old_request_count_used"`
+	TargetPlanId         int               `json:"target_plan_id"`
+	TargetPlanTitle      string            `json:"target_plan_title"`
+	TargetResourceType   string            `json:"target_resource_type"`
+	TargetUpgradeGroup   string            `json:"target_upgrade_group"`
+	TargetPlan           *SubscriptionPlan `json:"target_plan,omitempty"`
+}
+
+type SubscriptionMigrationExecutionItem struct {
+	UserSubscriptionId    int    `json:"user_subscription_id"`
+	NewUserSubscriptionId int    `json:"new_user_subscription_id"`
+	UserId                int    `json:"user_id"`
+	Username              string `json:"username"`
+	Status                string `json:"status"`
+	Message               string `json:"message"`
+}
+
+type SubscriptionMigrationExecutionResult struct {
+	TargetPlanId int                                  `json:"target_plan_id"`
+	Total        int                                  `json:"total"`
+	Migrated     int                                  `json:"migrated"`
+	Failed       int                                  `json:"failed"`
+	Items        []SubscriptionMigrationExecutionItem `json:"items"`
+}
+
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	if plan == nil {
 		return 0, errors.New("plan is nil")
@@ -743,6 +792,332 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 		})
 	}
 	return result
+}
+
+func normalizeSubscriptionMigrationFilter(filter SubscriptionMigrationFilter) SubscriptionMigrationFilter {
+	filter.TargetPlanId = max(filter.TargetPlanId, 0)
+	filter.UserGroup = strings.TrimSpace(filter.UserGroup)
+	filter.SourceGroup = strings.TrimSpace(filter.SourceGroup)
+	filter.SourceResourceType = NormalizeSubscriptionResourceType(filter.SourceResourceType)
+	filter.ExcludeDurationUnit = strings.TrimSpace(filter.ExcludeDurationUnit)
+	if filter.SourceResourceType == "" {
+		filter.SourceResourceType = SubscriptionResourceQuota
+	}
+	return filter
+}
+
+func subscriptionMatchesMigrationFilter(sub *UserSubscription, user *User, oldPlan *SubscriptionPlan, filter SubscriptionMigrationFilter) bool {
+	if sub == nil || user == nil || oldPlan == nil {
+		return false
+	}
+	if sub.Status != "active" {
+		return false
+	}
+	now := common.GetTimestamp()
+	if sub.EndTime <= now {
+		return false
+	}
+	if filter.UserGroup != "" && strings.TrimSpace(user.Group) != filter.UserGroup {
+		return false
+	}
+	if filter.SourceGroup != "" && strings.TrimSpace(sub.UpgradeGroup) != filter.SourceGroup {
+		return false
+	}
+	if filter.SourceResourceType != "" && NormalizeSubscriptionResourceType(sub.ResourceType) != filter.SourceResourceType {
+		return false
+	}
+	if filter.ExcludeDurationUnit != "" && strings.TrimSpace(oldPlan.DurationUnit) == filter.ExcludeDurationUnit {
+		return false
+	}
+	if len(filter.SourcePlanIds) > 0 {
+		matched := false
+		for _, planId := range filter.SourcePlanIds {
+			if planId == sub.PlanId {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
+func ListSubscriptionMigrationCandidates(filter SubscriptionMigrationFilter) ([]SubscriptionMigrationPreviewItem, *SubscriptionPlan, error) {
+	filter = normalizeSubscriptionMigrationFilter(filter)
+	if filter.TargetPlanId <= 0 {
+		return nil, nil, errors.New("invalid target plan id")
+	}
+	targetPlan, err := GetSubscriptionPlanById(filter.TargetPlanId)
+	if err != nil {
+		return nil, nil, err
+	}
+	targetResourceType := NormalizeSubscriptionResourceType(targetPlan.ResourceType)
+	if filter.SourceResourceType != "" && targetResourceType != filter.SourceResourceType {
+		return nil, nil, fmt.Errorf("target plan resource type mismatch: target=%s source=%s", targetResourceType, filter.SourceResourceType)
+	}
+	now := common.GetTimestamp()
+	var subs []UserSubscription
+	query := DB.Where("status = ? AND end_time > ?", "active", now)
+	if filter.SourceGroup != "" {
+		query = query.Where("upgrade_group = ?", filter.SourceGroup)
+	}
+	if filter.SourceResourceType != "" {
+		query = query.Where("resource_type = ?", filter.SourceResourceType)
+	}
+	if len(filter.SourcePlanIds) > 0 {
+		query = query.Where("plan_id IN ?", filter.SourcePlanIds)
+	}
+	if err := query.Order("end_time asc, id asc").Find(&subs).Error; err != nil {
+		return nil, nil, err
+	}
+	items := make([]SubscriptionMigrationPreviewItem, 0, len(subs))
+	for _, sub := range subs {
+		user, err := GetUserById(sub.UserId, false)
+		if err != nil || user == nil {
+			return nil, nil, err
+		}
+		oldPlan, err := GetSubscriptionPlanById(sub.PlanId)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !subscriptionMatchesMigrationFilter(&sub, user, oldPlan, filter) {
+			continue
+		}
+		item := SubscriptionMigrationPreviewItem{
+			UserSubscriptionId:   sub.Id,
+			UserId:               sub.UserId,
+			Username:             user.Username,
+			UserGroup:            user.Group,
+			OldPlanId:            sub.PlanId,
+			OldPlanTitle:         oldPlan.Title,
+			OldDurationUnit:      oldPlan.DurationUnit,
+			OldResourceType:      NormalizeSubscriptionResourceType(sub.ResourceType),
+			OldUpgradeGroup:      strings.TrimSpace(sub.UpgradeGroup),
+			OldStartTime:         sub.StartTime,
+			OldEndTime:           sub.EndTime,
+			OldAmountTotal:       sub.AmountTotal,
+			OldAmountUsed:        sub.AmountUsed,
+			OldRequestCountTotal: sub.RequestCountTotal,
+			OldRequestCountUsed:  sub.RequestCountUsed,
+			TargetPlanId:         targetPlan.Id,
+			TargetPlanTitle:      targetPlan.Title,
+			TargetResourceType:   NormalizeSubscriptionResourceType(targetPlan.ResourceType),
+			TargetUpgradeGroup:   strings.TrimSpace(targetPlan.UpgradeGroup),
+			TargetPlan:           targetPlan,
+		}
+		items = append(items, item)
+	}
+	return items, targetPlan, nil
+}
+
+func alignMigratedSubscriptionResetWindow(sub *UserSubscription, plan *SubscriptionPlan, now int64) (int64, int64) {
+	if sub == nil || plan == nil {
+		return 0, 0
+	}
+	period := NormalizeResetPeriod(plan.QuotaResetPeriod)
+	if period == SubscriptionResetNever {
+		return 0, 0
+	}
+	baseUnix := sub.LastResetTime
+	if baseUnix <= 0 {
+		baseUnix = sub.StartTime
+	}
+	base := time.Unix(baseUnix, 0)
+	snapshotPlan := &SubscriptionPlan{
+		QuotaResetPeriod:        period,
+		QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
+	}
+	next := calcNextResetTime(base, snapshotPlan, sub.EndTime)
+	for next > 0 && next <= now {
+		base = time.Unix(next, 0)
+		next = calcNextResetTime(base, snapshotPlan, sub.EndTime)
+	}
+	return base.Unix(), next
+}
+
+func preserveQuotaSubscriptionEntitlement(source *UserSubscription, targetPlan *SubscriptionPlan) (int64, int64) {
+	if source == nil || targetPlan == nil {
+		return 0, 0
+	}
+	if source.AmountTotal <= 0 || targetPlan.TotalAmount <= 0 {
+		return targetPlan.TotalAmount, 0
+	}
+	remaining := source.AmountTotal - source.AmountUsed
+	if remaining < 0 {
+		remaining = 0
+	}
+	total := targetPlan.TotalAmount
+	if total < remaining {
+		total = remaining
+	}
+	used := total - remaining
+	if used < 0 {
+		used = 0
+	}
+	return total, used
+}
+
+func preserveRequestCountSubscriptionEntitlement(source *UserSubscription, targetPlan *SubscriptionPlan) (int64, int64) {
+	if source == nil || targetPlan == nil {
+		return 0, 0
+	}
+	if source.RequestCountTotal <= 0 || targetPlan.RequestCountTotal <= 0 {
+		return targetPlan.RequestCountTotal, 0
+	}
+	remaining := source.RequestCountTotal - source.RequestCountUsed
+	if remaining < 0 {
+		remaining = 0
+	}
+	total := targetPlan.RequestCountTotal
+	if total < remaining {
+		total = remaining
+	}
+	used := total - remaining
+	if used < 0 {
+		used = 0
+	}
+	return total, used
+}
+
+func createMigratedUserSubscriptionTx(tx *gorm.DB, source *UserSubscription, targetPlan *SubscriptionPlan, now int64) (*UserSubscription, string, error) {
+	if tx == nil || source == nil || targetPlan == nil {
+		return nil, "", errors.New("invalid migration args")
+	}
+	sourceResourceType := NormalizeSubscriptionResourceType(source.ResourceType)
+	targetResourceType := NormalizeSubscriptionResourceType(targetPlan.ResourceType)
+	if sourceResourceType != targetResourceType {
+		return nil, "", fmt.Errorf("resource type mismatch: source=%s target=%s", sourceResourceType, targetResourceType)
+	}
+	targetGroup := strings.TrimSpace(targetPlan.UpgradeGroup)
+	sourceGroup := strings.TrimSpace(source.UpgradeGroup)
+	if targetGroup != "" && sourceGroup != "" && targetGroup != sourceGroup {
+		return nil, "", fmt.Errorf("target plan group mismatch: target=%s source=%s", targetGroup, sourceGroup)
+	}
+	if targetGroup == "" {
+		targetGroup = sourceGroup
+	}
+	prevGroup := strings.TrimSpace(source.PrevUserGroup)
+	finalGroup := ""
+	if targetGroup != "" {
+		currentGroup, err := getUserGroupByIdTx(tx, source.UserId)
+		if err != nil {
+			return nil, "", err
+		}
+		if currentGroup != targetGroup {
+			if prevGroup == "" {
+				prevGroup = currentGroup
+			}
+			if err := tx.Model(&User{}).Where("id = ?", source.UserId).
+				Update("group", targetGroup).Error; err != nil {
+				return nil, "", err
+			}
+			finalGroup = targetGroup
+		} else {
+			finalGroup = currentGroup
+		}
+	}
+	lastReset, nextReset := alignMigratedSubscriptionResetWindow(source, targetPlan, now)
+	amountTotal := targetPlan.TotalAmount
+	amountUsed := int64(0)
+	requestCountTotal := targetPlan.RequestCountTotal
+	requestCountUsed := int64(0)
+	if targetResourceType == SubscriptionResourceRequestCount {
+		requestCountTotal, requestCountUsed = preserveRequestCountSubscriptionEntitlement(source, targetPlan)
+		amountTotal = 0
+	} else {
+		amountTotal, amountUsed = preserveQuotaSubscriptionEntitlement(source, targetPlan)
+		requestCountTotal = 0
+	}
+	newSub := &UserSubscription{
+		UserId:             source.UserId,
+		PlanId:             targetPlan.Id,
+		AmountTotal:        amountTotal,
+		AmountUsed:         amountUsed,
+		ResourceType:       targetResourceType,
+		RequestCountTotal:  requestCountTotal,
+		RequestCountUsed:   requestCountUsed,
+		ResetPeriod:        NormalizeResetPeriod(targetPlan.QuotaResetPeriod),
+		ResetCustomSeconds: targetPlan.QuotaResetCustomSeconds,
+		StartTime:          source.StartTime,
+		EndTime:            source.EndTime,
+		Status:             "active",
+		Source:             "migration",
+		LastResetTime:      lastReset,
+		NextResetTime:      nextReset,
+		UpgradeGroup:       targetGroup,
+		PrevUserGroup:      prevGroup,
+		CreatedAt:          common.GetTimestamp(),
+		UpdatedAt:          common.GetTimestamp(),
+	}
+	if err := tx.Create(newSub).Error; err != nil {
+		return nil, "", err
+	}
+	if finalGroup == "" {
+		currentGroup, err := getUserGroupByIdTx(tx, source.UserId)
+		if err != nil {
+			return nil, "", err
+		}
+		finalGroup = currentGroup
+	}
+	return newSub, finalGroup, nil
+}
+
+func ExecuteSubscriptionMigration(filter SubscriptionMigrationFilter) (*SubscriptionMigrationExecutionResult, error) {
+	items, targetPlan, err := ListSubscriptionMigrationCandidates(filter)
+	if err != nil {
+		return nil, err
+	}
+	result := &SubscriptionMigrationExecutionResult{
+		TargetPlanId: targetPlan.Id,
+		Total:        len(items),
+		Items:        make([]SubscriptionMigrationExecutionItem, 0, len(items)),
+	}
+	for _, item := range items {
+		execItem := SubscriptionMigrationExecutionItem{
+			UserSubscriptionId: item.UserSubscriptionId,
+			UserId:             item.UserId,
+			Username:           item.Username,
+			Status:             "failed",
+		}
+		cacheGroup := ""
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			var source UserSubscription
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+				Where("id = ?", item.UserSubscriptionId).
+				First(&source).Error; err != nil {
+				return err
+			}
+			if source.Status != "active" || source.EndTime <= common.GetTimestamp() {
+				return errors.New("subscription is no longer active")
+			}
+			newSub, newGroup, err := createMigratedUserSubscriptionTx(tx, &source, targetPlan, GetDBTimestamp())
+			if err != nil {
+				return err
+			}
+			if err := tx.Where("id = ?", source.Id).Delete(&UserSubscription{}).Error; err != nil {
+				return err
+			}
+			execItem.NewUserSubscriptionId = newSub.Id
+			cacheGroup = newGroup
+			return nil
+		})
+		if err != nil {
+			execItem.Message = err.Error()
+			result.Failed++
+			result.Items = append(result.Items, execItem)
+			continue
+		}
+		if cacheGroup != "" {
+			_ = UpdateUserGroupCache(execItem.UserId, cacheGroup)
+		}
+		execItem.Status = "migrated"
+		execItem.Message = "ok"
+		result.Migrated++
+		result.Items = append(result.Items, execItem)
+	}
+	return result, nil
 }
 
 // AdminInvalidateUserSubscription marks a user subscription as cancelled and ends it immediately.

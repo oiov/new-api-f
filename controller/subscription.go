@@ -342,6 +342,15 @@ type AdminCreateUserSubscriptionRequest struct {
 	PlanId int `json:"plan_id"`
 }
 
+type AdminSubscriptionMigrationRequest struct {
+	TargetPlanId        int   `json:"target_plan_id"`
+	Group               string `json:"group"`
+	SourceGroup         string `json:"source_group"`
+	SourceResourceType  string `json:"source_resource_type"`
+	ExcludeDurationUnit string `json:"exclude_duration_unit"`
+	SourcePlanIds       []int `json:"source_plan_ids"`
+}
+
 // AdminCreateUserSubscription creates a new user subscription from a plan (no payment).
 func AdminCreateUserSubscription(c *gin.Context) {
 	userId, _ := strconv.Atoi(c.Param("id"))
@@ -364,6 +373,56 @@ func AdminCreateUserSubscription(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func buildAdminSubscriptionMigrationFilter(req AdminSubscriptionMigrationRequest) model.SubscriptionMigrationFilter {
+	group := strings.TrimSpace(req.Group)
+	sourceGroup := strings.TrimSpace(req.SourceGroup)
+	if sourceGroup == "" {
+		sourceGroup = group
+	}
+	return model.SubscriptionMigrationFilter{
+		TargetPlanId:        req.TargetPlanId,
+		UserGroup:           group,
+		SourceGroup:         sourceGroup,
+		SourceResourceType:  req.SourceResourceType,
+		ExcludeDurationUnit: req.ExcludeDurationUnit,
+		SourcePlanIds:       req.SourcePlanIds,
+	}
+}
+
+func AdminPreviewSubscriptionMigration(c *gin.Context) {
+	var req AdminSubscriptionMigrationRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TargetPlanId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	filter := buildAdminSubscriptionMigrationFilter(req)
+	items, targetPlan, err := model.ListSubscriptionMigrationCandidates(filter)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"target_plan": targetPlan,
+		"total":       len(items),
+		"items":       items,
+	})
+}
+
+func AdminExecuteSubscriptionMigration(c *gin.Context) {
+	var req AdminSubscriptionMigrationRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TargetPlanId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	filter := buildAdminSubscriptionMigrationFilter(req)
+	result, err := model.ExecuteSubscriptionMigration(filter)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
 }
 
 // AdminInvalidateUserSubscription cancels a user subscription immediately.
