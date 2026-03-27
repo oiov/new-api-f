@@ -59,8 +59,8 @@ const CONTACT_CARDS = [
     subtitleKey: '适合商务沟通、合作咨询与一对一联系',
     imageSrc: '/fishxcode_user.jpg',
     imageAltKey: '微信号二维码',
-    value: 'fishxcode',
-    copyValue: 'fishxcode',
+    value: 'oiovdev',
+    copyValue: 'oiovdev',
     icon: MessageCircleMore,
     accentClassName: 'contact-card-accent-emerald',
     toneKey: '一对一沟通',
@@ -81,8 +81,8 @@ const CONTACT_CARDS = [
     subtitleKey: '适合处理账号问题、充值协助与售后支持',
     imageSrc: '/qq.png',
     imageAltKey: 'QQ客服二维码',
-    value: '2013571175',
-    copyValue: '2013571175',
+    value: '3224266014',
+    copyValue: '3224266014',
     icon: Headphones,
     accentClassName: 'contact-card-accent-rose',
     toneKey: '官方支持',
@@ -161,7 +161,9 @@ const Contact = () => {
                 type='primary'
                 size='large'
                 className='contact-hero__primary-btn'
-                onClick={() => window.open('https://qm.qq.com/q/Ce2PaYrbmo', '_blank')}
+                onClick={() =>
+                  window.open('https://qm.qq.com/q/Ce2PaYrbmo', '_blank')
+                }
               >
                 {t('加入QQ群')}
               </Button>
@@ -171,7 +173,7 @@ const Contact = () => {
                 size='large'
                 icon={<CopyIcon size={16} />}
                 className='contact-hero__secondary-btn'
-                onClick={() => handleCopy('fishxcode')}
+                onClick={() => handleCopy('oiovdev')}
               >
                 {t('复制微信号')}
               </Button>
@@ -186,7 +188,9 @@ const Contact = () => {
                       <Icon size={18} strokeWidth={2} />
                     </div>
                     <div>
-                      <div className='contact-highlight__title'>{t(item.titleKey)}</div>
+                      <div className='contact-highlight__title'>
+                        {t(item.titleKey)}
+                      </div>
                       <div className='contact-highlight__description'>
                         {t(item.descriptionKey)}
                       </div>
@@ -199,13 +203,17 @@ const Contact = () => {
 
           <div className='contact-hero__panel'>
             <div className='contact-hero__panel-tag'>{t('快速联系')}</div>
-            <div className='contact-hero__panel-title'>{t('优先推荐这两个入口')}</div>
+            <div className='contact-hero__panel-title'>
+              {t('优先推荐这两个入口')}
+            </div>
 
             <div className='contact-quick-list'>
               <button
                 type='button'
                 className='contact-quick-card'
-                onClick={() => window.open('https://qm.qq.com/q/Ce2PaYrbmo', '_blank')}
+                onClick={() =>
+                  window.open('https://qm.qq.com/q/Ce2PaYrbmo', '_blank')
+                }
               >
                 <div className='contact-quick-card__meta'>
                   <span className='contact-quick-card__badge'>{t('社区')}</span>
@@ -221,17 +229,19 @@ const Contact = () => {
               <button
                 type='button'
                 className='contact-quick-card'
-                onClick={() => handleCopy('fishxcode')}
+                onClick={() => handleCopy('oiovdev')}
               >
                 <div className='contact-quick-card__meta'>
                   <span className='contact-quick-card__badge'>{t('私聊')}</span>
                   <CopyIcon size={18} />
                 </div>
-                <div className='contact-quick-card__title'>{t('添加微信号')}</div>
+                <div className='contact-quick-card__title'>
+                  {t('添加微信号')}
+                </div>
                 <div className='contact-quick-card__desc'>
                   {t('适合合作咨询、商务沟通与一对一协助')}
                 </div>
-                <div className='contact-quick-card__value'>fishxcode</div>
+                <div className='contact-quick-card__value'>oiovdev</div>
               </button>
             </div>
           </div>
@@ -254,8 +264,12 @@ const Contact = () => {
                       <Icon size={20} strokeWidth={2} />
                     </div>
                     <div className='contact-channel-card__copy'>
-                      <div className='contact-channel-card__tone'>{t(card.toneKey)}</div>
-                      <div className='contact-channel-card__title'>{t(card.titleKey)}</div>
+                      <div className='contact-channel-card__tone'>
+                        {t(card.toneKey)}
+                      </div>
+                      <div className='contact-channel-card__title'>
+                        {t(card.titleKey)}
+                      </div>
                       <div className='contact-channel-card__subtitle'>
                         {t(card.subtitleKey)}
                       </div>
@@ -274,9 +288,13 @@ const Contact = () => {
 
                   <div className='contact-channel-card__main'>
                     <div className='contact-channel-card__info'>
-                      <div className='contact-channel-card__label'>{t('联系账号')}</div>
+                      <div className='contact-channel-card__label'>
+                        {t('联系账号')}
+                      </div>
                       {card.value ? (
-                        <div className='contact-channel-card__value'>{card.value}</div>
+                        <div className='contact-channel-card__value'>
+                          {card.value}
+                        </div>
                       ) : (
                         <div className='contact-channel-card__value contact-channel-card__value--muted'>
                           {t('扫码加入')}
@@ -284,12 +302,13 @@ const Contact = () => {
                       )}
 
                       <div className='contact-channel-card__badges'>
-                        <span className='contact-channel-card__badge'>{t(card.titleKey)}</span>
+                        <span className='contact-channel-card__badge'>
+                          {t(card.titleKey)}
+                        </span>
                         <span className='contact-channel-card__badge'>
                           {card.copyValue ? t('可复制') : t('扫码加入')}
                         </span>
                       </div>
-
                     </div>
 
                     <div className='contact-channel-card__preview'>

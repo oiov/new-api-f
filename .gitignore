@@ -31,3 +31,4 @@ data/
 .gocache-temp
 .gopath
 .vercel
+.env*.local

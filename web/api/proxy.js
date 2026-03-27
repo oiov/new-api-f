@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-const DEFAULT_BACKEND_ORIGIN = 'https://www.fishxcode.com';
+const DEFAULT_BACKEND_ORIGIN = 'https://www.aicentos.com';
 
 const ALLOWED_BASES = new Set(['api', 'v1', 'v1beta', 'mj', 'pg']);
 
@@ -67,16 +67,11 @@ function buildUpstreamUrl(requestUrl) {
 
   const backendOrigin = getBackendOrigin();
   if (!backendOrigin) {
-    throw new Error(
-      'Missing backend origin.',
-    );
+    throw new Error('Missing backend origin.');
   }
 
   const hasTrailingSlash = proxyPath.endsWith('/');
-  const normalizedPath = proxyPath
-    .split('/')
-    .filter(Boolean)
-    .join('/');
+  const normalizedPath = proxyPath.split('/').filter(Boolean).join('/');
   const pathname = normalizedPath
     ? `/${base}/${normalizedPath}${hasTrailingSlash ? '/' : ''}`
     : `/${base}`;

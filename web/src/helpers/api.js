@@ -26,7 +26,7 @@ import {
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
-const DEFAULT_RELAY_ORIGIN = 'https://www.fishxcode.com';
+const DEFAULT_RELAY_ORIGIN = 'https://www.aicentos.com';
 const DIRECT_RELAY_PREFIXES = ['/v1', '/v1beta', '/pg', '/mj'];
 
 function trimTrailingSlash(url = '') {

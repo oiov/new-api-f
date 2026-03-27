@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_ORIGIN = 'https://www.fishxcode.com';
+const DEFAULT_BACKEND_ORIGIN = 'https://www.aicentos.com';
 
 const HOP_BY_HOP_HEADERS = [
   'connection',

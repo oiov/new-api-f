@@ -2,4 +2,4 @@
 User-agent: *
 Allow: /
 Disallow:
-Sitemap: https://fishxcode.com/sitemap.xml
+Sitemap: https://aicentos.com/sitemap.xml

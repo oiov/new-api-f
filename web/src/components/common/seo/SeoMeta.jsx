@@ -1,11 +1,9 @@
 import { useEffect, useId } from 'react';
 import { useLocation } from 'react-router-dom';
 
-const SITE_URL =
-  (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://fishxcode.com').replace(
-    /\/$/,
-    '',
-  );
+const SITE_URL = (
+  import.meta.env.VITE_PUBLIC_SITE_URL || 'https://aicentos.com'
+).replace(/\/$/, '');
 const DEFAULT_OG_IMAGE = '/cover-4.webp';
 
 function upsertMeta(attr, key, content) {
@@ -78,7 +76,7 @@ const SeoMeta = ({
       upsertMeta('property', 'og:description', description),
       upsertMeta('property', 'og:type', type),
       upsertMeta('property', 'og:url', canonicalUrl),
-      upsertMeta('property', 'og:site_name', 'FishXCode AI'),
+      upsertMeta('property', 'og:site_name', 'AICentOS'),
       upsertMeta('property', 'og:locale', locale),
       upsertMeta('property', 'og:image', imageUrl),
       upsertMeta('name', 'twitter:card', 'summary_large_image'),

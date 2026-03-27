@@ -1,37 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://fishxcode.com/</loc>
+    <loc>https://aicentos.com/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://fishxcode.com/pricing</loc>
+    <loc>https://aicentos.com/pricing</loc>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://fishxcode.com/contact</loc>
+    <loc>https://aicentos.com/contact</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://fishxcode.com/status</loc>
+    <loc>https://aicentos.com/status</loc>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://fishxcode.com/docs</loc>
+    <loc>https://aicentos.com/docs</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://fishxcode.com/user-agreement</loc>
+    <loc>https://aicentos.com/user-agreement</loc>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://fishxcode.com/privacy-policy</loc>
+    <loc>https://aicentos.com/privacy-policy</loc>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>

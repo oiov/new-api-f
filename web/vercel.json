@@ -34,43 +34,43 @@
   "routes": [
     {
       "src": "^/api/?$",
-      "dest": "https://claud.fishxcode.com/api"
+      "dest": "https://api-zeabur.aicentos.com/api"
     },
     {
       "src": "^/api/(.*)$",
-      "dest": "https://claud.fishxcode.com/api/$1"
+      "dest": "https://api-zeabur.aicentos.com/api/$1"
     },
     {
       "src": "^/v1/?$",
-      "dest": "https://claud.fishxcode.com/v1"
+      "dest": "https://api-zeabur.aicentos.com/v1"
     },
     {
       "src": "^/v1/(.*)$",
-      "dest": "https://claud.fishxcode.com/v1/$1"
+      "dest": "https://api-zeabur.aicentos.com/v1/$1"
     },
     {
       "src": "^/v1beta/?$",
-      "dest": "https://claud.fishxcode.com/v1beta"
+      "dest": "https://api-zeabur.aicentos.com/v1beta"
     },
     {
       "src": "^/v1beta/(.*)$",
-      "dest": "https://claud.fishxcode.com/v1beta/$1"
+      "dest": "https://api-zeabur.aicentos.com/v1beta/$1"
     },
     {
       "src": "^/mj/?$",
-      "dest": "https://claud.fishxcode.com/mj"
+      "dest": "https://api-zeabur.aicentos.com/mj"
     },
     {
       "src": "^/mj/(.*)$",
-      "dest": "https://claud.fishxcode.com/mj/$1"
+      "dest": "https://api-zeabur.aicentos.com/mj/$1"
     },
     {
       "src": "^/pg/?$",
-      "dest": "https://claud.fishxcode.com/pg"
+      "dest": "https://api-zeabur.aicentos.com/pg"
     },
     {
       "src": "^/pg/(.*)$",
-      "dest": "https://claud.fishxcode.com/pg/$1"
+      "dest": "https://api-zeabur.aicentos.com/pg/$1"
     },
     {
       "handle": "filesystem"
