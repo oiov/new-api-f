@@ -474,11 +474,11 @@ const InvitationCard = ({
                       <Text type='tertiary'>{t('额度奖励')}</Text>
                       <div className='mt-1 text-semi-color-text-0'>
                         {item.quota_status === 'granted'
-                          ? renderQuota(config?.invitee_quota || 0)
+                          ? renderQuota(item.quota_amount || 0)
                           : renderPieceStatusText(
                               item.quota_status,
                               t('未配置'),
-                              renderQuota(config?.invitee_quota || 0),
+                              renderQuota(item.quota_amount || 0),
                               t,
                             )}
                       </div>

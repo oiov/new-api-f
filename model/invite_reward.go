@@ -90,6 +90,7 @@ type InvitedUserRewardInfo struct {
 	Status        int                   `json:"status"`
 	OverallStatus string                `json:"overall_status"`
 	QuotaStatus   string                `json:"quota_status"`
+	QuotaAmount   int                   `json:"quota_amount"`
 	PlanStatus    string                `json:"plan_status"`
 	RewardAt      int64                 `json:"reward_at"`
 	BlockedReason string                `json:"blocked_reason"`
@@ -111,6 +112,7 @@ type InviteRewardDetails struct {
 
 type inviteRewardGrantSummary struct {
 	QuotaGranted  bool
+	QuotaAmount   int
 	PlanGranted   bool
 	Blocked       bool
 	BlockedReason string
@@ -298,6 +300,9 @@ func loadInviteRewardGrantSummary(inviterId int, inviteeIds []int) (map[int]invi
 		case InviteRewardTypeQuota:
 			if grant.RewardStatus == InviteRewardStatusGranted {
 				summary.QuotaGranted = true
+				if grant.QuotaAmount > 0 && summary.QuotaAmount == 0 {
+					summary.QuotaAmount = grant.QuotaAmount
+				}
 			}
 		case InviteRewardTypePlan:
 			if grant.RewardStatus == InviteRewardStatusGranted {
@@ -452,6 +457,7 @@ func GetInviteRewardDetails(userId int, invitedPage int, invitedPageSize int, re
 			Status:        user.Status,
 			OverallStatus: InviteRewardStatusUnknown,
 			QuotaStatus:   InviteRewardStatusUnknown,
+			QuotaAmount:   summary.QuotaAmount,
 			PlanStatus:    InviteRewardStatusUnknown,
 			RewardAt:      summary.RewardAt,
 			BlockedReason: summary.BlockedReason,

@@ -899,7 +899,6 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             allSubscriptions={allSubscriptions}
             reloadSubscriptionSelf={getSubscriptionSelf}
             initialMainTab='my_subscriptions'
-            withCard={false}
           />
         )}
         {isTopupPage && (
