@@ -25,19 +25,28 @@ import {
   Collapse,
   Divider,
   Empty,
+  Pagination,
   Progress,
   Select,
   Skeleton,
-  Space,
   Tag,
-  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess, renderQuota } from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
-import { CalendarClock, RefreshCw, Sparkles } from 'lucide-react';
+import {
+  CalendarClock,
+  Check,
+  Clock,
+  Crown,
+  Package,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
-import CardTable from '../common/ui/CardTable';
 import SubscriptionConsumeLogsModal from '../table/subscriptions/modals/SubscriptionConsumeLogsModal';
 import {
   formatSubscriptionDuration,
@@ -114,6 +123,21 @@ function getPlanValueScore(plan) {
   return Number(summary.total || 0);
 }
 
+const StatChip = ({ icon: Icon, label, value }) => (
+  <div className='inline-flex items-center gap-2 rounded-full bg-white/60 px-4 py-2 text-xs text-semi-color-text-0 backdrop-blur-sm dark:bg-white/10'>
+    <Icon size={14} className='text-semi-color-primary' />
+    <span className='text-semi-color-text-2'>{label}</span>
+    <span className='font-semibold'>{value}</span>
+  </div>
+);
+
+const BenefitItem = ({ text }) => (
+  <div className='flex items-start gap-2 text-sm text-semi-color-text-1'>
+    <Check size={14} className='mt-0.5 flex-shrink-0 text-green-500' />
+    <span>{text}</span>
+  </div>
+);
+
 const SubscriptionPlansCard = ({
   t,
   loading = false,
@@ -139,7 +163,7 @@ const SubscriptionPlansCard = ({
   const [expandedSubscriptionKeys, setExpandedSubscriptionKeys] = useState([]);
   const [consumeLogsFilter, setConsumeLogsFilter] = useState(null);
   const [planPage, setPlanPage] = useState(1);
-  const [planPageSize, setPlanPageSize] = useState(10);
+  const [planPageSize] = useState(9);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
@@ -448,6 +472,11 @@ const SubscriptionPlansCard = ({
       label: t('生效中的订阅'),
       value: `${activeSubscriptionItems.length}`,
       helper: hasActiveSubscription ? t('正在提供模型权益') : t('当前暂无生效套餐'),
+      icon: Zap,
+      color: 'blue',
+      gradient: 'from-blue-500/10 to-blue-500/5',
+      iconBg: 'bg-blue-500/15',
+      iconColor: 'text-blue-600 dark:text-blue-400',
     },
     {
       label: t('历史订阅'),
@@ -456,6 +485,11 @@ const SubscriptionPlansCard = ({
         historySubscriptionItems.length > 0
           ? t('含已过期与已作废记录')
           : t('暂无历史记录'),
+      icon: History,
+      color: 'purple',
+      gradient: 'from-purple-500/10 to-purple-500/5',
+      iconBg: 'bg-purple-500/15',
+      iconColor: 'text-purple-600 dark:text-purple-400',
     },
     {
       label: t('最近到期'),
@@ -465,6 +499,11 @@ const SubscriptionPlansCard = ({
       helper: nextExpiringSubscription
         ? nextExpiringSubscription.title
         : t('暂无生效套餐'),
+      icon: Clock,
+      color: 'amber',
+      gradient: 'from-amber-500/10 to-amber-500/5',
+      iconBg: 'bg-amber-500/15',
+      iconColor: 'text-amber-600 dark:text-amber-400',
     },
     {
       label: t('当前权益概览'),
@@ -477,8 +516,82 @@ const SubscriptionPlansCard = ({
             : displayBillingPreference === 'wallet_first'
               ? t('优先使用钱包扣费')
               : t('优先使用订阅扣费'),
+      icon: Crown,
+      color: 'emerald',
+      gradient: 'from-emerald-500/10 to-emerald-500/5',
+      iconBg: 'bg-emerald-500/15',
+      iconColor: 'text-emerald-600 dark:text-emerald-400',
     },
   ];
+
+  const usageChartMetrics = useMemo(() => {
+    const usageMap = {
+      quota: {
+        key: 'quota',
+        title: t('额度消耗'),
+        resourceType: 'quota',
+        total: 0,
+        used: 0,
+        remain: 0,
+        unlimited: false,
+      },
+      request_count: {
+        key: 'request_count',
+        title: t('次数消耗'),
+        resourceType: 'request_count',
+        total: 0,
+        used: 0,
+        remain: 0,
+        unlimited: false,
+      },
+    };
+
+    activeSubscriptionItems.forEach((item) => {
+      const usageSummary = item?.usageSummary || {};
+      const resourceType = item?.resourceType === 'request_count' ? 'request_count' : 'quota';
+      const target = usageMap[resourceType];
+      if (!target) return;
+
+      if (usageSummary.unlimited) {
+        target.unlimited = true;
+        return;
+      }
+
+      target.total += Number(usageSummary.total || 0);
+      target.used += Number(usageSummary.used || 0);
+      target.remain += Number(usageSummary.remain || 0);
+    });
+
+    return Object.values(usageMap).map((item) => {
+      const percent = item.unlimited
+        ? 0
+        : Math.min(
+            100,
+            Math.max(
+              0,
+              Math.round((Number(item.used || 0) / Math.max(Number(item.total || 0), 1)) * 100),
+            ),
+          );
+
+      const formatter = item.resourceType === 'request_count'
+        ? (value) => `${value}`
+        : (value) => renderQuota(value);
+
+      return {
+        ...item,
+        percent,
+        progressColor:
+          percent >= 85
+            ? 'var(--semi-color-danger)'
+            : percent >= 60
+              ? 'var(--semi-color-warning)'
+              : 'var(--semi-color-success)',
+        totalText: item.unlimited ? t('不限') : formatter(item.total),
+        usedText: item.unlimited ? t('按实际调用') : formatter(item.used),
+        remainText: item.unlimited ? t('不限') : formatter(item.remain),
+      };
+    });
+  }, [activeSubscriptionItems, t]);
 
   const packageGuideItems = useMemo(
     () => [
@@ -567,7 +680,7 @@ const SubscriptionPlansCard = ({
     const stateTag =
       item.state === 'active' ? (
         <Tag
-          color='white'
+          color='green'
           size='small'
           shape='circle'
           prefixIcon={<Badge dot type='success' />}
@@ -575,31 +688,44 @@ const SubscriptionPlansCard = ({
           {t('生效')}
         </Tag>
       ) : item.state === 'cancelled' ? (
-        <Tag color='white' size='small' shape='circle'>
+        <Tag color='grey' size='small' shape='circle'>
           {t('已作废')}
         </Tag>
       ) : (
-        <Tag color='white' size='small' shape='circle'>
+        <Tag color='grey' size='small' shape='circle'>
           {t('已过期')}
         </Tag>
       );
 
+    const usagePercent = item.usageSummary.unlimited
+      ? 0
+      : Math.round(
+          (Number(item.usageSummary.used || 0) /
+            Number(item.usageSummary.total || 1)) *
+            100,
+        );
+
     return (
       <div className='flex flex-col gap-3 py-1'>
         <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
-          <div className='min-w-0'>
-            <div className='flex flex-wrap items-center gap-2'>
-              <Text strong ellipsis={{ showTooltip: true }}>
-                {item.title}
-              </Text>
-              {stateTag}
+          <div className='min-w-0 flex items-center gap-3'>
+            <div className={`flex-shrink-0 rounded-lg p-2 ${item.state === 'active' ? 'bg-green-500/10' : 'bg-gray-500/10'}`}>
+              <ShieldCheck size={18} className={item.state === 'active' ? 'text-green-600 dark:text-green-400' : 'text-gray-400'} />
             </div>
-            <Text type='tertiary' size='small'>
-              {t('订阅')} #{item.subscription?.id || '--'}
-            </Text>
+            <div className='min-w-0'>
+              <div className='flex flex-wrap items-center gap-2'>
+                <Text strong ellipsis={{ showTooltip: true }}>
+                  {item.title}
+                </Text>
+                {stateTag}
+              </div>
+              <Text type='tertiary' size='small'>
+                {t('订阅')} #{item.subscription?.id || '--'}
+              </Text>
+            </div>
           </div>
           <div className='text-left lg:text-right'>
-            <div className='font-medium'>
+            <div className='font-semibold text-base'>
               {t('剩余')} {getUsageDisplayText(item.usageSummary, item.resourceType, t)}
             </div>
             <Text type='tertiary' size='small'>
@@ -609,37 +735,49 @@ const SubscriptionPlansCard = ({
             </Text>
           </div>
         </div>
+        {item.state === 'active' && !item.usageSummary.unlimited && (
+          <div className='px-1'>
+            <Progress
+              percent={usagePercent}
+              stroke={
+                usagePercent >= 85
+                  ? 'var(--semi-color-danger)'
+                  : usagePercent >= 60
+                    ? 'var(--semi-color-warning)'
+                    : 'var(--semi-color-success)'
+              }
+              showInfo={false}
+              size='small'
+            />
+          </div>
+        )}
         <div className='grid grid-cols-2 gap-3 text-xs text-gray-500 lg:grid-cols-4'>
-          <div>
+          <div className='rounded-lg bg-semi-color-fill-0 p-2'>
             <div>{t('到期时间')}</div>
-            <div className='mt-1 text-semi-color-text-0'>
+            <div className='mt-1 font-medium text-semi-color-text-0'>
               {formatDateTime(item.subscription?.end_time)}
             </div>
           </div>
-          <div>
+          <div className='rounded-lg bg-semi-color-fill-0 p-2'>
             <div>
               {item.resourceType === 'request_count' ? t('次数重置') : t('额度重置')}
             </div>
-            <div className='mt-1 text-semi-color-text-0'>
+            <div className='mt-1 font-medium text-semi-color-text-0'>
               {formatSubscriptionResetPeriod(item.subscription, t)}
             </div>
           </div>
-          <div>
+          <div className='rounded-lg bg-semi-color-fill-0 p-2'>
             <div>{item.usageLabel}</div>
-            <div className='mt-1 text-semi-color-text-0'>
+            <div className='mt-1 font-medium text-semi-color-text-0'>
               {getUsageDetailText(item.usageSummary, item.resourceType, t)}
             </div>
           </div>
-          <div>
+          <div className='rounded-lg bg-semi-color-fill-0 p-2'>
             <div>{t('已用进度')}</div>
-            <div className='mt-1 text-semi-color-text-0'>
+            <div className='mt-1 font-medium text-semi-color-text-0'>
               {item.usageSummary.unlimited
                 ? t('不限')
-                : `${Math.round(
-                    (Number(item.usageSummary.used || 0) /
-                      Number(item.usageSummary.total || 1)) *
-                      100,
-                  )}%`}
+                : `${usagePercent}%`}
             </div>
           </div>
         </div>
@@ -815,30 +953,35 @@ const SubscriptionPlansCard = ({
             sortedPlans[0]?.plan?.id === plan?.id;
 
           return (
-            <div className='min-w-0'>
-              <div className='flex flex-wrap items-center gap-2'>
-                <Text strong>{plan?.title || t('订阅套餐')}</Text>
-                {isPopular && (
-                  <Tag color='blue' shape='circle' size='small'>
-                    <Sparkles size={10} className='mr-1' />
-                    {t('推荐')}
-                  </Tag>
-                )}
-                {!plan?.enabled && (
-                  <Tag color='red' shape='circle' size='small'>
-                    {t('已下架')}
-                  </Tag>
-                )}
-                {reached && (
-                  <Tag color='orange' shape='circle' size='small'>
-                    {t('已达上限')}
-                  </Tag>
-                )}
+            <div className='min-w-0 flex items-center gap-3'>
+              <div className={`flex-shrink-0 rounded-lg p-2 ${isPopular ? 'bg-blue-500/15' : 'bg-semi-color-fill-1'}`}>
+                <Package size={16} className={isPopular ? 'text-blue-600 dark:text-blue-400' : 'text-semi-color-text-2'} />
               </div>
-              <Text type='tertiary' size='small'>
-                {plan?.subtitle || t('暂无说明')}
-                {isPopular ? ` · ${t('适合首次购买与标准使用场景')}` : ''}
-              </Text>
+              <div className='min-w-0'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Text strong>{plan?.title || t('订阅套餐')}</Text>
+                  {isPopular && (
+                    <Tag color='blue' shape='circle' size='small'>
+                      <Sparkles size={10} className='mr-1' />
+                      {t('推荐')}
+                    </Tag>
+                  )}
+                  {!plan?.enabled && (
+                    <Tag color='red' shape='circle' size='small'>
+                      {t('已下架')}
+                    </Tag>
+                  )}
+                  {reached && (
+                    <Tag color='orange' shape='circle' size='small'>
+                      {t('已达上限')}
+                    </Tag>
+                  )}
+                </div>
+                <Text type='tertiary' size='small'>
+                  {plan?.subtitle || t('暂无说明')}
+                  {isPopular ? ` · ${t('适合首次购买与标准使用场景')}` : ''}
+                </Text>
+              </div>
             </div>
           );
         },
@@ -853,8 +996,8 @@ const SubscriptionPlansCard = ({
           const price = Number(plan?.price_amount || 0) * rate;
           const displayPrice = price.toFixed(Number.isInteger(price) ? 0 : 2);
           return (
-            <div>
-              <div className='text-lg font-semibold text-blue-600'>
+            <div className='inline-flex flex-col items-start'>
+              <div className='text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent'>
                 {symbol}
                 {displayPrice}
               </div>
@@ -942,7 +1085,13 @@ const SubscriptionPlansCard = ({
           }
 
           return (
-            <Button theme='solid' type='primary' onClick={() => openBuy(record)}>
+            <Button
+              theme='solid'
+              type='primary'
+              onClick={() => openBuy(record)}
+              icon={<ChevronRight size={14} />}
+              iconPosition='right'
+            >
               {t('立即订阅')}
             </Button>
           );
@@ -958,52 +1107,356 @@ const SubscriptionPlansCard = ({
         <div className='space-y-4'>
           <div className='grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4'>
             {[1, 2, 3, 4].map((i) => (
-              <Card key={i} className='!rounded-xl'>
-                <Skeleton.Paragraph active rows={2} />
+              <Card key={i} className='!rounded-xl border-0 shadow-sm'>
+                <div className='flex items-start justify-between'>
+                  <div className='flex-1'>
+                    <Skeleton.Title active style={{ width: '50%', height: 12, marginBottom: 12 }} />
+                    <Skeleton.Title active style={{ width: '70%', height: 24, marginBottom: 8 }} />
+                    <Skeleton.Title active style={{ width: '60%', height: 12 }} />
+                  </div>
+                  <Skeleton.Avatar active size='small' shape='square' />
+                </div>
               </Card>
             ))}
           </div>
-          <Card className='!rounded-xl w-full' bodyStyle={{ padding: '12px' }}>
+          <Card className='!rounded-xl w-full border-0 shadow-sm' bodyStyle={{ padding: '12px' }}>
             <Skeleton.Paragraph active rows={5} />
           </Card>
-          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-5 w-full px-1'>
-            {[1, 2, 3].map((i) => (
-              <Card
-                key={i}
-                className='!rounded-xl w-full h-full'
-                bodyStyle={{ padding: 16 }}
-              >
-                <Skeleton.Title
-                  active
-                  style={{ width: '60%', height: 24, marginBottom: 8 }}
-                />
-                <Skeleton.Paragraph active rows={3} />
-              </Card>
-            ))}
-          </div>
+          <Card className='!rounded-xl w-full border-0 shadow-sm' bodyStyle={{ padding: '12px' }}>
+            <Skeleton.Paragraph active rows={4} />
+          </Card>
         </div>
       ) : (
         <Space vertical style={{ width: '100%' }} spacing={12}>
           <div className='grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4'>
-            {overviewItems.map((item) => (
-              <Card
-                key={item.label}
-                className='!rounded-xl border-0 shadow-sm'
-                bodyStyle={{ padding: 16 }}
-              >
-                <div className='text-xs text-gray-500'>{item.label}</div>
-                <div className='mt-2 text-lg font-semibold break-words'>
-                  {item.value}
-                </div>
-                <div className='mt-2 text-xs text-gray-500'>{item.helper}</div>
-              </Card>
-            ))}
+            {overviewItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Card
+                  key={item.label}
+                  className={`!rounded-xl border-0 shadow-sm bg-gradient-to-br ${item.gradient} transition-all duration-200 hover:shadow-md`}
+                  bodyStyle={{ padding: 16 }}
+                >
+                  <div className='flex items-start justify-between'>
+                    <div className='min-w-0 flex-1'>
+                      <div className='text-xs font-medium text-gray-500'>{item.label}</div>
+                      <div className='mt-2 text-xl font-bold break-words text-semi-color-text-0'>
+                        {item.value}
+                      </div>
+                      <div className='mt-2 text-xs text-gray-400'>{item.helper}</div>
+                    </div>
+                    <div className={`flex-shrink-0 rounded-lg p-2 ${item.iconBg}`}>
+                      <Icon size={18} className={item.iconColor} />
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
 
-          <Card className='!rounded-xl w-full' bodyStyle={{ padding: '16px' }}>
+          <Card className='!rounded-xl w-full overflow-hidden border-0 shadow-sm' bodyStyle={{ padding: 0 }}>
+            <div className='bg-gradient-to-r from-blue-500/10 via-indigo-500/8 to-purple-500/10 px-5 py-4 dark:from-blue-500/15 dark:via-indigo-500/10 dark:to-purple-500/15'>
+              <div className='flex items-center gap-2.5'>
+                <div className='rounded-lg bg-blue-500/15 p-1.5'>
+                  <BarChart3 size={16} className='text-blue-600 dark:text-blue-400' />
+                </div>
+                <div>
+                  <Text strong>{t('消耗额度可视化')}</Text>
+                  <div>
+                    <Text type='tertiary' size='small'>
+                      {t('聚合展示生效订阅的额度/次数使用进度，帮助你更快判断是否需要续费或加购。')}
+                    </Text>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className='grid grid-cols-1 gap-4 p-4 md:grid-cols-2'>
+              {usageChartMetrics.map((metric) => (
+                <div
+                  key={metric.key}
+                  className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-5 transition-all duration-200 hover:shadow-sm'
+                >
+                  <div className='flex items-center justify-between'>
+                    <div className='flex items-center gap-2'>
+                      <div
+                        className='h-2.5 w-2.5 rounded-full'
+                        style={{ backgroundColor: metric.unlimited ? 'var(--semi-color-success)' : metric.progressColor }}
+                      />
+                      <Text strong className='text-base'>{metric.title}</Text>
+                    </div>
+                    <Tag
+                      color={metric.percent >= 85 ? 'red' : metric.percent >= 60 ? 'orange' : 'green'}
+                      shape='circle'
+                      size='small'
+                    >
+                      {metric.unlimited ? t('不限') : `${metric.percent}%`}
+                    </Tag>
+                  </div>
+                  {!metric.unlimited && (
+                    <div className='mt-4'>
+                      <Progress
+                        percent={metric.percent}
+                        stroke={metric.progressColor}
+                        showInfo={false}
+                        style={{ height: 8 }}
+                      />
+                    </div>
+                  )}
+                  <div className='mt-4 grid grid-cols-3 gap-2 text-xs'>
+                    <div className='rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'>
+                      <div className='text-semi-color-text-2'>{t('总量')}</div>
+                      <div className='mt-1.5 font-semibold text-semi-color-text-0'>{metric.totalText}</div>
+                    </div>
+                    <div className='rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'>
+                      <div className='text-semi-color-text-2'>{t('已用')}</div>
+                      <div className='mt-1.5 font-semibold text-semi-color-text-0'>{metric.usedText}</div>
+                    </div>
+                    <div className='rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'>
+                      <div className='text-semi-color-text-2'>{t('剩余')}</div>
+                      <div className='mt-1.5 font-semibold text-semi-color-text-0'>{metric.remainText}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className='!rounded-xl w-full border-0 shadow-sm' bodyStyle={{ padding: '16px 20px' }}>
+            <Tabs
+              type='card'
+              collapsible
+              activeKey={activeMainTab}
+              onChange={(key) => setActiveMainTab(key)}
+            >
+              <TabPane
+                itemKey='my_subscriptions'
+                tab={`${t('我的订阅')} (${allSubscriptions.length})`}
+              >
+                <div className='space-y-3'>
+                  <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <Tag
+                        color={subscriptionView === 'active' ? 'green' : 'white'}
+                        shape='circle'
+                        size='small'
+                      >
+                        {activeSubscriptionItems.length} {t('个生效中')}
+                      </Tag>
+                      {historySubscriptionItems.length > 0 && (
+                        <Tag
+                          color={subscriptionView === 'history' ? 'orange' : 'white'}
+                          shape='circle'
+                          size='small'
+                        >
+                          {historySubscriptionItems.length} {t('个历史记录')}
+                        </Tag>
+                      )}
+                    </div>
+                    <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
+                      <Space wrap>
+                        <Button
+                          theme={subscriptionView === 'active' ? 'solid' : 'outline'}
+                          type='primary'
+                          size='small'
+                          onClick={() => setSubscriptionView('active')}
+                        >
+                          {t('生效中')}
+                        </Button>
+                        <Button
+                          theme={subscriptionView === 'history' ? 'solid' : 'outline'}
+                          type='tertiary'
+                          size='small'
+                          onClick={() => setSubscriptionView('history')}
+                        >
+                          {t('历史订阅')}
+                        </Button>
+                        <Button
+                          theme={subscriptionView === 'all' ? 'solid' : 'outline'}
+                          type='tertiary'
+                          size='small'
+                          onClick={() => setSubscriptionView('all')}
+                        >
+                          {t('全部')}
+                        </Button>
+                        <Button
+                          theme='outline'
+                          type='tertiary'
+                          size='small'
+                          onClick={() => setConsumeLogsFilter({})}
+                        >
+                          {t('全部订阅消耗')}
+                        </Button>
+                      </Space>
+                      <div className='flex items-center gap-2'>
+                        <Select
+                          value={displayBillingPreference}
+                          onChange={onChangeBillingPreference}
+                          size='small'
+                          optionList={[
+                            {
+                              value: 'subscription_first',
+                              label: disableSubscriptionPreference
+                                ? `${t('优先订阅')} (${t('无生效')})`
+                                : t('优先订阅'),
+                              disabled: disableSubscriptionPreference,
+                            },
+                            { value: 'wallet_first', label: t('优先钱包') },
+                            {
+                              value: 'subscription_only',
+                              label: disableSubscriptionPreference
+                                ? `${t('仅用订阅')} (${t('无生效')})`
+                                : t('仅用订阅'),
+                              disabled: disableSubscriptionPreference,
+                            },
+                            { value: 'wallet_only', label: t('仅用钱包') },
+                          ]}
+                        />
+                        <Button
+                          size='small'
+                          theme='light'
+                          type='tertiary'
+                          icon={
+                            <RefreshCw
+                              size={12}
+                              className={refreshing ? 'animate-spin' : ''}
+                            />
+                          }
+                          onClick={handleRefresh}
+                          loading={refreshing}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {disableSubscriptionPreference && isSubscriptionPreference && (
+                    <Text type='tertiary' size='small' className='block'>
+                      {t('已保存偏好为')}
+                      {subscriptionPreferenceLabel}
+                      {t('，当前无生效订阅，将自动使用钱包')}
+                    </Text>
+                  )}
+
+                  <Divider margin={8} />
+
+                  {hasAnySubscription ? (
+                    visibleSubscriptionItems.length > 0 ? (
+                      <Collapse
+                        activeKey={expandedSubscriptionKeys}
+                        onChange={setExpandedSubscriptionKeys}
+                      >
+                        {visibleSubscriptionItems.map((item) => (
+                          <Collapse.Panel
+                            key={item.key}
+                            itemKey={item.key}
+                            header={renderSubscriptionHeader(item)}
+                          >
+                            {renderSubscriptionBody(item)}
+                          </Collapse.Panel>
+                        ))}
+                      </Collapse>
+                    ) : (
+                      <div className='py-8'>
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          title={
+                            subscriptionView === 'history'
+                              ? t('暂无历史订阅')
+                              : t('暂无生效订阅')
+                          }
+                          description={t('切换筛选或购买新套餐后会显示在这里')}
+                        />
+                      </div>
+                    )
+                  ) : (
+                    <div className='py-8'>
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        title={t('暂无订阅记录')}
+                        description={t('你还没有购买套餐，可前往“套餐列表”选择适合的方案')}
+                      />
+                    </div>
+                  )}
+                </div>
+              </TabPane>
+
+              <TabPane
+                itemKey='plan_list'
+                tab={`${t('套餐列表')} (${sortedPlans.length})`}
+              >
+                <div className='space-y-3'>
+                  <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+                    <div>
+                      <div className='flex items-center gap-2'>
+                        <div className='rounded-lg bg-indigo-500/15 p-1.5'>
+                          <Package size={14} className='text-indigo-600 dark:text-indigo-400' />
+                        </div>
+                        <Text strong>{t('可购买套餐')}</Text>
+                      </div>
+                      <Text type='tertiary' size='small' className='mt-1 block'>
+                        {planSort === 'recommended'
+                          ? t('推荐排序综合考虑价格与权益，优先展示更适合多数用户的套餐')
+                          : t('先看定位与价格，再进入购买弹窗查看完整支付方式')}
+                      </Text>
+                    </div>
+                    <div className='flex items-center gap-2'>
+                      <CalendarClock size={14} className='text-gray-400' />
+                      <Select
+                        value={planSort}
+                        size='small'
+                        onChange={setPlanSort}
+                        optionList={[
+                          { value: 'recommended', label: t('推荐优先') },
+                          { value: 'price_asc', label: t('价格从低到高') },
+                          { value: 'price_desc', label: t('价格从高到低') },
+                          { value: 'value_desc', label: t('权益从多到少') },
+                        ]}
+                      />
+                    </div>
+                  </div>
+
+                  <Divider margin={8} />
+
+                  {sortedPlans.length > 0 ? (
+                    <CardTable
+                      columns={planTableColumns}
+                      dataSource={pagedPlans}
+                      rowKey={(row) => row?.plan?.id}
+                      loading={loading}
+                      hidePagination={false}
+                      pagination={{
+                        currentPage: planPage,
+                        pageSize: planPageSize,
+                        total: sortedPlans.length,
+                        pageSizeOpts: [10, 20, 50],
+                        showSizeChanger: true,
+                        onPageChange: setPlanPage,
+                        onPageSizeChange: (size) => {
+                          setPlanPageSize(size);
+                          setPlanPage(1);
+                        },
+                      }}
+                      expandedRowRender={renderPlanExpandedContent}
+                    />
+                  ) : (
+                    <div className='py-8'>
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        title={t('暂无可购买套餐')}
+                        description={t('管理员暂未上架套餐，请稍后再试或联系管理员')}
+                      />
+                    </div>
+                  )}
+                </div>
+              </TabPane>
+            </Tabs>
+          </Card>
+
+          <Card className='!rounded-xl w-full border-0 shadow-sm' bodyStyle={{ padding: '20px' }}>
             <div className='flex flex-col gap-2'>
               <div className='flex items-center gap-2'>
-                <Sparkles size={16} />
+                <div className='rounded-lg bg-amber-500/15 p-1.5'>
+                  <BookOpen size={14} className='text-amber-600 dark:text-amber-400' />
+                </div>
                 <Text strong>{t('使用说明与计费规则')}</Text>
               </div>
               <Text type='tertiary' size='small'>
@@ -1024,216 +1477,6 @@ const SubscriptionPlansCard = ({
                 </Collapse.Panel>
               ))}
             </Collapse>
-          </Card>
-
-          <Card className='!rounded-xl w-full' bodyStyle={{ padding: '16px' }}>
-            <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
-              <div className='flex flex-wrap items-center gap-2'>
-                <Text strong>{t('我的订阅')}</Text>
-                <Tag
-                  color={subscriptionView === 'active' ? 'green' : 'white'}
-                  shape='circle'
-                  size='small'
-                >
-                  {activeSubscriptionItems.length} {t('个生效中')}
-                </Tag>
-                {historySubscriptionItems.length > 0 && (
-                  <Tag
-                    color={subscriptionView === 'history' ? 'orange' : 'white'}
-                    shape='circle'
-                    size='small'
-                  >
-                    {historySubscriptionItems.length} {t('个历史记录')}
-                  </Tag>
-                )}
-              </div>
-              <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
-                <Space wrap>
-                  <Button
-                    theme={subscriptionView === 'active' ? 'solid' : 'outline'}
-                    type='primary'
-                    size='small'
-                    onClick={() => setSubscriptionView('active')}
-                  >
-                    {t('生效中')}
-                  </Button>
-                  <Button
-                    theme={subscriptionView === 'history' ? 'solid' : 'outline'}
-                    type='tertiary'
-                    size='small'
-                    onClick={() => setSubscriptionView('history')}
-                  >
-                    {t('历史订阅')}
-                  </Button>
-                  <Button
-                    theme={subscriptionView === 'all' ? 'solid' : 'outline'}
-                    type='tertiary'
-                    size='small'
-                    onClick={() => setSubscriptionView('all')}
-                  >
-                    {t('全部')}
-                  </Button>
-                  <Button
-                    theme='outline'
-                    type='tertiary'
-                    size='small'
-                    onClick={() => setConsumeLogsFilter({})}
-                  >
-                    {t('全部订阅消耗')}
-                  </Button>
-                </Space>
-                <div className='flex items-center gap-2'>
-                  <Select
-                    value={displayBillingPreference}
-                    onChange={onChangeBillingPreference}
-                    size='small'
-                    optionList={[
-                      {
-                        value: 'subscription_first',
-                        label: disableSubscriptionPreference
-                          ? `${t('优先订阅')} (${t('无生效')})`
-                          : t('优先订阅'),
-                        disabled: disableSubscriptionPreference,
-                      },
-                      { value: 'wallet_first', label: t('优先钱包') },
-                      {
-                        value: 'subscription_only',
-                        label: disableSubscriptionPreference
-                          ? `${t('仅用订阅')} (${t('无生效')})`
-                          : t('仅用订阅'),
-                        disabled: disableSubscriptionPreference,
-                      },
-                      { value: 'wallet_only', label: t('仅用钱包') },
-                    ]}
-                  />
-                  <Button
-                    size='small'
-                    theme='light'
-                    type='tertiary'
-                    icon={
-                      <RefreshCw
-                        size={12}
-                        className={refreshing ? 'animate-spin' : ''}
-                      />
-                    }
-                    onClick={handleRefresh}
-                    loading={refreshing}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {disableSubscriptionPreference && isSubscriptionPreference && (
-              <Text type='tertiary' size='small' className='mt-3 block'>
-                {t('已保存偏好为')}
-                {subscriptionPreferenceLabel}
-                {t('，当前无生效订阅，将自动使用钱包')}
-              </Text>
-            )}
-
-            <Divider margin={12} />
-
-            {hasAnySubscription ? (
-              visibleSubscriptionItems.length > 0 ? (
-                <Collapse
-                  activeKey={expandedSubscriptionKeys}
-                  onChange={setExpandedSubscriptionKeys}
-                >
-                  {visibleSubscriptionItems.map((item) => (
-                    <Collapse.Panel
-                      key={item.key}
-                      itemKey={item.key}
-                      header={renderSubscriptionHeader(item)}
-                    >
-                      {renderSubscriptionBody(item)}
-                    </Collapse.Panel>
-                  ))}
-                </Collapse>
-              ) : (
-                <div className='py-8'>
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    title={
-                      subscriptionView === 'history'
-                        ? t('暂无历史订阅')
-                        : t('暂无生效订阅')
-                    }
-                    description={t('切换筛选或购买新套餐后会显示在这里')}
-                  />
-                </div>
-              )
-            ) : (
-              <div className='py-8'>
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  title={t('暂无订阅记录')}
-                  description={t('购买套餐后即可享受模型权益')}
-                />
-              </div>
-            )}
-          </Card>
-
-          <Card className='!rounded-xl w-full' bodyStyle={{ padding: '16px' }}>
-            <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
-              <div>
-                <div className='flex items-center gap-2'>
-                  <Sparkles size={16} />
-                  <Text strong>{t('可购买套餐')}</Text>
-                </div>
-                <Text type='tertiary' size='small'>
-                  {planSort === 'recommended'
-                    ? t('推荐排序综合考虑价格与权益，优先展示更适合多数用户的套餐')
-                    : t('先看定位与价格，再进入购买弹窗查看完整支付方式')}
-                </Text>
-              </div>
-              <div className='flex items-center gap-2'>
-                <CalendarClock size={14} className='text-gray-400' />
-                <Select
-                  value={planSort}
-                  size='small'
-                  onChange={setPlanSort}
-                  optionList={[
-                    { value: 'recommended', label: t('推荐优先') },
-                    { value: 'price_asc', label: t('价格从低到高') },
-                    { value: 'price_desc', label: t('价格从高到低') },
-                    { value: 'value_desc', label: t('权益从多到少') },
-                  ]}
-                />
-              </div>
-            </div>
-
-            <Divider margin={12} />
-
-            {sortedPlans.length > 0 ? (
-              <CardTable
-                columns={planTableColumns}
-                dataSource={pagedPlans}
-                rowKey={(row) => row?.plan?.id}
-                loading={loading}
-                hidePagination={false}
-                pagination={{
-                  currentPage: planPage,
-                  pageSize: planPageSize,
-                  total: sortedPlans.length,
-                  pageSizeOpts: [10, 20, 50],
-                  showSizeChanger: true,
-                  onPageChange: setPlanPage,
-                  onPageSizeChange: (size) => {
-                    setPlanPageSize(size);
-                    setPlanPage(1);
-                  },
-                }}
-                expandedRowRender={renderPlanExpandedContent}
-              />
-            ) : (
-              <div className='py-8'>
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  title={t('暂无可购买套餐')}
-                  description={t('请联系管理员配置上架的订阅套餐')}
-                />
-              </div>
-            )}
           </Card>
         </Space>
       )}
@@ -1287,7 +1530,7 @@ const SubscriptionPlansCard = ({
             ? t('我的订阅消耗记录')
             : t('我的全部订阅消耗')
         }
-        allowUsernameFilter={false}
+        allowUserIdFilter={false}
         t={t}
       />
     </>

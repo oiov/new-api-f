@@ -58,7 +58,7 @@ const SubscriptionConsumeLogsModal = ({
   planMetaMap,
   endpoint = '/api/subscription/admin/consume_logs',
   title,
-  allowUsernameFilter = true,
+  allowUserIdFilter = true,
   t,
 }) => {
   const isMobile = useIsMobile();
@@ -75,7 +75,7 @@ const SubscriptionConsumeLogsModal = ({
     () => ({
       subscription_id: initialFilter?.subscriptionId || '',
       plan_id: initialFilter?.planId || '',
-      username: initialFilter?.username || '',
+      user_id: initialFilter?.userId || '',
       dateRange: [
         new Date(getTodayStartTimestamp() * 1000),
         new Date(),
@@ -90,7 +90,7 @@ const SubscriptionConsumeLogsModal = ({
     return {
       subscription_id: values.subscription_id || '',
       plan_id: values.plan_id || '',
-      username: values.username || '',
+      user_id: values.user_id || '',
       start_timestamp: dateRange[0]
         ? Math.floor(new Date(dateRange[0]).getTime() / 1000)
         : 0,
@@ -109,7 +109,7 @@ const SubscriptionConsumeLogsModal = ({
         page_size: String(size),
         subscription_id: String(values.subscription_id || ''),
         plan_id: String(values.plan_id || ''),
-        username: values.username || '',
+        user_id: String(values.user_id || ''),
         start_timestamp: String(values.start_timestamp || 0),
         end_timestamp: String(values.end_timestamp || 0),
       });
@@ -140,7 +140,7 @@ const SubscriptionConsumeLogsModal = ({
       page_size: String(size),
       subscription_id: String(values.subscription_id || ''),
       plan_id: String(values.plan_id || ''),
-      username: values.username || '',
+      user_id: String(values.user_id || ''),
       start_timestamp: String(values.start_timestamp || 0),
       end_timestamp: String(values.end_timestamp || 0),
     });
@@ -164,19 +164,15 @@ const SubscriptionConsumeLogsModal = ({
         render: (text) => formatTs(text),
       },
       {
-        title: t('用户'),
-        dataIndex: 'username',
+        title: t('用户ID'),
+        dataIndex: 'user_id',
         width: 120,
+        render: (text) => `#${text || '-'}`,
       },
       {
-        title: t('模型'),
-        dataIndex: 'model_name',
-        width: 180,
-      },
-      {
-        title: t('渠道'),
+        title: t('渠道ID'),
         width: 160,
-        render: (_, record) => record?.channel_name || `#${record?.channel || '-'}`,
+        render: (_, record) => `#${record?.channel || '-'}`,
       },
       {
         title: t('订阅信息'),
@@ -186,7 +182,7 @@ const SubscriptionConsumeLogsModal = ({
           return (
             <div className='text-xs text-gray-600'>
               <div>#{other?.subscription_id || '-'}</div>
-              <div>#{other?.subscription_plan_id || '-'} {other?.subscription_plan_title || ''}</div>
+              <div>#{other?.subscription_plan_id || '-'}</div>
             </div>
           );
         },
@@ -281,12 +277,10 @@ const SubscriptionConsumeLogsModal = ({
 
       const headers = [
         t('时间'),
-        t('用户'),
-        t('模型'),
-        t('渠道'),
+        'user_id',
+        'channel_id',
         'subscription_id',
         'subscription_plan_id',
-        t('套餐名称'),
         t('资源类型'),
         t('本次消耗'),
         t('剩余'),
@@ -301,12 +295,10 @@ const SubscriptionConsumeLogsModal = ({
           const resourceType = getRecordResourceType(record);
           return [
             formatTs(record?.created_at),
-            record?.username || '',
-            record?.model_name || '',
-            record?.channel_name || `#${record?.channel || '-'}`,
+            record?.user_id || '',
+            record?.channel || '',
             other?.subscription_id || '',
             other?.subscription_plan_id || '',
-            other?.subscription_plan_title || '',
             resourceType === 'request_count' ? 'request_count' : 'quota',
             formatConsumedValue(other?.subscription_consumed || 0, resourceType),
             formatConsumedValue(other?.subscription_remain || 0, resourceType),
@@ -388,7 +380,7 @@ const SubscriptionConsumeLogsModal = ({
             <div className='space-y-3'>
               <div className='flex items-center gap-2'>
                 <Tag color='blue'>{t('订阅日志')}</Tag>
-                <Text type='tertiary'>{t('支持查看全部订阅消耗，也可按订阅实例、套餐、用户过滤')}</Text>
+                <Text type='tertiary'>{t('仅展示必要的 ID 与消耗数据，名称类字段默认脱敏')}</Text>
               </div>
               <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
                 {summaryCards.map((card) => (
@@ -437,9 +429,9 @@ const SubscriptionConsumeLogsModal = ({
                     showClear
                   />
                 </div>
-                {allowUsernameFilter && (
+                {allowUserIdFilter && (
                   <div className='w-full md:w-40'>
-                    <Form.Input field='username' placeholder={t('用户名')} showClear />
+                    <Form.Input field='user_id' placeholder={t('用户ID')} showClear />
                   </div>
                 )}
                 <div className='w-full md:w-[340px]'>

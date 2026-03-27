@@ -393,8 +393,8 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	return logs, total, err
 }
 
-func GetSubscriptionConsumeLogs(userId int, subscriptionId int, planId int, username string, startTimestamp int64, endTimestamp int64, startIdx int, num int) (logs []*Log, total int64, summary *SubscriptionConsumeSummary, err error) {
-	tx := buildSubscriptionConsumeLogsQuery(userId, subscriptionId, planId, username, startTimestamp, endTimestamp)
+func GetSubscriptionConsumeLogs(userId int, subscriptionId int, planId int, filterUserId int, startTimestamp int64, endTimestamp int64, startIdx int, num int) (logs []*Log, total int64, summary *SubscriptionConsumeSummary, err error) {
+	tx := buildSubscriptionConsumeLogsQuery(userId, subscriptionId, planId, filterUserId, startTimestamp, endTimestamp)
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
 		return nil, 0, nil, err
@@ -404,48 +404,11 @@ func GetSubscriptionConsumeLogs(userId int, subscriptionId int, planId int, user
 		return nil, 0, nil, err
 	}
 
-	channelIds := types.NewSet[int]()
-	for _, log := range logs {
-		if log.ChannelId != 0 {
-			channelIds.Add(log.ChannelId)
-		}
-	}
-	if channelIds.Len() > 0 {
-		var channels []struct {
-			Id   int    `gorm:"column:id"`
-			Name string `gorm:"column:name"`
-		}
-		if common.MemoryCacheEnabled {
-			for _, channelId := range channelIds.Items() {
-				if cacheChannel, channelErr := CacheGetChannel(channelId); channelErr == nil {
-					channels = append(channels, struct {
-						Id   int    `gorm:"column:id"`
-						Name string `gorm:"column:name"`
-					}{
-						Id:   channelId,
-						Name: cacheChannel.Name,
-					})
-				}
-			}
-		} else {
-			if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
-				return nil, 0, nil, err
-			}
-		}
-		channelMap := make(map[int]string, len(channels))
-		for _, channel := range channels {
-			channelMap[channel.Id] = channel.Name
-		}
-		for _, log := range logs {
-			if name, ok := channelMap[log.ChannelId]; ok {
-				log.ChannelName = name
-			}
-		}
-	}
 	if err = attachSubscriptionResourceTypeToLogs(logs); err != nil {
 		return nil, 0, nil, err
 	}
-	summary, err = summarizeSubscriptionConsumeLogs(userId, subscriptionId, planId, username, startTimestamp, endTimestamp)
+	sanitizeSubscriptionConsumeLogs(logs)
+	summary, err = summarizeSubscriptionConsumeLogs(userId, subscriptionId, planId, filterUserId, startTimestamp, endTimestamp)
 	if err != nil {
 		return nil, 0, nil, err
 	}
@@ -461,22 +424,21 @@ func applySubscriptionJSONIdFilter(tx *gorm.DB, key string, value int) *gorm.DB 
 	)
 }
 
-func buildSubscriptionConsumeLogsQuery(userId int, subscriptionId int, planId int, username string, startTimestamp int64, endTimestamp int64) *gorm.DB {
+func buildSubscriptionConsumeLogsQuery(userId int, subscriptionId int, planId int, filterUserId int, startTimestamp int64, endTimestamp int64) *gorm.DB {
 	tx := LOG_DB.Table("logs").Where("logs.type = ?", LogTypeConsume)
 	tx = tx.Where("logs.other LIKE ?", `%"billing_source":"subscription"%`)
 
 	if userId > 0 {
 		tx = tx.Where("logs.user_id = ?", userId)
 	}
+	if filterUserId > 0 {
+		tx = tx.Where("logs.user_id = ?", filterUserId)
+	}
 	if subscriptionId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_id", subscriptionId)
 	}
 	if planId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_plan_id", planId)
-	}
-	username = strings.TrimSpace(username)
-	if username != "" {
-		tx = tx.Where("logs.username = ?", username)
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
@@ -487,9 +449,9 @@ func buildSubscriptionConsumeLogsQuery(userId int, subscriptionId int, planId in
 	return tx
 }
 
-func summarizeSubscriptionConsumeLogs(userId int, subscriptionId int, planId int, username string, startTimestamp int64, endTimestamp int64) (*SubscriptionConsumeSummary, error) {
+func summarizeSubscriptionConsumeLogs(userId int, subscriptionId int, planId int, filterUserId int, startTimestamp int64, endTimestamp int64) (*SubscriptionConsumeSummary, error) {
 	rows := make([]subscriptionConsumeSummaryRow, 0)
-	tx := buildSubscriptionConsumeLogsQuery(userId, subscriptionId, planId, username, startTimestamp, endTimestamp)
+	tx := buildSubscriptionConsumeLogsQuery(userId, subscriptionId, planId, filterUserId, startTimestamp, endTimestamp)
 	if err := tx.Select("logs.created_at, logs.other").Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -569,6 +531,57 @@ func buildSubscriptionResourceTypeMap(rows []subscriptionConsumeSummaryRow) (map
 		result[subscription.Id] = NormalizeSubscriptionResourceType(subscription.ResourceType)
 	}
 	return result, nil
+}
+
+func sanitizeSubscriptionConsumeLogs(logs []*Log) {
+	if len(logs) == 0 {
+		return
+	}
+	allowedOtherKeys := map[string]struct{}{
+		"billing_source":             {},
+		"subscription_id":            {},
+		"subscription_plan_id":       {},
+		"subscription_resource_type": {},
+		"subscription_pre_consumed":  {},
+		"subscription_post_delta":    {},
+		"subscription_total":         {},
+		"subscription_used":          {},
+		"subscription_remain":        {},
+		"subscription_consumed":      {},
+		"wallet_quota_deducted":      {},
+	}
+	for _, log := range logs {
+		if log == nil {
+			continue
+		}
+		log.Username = ""
+		log.TokenName = ""
+		log.ModelName = ""
+		log.Content = ""
+		log.ChannelName = ""
+		log.Ip = ""
+		log.PromptTokens = 0
+		log.CompletionTokens = 0
+		log.UseTime = 0
+
+		if strings.TrimSpace(log.Other) == "" {
+			log.Other = "{}"
+			continue
+		}
+
+		otherMap := map[string]interface{}{}
+		if err := common.UnmarshalJsonStr(log.Other, &otherMap); err != nil {
+			log.Other = "{}"
+			continue
+		}
+		sanitized := make(map[string]interface{}, len(allowedOtherKeys))
+		for key := range allowedOtherKeys {
+			if value, ok := otherMap[key]; ok {
+				sanitized[key] = value
+			}
+		}
+		log.Other = common.MapToJsonStr(sanitized)
+	}
 }
 
 func attachSubscriptionResourceTypeToLogs(logs []*Log) error {

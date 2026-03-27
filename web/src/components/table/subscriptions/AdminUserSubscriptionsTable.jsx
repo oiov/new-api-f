@@ -161,7 +161,7 @@ const AdminUserSubscriptionsTable = ({
               openConsumeLogs?.({
                 subscriptionId: record?.subscription?.id,
                 planId: record?.subscription?.plan_id,
-                username: record?.username,
+                userId: record?.subscription?.user_id,
               })
             }
           >

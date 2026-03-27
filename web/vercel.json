@@ -59,20 +59,6 @@
       "dest": "https://claud.fishxcode.com/api/$1"
     },
     {
-      "src": "^/v1/responses/compact/?$",
-      "status": 307,
-      "headers": {
-        "Location": "https://claud.fishxcode.com/v1/responses/compact"
-      }
-    },
-    {
-      "src": "^/v1/messages/?$",
-      "status": 307,
-      "headers": {
-        "Location": "https://claud.fishxcode.com/v1/messages"
-      }
-    },
-    {
       "src": "^/v1/?$",
       "dest": "https://claud.fishxcode.com/v1"
     },

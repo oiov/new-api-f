@@ -86,7 +86,7 @@ func GetSubscriptionSelfConsumeLogs(c *gin.Context) {
 		userId,
 		subscriptionId,
 		planId,
-		"",
+		0,
 		startTimestamp,
 		endTimestamp,
 		pageInfo.GetStartIdx(),
@@ -400,14 +400,14 @@ func AdminListSubscriptionConsumeLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
 	planId, _ := strconv.Atoi(c.Query("plan_id"))
-	username := c.Query("username")
+	filterUserId, _ := strconv.Atoi(c.Query("user_id"))
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	logs, total, summary, err := model.GetSubscriptionConsumeLogs(
 		0,
 		subscriptionId,
 		planId,
-		username,
+		filterUserId,
 		startTimestamp,
 		endTimestamp,
 		pageInfo.GetStartIdx(),
