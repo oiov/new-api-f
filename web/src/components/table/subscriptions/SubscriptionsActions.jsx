@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Button } from '@douyinfe/semi-ui';
 
-const SubscriptionsActions = ({ openCreate, t }) => {
+const SubscriptionsActions = ({ openCreate, openMigration, t }) => {
   return (
     <div className='flex gap-2 w-full md:w-auto'>
       <Button
@@ -30,6 +30,13 @@ const SubscriptionsActions = ({ openCreate, t }) => {
         size='small'
       >
         {t('新建套餐')}
+      </Button>
+      <Button
+        className='w-full md:w-auto'
+        onClick={openMigration}
+        size='small'
+      >
+        {t('订阅迁移')}
       </Button>
     </div>
   );

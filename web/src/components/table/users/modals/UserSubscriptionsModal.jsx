@@ -78,6 +78,24 @@ function renderStatusTag(sub, t) {
   );
 }
 
+function getPlanPeriodLabel(source, t) {
+  const unit = source?.duration_unit || 'month';
+  const value = Number(source?.duration_value || 1);
+  if (unit === 'year') return `${value}${t('年')}`;
+  if (unit === 'month') return `${value}${t('个月')}`;
+  if (unit === 'week') return `${value}${t('周')}`;
+  if (unit === 'day') return `${value}${t('天')}`;
+  if (unit === 'hour') return `${value}${t('小时')}`;
+  if (unit === 'custom') {
+    const seconds = Number(source?.custom_seconds || 0);
+    if (seconds % 86400 === 0) return `${seconds / 86400}${t('天')}`;
+    if (seconds % 3600 === 0) return `${seconds / 3600}${t('小时')}`;
+    if (seconds % 60 === 0) return `${seconds / 60}${t('分钟')}`;
+    return `${seconds}${t('秒')}`;
+  }
+  return `${value}${t('个月')}`;
+}
+
 const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
@@ -97,6 +115,17 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
       const id = p?.plan?.id;
       const title = p?.plan?.title;
       if (id) map.set(id, title || `#${id}`);
+    });
+    return map;
+  }, [plans]);
+
+  const planMap = useMemo(() => {
+    const map = new Map();
+    (plans || []).forEach((p) => {
+      const plan = p?.plan;
+      if (plan?.id) {
+        map.set(plan.id, plan);
+      }
     });
     return map;
   }, [plans]);
@@ -250,6 +279,35 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
     });
   };
 
+  const operateSubscription = (subId, action, title, content) => {
+    Modal.confirm({
+      title,
+      content,
+      centered: true,
+      onOk: async () => {
+        try {
+          const res = await API.post(
+            `/api/subscription/admin/user_subscriptions/${subId}/action`,
+            {
+              action,
+              value: 1,
+            },
+          );
+          if (res.data?.success) {
+            const msg = res.data?.data?.message;
+            showSuccess(msg ? msg : t('操作成功'));
+            await loadUserSubscriptions();
+            onSuccess?.();
+          } else {
+            showError(res.data?.message || t('操作失败'));
+          }
+        } catch (e) {
+          showError(t('请求失败'));
+        }
+      },
+    });
+  };
+
   const columns = useMemo(() => {
     return [
       {
@@ -338,17 +396,73 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
       {
         title: '',
         key: 'operate',
-        width: 140,
+        width: 320,
         fixed: 'right',
         render: (_, record) => {
           const sub = record?.subscription;
+          const plan = planMap.get(sub?.plan_id);
+          const periodLabel = getPlanPeriodLabel(
+            sub?.duration_unit ? sub : plan,
+            t,
+          );
           const now = Date.now() / 1000;
           const isExpired =
             (sub?.end_time || 0) > 0 && (sub?.end_time || 0) < now;
           const isActive = sub?.status === 'active' && !isExpired;
           const isCancelled = sub?.status === 'cancelled';
           return (
-            <Space>
+            <Space wrap>
+              <Button
+                size='small'
+                theme='light'
+                disabled={isCancelled}
+                onClick={() =>
+                  operateSubscription(
+                    sub?.id,
+                    'extend_period',
+                    t('确认延长套餐周期'),
+                    t('该订阅的结束时间将延长 {{period}}。是否继续？', {
+                      period: periodLabel,
+                    }),
+                  )
+                }
+              >
+                +{periodLabel}
+              </Button>
+              <Button
+                size='small'
+                theme='light'
+                type='secondary'
+                disabled={isCancelled}
+                onClick={() =>
+                  operateSubscription(
+                    sub?.id,
+                    'reduce_period',
+                    t('确认减少套餐周期'),
+                    t('该订阅的结束时间将减少 {{period}}。是否继续？', {
+                      period: periodLabel,
+                    }),
+                  )
+                }
+              >
+                -{periodLabel}
+              </Button>
+              <Button
+                size='small'
+                theme='light'
+                type='tertiary'
+                disabled={!isActive || isCancelled}
+                onClick={() =>
+                  operateSubscription(
+                    sub?.id,
+                    'reset_usage_now',
+                    t('确认重置当前周期用量'),
+                    t('将立即清空当前日/周/月周期已用额度或次数，并重算下次重置时间。是否继续？'),
+                  )
+                }
+              >
+                {t('重置当期')}
+              </Button>
               <Button
                 size='small'
                 type='warning'
@@ -371,7 +485,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
         },
       },
     ];
-  }, [t, planTitleMap]);
+  }, [t, planTitleMap, planMap]);
 
   return (
     <SideSheet

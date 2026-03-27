@@ -343,12 +343,17 @@ type AdminCreateUserSubscriptionRequest struct {
 }
 
 type AdminSubscriptionMigrationRequest struct {
-	TargetPlanId        int   `json:"target_plan_id"`
+	TargetPlanId        int    `json:"target_plan_id"`
 	Group               string `json:"group"`
 	SourceGroup         string `json:"source_group"`
 	SourceResourceType  string `json:"source_resource_type"`
 	ExcludeDurationUnit string `json:"exclude_duration_unit"`
-	SourcePlanIds       []int `json:"source_plan_ids"`
+	SourcePlanIds       []int  `json:"source_plan_ids"`
+}
+
+type AdminUserSubscriptionActionRequest struct {
+	Action string `json:"action"`
+	Value  int64  `json:"value"`
 }
 
 // AdminCreateUserSubscription creates a new user subscription from a plan (no payment).
@@ -423,6 +428,34 @@ func AdminExecuteSubscriptionMigration(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, result)
+}
+
+func AdminOperateUserSubscription(c *gin.Context) {
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req AdminUserSubscriptionActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	req.Action = model.NormalizeAdminSubscriptionAction(req.Action)
+	if req.Action == "" {
+		common.ApiErrorMsg(c, "无效的操作")
+		return
+	}
+	msg, err := model.AdminOperateUserSubscription(subId, req.Action, req.Value)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if msg != "" {
+		common.ApiSuccess(c, gin.H{"message": msg})
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 // AdminInvalidateUserSubscription cancels a user subscription immediately.

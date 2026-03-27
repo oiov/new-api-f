@@ -255,6 +255,9 @@ type UserSubscription struct {
 	RequestCountUsed   int64  `json:"request_count_used" gorm:"type:bigint;not null;default:0"`
 	ResetPeriod        string `json:"reset_period" gorm:"type:varchar(16);not null;default:'never'"`
 	ResetCustomSeconds int64  `json:"reset_custom_seconds" gorm:"type:bigint;not null;default:0"`
+	DurationUnit       string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
+	DurationValue      int    `json:"duration_value" gorm:"type:int;not null;default:1"`
+	CustomSeconds      int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
 
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
@@ -289,12 +292,12 @@ type SubscriptionSummary struct {
 }
 
 type SubscriptionMigrationFilter struct {
-	TargetPlanId         int
-	UserGroup            string
-	SourceGroup          string
-	SourceResourceType   string
-	ExcludeDurationUnit  string
-	SourcePlanIds        []int
+	TargetPlanId        int
+	UserGroup           string
+	SourceGroup         string
+	SourceResourceType  string
+	ExcludeDurationUnit string
+	SourcePlanIds       []int
 }
 
 type SubscriptionMigrationPreviewItem struct {
@@ -570,6 +573,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		RequestCountUsed:   0,
 		ResetPeriod:        NormalizeResetPeriod(plan.QuotaResetPeriod),
 		ResetCustomSeconds: plan.QuotaResetCustomSeconds,
+		DurationUnit:       plan.DurationUnit,
+		DurationValue:      plan.DurationValue,
+		CustomSeconds:      plan.CustomSeconds,
 		StartTime:          now.Unix(),
 		EndTime:            endUnix,
 		Status:             "active",
@@ -1040,6 +1046,9 @@ func createMigratedUserSubscriptionTx(tx *gorm.DB, source *UserSubscription, tar
 		RequestCountUsed:   requestCountUsed,
 		ResetPeriod:        NormalizeResetPeriod(targetPlan.QuotaResetPeriod),
 		ResetCustomSeconds: targetPlan.QuotaResetCustomSeconds,
+		DurationUnit:       targetPlan.DurationUnit,
+		DurationValue:      targetPlan.DurationValue,
+		CustomSeconds:      targetPlan.CustomSeconds,
 		StartTime:          source.StartTime,
 		EndTime:            source.EndTime,
 		Status:             "active",
@@ -1204,6 +1213,235 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
 	}
 	return "", nil
+}
+
+const (
+	AdminSubscriptionActionExtendPeriod = "extend_period"
+	AdminSubscriptionActionReducePeriod = "reduce_period"
+	AdminSubscriptionActionExtendDays   = "extend_days"
+	AdminSubscriptionActionReduceDays   = "reduce_days"
+	AdminSubscriptionActionResetUsage   = "reset_usage_now"
+)
+
+func NormalizeAdminSubscriptionAction(action string) string {
+	switch strings.TrimSpace(action) {
+	case AdminSubscriptionActionExtendPeriod:
+		return AdminSubscriptionActionExtendPeriod
+	case AdminSubscriptionActionReducePeriod:
+		return AdminSubscriptionActionReducePeriod
+	case AdminSubscriptionActionExtendDays:
+		return AdminSubscriptionActionExtendPeriod
+	case AdminSubscriptionActionReduceDays:
+		return AdminSubscriptionActionReducePeriod
+	case AdminSubscriptionActionResetUsage:
+		return AdminSubscriptionActionResetUsage
+	default:
+		return ""
+	}
+}
+
+func normalizePlanDurationForAdmin(plan *SubscriptionPlan) *SubscriptionPlan {
+	if plan == nil {
+		return nil
+	}
+	copied := *plan
+	if copied.DurationUnit == "" {
+		copied.DurationUnit = SubscriptionDurationMonth
+	}
+	if copied.DurationValue <= 0 && copied.DurationUnit != SubscriptionDurationCustom {
+		copied.DurationValue = 1
+	}
+	if copied.DurationUnit == SubscriptionDurationCustom && copied.CustomSeconds <= 0 {
+		copied.CustomSeconds = 86400
+	}
+	return &copied
+}
+
+func subscriptionDurationSnapshotToPlan(sub *UserSubscription) *SubscriptionPlan {
+	if sub == nil {
+		return nil
+	}
+	return &SubscriptionPlan{
+		DurationUnit:  sub.DurationUnit,
+		DurationValue: sub.DurationValue,
+		CustomSeconds: sub.CustomSeconds,
+	}
+}
+
+func effectiveSubscriptionDurationPlan(sub *UserSubscription, fallbackPlan *SubscriptionPlan) *SubscriptionPlan {
+	if sub == nil {
+		return normalizePlanDurationForAdmin(fallbackPlan)
+	}
+	snapshot := normalizePlanDurationForAdmin(subscriptionDurationSnapshotToPlan(sub))
+	if snapshot != nil && strings.TrimSpace(snapshot.DurationUnit) != "" {
+		if snapshot.DurationUnit != SubscriptionDurationCustom || snapshot.CustomSeconds > 0 {
+			return snapshot
+		}
+	}
+	return normalizePlanDurationForAdmin(fallbackPlan)
+}
+
+func applyPlanDurationToUnix(baseUnix int64, plan *SubscriptionPlan, direction int, multiplier int64) (int64, error) {
+	plan = normalizePlanDurationForAdmin(plan)
+	if plan == nil {
+		return 0, errors.New("plan is nil")
+	}
+	if multiplier <= 0 {
+		multiplier = 1
+	}
+	base := time.Unix(baseUnix, 0)
+	step := int(multiplier)
+	switch plan.DurationUnit {
+	case SubscriptionDurationYear:
+		return base.AddDate(direction*plan.DurationValue*step, 0, 0).Unix(), nil
+	case SubscriptionDurationMonth:
+		return base.AddDate(0, direction*plan.DurationValue*step, 0).Unix(), nil
+	case SubscriptionDurationWeek:
+		return base.AddDate(0, 0, direction*7*plan.DurationValue*step).Unix(), nil
+	case SubscriptionDurationDay:
+		return base.Add(time.Duration(direction*plan.DurationValue*step) * 24 * time.Hour).Unix(), nil
+	case SubscriptionDurationHour:
+		return base.Add(time.Duration(direction*plan.DurationValue*step) * time.Hour).Unix(), nil
+	case SubscriptionDurationCustom:
+		return base.Add(time.Duration(direction) * time.Duration(multiplier) * time.Duration(plan.CustomSeconds) * time.Second).Unix(), nil
+	default:
+		return 0, fmt.Errorf("invalid duration_unit: %s", plan.DurationUnit)
+	}
+}
+
+func formatPlanDurationLabel(plan *SubscriptionPlan) string {
+	plan = normalizePlanDurationForAdmin(plan)
+	if plan == nil {
+		return "1个月"
+	}
+	switch plan.DurationUnit {
+	case SubscriptionDurationYear:
+		return fmt.Sprintf("%d年", plan.DurationValue)
+	case SubscriptionDurationMonth:
+		return fmt.Sprintf("%d个月", plan.DurationValue)
+	case SubscriptionDurationWeek:
+		return fmt.Sprintf("%d周", plan.DurationValue)
+	case SubscriptionDurationDay:
+		return fmt.Sprintf("%d天", plan.DurationValue)
+	case SubscriptionDurationHour:
+		return fmt.Sprintf("%d小时", plan.DurationValue)
+	case SubscriptionDurationCustom:
+		if plan.CustomSeconds%86400 == 0 {
+			return fmt.Sprintf("%d天", plan.CustomSeconds/86400)
+		}
+		if plan.CustomSeconds%3600 == 0 {
+			return fmt.Sprintf("%d小时", plan.CustomSeconds/3600)
+		}
+		if plan.CustomSeconds%60 == 0 {
+			return fmt.Sprintf("%d分钟", plan.CustomSeconds/60)
+		}
+		return fmt.Sprintf("%d秒", plan.CustomSeconds)
+	default:
+		return "1个月"
+	}
+}
+
+func calcSubscriptionNextResetFromNow(sub *UserSubscription, now int64) int64 {
+	if sub == nil {
+		return 0
+	}
+	snapshotPlan := &SubscriptionPlan{
+		QuotaResetPeriod:        NormalizeResetPeriod(sub.ResetPeriod),
+		QuotaResetCustomSeconds: sub.ResetCustomSeconds,
+	}
+	if snapshotPlan.QuotaResetPeriod == SubscriptionResetNever {
+		return 0
+	}
+	return calcNextResetTime(time.Unix(now, 0), snapshotPlan, sub.EndTime)
+}
+
+func AdminOperateUserSubscription(userSubscriptionId int, action string, value int64) (string, error) {
+	if userSubscriptionId <= 0 {
+		return "", errors.New("invalid userSubscriptionId")
+	}
+	action = NormalizeAdminSubscriptionAction(action)
+	if action == "" {
+		return "", errors.New("invalid subscription action")
+	}
+	if action != AdminSubscriptionActionResetUsage && value <= 0 {
+		value = 1
+	}
+	now := GetDBTimestamp()
+	message := ""
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", userSubscriptionId).
+			First(&sub).Error; err != nil {
+			return err
+		}
+		if sub.Status == "cancelled" {
+			return errors.New("subscription has been cancelled")
+		}
+		plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+		if err != nil {
+			return err
+		}
+		durationPlan := effectiveSubscriptionDurationPlan(&sub, plan)
+		durationLabel := formatPlanDurationLabel(durationPlan)
+		switch action {
+		case AdminSubscriptionActionExtendPeriod:
+			nextEndTime, err := applyPlanDurationToUnix(sub.EndTime, durationPlan, 1, value)
+			if err != nil {
+				return err
+			}
+			sub.EndTime = nextEndTime
+			if sub.EndTime > now {
+				sub.Status = "active"
+			}
+			if value > 1 {
+				message = fmt.Sprintf("已延长 %d 个周期（%s/周期）", value, durationLabel)
+			} else {
+				message = fmt.Sprintf("已延长 %s", durationLabel)
+			}
+		case AdminSubscriptionActionReducePeriod:
+			nextEndTime, err := applyPlanDurationToUnix(sub.EndTime, durationPlan, -1, value)
+			if err != nil {
+				return err
+			}
+			if nextEndTime <= sub.StartTime {
+				return errors.New("end time must be later than start time")
+			}
+			sub.EndTime = nextEndTime
+			if sub.EndTime <= now {
+				sub.Status = "expired"
+			} else {
+				sub.Status = "active"
+			}
+			if sub.NextResetTime > sub.EndTime {
+				sub.NextResetTime = 0
+			}
+			if value > 1 {
+				message = fmt.Sprintf("已减少 %d 个周期（%s/周期）", value, durationLabel)
+			} else {
+				message = fmt.Sprintf("已减少 %s", durationLabel)
+			}
+		case AdminSubscriptionActionResetUsage:
+			if sub.Status != "active" || sub.EndTime <= now {
+				return errors.New("subscription is not active")
+			}
+			sub.AmountUsed = 0
+			sub.RequestCountUsed = 0
+			if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever {
+				sub.LastResetTime = 0
+				sub.NextResetTime = 0
+			} else {
+				sub.LastResetTime = now
+				sub.NextResetTime = calcSubscriptionNextResetFromNow(&sub, now)
+			}
+			message = "已提前重置当前周期用量"
+		}
+		return tx.Save(&sub).Error
+	})
+	if err != nil {
+		return "", err
+	}
+	return message, nil
 }
 
 type SubscriptionPreConsumeResult struct {
