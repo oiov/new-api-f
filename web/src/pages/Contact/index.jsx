@@ -38,26 +38,26 @@ import './index.css';
 const { Title, Text } = Typography;
 
 const CONTACT_CARDS = [
-  {
-    key: 'qq-group',
-    titleKey: 'QQ群',
-    subtitleKey: '适合问题交流、功能反馈与新版本讨论',
-    imageSrc: '/qq_group.jpg',
-    imageAltKey: 'QQ群二维码',
-    value: '373865837',
-    extraKey: '点击链接加入群聊 {{groupId}}【{{name}}】',
-    actionLabelKey: '加入QQ群',
-    actionHref: 'https://qm.qq.com/q/Ce2PaYrbmo',
-    copyValue: '373865837',
-    icon: Users,
-    accentClassName: 'contact-card-accent-blue',
-    toneKey: '热门社区',
-  },
+  // {
+  //   key: 'qq-group',
+  //   titleKey: 'QQ群',
+  //   subtitleKey: '适合问题交流、功能反馈与新版本讨论',
+  //   imageSrc: '/qq_group.jpg',
+  //   imageAltKey: 'QQ群二维码',
+  //   value: '373865837',
+  //   extraKey: '点击链接加入群聊 {{groupId}}【{{name}}】',
+  //   actionLabelKey: '加入QQ群',
+  //   actionHref: 'https://qm.qq.com/q/Ce2PaYrbmo',
+  //   copyValue: '373865837',
+  //   icon: Users,
+  //   accentClassName: 'contact-card-accent-blue',
+  //   toneKey: '热门社区',
+  // },
   {
     key: 'wechat-account',
     titleKey: '微信号',
     subtitleKey: '适合商务沟通、合作咨询与一对一联系',
-    imageSrc: '/fishxcode_user.jpg',
+    imageSrc: '/oiovdev.png',
     imageAltKey: '微信号二维码',
     value: 'oiovdev',
     copyValue: 'oiovdev',
@@ -69,24 +69,24 @@ const CONTACT_CARDS = [
     key: 'wechat-group',
     titleKey: '微信群',
     subtitleKey: '适合快速获取公告、活动信息与群内答疑',
-    imageSrc: '/wechat_group.jpg',
+    imageSrc: '/wechat_group.png',
     imageAltKey: '微信群二维码',
     icon: QrCode,
     accentClassName: 'contact-card-accent-amber',
     toneKey: '活动通知',
   },
-  {
-    key: 'qq-service',
-    titleKey: 'QQ客服',
-    subtitleKey: '适合处理账号问题、充值协助与售后支持',
-    imageSrc: '/qq.png',
-    imageAltKey: 'QQ客服二维码',
-    value: '3224266014',
-    copyValue: '3224266014',
-    icon: Headphones,
-    accentClassName: 'contact-card-accent-rose',
-    toneKey: '官方支持',
-  },
+  // {
+  //   key: 'qq-service',
+  //   titleKey: 'QQ客服',
+  //   subtitleKey: '适合处理账号问题、充值协助与售后支持',
+  //   imageSrc: '/qq.png',
+  //   imageAltKey: 'QQ客服二维码',
+  //   value: '3224266014',
+  //   copyValue: '3224266014',
+  //   icon: Headphones,
+  //   accentClassName: 'contact-card-accent-rose',
+  //   toneKey: '官方支持',
+  // },
 ];
 
 const HERO_FEATURES = [
@@ -156,7 +156,7 @@ const Contact = () => {
             </Text>
 
             <div className='contact-hero__actions'>
-              <Button
+              {/* <Button
                 theme='solid'
                 type='primary'
                 size='large'
@@ -166,7 +166,7 @@ const Contact = () => {
                 }
               >
                 {t('加入QQ群')}
-              </Button>
+              </Button> */}
               <Button
                 theme='light'
                 type='primary'
@@ -208,7 +208,7 @@ const Contact = () => {
             </div>
 
             <div className='contact-quick-list'>
-              <button
+              {/* <button
                 type='button'
                 className='contact-quick-card'
                 onClick={() =>
@@ -224,7 +224,7 @@ const Contact = () => {
                   {t('适合公开讨论、问题互助与接收更新通知')}
                 </div>
                 <div className='contact-quick-card__value'>373865837</div>
-              </button>
+              </button> */}
 
               <button
                 type='button'
