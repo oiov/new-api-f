@@ -29,12 +29,16 @@ import {
   Progress,
   Select,
   Skeleton,
+  Space,
   Tag,
+  TabPane,
+  Tabs,
   Typography,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess, renderQuota } from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
 import {
+  BarChart3,
   CalendarClock,
   Check,
   Clock,
