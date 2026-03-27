@@ -2983,6 +2983,15 @@
     "输入价格：{{symbol}}{{price}} / 1M tokens": "輸入價格：{{symbol}}{{price}} / 1M tokens",
     "输出价格 {{symbol}}{{price}} / 1M tokens": "輸出價格 {{symbol}}{{price}} / 1M tokens",
     "输出价格：{{symbol}}{{price}} / 1M tokens": "輸出價格：{{symbol}}{{price}} / 1M tokens",
-    "输出价格：{{symbol}}{{total}} / 1M tokens": "輸出價格：{{symbol}}{{total}} / 1M tokens"
+    "输出价格：{{symbol}}{{total}} / 1M tokens": "輸出價格：{{symbol}}{{total}} / 1M tokens",
+    "启用邀请制注册（需邀请码或邀请链接）": "啟用邀請制註冊（需邀請碼或邀請連結）",
+    "当前为邀请制注册，请输入邀请码或通过邀请链接注册": "目前為邀請制註冊，請輸入邀請碼或透過邀請連結註冊",
+    "套餐：{{plan}}": "套餐：{{plan}}",
+    "，另赠": "，另贈",
+    "注册资格": "註冊資格",
+    "本站": "本站",
+    "我在{{siteName}}的邀请链接为：{{link}}": "我在{{siteName}}的邀請連結為：{{link}}",
+    "使用我的邀请注册，你将获得{{reward}}。": "使用我的邀請註冊，你將獲得{{reward}}。",
+    "本站采用邀请制注册，当前邀请码可用{{count}}次。": "本站採用邀請制註冊，目前邀請碼可用{{count}}次。"
   }
 }

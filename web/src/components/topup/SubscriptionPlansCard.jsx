@@ -1234,6 +1234,7 @@ const SubscriptionPlansCard = ({
 
           <Card className='!rounded-xl w-full border-0 shadow-sm' bodyStyle={{ padding: '16px 20px' }}>
             <Tabs
+              className='topup-page-tabs'
               type='card'
               collapsible
               activeKey={activeMainTab}

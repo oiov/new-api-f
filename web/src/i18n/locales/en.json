@@ -3357,6 +3357,15 @@
     "输出价格：{{symbol}}{{price}} / 1M tokens": "Output Price: {{symbol}}{{price}} / 1M tokens",
     "输出价格：{{symbol}}{{total}} / 1M tokens": "Output Price: {{symbol}}{{total}} / 1M tokens",
     "例如：gpt-4.1-nano,regex:^claude-.*$,regex:^sora-.*$": "Example: gpt-4.1-nano,regex:^claude-.*$,regex:^sora-.*$",
-    "支持精确匹配；使用 regex: 开头可按正则匹配。": "Supports exact matching. Use a regex: prefix for regex matching."
+    "支持精确匹配；使用 regex: 开头可按正则匹配。": "Supports exact matching. Use a regex: prefix for regex matching.",
+    "启用邀请制注册（需邀请码或邀请链接）": "Enable invite-only registration (invite code or invite link required)",
+    "当前为邀请制注册，请输入邀请码或通过邀请链接注册": "This site is invite-only. Please enter an invite code or register through an invite link.",
+    "套餐：{{plan}}": "Plan: {{plan}}",
+    "，另赠": ", plus ",
+    "注册资格": "registration access",
+    "本站": "this site",
+    "我在{{siteName}}的邀请链接为：{{link}}": "My invite link for {{siteName}} is: {{link}}",
+    "使用我的邀请注册，你将获得{{reward}}。": "Register with my invite and you will receive {{reward}}.",
+    "本站采用邀请制注册，当前邀请码可用{{count}}次。": "This site uses invite-only registration. The current invite code can be used {{count}} times."
   }
 }

@@ -461,6 +461,19 @@ html.dark .sbg-variant-green {
   height: 100% !important;
 }
 
+.topup-page-tabs > .semi-tabs-content {
+  height: auto !important;
+}
+
+.topup-page-tabs > .semi-tabs-content .semi-tabs-pane {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.topup-page-tabs > .semi-tabs-content .semi-tabs-pane > div {
+  height: auto !important;
+}
+
 /* 表格样式 */
 .tableShow {
   display: revert;

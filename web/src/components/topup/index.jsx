@@ -40,6 +40,11 @@ import SubscriptionPlansCard from './SubscriptionPlansCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import {
+  formatSubscriptionDuration,
+  formatSubscriptionResourceLabel,
+  getSubscriptionUsageSummary,
+} from '../../helpers/subscriptionFormat';
 
 const VIEW_SUBSCRIPTION = 'subscription';
 const VIEW_TOPUP = 'topup';
@@ -143,6 +148,84 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const isInvitePage = mode === VIEW_INVITE;
   const isPackagePage = mode === VIEW_PACKAGE;
   const shouldLoadTopupData = isTopupPage || isPackagePage;
+
+  const formatInvitePlanBenefit = (plan) => {
+    if (!plan) {
+      return '';
+    }
+    const summary = getSubscriptionUsageSummary(plan);
+    const label = formatSubscriptionResourceLabel(plan, t);
+    let usageText = '';
+    if (summary.unlimited) {
+      usageText = `${label}${t('不限')}`;
+    } else if (plan?.resource_type === 'request_count') {
+      usageText = `${label}${summary.total}${t('次')}`;
+    } else {
+      usageText = `${label}${renderQuota(summary.total)}`;
+    }
+
+    const parts = [
+      plan.title,
+      usageText,
+      formatSubscriptionDuration(plan, t),
+    ];
+    if (plan?.upgrade_group) {
+      parts.push(`${t('升级分组')} ${plan.upgrade_group}`);
+    }
+    return parts.filter(Boolean).join('，');
+  };
+
+  const buildInviteRewardText = () => {
+    const config = inviteDetails?.config || {};
+    const rewardParts = [];
+
+    if (Number(config.invitee_quota || 0) > 0) {
+      rewardParts.push(`${renderQuota(config.invitee_quota)} Token`);
+    }
+    if (config.invitee_plan) {
+      rewardParts.push(
+        t('套餐：{{plan}}', {
+          plan: formatInvitePlanBenefit(config.invitee_plan),
+        }),
+      );
+    }
+
+    if (rewardParts.length === 0) {
+      return t('注册资格');
+    }
+
+    return rewardParts.join(t('，另赠'));
+  };
+
+  const buildInviteCopyText = () => {
+    const config = inviteDetails?.config || {};
+    const systemName = statusState?.status?.system_name || t('本站');
+    const inviteCodeUsableCount = Number(config.invite_code_usable_count);
+    const lines = [
+      t('我在{{siteName}}的邀请链接为：{{link}}', {
+        siteName: systemName,
+        link: affLink,
+      }),
+      t('使用我的邀请注册，你将获得{{reward}}。', {
+        reward: buildInviteRewardText(),
+      }),
+    ];
+
+    if (config.invite_register_enabled) {
+      lines.push(
+        t('本站采用邀请制注册，当前邀请码可用{{count}}次。', {
+          count:
+            inviteCodeUsableCount < 0
+              ? t('不限')
+              : Number.isNaN(inviteCodeUsableCount)
+                ? 0
+                : inviteCodeUsableCount,
+        }),
+      );
+    }
+
+    return lines.join('\n');
+  };
 
   const topUp = async () => {
     if (redemptionCode === '') {
@@ -598,7 +681,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
 
   // 复制邀请链接
   const handleAffLinkClick = async () => {
-    await copy(affLink);
+    await copy(buildInviteCopyText());
     showSuccess(t('邀请链接已复制到剪切板'));
   };
 

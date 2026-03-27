@@ -266,7 +266,13 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	affCode := session.Get("aff")
 	inviterId := 0
 	if affCode != nil {
-		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
+		var inviteErrorKey string
+		inviterId, inviteErrorKey = resolveInviteRegistration(c, affCode.(string))
+		if inviteErrorKey != "" {
+			return nil, &oauth.OAuthError{MsgKey: inviteErrorKey}
+		}
+	} else if common.InviteRegisterEnabled {
+		return nil, &oauth.OAuthError{MsgKey: i18n.MsgUserInviteCodeRequired}
 	}
 
 	// Use transaction to ensure user creation and OAuth binding are atomic

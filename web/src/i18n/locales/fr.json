@@ -3318,6 +3318,15 @@
     "输入价格：{{symbol}}{{price}} / 1M tokens": "Prix d'entrée : {{symbol}}{{price}} / 1M tokens",
     "输出价格 {{symbol}}{{price}} / 1M tokens": "Prix de sortie {{symbol}}{{price}} / 1M tokens",
     "输出价格：{{symbol}}{{price}} / 1M tokens": "Prix de sortie : {{symbol}}{{price}} / 1M tokens",
-    "输出价格：{{symbol}}{{total}} / 1M tokens": "Prix de sortie : {{symbol}}{{total}} / 1M tokens"
+    "输出价格：{{symbol}}{{total}} / 1M tokens": "Prix de sortie : {{symbol}}{{total}} / 1M tokens",
+    "启用邀请制注册（需邀请码或邀请链接）": "Activer l'inscription sur invitation (code ou lien d'invitation requis)",
+    "当前为邀请制注册，请输入邀请码或通过邀请链接注册": "Le site est actuellement en inscription sur invitation. Veuillez saisir un code d'invitation ou utiliser un lien d'invitation.",
+    "套餐：{{plan}}": "Forfait : {{plan}}",
+    "，另赠": ", avec en plus ",
+    "注册资格": "l'accès à l'inscription",
+    "本站": "ce site",
+    "我在{{siteName}}的邀请链接为：{{link}}": "Mon lien d'invitation pour {{siteName}} est : {{link}}",
+    "使用我的邀请注册，你将获得{{reward}}。": "Inscrivez-vous avec mon invitation et vous recevrez {{reward}}.",
+    "本站采用邀请制注册，当前邀请码可用{{count}}次。": "Ce site utilise l'inscription sur invitation. Le code d'invitation actuel peut être utilisé {{count}} fois."
   }
 }

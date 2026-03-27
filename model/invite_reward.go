@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
@@ -67,10 +68,12 @@ type InviteRewardPlanInfo struct {
 }
 
 type InviteRewardConfig struct {
-	InviterQuota int                   `json:"inviter_quota"`
-	InviteeQuota int                   `json:"invitee_quota"`
-	InviterPlan  *InviteRewardPlanInfo `json:"inviter_plan,omitempty"`
-	InviteePlan  *InviteRewardPlanInfo `json:"invitee_plan,omitempty"`
+	InviterQuota          int                   `json:"inviter_quota"`
+	InviteeQuota          int                   `json:"invitee_quota"`
+	InviterPlan           *InviteRewardPlanInfo `json:"inviter_plan,omitempty"`
+	InviteePlan           *InviteRewardPlanInfo `json:"invitee_plan,omitempty"`
+	InviteRegisterEnable  bool                  `json:"invite_register_enabled"`
+	InviteCodeUsableCount int                   `json:"invite_code_usable_count"`
 }
 
 type InviteRewardRecord struct {
@@ -321,6 +324,32 @@ func loadInviteRewardGrantSummary(inviterId int, inviteeIds []int) (map[int]invi
 	return result, nil
 }
 
+func getInviteCodeUsableCount(inviterId int) int {
+	maxCount := common.InviteRewardMaxCountPerInviter
+	if maxCount <= 0 {
+		return -1
+	}
+
+	query := DB.Model(&User{}).Where("inviter_id = ?", inviterId)
+	if common.InviteRewardLimitWindowMinutes > 0 {
+		windowStart := time.Now().
+			Add(-time.Duration(common.InviteRewardLimitWindowMinutes) * time.Minute).
+			Unix()
+		query = query.Where("created_at >= ?", windowStart)
+	}
+
+	var usedCount int64
+	if err := query.Count(&usedCount).Error; err != nil {
+		return maxCount
+	}
+
+	remaining := maxCount - int(usedCount)
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
 func normalizePage(page int, pageSize int) (int, int) {
 	if page < 1 {
 		page = 1
@@ -343,8 +372,10 @@ func GetInviteRewardDetails(userId int, invitedPage int, invitedPageSize int, re
 
 	result := &InviteRewardDetails{
 		Config: InviteRewardConfig{
-			InviterQuota: common.QuotaForInviter,
-			InviteeQuota: common.QuotaForInvitee,
+			InviterQuota:          common.QuotaForInviter,
+			InviteeQuota:          common.QuotaForInvitee,
+			InviteRegisterEnable:  common.InviteRegisterEnabled,
+			InviteCodeUsableCount: getInviteCodeUsableCount(userId),
 		},
 		InviterRewardRecords:  make([]InviteRewardRecord, 0),
 		InviterRewardPage:     rewardPage,

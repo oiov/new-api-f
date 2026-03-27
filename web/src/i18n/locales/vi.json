@@ -3869,6 +3869,15 @@
     "补全倍率 {{completionRatio}}": "Tỷ lệ hoàn thành {{completionRatio}}",
     "输出价格 {{symbol}}{{price}} / 1M tokens": "Giá đầu ra {{symbol}}{{price}} / 1M tokens",
     "输出价格：{{symbol}}{{price}} / 1M tokens": "Giá đầu ra: {{symbol}}{{price}} / 1M tokens",
-    "输出价格：{{symbol}}{{total}} / 1M tokens": "Giá đầu ra: {{symbol}}{{total}} / 1M tokens"
+    "输出价格：{{symbol}}{{total}} / 1M tokens": "Giá đầu ra: {{symbol}}{{total}} / 1M tokens",
+    "启用邀请制注册（需邀请码或邀请链接）": "Bật đăng ký theo lời mời (cần mã mời hoặc liên kết mời)",
+    "当前为邀请制注册，请输入邀请码或通过邀请链接注册": "Trang hiện áp dụng đăng ký theo lời mời. Vui lòng nhập mã mời hoặc đăng ký qua liên kết mời.",
+    "套餐：{{plan}}": "Gói: {{plan}}",
+    "，另赠": ", kèm thêm ",
+    "注册资格": "quyền đăng ký",
+    "本站": "trang này",
+    "我在{{siteName}}的邀请链接为：{{link}}": "Liên kết mời của tôi cho {{siteName}} là: {{link}}",
+    "使用我的邀请注册，你将获得{{reward}}。": "Đăng ký bằng lời mời của tôi và bạn sẽ nhận được {{reward}}.",
+    "本站采用邀请制注册，当前邀请码可用{{count}}次。": "Trang này áp dụng đăng ký theo lời mời. Mã mời hiện tại có thể dùng {{count}} lần."
   }
 }

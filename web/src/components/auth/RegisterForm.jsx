@@ -39,6 +39,7 @@ import {
   Checkbox,
   Divider,
   Form,
+  Input,
   Icon,
   Modal,
 } from '@douyinfe/semi-ui';
@@ -80,6 +81,7 @@ const RegisterForm = () => {
     password: '',
     password2: '',
     email: '',
+    aff_code: '',
     verification_code: '',
     wechat_verification_code: '',
   });
@@ -145,6 +147,32 @@ const RegisterForm = () => {
   );
 
   const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const inviteRegisterEnabled = !!status?.invite_register_enabled;
+
+  const syncInviteCode = (value) => {
+    const trimmedValue = (value || '').trim();
+    if (trimmedValue) {
+      localStorage.setItem('aff', trimmedValue);
+    } else {
+      localStorage.removeItem('aff');
+    }
+  };
+
+  const resolveInviteCode = () =>
+    (inputs.aff_code || affCode || localStorage.getItem('aff') || '').trim();
+
+  const ensureInviteCodeReady = () => {
+    if (!inviteRegisterEnabled) {
+      return true;
+    }
+    const inviteCode = resolveInviteCode();
+    if (!inviteCode) {
+      showInfo('当前为邀请制注册，请输入邀请码或通过邀请链接注册');
+      return false;
+    }
+    syncInviteCode(inviteCode);
+    return true;
+  };
 
   useEffect(() => {
     setShowEmailVerification(!!status?.email_verification);
@@ -157,6 +185,23 @@ const RegisterForm = () => {
     setHasUserAgreement(status?.user_agreement_enabled || false);
     setHasPrivacyPolicy(status?.privacy_policy_enabled || false);
   }, [status]);
+
+  useEffect(() => {
+    const initialInviteCode = (
+      affCode ||
+      localStorage.getItem('aff') ||
+      ''
+    ).trim();
+    if (!initialInviteCode) {
+      return;
+    }
+    syncInviteCode(initialInviteCode);
+    setInputs((prev) =>
+      prev.aff_code === initialInviteCode
+        ? prev
+        : { ...prev, aff_code: initialInviteCode },
+    );
+  }, []);
 
   useEffect(() => {
     let countdownInterval = null;
@@ -180,20 +225,27 @@ const RegisterForm = () => {
   }, []);
 
   const onWeChatLoginClicked = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     setWechatLoading(true);
     setShowWeChatLoginModal(true);
     setWechatLoading(false);
   };
 
   const onSubmitWeChatVerificationCode = async () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     if (turnstileEnabled && turnstileToken === '') {
       showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
       return;
     }
     setWechatCodeSubmitLoading(true);
     try {
+      const inviteCode = resolveInviteCode();
       const res = await API.get(
-        `/api/oauth/wechat?code=${inputs.wechat_verification_code}`,
+        `/api/oauth/wechat?code=${inputs.wechat_verification_code}${inviteCode ? `&aff=${encodeURIComponent(inviteCode)}` : ''}`,
       );
       const { success, message, data } = res.data;
       if (success) {
@@ -215,6 +267,9 @@ const RegisterForm = () => {
   };
 
   function handleChange(name, value) {
+    if (name === 'aff_code') {
+      syncInviteCode(value);
+    }
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   }
 
@@ -228,19 +283,22 @@ const RegisterForm = () => {
       return;
     }
     if (username && password) {
+      if (!ensureInviteCodeReady()) {
+        return;
+      }
       if (turnstileEnabled && turnstileToken === '') {
         showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
         return;
       }
       setRegisterLoading(true);
       try {
-        if (!affCode) {
-          affCode = localStorage.getItem('aff');
-        }
-        inputs.aff_code = affCode;
+        const payload = {
+          ...inputs,
+          aff_code: resolveInviteCode(),
+        };
         const res = await API.post(
           `/api/user/register?turnstile=${turnstileToken}`,
-          inputs,
+          payload,
         );
         const { success, message } = res.data;
         if (success) {
@@ -283,6 +341,9 @@ const RegisterForm = () => {
   };
 
   const handleGitHubClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     if (githubButtonDisabled) {
       return;
     }
@@ -305,6 +366,9 @@ const RegisterForm = () => {
   };
 
   const handleDiscordClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     setDiscordLoading(true);
     try {
       onDiscordOAuthClicked(status.discord_client_id, { shouldLogout: true });
@@ -314,6 +378,9 @@ const RegisterForm = () => {
   };
 
   const handleOIDCClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     setOidcLoading(true);
     try {
       onOIDCClicked(
@@ -328,6 +395,9 @@ const RegisterForm = () => {
   };
 
   const handleLinuxDOClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     setLinuxdoLoading(true);
     try {
       onLinuxDOOAuthClicked(status.linuxdo_client_id, { shouldLogout: true });
@@ -337,6 +407,9 @@ const RegisterForm = () => {
   };
 
   const handleCustomOAuthClick = (provider) => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: true }));
     try {
       onCustomOAuthClicked(provider, { shouldLogout: true });
@@ -360,6 +433,9 @@ const RegisterForm = () => {
   };
 
   const onTelegramLoginClicked = async (response) => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     const fields = [
       'id',
       'first_name',
@@ -413,6 +489,18 @@ const RegisterForm = () => {
             </div>
             <div className='px-2 py-8'>
               <div className='space-y-3'>
+                {inviteRegisterEnabled && (
+                  <div className='space-y-1'>
+                    <Text>{t('邀请码')}</Text>
+                    <Input
+                      placeholder={t('请输入邀请码')}
+                      value={inputs.aff_code}
+                      onChange={(value) => handleChange('aff_code', value)}
+                      prefix={<IconKey />}
+                    />
+                  </div>
+                )}
+
                 {status.wechat_login && (
                   <Button
                     theme='outline'
@@ -576,6 +664,18 @@ const RegisterForm = () => {
             </div>
             <div className='px-2 py-8'>
               <Form className='space-y-3'>
+                {inviteRegisterEnabled && (
+                  <Form.Input
+                    field='aff_code'
+                    label={t('邀请码')}
+                    placeholder={t('请输入邀请码')}
+                    name='aff_code'
+                    value={inputs.aff_code}
+                    onChange={(value) => handleChange('aff_code', value)}
+                    prefix={<IconKey />}
+                  />
+                )}
+
                 <Form.Input
                   field='username'
                   label={t('用户名')}

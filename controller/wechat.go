@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -90,12 +91,20 @@ func WeChatAuth(c *gin.Context) {
 		}
 	} else {
 		if common.RegisterEnabled {
+			inviterId, inviteErrorKey := resolveInviteRegistration(c, c.Query("aff"))
+			if inviteErrorKey != "" {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": i18n.T(c, inviteErrorKey),
+				})
+				return
+			}
 			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
 			user.DisplayName = "WeChat User"
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
 
-			if err := user.Insert(0, ""); err != nil {
+			if err := user.Insert(inviterId, c.ClientIP()); err != nil {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,
 					"message": err.Error(),
