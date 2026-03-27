@@ -1,3 +1,5 @@
+import { rewriteRateLimitResponse } from './rate-limit-response';
+
 const DEFAULT_BACKEND_ORIGIN = 'https://www.aicentos.com';
 
 const HOP_BY_HOP_HEADERS = [
@@ -91,6 +93,11 @@ export async function proxyToPath(request, upstreamPath) {
   }
 
   const upstreamResponse = await fetch(upstreamUrl, init);
+  const rewrittenResponse = await rewriteRateLimitResponse(upstreamResponse);
+  if (rewrittenResponse) {
+    return rewrittenResponse;
+  }
+
   const responseHeaders = new Headers(upstreamResponse.headers);
   HOP_BY_HOP_HEADERS.forEach((header) => responseHeaders.delete(header));
   if (upstreamResponse.ok) {

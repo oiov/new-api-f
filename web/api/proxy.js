@@ -1,3 +1,5 @@
+import { rewriteRateLimitResponse } from './_utils/rate-limit-response';
+
 /*
 Copyright (C) 2025 QuantumNous
 
@@ -140,6 +142,11 @@ export default async function handler(request) {
     }
 
     const upstreamResponse = await fetch(upstreamUrl, init);
+    const rewrittenResponse = await rewriteRateLimitResponse(upstreamResponse);
+    if (rewrittenResponse) {
+      return rewrittenResponse;
+    }
+
     const responseHeaders = new Headers(upstreamResponse.headers);
     HOP_BY_HOP_HEADERS.forEach((header) => responseHeaders.delete(header));
     if (upstreamResponse.ok) {
