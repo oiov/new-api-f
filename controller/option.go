@@ -297,7 +297,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "SubscriptionPlanForNewUser":
+	case "SubscriptionPlanForNewUser", "SubscriptionPlanForInviter", "SubscriptionPlanForInvitee":
 		planId, parseErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
 		if parseErr != nil || planId < 0 {
 			c.JSON(http.StatusOK, gin.H{

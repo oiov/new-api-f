@@ -339,6 +339,19 @@ func inviteUser(inviterId int) (err error) {
 	return DB.Save(user).Error
 }
 
+func bindSubscriptionReward(userId int, planId int, logPrefix string) {
+	if planId <= 0 {
+		return
+	}
+	if msg, err := AdminBindSubscription(userId, planId, "invite_reward"); err != nil {
+		common.SysError(fmt.Sprintf("%s绑定订阅套餐失败: user=%d plan=%d err=%v", logPrefix, userId, planId, err))
+	} else if msg != "" {
+		RecordLog(userId, LogTypeSystem, fmt.Sprintf("%s赠送订阅套餐 #%d，%s", logPrefix, planId, msg))
+	} else {
+		RecordLog(userId, LogTypeSystem, fmt.Sprintf("%s赠送订阅套餐 #%d", logPrefix, planId))
+	}
+}
+
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {
@@ -432,11 +445,13 @@ func (user *User) Insert(inviterId int) error {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
+		bindSubscriptionReward(user.Id, common.SubscriptionPlanForInvitee, "使用邀请码")
 		if common.QuotaForInviter > 0 {
 			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}
+		bindSubscriptionReward(inviterId, common.SubscriptionPlanForInviter, "邀请用户")
 	}
 	return nil
 }
@@ -502,10 +517,12 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
+		bindSubscriptionReward(user.Id, common.SubscriptionPlanForInvitee, "使用邀请码")
 		if common.QuotaForInviter > 0 {
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}
+		bindSubscriptionReward(inviterId, common.SubscriptionPlanForInviter, "邀请用户")
 	}
 }
 

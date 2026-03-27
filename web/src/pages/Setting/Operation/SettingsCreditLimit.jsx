@@ -36,7 +36,9 @@ export default function SettingsCreditLimit(props) {
     SubscriptionPlanForNewUser: '0',
     PreConsumedQuota: '',
     QuotaForInviter: '',
+    SubscriptionPlanForInviter: '0',
     QuotaForInvitee: '',
+    SubscriptionPlanForInvitee: '0',
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
@@ -96,6 +98,8 @@ export default function SettingsCreditLimit(props) {
   useEffect(() => {
     const currentInputs = {
       SubscriptionPlanForNewUser: '0',
+      SubscriptionPlanForInviter: '0',
+      SubscriptionPlanForInvitee: '0',
     };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
@@ -168,6 +172,26 @@ export default function SettingsCreditLimit(props) {
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.Select
+                  label={t('邀请人赠送订阅套餐')}
+                  field={'SubscriptionPlanForInviter'}
+                  placeholder={t('不赠送套餐')}
+                  optionList={[
+                    { label: t('不赠送套餐'), value: '0' },
+                    ...(subscriptionPlans || []).map((item) => ({
+                      label: `${item?.plan?.title || `#${item?.plan?.id}`} (#${item?.plan?.id})`,
+                      value: String(item?.plan?.id || 0),
+                    })),
+                  ]}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      SubscriptionPlanForInviter: String(value || '0'),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
                   label={t('新用户注册赠送订阅套餐')}
                   field={'SubscriptionPlanForNewUser'}
                   placeholder={t('不赠送套餐')}
@@ -201,6 +225,26 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       QuotaForInvitee: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  label={t('被邀请人赠送订阅套餐')}
+                  field={'SubscriptionPlanForInvitee'}
+                  placeholder={t('不赠送套餐')}
+                  optionList={[
+                    { label: t('不赠送套餐'), value: '0' },
+                    ...(subscriptionPlans || []).map((item) => ({
+                      label: `${item?.plan?.title || `#${item?.plan?.id}`} (#${item?.plan?.id})`,
+                      value: String(item?.plan?.id || 0),
+                    })),
+                  ]}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      SubscriptionPlanForInvitee: String(value || '0'),
                     })
                   }
                 />
