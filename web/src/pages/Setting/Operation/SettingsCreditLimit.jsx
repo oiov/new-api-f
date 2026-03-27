@@ -33,13 +33,26 @@ export default function SettingsCreditLimit(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     QuotaForNewUser: '',
+    SubscriptionPlanForNewUser: '0',
     PreConsumedQuota: '',
     QuotaForInviter: '',
     QuotaForInvitee: '',
     'quota_setting.enable_free_model_pre_consume': true,
   });
+  const [subscriptionPlans, setSubscriptionPlans] = useState([]);
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
+
+  const loadSubscriptionPlans = async () => {
+    try {
+      const res = await API.get('/api/subscription/admin/plans');
+      if (res.data?.success) {
+        setSubscriptionPlans(res.data.data || []);
+      }
+    } catch (error) {
+      showError(t('订阅套餐加载失败'));
+    }
+  };
 
   function onSubmit() {
     const updateArray = compareObjects(inputs, inputsRow);
@@ -77,7 +90,13 @@ export default function SettingsCreditLimit(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
+    loadSubscriptionPlans();
+  }, []);
+
+  useEffect(() => {
+    const currentInputs = {
+      SubscriptionPlanForNewUser: '0',
+    };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
         currentInputs[key] = props.options[key];
@@ -143,6 +162,26 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       QuotaForInviter: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  label={t('新用户注册赠送订阅套餐')}
+                  field={'SubscriptionPlanForNewUser'}
+                  placeholder={t('不赠送套餐')}
+                  optionList={[
+                    { label: t('不赠送套餐'), value: '0' },
+                    ...(subscriptionPlans || []).map((item) => ({
+                      label: `${item?.plan?.title || `#${item?.plan?.id}`} (#${item?.plan?.id})`,
+                      value: String(item?.plan?.id || 0),
+                    })),
+                  ]}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      SubscriptionPlanForNewUser: String(value || '0'),
                     })
                   }
                 />

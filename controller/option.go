@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -295,6 +296,25 @@ func UpdateOption(c *gin.Context) {
 				"message": err.Error(),
 			})
 			return
+		}
+	case "SubscriptionPlanForNewUser":
+		planId, parseErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
+		if parseErr != nil || planId < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "注册送订阅套餐必须是大于等于 0 的整数",
+			})
+			return
+		}
+		if planId > 0 {
+			_, err = model.GetSubscriptionPlanById(planId)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "订阅套餐不存在",
+				})
+				return
+			}
 		}
 	}
 	err = model.UpdateOption(option.Key, option.Value.(string))
