@@ -33,8 +33,13 @@ import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { API, showError, showSuccess } from '../../../../helpers';
+import { API, renderQuota, showError, showSuccess } from '../../../../helpers';
 import { convertUSDToCurrency } from '../../../../helpers/render';
+import {
+  formatSubscriptionResourceLabel,
+  getSubscriptionResourceType,
+  getSubscriptionUsageSummary,
+} from '../../../../helpers/subscriptionFormat';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import CardTable from '../../../common/ui/CardTable';
 
@@ -104,13 +109,13 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
 
   const planOptions = useMemo(() => {
     return (plans || []).map((p) => ({
-      label: `${p?.plan?.title || ''} (${convertUSDToCurrency(
-        Number(p?.plan?.price_amount || 0),
-        2,
-      )})`,
+      label: `${p?.plan?.title || ''} · ${formatSubscriptionResourceLabel(
+        p?.plan,
+        t,
+      )} · ${convertUSDToCurrency(Number(p?.plan?.price_amount || 0), 2)}`,
       value: p?.plan?.id,
     }));
-  }, [plans]);
+  }, [plans, t]);
 
   const loadPlans = async () => {
     setPlansLoading(true);
@@ -297,17 +302,36 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
         },
       },
       {
-        title: t('总额度'),
+        title: t('套餐权益'),
         key: 'total',
-        width: 120,
+        width: 160,
         render: (_, record) => {
           const sub = record?.subscription;
-          const total = Number(sub?.amount_total || 0);
-          const used = Number(sub?.amount_used || 0);
+          const summary = getSubscriptionUsageSummary(sub);
+          const resourceType = getSubscriptionResourceType(sub);
           return (
-            <Text type={total > 0 ? 'secondary' : 'tertiary'}>
-              {total > 0 ? `${used}/${total}` : t('不限')}
-            </Text>
+            <div className='text-xs text-gray-600'>
+              <div>
+                {formatSubscriptionResourceLabel(sub, t)}:{' '}
+                {!summary.unlimited ? (
+                  resourceType === 'request_count' ? (
+                    `${summary.used}/${summary.total}`
+                  ) : (
+                    `${renderQuota(summary.used)}/${renderQuota(summary.total)}`
+                  )
+                ) : (
+                  t('不限')
+                )}
+              </div>
+              {!summary.unlimited && (
+                <div>
+                  {t('剩余')}:{' '}
+                  {resourceType === 'request_count'
+                    ? summary.remain
+                    : renderQuota(summary.remain)}
+                </div>
+              )}
+            </div>
           );
         },
       },

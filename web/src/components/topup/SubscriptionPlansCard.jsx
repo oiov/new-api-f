@@ -37,6 +37,9 @@ import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
+  formatSubscriptionResourceLabel,
+  getSubscriptionResourceType,
+  getSubscriptionUsageSummary,
 } from '../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
@@ -245,10 +248,9 @@ const SubscriptionPlansCard = ({
 
   // 计算单个订阅的使用进度
   const getUsagePercent = (sub) => {
-    const total = Number(sub?.subscription?.amount_total || 0);
-    const used = Number(sub?.subscription?.amount_used || 0);
-    if (total <= 0) return 0;
-    return Math.round((used / total) * 100);
+    const summary = getSubscriptionUsageSummary(sub?.subscription);
+    if (summary.unlimited || summary.total <= 0) return 0;
+    return Math.round((summary.used / summary.total) * 100);
   };
 
   const cardContent = (
@@ -381,12 +383,14 @@ const SubscriptionPlansCard = ({
                   {allSubscriptions.map((sub, subIndex) => {
                     const isLast = subIndex === allSubscriptions.length - 1;
                     const subscription = sub.subscription;
-                    const totalAmount = Number(subscription?.amount_total || 0);
-                    const usedAmount = Number(subscription?.amount_used || 0);
-                    const remainAmount =
-                      totalAmount > 0
-                        ? Math.max(0, totalAmount - usedAmount)
-                        : 0;
+                    const usageSummary =
+                      getSubscriptionUsageSummary(subscription);
+                    const resourceType =
+                      getSubscriptionResourceType(subscription);
+                    const usageLabel = formatSubscriptionResourceLabel(
+                      subscription,
+                      t,
+                    );
                     const planTitle =
                       planTitleMap.get(subscription?.plan_id) || '';
                     const remainDays = getRemainingDays(sub);
@@ -443,21 +447,34 @@ const SubscriptionPlansCard = ({
                           ).toLocaleString()}
                         </div>
                         <div className='text-xs text-gray-500 mb-2'>
-                          {t('总额度')}:{' '}
-                          {totalAmount > 0 ? (
-                            <Tooltip
-                              content={`${t('原生额度')}：${usedAmount}/${totalAmount} · ${t('剩余')} ${remainAmount}`}
-                            >
+                          {resourceType === 'request_count'
+                            ? t('次数重置')
+                            : t('额度重置')}
+                          : {formatSubscriptionResetPeriod(subscription, t)}
+                        </div>
+                        <div className='text-xs text-gray-500 mb-2'>
+                          {usageLabel}:{' '}
+                          {!usageSummary.unlimited ? (
+                            resourceType === 'request_count' ? (
                               <span>
-                                {renderQuota(usedAmount)}/
-                                {renderQuota(totalAmount)} · {t('剩余')}{' '}
-                                {renderQuota(remainAmount)}
+                                {usageSummary.used}/{usageSummary.total} ·{' '}
+                                {t('剩余')} {usageSummary.remain}
                               </span>
-                            </Tooltip>
+                            ) : (
+                              <Tooltip
+                                content={`${t('原生额度')}：${usageSummary.used}/${usageSummary.total} · ${t('剩余')} ${usageSummary.remain}`}
+                              >
+                                <span>
+                                  {renderQuota(usageSummary.used)}/
+                                  {renderQuota(usageSummary.total)} · {t('剩余')}{' '}
+                                  {renderQuota(usageSummary.remain)}
+                                </span>
+                              </Tooltip>
+                            )
                           ) : (
                             t('不限')
                           )}
-                          {totalAmount > 0 && (
+                          {!usageSummary.unlimited && (
                             <span className='ml-2'>
                               {t('已用')} {usagePercent}%
                             </span>
@@ -481,7 +498,8 @@ const SubscriptionPlansCard = ({
             <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-5 w-full px-1'>
               {plans.map((p, index) => {
                 const plan = p?.plan;
-                const totalAmount = Number(plan?.total_amount || 0);
+                const usageSummary = getSubscriptionUsageSummary(plan);
+                const resourceType = getSubscriptionResourceType(plan);
                 const { symbol, rate } = getCurrencyConfig();
                 const price = Number(plan?.price_amount || 0);
                 const convertedPrice = price * rate;
@@ -491,26 +509,30 @@ const SubscriptionPlansCard = ({
                 const isPopular = index === 0 && plans.length > 1;
                 const limit = Number(plan?.max_purchase_per_user || 0);
                 const limitLabel = limit > 0 ? `${t('限购')} ${limit}` : null;
-                const totalLabel =
-                  totalAmount > 0
-                    ? `${t('总额度')}: ${renderQuota(totalAmount)}`
-                    : `${t('总额度')}: ${t('不限')}`;
+                const totalLabel = usageSummary.unlimited
+                  ? `${formatSubscriptionResourceLabel(plan, t)}: ${t('不限')}`
+                  : resourceType === 'request_count'
+                    ? `${formatSubscriptionResourceLabel(plan, t)}: ${usageSummary.total}`
+                    : `${formatSubscriptionResourceLabel(plan, t)}: ${renderQuota(usageSummary.total)}`;
                 const upgradeLabel = plan?.upgrade_group
                   ? `${t('升级分组')}: ${plan.upgrade_group}`
                   : null;
                 const resetLabel =
                   formatSubscriptionResetPeriod(plan, t) === t('不重置')
                     ? null
-                    : `${t('额度重置')}: ${formatSubscriptionResetPeriod(plan, t)}`;
+                    : `${resourceType === 'request_count' ? t('次数重置') : t('额度重置')}: ${formatSubscriptionResetPeriod(plan, t)}`;
                 const planBenefits = [
                   {
                     label: `${t('有效期')}: ${formatSubscriptionDuration(plan, t)}`,
                   },
                   resetLabel ? { label: resetLabel } : null,
-                  totalAmount > 0
+                  !usageSummary.unlimited
                     ? {
                         label: totalLabel,
-                        tooltip: `${t('原生额度')}：${totalAmount}`,
+                        tooltip:
+                          resourceType === 'request_count'
+                            ? `${t('总次数')}：${usageSummary.total}`
+                            : `${t('原生额度')}：${usageSummary.total}`,
                       }
                     : { label: totalLabel },
                   limitLabel ? { label: limitLabel } : null,
