@@ -156,18 +156,20 @@ const SubscriptionPlansCard = ({
   allSubscriptions = [],
   reloadSubscriptionSelf,
   withCard = true,
+  initialMainTab = 'my_subscriptions',
 }) => {
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState(initialMainTab);
   const [subscriptionView, setSubscriptionView] = useState('active');
   const [planSort, setPlanSort] = useState('recommended');
   const [expandedSubscriptionKeys, setExpandedSubscriptionKeys] = useState([]);
   const [consumeLogsFilter, setConsumeLogsFilter] = useState(null);
   const [planPage, setPlanPage] = useState(1);
-  const [planPageSize] = useState(9);
+  const [planPageSize, setPlanPageSize] = useState(9);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 

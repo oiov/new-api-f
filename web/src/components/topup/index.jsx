@@ -812,6 +812,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             activeSubscriptions={activeSubscriptions}
             allSubscriptions={allSubscriptions}
             reloadSubscriptionSelf={getSubscriptionSelf}
+            initialMainTab='plan_list'
           />
         )}
 
@@ -829,6 +830,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             activeSubscriptions={activeSubscriptions}
             allSubscriptions={allSubscriptions}
             reloadSubscriptionSelf={getSubscriptionSelf}
+            initialMainTab='my_subscriptions'
           />
         )}
         {isTopupPage && (
