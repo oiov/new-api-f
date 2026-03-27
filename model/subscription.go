@@ -1020,6 +1020,18 @@ func isUserSubscriptionEligibleForPreConsume(sub *UserSubscription, amount int64
 	return true, required, resourceType
 }
 
+func doesUserSubscriptionMatchGroup(sub *UserSubscription, usingGroup string) bool {
+	if sub == nil {
+		return false
+	}
+	subGroup := strings.TrimSpace(sub.UpgradeGroup)
+	usingGroup = strings.TrimSpace(usingGroup)
+	if subGroup == "" || usingGroup == "" {
+		return true
+	}
+	return subGroup == usingGroup
+}
+
 func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int, sub *UserSubscription, required int64, resourceType string, returnValue *SubscriptionPreConsumeResult) error {
 	if tx == nil || sub == nil || returnValue == nil {
 		return errors.New("invalid pre-consume args")
@@ -1073,7 +1085,7 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 }
 
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1127,6 +1139,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		quotaCandidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
 			sub := candidate
+			if !doesUserSubscriptionMatchGroup(&sub, usingGroup) {
+				continue
+			}
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
 			if err != nil {
 				return err

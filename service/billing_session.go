@@ -297,6 +297,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 				requestId: relayInfo.RequestId,
 				userId:    relayInfo.UserId,
 				modelName: relayInfo.OriginModelName,
+				usingGroup: relayInfo.UsingGroup,
 				amount:    subConsume,
 			},
 		}

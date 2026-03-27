@@ -332,7 +332,7 @@ func TestPreConsumeUserSubscription_PrefersEarliestRequestCountThenQuota(t *test
 	require.NoError(t, model.DB.Create(requestSubLate).Error)
 	require.NoError(t, model.DB.Create(requestSubEarly).Error)
 
-	res, err := model.PreConsumeUserSubscription("req-prefers-request-count", userID, "test-model", 0, 500)
+	res, err := model.PreConsumeUserSubscription("req-prefers-request-count", userID, "test-model", "", 0, 500)
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	assert.Equal(t, requestSubEarly.Id, res.UserSubscriptionId)
