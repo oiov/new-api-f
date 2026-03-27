@@ -462,7 +462,7 @@ func applySubscriptionJSONIdFilter(tx *gorm.DB, key string, value int) *gorm.DB 
 }
 
 func buildSubscriptionConsumeLogsQuery(userId int, subscriptionId int, planId int, username string, startTimestamp int64, endTimestamp int64) *gorm.DB {
-	tx := LOG_DB.Where("logs.type = ?", LogTypeConsume)
+	tx := LOG_DB.Table("logs").Where("logs.type = ?", LogTypeConsume)
 	tx = tx.Where("logs.other LIKE ?", `%"billing_source":"subscription"%`)
 
 	if userId > 0 {
