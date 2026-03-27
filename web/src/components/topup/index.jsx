@@ -96,6 +96,27 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const [affLink, setAffLink] = useState('');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
+  const [inviteDetailsLoading, setInviteDetailsLoading] = useState(false);
+  const [invitedUsersPage, setInvitedUsersPage] = useState(1);
+  const [invitedUsersPageSize, setInvitedUsersPageSize] = useState(10);
+  const [inviterRewardPage, setInviterRewardPage] = useState(1);
+  const [inviterRewardPageSize, setInviterRewardPageSize] = useState(10);
+  const [inviteDetails, setInviteDetails] = useState({
+    config: {
+      inviter_quota: 0,
+      invitee_quota: 0,
+      inviter_plan: null,
+      invitee_plan: null,
+    },
+    inviter_reward_records: [],
+    inviter_reward_total: 0,
+    inviter_reward_page: 1,
+    inviter_reward_page_size: 10,
+    invited_users: [],
+    invited_users_total: 0,
+    invited_users_page: 1,
+    invited_users_page_size: 10,
+  });
 
   // 账单Modal状态
   const [openHistory, setOpenHistory] = useState(false);
@@ -581,6 +602,47 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
     showSuccess(t('邀请链接已复制到剪切板'));
   };
 
+  const getInviteDetails = async () => {
+    setInviteDetailsLoading(true);
+    try {
+      const res = await API.get('/api/user/aff/details', {
+        params: {
+          p: invitedUsersPage,
+          page_size: invitedUsersPageSize,
+          reward_p: inviterRewardPage,
+          reward_page_size: inviterRewardPageSize,
+        },
+      });
+      const { success, message, data } = res.data;
+      if (success) {
+        setInviteDetails(
+          data || {
+            config: {
+              inviter_quota: 0,
+              invitee_quota: 0,
+              inviter_plan: null,
+              invitee_plan: null,
+            },
+            inviter_reward_records: [],
+            inviter_reward_total: 0,
+            inviter_reward_page: 1,
+            inviter_reward_page_size: 10,
+            invited_users: [],
+            invited_users_total: 0,
+            invited_users_page: 1,
+            invited_users_page_size: 10,
+          },
+        );
+      } else {
+        showError(message || t('获取邀请明细失败'));
+      }
+    } catch (error) {
+      showError(t('获取邀请明细失败'));
+    } finally {
+      setInviteDetailsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!shouldLoadTopupData) return;
     if (searchParams.get('show_history') === 'true') {
@@ -599,10 +661,16 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
 
   useEffect(() => {
     if (!isInvitePage) return;
-    if (affFetchedRef.current) return;
-    affFetchedRef.current = true;
-    getAffLink().then();
+    if (!affFetchedRef.current) {
+      affFetchedRef.current = true;
+      getAffLink().then();
+    }
   }, [isInvitePage]);
+
+  useEffect(() => {
+    if (!isInvitePage) return;
+    getInviteDetails().then();
+  }, [isInvitePage, invitedUsersPage, invitedUsersPageSize, inviterRewardPage, inviterRewardPageSize]);
 
   useEffect(() => {
     if (shouldLoadTopupData) {
@@ -831,6 +899,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             allSubscriptions={allSubscriptions}
             reloadSubscriptionSelf={getSubscriptionSelf}
             initialMainTab='my_subscriptions'
+            withCard={false}
           />
         )}
         {isTopupPage && (
@@ -882,6 +951,16 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             setOpenTransfer={setOpenTransfer}
             affLink={affLink}
             handleAffLinkClick={handleAffLinkClick}
+            inviteDetailsLoading={inviteDetailsLoading}
+            inviteDetails={inviteDetails}
+            invitedUsersPage={invitedUsersPage}
+            invitedUsersPageSize={invitedUsersPageSize}
+            setInvitedUsersPage={setInvitedUsersPage}
+            setInvitedUsersPageSize={setInvitedUsersPageSize}
+            inviterRewardPage={inviterRewardPage}
+            inviterRewardPageSize={inviterRewardPageSize}
+            setInviterRewardPage={setInviterRewardPage}
+            setInviterRewardPageSize={setInviterRewardPageSize}
           />
         )}
       </div>

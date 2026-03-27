@@ -339,16 +339,19 @@ func inviteUser(inviterId int) (err error) {
 	return DB.Save(user).Error
 }
 
-func bindSubscriptionReward(userId int, planId int, logPrefix string) {
+func bindSubscriptionReward(userId int, planId int, logPrefix string) (*UserSubscription, error) {
 	if planId <= 0 {
-		return
+		return nil, nil
 	}
-	if msg, err := AdminBindSubscription(userId, planId, "invite_reward"); err != nil {
+	if msg, sub, err := AdminBindSubscriptionWithResult(userId, planId, "invite_reward"); err != nil {
 		common.SysError(fmt.Sprintf("%s绑定订阅套餐失败: user=%d plan=%d err=%v", logPrefix, userId, planId, err))
+		return nil, err
 	} else if msg != "" {
 		RecordLog(userId, LogTypeSystem, fmt.Sprintf("%s赠送订阅套餐 #%d，%s", logPrefix, planId, msg))
+		return sub, nil
 	} else {
 		RecordLog(userId, LogTypeSystem, fmt.Sprintf("%s赠送订阅套餐 #%d", logPrefix, planId))
+		return sub, nil
 	}
 }
 
@@ -396,18 +399,25 @@ func applyInviteRewards(userId int, inviterId int, clientIP string) {
 	allowed, reason := common.CheckInviteRewardEligibility(inviterId, clientIP)
 	if !allowed {
 		common.SysLog(fmt.Sprintf("邀请奖励已拦截: inviter=%d invitee=%d ip=%s reason=%s", inviterId, userId, clientIP, reason))
+		recordInviteRewardBlocked(inviterId, userId, reason)
 		return
 	}
 	if common.QuotaForInvitee > 0 {
 		_ = IncreaseUserQuota(userId, common.QuotaForInvitee, true)
 		RecordLog(userId, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+		recordInviteQuotaGrant(inviterId, userId, userId, InviteRewardSideInvitee, common.QuotaForInvitee)
 	}
-	bindSubscriptionReward(userId, common.SubscriptionPlanForInvitee, "使用邀请码")
+	if sub, err := bindSubscriptionReward(userId, common.SubscriptionPlanForInvitee, "使用邀请码"); err == nil {
+		recordInvitePlanGrant(inviterId, userId, userId, InviteRewardSideInvitee, sub)
+	}
 	if common.QuotaForInviter > 0 {
 		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 		_ = inviteUser(inviterId)
+		recordInviteQuotaGrant(inviterId, userId, inviterId, InviteRewardSideInviter, common.QuotaForInviter)
 	}
-	bindSubscriptionReward(inviterId, common.SubscriptionPlanForInviter, "邀请用户")
+	if sub, err := bindSubscriptionReward(inviterId, common.SubscriptionPlanForInviter, "邀请用户"); err == nil {
+		recordInvitePlanGrant(inviterId, userId, inviterId, InviteRewardSideInviter, sub)
+	}
 }
 
 func (user *User) Insert(inviterId int, clientIP string) error {

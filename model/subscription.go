@@ -724,25 +724,38 @@ func ExpireSubscriptionOrder(tradeNo string) error {
 
 // Admin bind (no payment). Creates a UserSubscription from a plan.
 func AdminBindSubscription(userId int, planId int, sourceNote string) (string, error) {
+	msg, _, err := AdminBindSubscriptionWithResult(userId, planId, sourceNote)
+	return msg, err
+}
+
+func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) (string, *UserSubscription, error) {
 	if userId <= 0 || planId <= 0 {
-		return "", errors.New("invalid userId or planId")
+		return "", nil, errors.New("invalid userId or planId")
 	}
 	plan, err := GetSubscriptionPlanById(planId)
 	if err != nil {
-		return "", err
+		return "", nil, err
+	}
+	var createdSub *UserSubscription
+	source := strings.TrimSpace(sourceNote)
+	if source == "" {
+		source = "admin"
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		_, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
+		sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, source)
+		if err == nil {
+			createdSub = sub
+		}
 		return err
 	})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if strings.TrimSpace(plan.UpgradeGroup) != "" {
 		_ = UpdateUserGroupCache(userId, plan.UpgradeGroup)
-		return fmt.Sprintf("用户分组将升级到 %s", plan.UpgradeGroup), nil
+		return fmt.Sprintf("用户分组将升级到 %s", plan.UpgradeGroup), createdSub, nil
 	}
-	return "", nil
+	return "", createdSub, nil
 }
 
 // GetAllActiveUserSubscriptions returns all active subscriptions for a user.

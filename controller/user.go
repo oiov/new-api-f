@@ -365,6 +365,31 @@ func GetAffCode(c *gin.Context) {
 	return
 }
 
+func GetAffDetails(c *gin.Context) {
+	id := c.GetInt("id")
+	invitedPageInfo := common.GetPageQuery(c)
+	rewardPage := 1
+	rewardPageSize := common.ItemsPerPage
+	if value, err := strconv.Atoi(c.Query("reward_p")); err == nil && value > 0 {
+		rewardPage = value
+	}
+	if value, err := strconv.Atoi(c.Query("reward_page_size")); err == nil && value > 0 {
+		rewardPageSize = value
+	}
+	data, err := model.GetInviteRewardDetails(
+		id,
+		invitedPageInfo.GetPage(),
+		invitedPageInfo.GetPageSize(),
+		rewardPage,
+		rewardPageSize,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, data)
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
