@@ -31,6 +31,11 @@ import {
 } from '@douyinfe/semi-ui';
 import { renderQuota } from '../../../helpers';
 import { convertUSDToCurrency } from '../../../helpers/render';
+import {
+  formatSubscriptionResourceLabel,
+  getSubscriptionResourceType,
+  getSubscriptionUsageSummary,
+} from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
 
@@ -43,6 +48,7 @@ function formatDuration(plan, t) {
   const unitMap = {
     year: t('年'),
     month: t('月'),
+    week: t('周'),
     day: t('日'),
     hour: t('小时'),
   };
@@ -81,14 +87,21 @@ const renderPlanTitle = (text, record, t) => {
         <Text strong style={{ color: 'var(--semi-color-success)' }}>
           {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
         </Text>
-        <Text type='tertiary'>{t('总额度')}</Text>
-        {plan?.total_amount > 0 ? (
-          <Tooltip content={`${t('原生额度')}：${plan.total_amount}`}>
-            <Text>{renderQuota(plan.total_amount)}</Text>
-          </Tooltip>
-        ) : (
-          <Text>{t('不限')}</Text>
-        )}
+        <Text type='tertiary'>{formatSubscriptionResourceLabel(plan, t)}</Text>
+        {(() => {
+          const summary = getSubscriptionUsageSummary(plan);
+          if (summary.unlimited) {
+            return <Text>{t('不限')}</Text>;
+          }
+          if (getSubscriptionResourceType(plan) === 'request_count') {
+            return <Text>{summary.total}</Text>;
+          }
+          return (
+            <Tooltip content={`${t('原生额度')}：${summary.total}`}>
+              <Text>{renderQuota(summary.total)}</Text>
+            </Tooltip>
+          );
+        })()}
         <Text type='tertiary'>{t('升级分组')}</Text>
         <Text>{plan?.upgrade_group ? plan.upgrade_group : t('不升级')}</Text>
         <Text type='tertiary'>{t('购买上限')}</Text>
@@ -169,13 +182,18 @@ const renderEnabled = (text, record, t) => {
 };
 
 const renderTotalAmount = (text, record, t) => {
-  const total = Number(record?.plan?.total_amount || 0);
+  const plan = record?.plan;
+  const summary = getSubscriptionUsageSummary(plan);
   return (
-    <Text type={total > 0 ? 'secondary' : 'tertiary'}>
-      {total > 0 ? (
-        <Tooltip content={`${t('原生额度')}：${total}`}>
-          <span>{renderQuota(total)}</span>
-        </Tooltip>
+    <Text type={!summary.unlimited ? 'secondary' : 'tertiary'}>
+      {!summary.unlimited ? (
+        getSubscriptionResourceType(plan) === 'request_count' ? (
+          summary.total
+        ) : (
+          <Tooltip content={`${t('原生额度')}：${summary.total}`}>
+            <span>{renderQuota(summary.total)}</span>
+          </Tooltip>
+        )
       ) : (
         t('不限')
       )}
@@ -336,7 +354,7 @@ export const getSubscriptionsColumns = ({
         renderPaymentConfig(text, record, t, enableEpay),
     },
     {
-      title: t('总额度'),
+      title: t('套餐权益'),
       width: 100,
       render: (text, record) => renderTotalAmount(text, record, t),
     },

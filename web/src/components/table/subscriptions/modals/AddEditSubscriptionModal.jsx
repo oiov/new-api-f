@@ -44,6 +44,7 @@ import {
   quotaToDisplayAmount,
   displayAmountToQuota,
 } from '../../../../helpers/quota';
+import { getSubscriptionResourceType } from '../../../../helpers/subscriptionFormat';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const { Text, Title } = Typography;
@@ -51,9 +52,15 @@ const { Text, Title } = Typography;
 const durationUnitOptions = [
   { value: 'year', label: '年' },
   { value: 'month', label: '月' },
+  { value: 'week', label: '周' },
   { value: 'day', label: '日' },
   { value: 'hour', label: '小时' },
   { value: 'custom', label: '自定义(秒)' },
+];
+
+const resourceTypeOptions = [
+  { value: 'quota', label: '按额度' },
+  { value: 'request_count', label: '按次数' },
 ];
 
 const resetPeriodOptions = [
@@ -93,7 +100,9 @@ const AddEditSubscriptionModal = ({
     enabled: true,
     sort_order: 0,
     max_purchase_per_user: 0,
+    resource_type: 'quota',
     total_amount: 0,
+    request_count_total: 0,
     upgrade_group: '',
     stripe_price_id: '',
     creem_product_id: '',
@@ -117,9 +126,11 @@ const AddEditSubscriptionModal = ({
       enabled: p.enabled !== false,
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
+      resource_type: getSubscriptionResourceType(p),
       total_amount: Number(
         quotaToDisplayAmount(p.total_amount || 0).toFixed(2),
       ),
+      request_count_total: Number(p.request_count_total || 0),
       upgrade_group: p.upgrade_group || '',
       stripe_price_id: p.stripe_price_id || '',
       creem_product_id: p.creem_product_id || '',
@@ -162,7 +173,15 @@ const AddEditSubscriptionModal = ({
               : 0,
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
-          total_amount: displayAmountToQuota(values.total_amount),
+          resource_type: values.resource_type || 'quota',
+          total_amount:
+            values.resource_type === 'request_count'
+              ? 0
+              : displayAmountToQuota(values.total_amount),
+          request_count_total:
+            values.resource_type === 'request_count'
+              ? Number(values.request_count_total || 0)
+              : 0,
           upgrade_group: values.upgrade_group || '',
         },
       };
@@ -296,6 +315,21 @@ const AddEditSubscriptionModal = ({
                     </Col>
 
                     <Col span={12}>
+                      <Form.Select
+                        field='resource_type'
+                        label={t('权益类型')}
+                        required
+                        rules={[{ required: true }]}
+                      >
+                        {resourceTypeOptions.map((o) => (
+                          <Select.Option key={o.value} value={o.value}>
+                            {t(o.label)}
+                          </Select.Option>
+                        ))}
+                      </Form.Select>
+                    </Col>
+
+                    <Col span={12}>
                       <Form.InputNumber
                         field='price_amount'
                         label={t('实付金额')}
@@ -308,18 +342,31 @@ const AddEditSubscriptionModal = ({
                     </Col>
 
                     <Col span={12}>
-                      <Form.InputNumber
-                        field='total_amount'
-                        label={t('总额度')}
-                        required
-                        min={0}
-                        precision={2}
-                        rules={[{ required: true, message: t('请输入总额度') }]}
-                        extraText={`${t('0 表示不限')} · ${t('原生额度')}：${displayAmountToQuota(
-                          values.total_amount,
-                        )}`}
-                        style={{ width: '100%' }}
-                      />
+                      {values.resource_type === 'request_count' ? (
+                        <Form.InputNumber
+                          field='request_count_total'
+                          label={t('总次数')}
+                          required
+                          min={0}
+                          precision={0}
+                          rules={[{ required: true, message: t('请输入总次数') }]}
+                          extraText={t('0 表示不限')}
+                          style={{ width: '100%' }}
+                        />
+                      ) : (
+                        <Form.InputNumber
+                          field='total_amount'
+                          label={t('总额度')}
+                          required
+                          min={0}
+                          precision={2}
+                          rules={[{ required: true, message: t('请输入总额度') }]}
+                          extraText={`${t('0 表示不限')} · ${t('原生额度')}：${displayAmountToQuota(
+                            values.total_amount,
+                          )}`}
+                          style={{ width: '100%' }}
+                        />
+                      )}
                     </Col>
 
                     <Col span={12}>
@@ -443,7 +490,7 @@ const AddEditSubscriptionModal = ({
                   </Row>
                 </Card>
 
-                {/* 额度重置 */}
+                {/* 权益重置 */}
                 <Card className='!rounded-2xl shadow-sm border-0 mb-4'>
                   <div className='flex items-center mb-2'>
                     <Avatar
@@ -455,10 +502,14 @@ const AddEditSubscriptionModal = ({
                     </Avatar>
                     <div>
                       <Text className='text-lg font-medium'>
-                        {t('额度重置')}
+                        {values.resource_type === 'request_count'
+                          ? t('次数重置')
+                          : t('额度重置')}
                       </Text>
                       <div className='text-xs text-gray-600'>
-                        {t('支持周期性重置套餐权益额度')}
+                        {values.resource_type === 'request_count'
+                          ? t('支持周期性重置套餐权益次数')
+                          : t('支持周期性重置套餐权益额度')}
                       </div>
                     </div>
                   </div>

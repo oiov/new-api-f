@@ -151,6 +151,16 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	req.Plan.ResourceType = model.NormalizeSubscriptionResourceType(req.Plan.ResourceType)
+	if req.Plan.RequestCountTotal < 0 {
+		common.ApiErrorMsg(c, "次数不能为负数")
+		return
+	}
+	if req.Plan.ResourceType == model.SubscriptionResourceRequestCount {
+		req.Plan.TotalAmount = 0
+	} else {
+		req.Plan.RequestCountTotal = 0
+	}
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -214,6 +224,16 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	req.Plan.ResourceType = model.NormalizeSubscriptionResourceType(req.Plan.ResourceType)
+	if req.Plan.RequestCountTotal < 0 {
+		common.ApiErrorMsg(c, "次数不能为负数")
+		return
+	}
+	if req.Plan.ResourceType == model.SubscriptionResourceRequestCount {
+		req.Plan.TotalAmount = 0
+	} else {
+		req.Plan.RequestCountTotal = 0
+	}
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -236,6 +256,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"creem_product_id":           req.Plan.CreemProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"total_amount":               req.Plan.TotalAmount,
+			"resource_type":              req.Plan.ResourceType,
+			"request_count_total":        req.Plan.RequestCountTotal,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,

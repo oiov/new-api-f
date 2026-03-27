@@ -23,6 +23,7 @@ export function formatSubscriptionDuration(plan, t) {
   const unitLabels = {
     year: t('年'),
     month: t('个月'),
+    week: t('周'),
     day: t('天'),
     hour: t('小时'),
     custom: t('自定义'),
@@ -34,6 +35,42 @@ export function formatSubscriptionDuration(plan, t) {
     return `${seconds} ${t('秒')}`;
   }
   return `${value} ${unitLabels[unit] || unit}`;
+}
+
+export function getSubscriptionResourceType(plan) {
+  return plan?.resource_type === 'request_count' ? 'request_count' : 'quota';
+}
+
+export function formatSubscriptionResourceLabel(plan, t) {
+  return getSubscriptionResourceType(plan) === 'request_count'
+    ? t('总次数')
+    : t('总额度');
+}
+
+export function getSubscriptionUsageSummary(plan) {
+  const resourceType = getSubscriptionResourceType(plan);
+  if (resourceType === 'request_count') {
+    const total = Number(plan?.request_count_total || 0);
+    const used = Number(plan?.request_count_used || 0);
+    const remain = total > 0 ? Math.max(0, total - used) : 0;
+    return {
+      resourceType,
+      total,
+      used,
+      remain,
+      unlimited: total <= 0,
+    };
+  }
+  const total = Number(plan?.amount_total ?? plan?.total_amount ?? 0);
+  const used = Number(plan?.amount_used ?? 0);
+  const remain = total > 0 ? Math.max(0, total - used) : 0;
+  return {
+    resourceType,
+    total,
+    used,
+    remain,
+    unlimited: total <= 0,
+  };
 }
 
 export function formatSubscriptionResetPeriod(plan, t) {
