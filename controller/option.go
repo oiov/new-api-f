@@ -316,6 +316,15 @@ func UpdateOption(c *gin.Context) {
 				return
 			}
 		}
+	case "InviteRewardLimitWindowMinutes", "InviteRewardMaxCountPerInviter", "InviteRewardMaxCountPerIP", "InviteRewardMaxCountPerInviterIP":
+		count, parseErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
+		if parseErr != nil || count < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "邀请奖励防刷配置必须是大于等于 0 的整数",
+			})
+			return
+		}
 	}
 	err = model.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {

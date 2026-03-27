@@ -125,6 +125,10 @@ func InitOptionMap() {
 	common.OptionMap["SubscriptionPlanForInviter"] = strconv.Itoa(common.SubscriptionPlanForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
 	common.OptionMap["SubscriptionPlanForInvitee"] = strconv.Itoa(common.SubscriptionPlanForInvitee)
+	common.OptionMap["InviteRewardLimitWindowMinutes"] = strconv.Itoa(common.InviteRewardLimitWindowMinutes)
+	common.OptionMap["InviteRewardMaxCountPerInviter"] = strconv.Itoa(common.InviteRewardMaxCountPerInviter)
+	common.OptionMap["InviteRewardMaxCountPerIP"] = strconv.Itoa(common.InviteRewardMaxCountPerIP)
+	common.OptionMap["InviteRewardMaxCountPerInviterIP"] = strconv.Itoa(common.InviteRewardMaxCountPerInviterIP)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -451,6 +455,14 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
 	case "SubscriptionPlanForInvitee":
 		common.SubscriptionPlanForInvitee, _ = strconv.Atoi(value)
+	case "InviteRewardLimitWindowMinutes":
+		common.InviteRewardLimitWindowMinutes, _ = strconv.Atoi(value)
+	case "InviteRewardMaxCountPerInviter":
+		common.InviteRewardMaxCountPerInviter, _ = strconv.Atoi(value)
+	case "InviteRewardMaxCountPerIP":
+		common.InviteRewardMaxCountPerIP, _ = strconv.Atoi(value)
+	case "InviteRewardMaxCountPerInviterIP":
+		common.InviteRewardMaxCountPerInviterIP, _ = strconv.Atoi(value)
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":

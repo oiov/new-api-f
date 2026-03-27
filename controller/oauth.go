@@ -295,7 +295,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		}
 
 		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
-		user.FinalizeOAuthUserCreation(inviterId)
+		user.FinalizeOAuthUserCreation(inviterId, c.ClientIP())
 	} else {
 		// Built-in provider: create user and update provider ID in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -324,7 +324,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		}
 
 		// Perform post-transaction tasks
-		user.FinalizeOAuthUserCreation(inviterId)
+		user.FinalizeOAuthUserCreation(inviterId, c.ClientIP())
 	}
 
 	return user, nil

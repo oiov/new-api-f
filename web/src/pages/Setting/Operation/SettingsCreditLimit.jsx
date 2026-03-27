@@ -39,6 +39,10 @@ export default function SettingsCreditLimit(props) {
     SubscriptionPlanForInviter: '0',
     QuotaForInvitee: '',
     SubscriptionPlanForInvitee: '0',
+    InviteRewardLimitWindowMinutes: '1440',
+    InviteRewardMaxCountPerInviter: '10',
+    InviteRewardMaxCountPerIP: '3',
+    InviteRewardMaxCountPerInviterIP: '1',
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
@@ -100,6 +104,10 @@ export default function SettingsCreditLimit(props) {
       SubscriptionPlanForNewUser: '0',
       SubscriptionPlanForInviter: '0',
       SubscriptionPlanForInvitee: '0',
+      InviteRewardLimitWindowMinutes: '1440',
+      InviteRewardMaxCountPerInviter: '10',
+      InviteRewardMaxCountPerIP: '3',
+      InviteRewardMaxCountPerInviterIP: '1',
     };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
@@ -245,6 +253,68 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       SubscriptionPlanForInvitee: String(value || '0'),
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('邀请奖励统计窗口')}
+                  field={'InviteRewardLimitWindowMinutes'}
+                  step={1}
+                  min={0}
+                  suffix={t('分钟')}
+                  extraText={t('0 表示不限制，默认 1440 分钟')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviteRewardLimitWindowMinutes: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('单邀请人窗口内最大奖励次数')}
+                  field={'InviteRewardMaxCountPerInviter'}
+                  step={1}
+                  min={0}
+                  extraText={t('超过后继续允许注册，但不再发放邀请奖励')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviteRewardMaxCountPerInviter: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('单 IP 窗口内最大奖励次数')}
+                  field={'InviteRewardMaxCountPerIP'}
+                  step={1}
+                  min={0}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviteRewardMaxCountPerIP: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('单邀请人同 IP 最大奖励次数')}
+                  field={'InviteRewardMaxCountPerInviterIP'}
+                  step={1}
+                  min={0}
+                  extraText={t('建议保持 1，能明显抑制同一网络环境批量刷邀请')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviteRewardMaxCountPerInviterIP: String(value),
                     })
                   }
                 />

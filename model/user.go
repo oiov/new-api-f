@@ -389,7 +389,28 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	return tx.Commit().Error
 }
 
-func (user *User) Insert(inviterId int) error {
+func applyInviteRewards(userId int, inviterId int, clientIP string) {
+	if inviterId == 0 {
+		return
+	}
+	allowed, reason := common.CheckInviteRewardEligibility(inviterId, clientIP)
+	if !allowed {
+		common.SysLog(fmt.Sprintf("邀请奖励已拦截: inviter=%d invitee=%d ip=%s reason=%s", inviterId, userId, clientIP, reason))
+		return
+	}
+	if common.QuotaForInvitee > 0 {
+		_ = IncreaseUserQuota(userId, common.QuotaForInvitee, true)
+		RecordLog(userId, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+	}
+	bindSubscriptionReward(userId, common.SubscriptionPlanForInvitee, "使用邀请码")
+	if common.QuotaForInviter > 0 {
+		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
+		_ = inviteUser(inviterId)
+	}
+	bindSubscriptionReward(inviterId, common.SubscriptionPlanForInviter, "邀请用户")
+}
+
+func (user *User) Insert(inviterId int, clientIP string) error {
 	var err error
 	if user.Password != "" {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -440,19 +461,7 @@ func (user *User) Insert(inviterId int) error {
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送订阅套餐 #%d", common.SubscriptionPlanForNewUser))
 		}
 	}
-	if inviterId != 0 {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		bindSubscriptionReward(user.Id, common.SubscriptionPlanForInvitee, "使用邀请码")
-		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
-		}
-		bindSubscriptionReward(inviterId, common.SubscriptionPlanForInviter, "邀请用户")
-	}
+	applyInviteRewards(user.Id, inviterId, clientIP)
 	return nil
 }
 
@@ -486,7 +495,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.
 // This should be called after the transaction commits successfully.
-func (user *User) FinalizeOAuthUserCreation(inviterId int) {
+func (user *User) FinalizeOAuthUserCreation(inviterId int, clientIP string) {
 	// 用户创建成功后，根据角色初始化边栏配置
 	var createdUser User
 	if err := DB.Where("id = ?", user.Id).First(&createdUser).Error; err == nil {
@@ -512,18 +521,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送订阅套餐 #%d", common.SubscriptionPlanForNewUser))
 		}
 	}
-	if inviterId != 0 {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		bindSubscriptionReward(user.Id, common.SubscriptionPlanForInvitee, "使用邀请码")
-		if common.QuotaForInviter > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
-		}
-		bindSubscriptionReward(inviterId, common.SubscriptionPlanForInviter, "邀请用户")
-	}
+	applyInviteRewards(user.Id, inviterId, clientIP)
 }
 
 func (user *User) Update(updatePassword bool) error {

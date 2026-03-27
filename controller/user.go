@@ -179,7 +179,7 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := cleanUser.Insert(inviterId, c.ClientIP()); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -826,7 +826,7 @@ func CreateUser(c *gin.Context) {
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
 	}
-	if err := cleanUser.Insert(0); err != nil {
+	if err := cleanUser.Insert(0, ""); err != nil {
 		common.ApiError(c, err)
 		return
 	}
