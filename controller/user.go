@@ -984,6 +984,13 @@ func ManageUser(c *gin.Context) {
 			common.ApiError(c, errors.New("邀请次数不能小于 0"))
 			return
 		}
+		if req.Count == 0 {
+			if err := model.ResetInviteRewardGrantsByInviterId(user.Id); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			common.ResetInviteRewardLimiter(user.Id)
+		}
 		if err := model.SetUserAffCountById(user.Id, req.Count); err != nil {
 			common.ApiError(c, err)
 			return
