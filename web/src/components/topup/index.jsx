@@ -706,6 +706,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
               inviter_plan: null,
               invitee_plan: null,
             },
+            leaderboard: [],
             inviter_reward_records: [],
             inviter_reward_total: 0,
             inviter_reward_page: 1,

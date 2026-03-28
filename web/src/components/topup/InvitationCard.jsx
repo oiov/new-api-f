@@ -109,6 +109,7 @@ const InvitationCard = ({
   setInviterRewardPageSize,
 }) => {
   const config = inviteDetails?.config || {};
+  const leaderboard = (inviteDetails?.leaderboard || []).slice(0, 10);
   const inviterRewardRecords = inviteDetails?.inviter_reward_records || [];
   const invitedUsers = inviteDetails?.invited_users || [];
   const inviterRewardTotal = Number(inviteDetails?.inviter_reward_total || 0);
@@ -359,6 +360,54 @@ const InvitationCard = ({
                 </div>
               </div>
             </div>
+          )}
+        </Card>
+
+        <Card
+          className='!rounded-xl w-full'
+          title={<Text type='tertiary'>{t('邀请排行榜')}</Text>}
+        >
+          {inviteDetailsLoading ? (
+            <Skeleton.Paragraph active rows={5} />
+          ) : leaderboard.length > 0 ? (
+            <div className='space-y-3'>
+              <Text type='tertiary' size='small'>
+                {t('仅展示前10位')}
+              </Text>
+              {leaderboard.map((item, index) => (
+                <div
+                  key={`${item.display_name || 'anonymous'}-${index + 1}`}
+                  className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-4'
+                >
+                  <div className='flex items-center justify-between gap-3'>
+                    <div className='min-w-0 flex items-center gap-3'>
+                      <div className='flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 font-semibold text-emerald-600'>
+                        {index + 1}
+                      </div>
+                      <div className='min-w-0'>
+                        <div className='truncate font-medium text-semi-color-text-0'>
+                          {item.display_name || t('匿名用户')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className='text-right'>
+                      <div className='font-semibold text-semi-color-text-0'>
+                        {item.aff_count || 0} {t('人')}
+                      </div>
+                      <Text type='tertiary' size='small'>
+                        {t('总收益')} {renderQuota(item.aff_history_quota || 0)}
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              title={t('暂无排行榜数据')}
+              description={t('当站内出现邀请数据后，将展示前10名用户')}
+            />
           )}
         </Card>
 

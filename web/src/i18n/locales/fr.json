@@ -3332,6 +3332,11 @@
     "本站": "ce site",
     "我在{{siteName}}的邀请链接为：{{link}}": "Mon lien d'invitation pour {{siteName}} est : {{link}}",
     "使用我的邀请注册，你将获得{{reward}}。": "Inscrivez-vous avec mon invitation et vous recevrez {{reward}}.",
-    "本站采用邀请制注册，当前邀请码可用{{count}}次。": "Ce site utilise l'inscription sur invitation. Le code d'invitation actuel peut être utilisé {{count}} fois."
+    "本站采用邀请制注册，当前邀请码可用{{count}}次。": "Ce site utilise l'inscription sur invitation. Le code d'invitation actuel peut être utilisé {{count}} fois.",
+    "邀请排行榜": "Classement des invitations",
+    "仅展示前10位": "Affichage des 10 premiers uniquement",
+    "暂无排行榜数据": "Aucune donnée de classement pour le moment",
+    "当站内出现邀请数据后，将展示前10名用户": "Les 10 meilleurs utilisateurs apparaîtront ici dès que des données d'invitation seront disponibles",
+    "匿名用户": "Utilisateur anonyme"
   }
 }

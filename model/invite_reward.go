@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -101,8 +102,15 @@ type InvitedUserRewardInfo struct {
 	InviteePlan   *InviteRewardPlanInfo `json:"invitee_plan,omitempty"`
 }
 
+type InviteLeaderboardItem struct {
+	DisplayName     string `json:"display_name"`
+	AffCount        int    `json:"aff_count"`
+	AffHistoryQuota int    `json:"aff_history_quota"`
+}
+
 type InviteRewardDetails struct {
 	Config                InviteRewardConfig      `json:"config"`
+	Leaderboard           []InviteLeaderboardItem `json:"leaderboard"`
 	InviterRewardRecords  []InviteRewardRecord    `json:"inviter_reward_records"`
 	InviterRewardTotal    int64                   `json:"inviter_reward_total"`
 	InviterRewardPage     int                     `json:"inviter_reward_page"`
@@ -377,6 +385,61 @@ func normalizePage(page int, pageSize int) (int, int) {
 	return page, pageSize
 }
 
+func maskInviteLeaderboardName(value string) string {
+	runes := []rune(value)
+	if len(runes) == 0 {
+		return ""
+	}
+	if len(runes) == 1 {
+		return string(runes[0]) + "*"
+	}
+	if len(runes) == 2 {
+		return string(runes[0]) + "*"
+	}
+	return string(runes[0]) + strings.Repeat("*", len(runes)-2) + string(runes[len(runes)-1])
+}
+
+func listInviteLeaderboard(limit int) ([]InviteLeaderboardItem, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	type inviteLeaderboardRow struct {
+		DisplayName     string
+		Username        string
+		AffCount        int
+		AffHistoryQuota int
+	}
+	rows := make([]inviteLeaderboardRow, 0, limit)
+	err := DB.Model(&User{}).
+		Select("username", "display_name", "aff_count", "aff_history AS aff_history_quota").
+		Where("aff_count > ?", 0).
+		Order("aff_count DESC, aff_history DESC, id ASC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	items := make([]InviteLeaderboardItem, 0, len(rows))
+	for _, row := range rows {
+		name := strings.TrimSpace(row.DisplayName)
+		if name == "" {
+			name = strings.TrimSpace(row.Username)
+		}
+		if name == "" {
+			name = "匿名用户"
+		}
+		items = append(items, InviteLeaderboardItem{
+			DisplayName:     maskInviteLeaderboardName(name),
+			AffCount:        row.AffCount,
+			AffHistoryQuota: row.AffHistoryQuota,
+		})
+	}
+	return items, nil
+}
+
 func GetInviteRewardDetails(userId int, invitedPage int, invitedPageSize int, rewardPage int, rewardPageSize int) (*InviteRewardDetails, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid user id")
@@ -391,6 +454,7 @@ func GetInviteRewardDetails(userId int, invitedPage int, invitedPageSize int, re
 			InviteRegisterEnable:  common.InviteRegisterEnabled,
 			InviteCodeUsableCount: getInviteCodeUsableCount(userId),
 		},
+		Leaderboard:           make([]InviteLeaderboardItem, 0),
 		InviterRewardRecords:  make([]InviteRewardRecord, 0),
 		InviterRewardPage:     rewardPage,
 		InviterRewardPageSize: rewardPageSize,
@@ -409,6 +473,11 @@ func GetInviteRewardDetails(userId int, invitedPage int, invitedPageSize int, re
 			result.Config.InviteePlan = buildInviteRewardPlanInfo(plan)
 		}
 	}
+	leaderboard, err := listInviteLeaderboard(10)
+	if err != nil {
+		return nil, err
+	}
+	result.Leaderboard = leaderboard
 
 	rewardSubs, rewardTotal, err := listInviteRewardSubscriptionsByUser(
 		userId,

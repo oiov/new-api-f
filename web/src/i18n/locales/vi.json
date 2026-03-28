@@ -3883,6 +3883,11 @@
     "本站": "trang này",
     "我在{{siteName}}的邀请链接为：{{link}}": "Liên kết mời của tôi cho {{siteName}} là: {{link}}",
     "使用我的邀请注册，你将获得{{reward}}。": "Đăng ký bằng lời mời của tôi và bạn sẽ nhận được {{reward}}.",
-    "本站采用邀请制注册，当前邀请码可用{{count}}次。": "Trang này áp dụng đăng ký theo lời mời. Mã mời hiện tại có thể dùng {{count}} lần."
+    "本站采用邀请制注册，当前邀请码可用{{count}}次。": "Trang này áp dụng đăng ký theo lời mời. Mã mời hiện tại có thể dùng {{count}} lần.",
+    "邀请排行榜": "Bảng xếp hạng mời",
+    "仅展示前10位": "Chỉ hiển thị top 10",
+    "暂无排行榜数据": "Chưa có dữ liệu bảng xếp hạng",
+    "当站内出现邀请数据后，将展示前10名用户": "Top 10 người dùng sẽ hiển thị tại đây khi có dữ liệu mời",
+    "匿名用户": "Người dùng ẩn danh"
   }
 }
