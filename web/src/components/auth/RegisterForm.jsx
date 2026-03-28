@@ -297,7 +297,7 @@ const RegisterForm = () => {
           aff_code: resolveInviteCode(),
         };
         const res = await API.post(
-          `/api/user/register?aff=9CTW?turnstile=${turnstileToken}`,
+          `/api/user/register?turnstile=${turnstileToken}`,
           payload,
         );
         const { success, message } = res.data;

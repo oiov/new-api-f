@@ -704,7 +704,7 @@ const LoginForm = () => {
                   <Text>
                     {t('没有账户？')}{' '}
                     <Link
-                      to='/register?aff=9CTW'
+                      to='/register'
                       className='text-blue-600 hover:text-blue-800 font-medium'
                     >
                       {t('注册')}
@@ -857,7 +857,7 @@ const LoginForm = () => {
                   <Text>
                     {t('没有账户？')}{' '}
                     <Link
-                      to='/register?aff=9CTW'
+                      to='/register'
                       className='text-blue-600 hover:text-blue-800 font-medium'
                     >
                       {t('注册')}

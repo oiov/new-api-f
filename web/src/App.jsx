@@ -200,7 +200,7 @@ function App() {
             }
           />
           <Route
-            path='/register?aff=9CTW'
+            path='/register'
             element={
               <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                 <AuthRedirect>
