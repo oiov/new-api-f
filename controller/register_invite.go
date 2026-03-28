@@ -11,7 +11,8 @@ import (
 )
 
 func countInviteRegistrations(inviterId int) (int64, error) {
-	query := model.DB.Model(&model.User{}).Where("inviter_id = ?", inviterId)
+	query := model.DB.Model(&model.InviteRewardGrant{}).
+		Where("inviter_id = ?", inviterId)
 	if common.InviteRewardLimitWindowMinutes > 0 {
 		windowStart := time.Now().
 			Add(-time.Duration(common.InviteRewardLimitWindowMinutes) * time.Minute).
@@ -19,7 +20,7 @@ func countInviteRegistrations(inviterId int) (int64, error) {
 		query = query.Where("created_at >= ?", windowStart)
 	}
 	var count int64
-	err := query.Count(&count).Error
+	err := query.Distinct("invitee_id").Count(&count).Error
 	return count, err
 }
 
