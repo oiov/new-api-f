@@ -133,7 +133,7 @@ const SiderBar = ({ onNavigate = () => { } }) => {
   const financeItems = useMemo(() => {
     const items = [
       {
-        text: t('额度充值'),
+        text: t('充值兑换'),
         itemKey: 'topup',
         to: '/topup',
       },

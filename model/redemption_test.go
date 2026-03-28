@@ -139,3 +139,58 @@ func TestRedeemSubscriptionRedemption(t *testing.T) {
 		require.Equal(t, "vip", user.Group)
 	})
 }
+
+func TestRedeemSubscriptionRedemptionIgnoresSoldOutLimit(t *testing.T) {
+	withRedemptionTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{
+			Id:       3,
+			Username: "soldout_redemption_user",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:              12,
+			Title:           "售罄套餐",
+			PriceAmount:     19.9,
+			Currency:        "USD",
+			DurationUnit:    SubscriptionDurationMonth,
+			DurationValue:   1,
+			Enabled:         true,
+			SaleLimitCount:  1,
+			SoldCount:       1,
+			TotalAmount:     8000,
+			ResourceType:    SubscriptionResourceQuota,
+			CreatedAt:       common.GetTimestamp(),
+			UpdatedAt:       common.GetTimestamp(),
+		}).Error)
+
+		require.NoError(t, DB.Create(&Redemption{
+			UserId:             1,
+			Key:                "soldout-subscription-code",
+			Status:             common.RedemptionCodeStatusEnabled,
+			Name:               "售罄套餐码",
+			RedemptionType:     RedemptionTypeSubscription,
+			SubscriptionPlanId: 12,
+			CreatedTime:        common.GetTimestamp(),
+			ExpiredTime:        time.Now().Add(24 * time.Hour).Unix(),
+		}).Error)
+
+		result, err := Redeem("soldout-subscription-code", 3)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, RedemptionTypeSubscription, result.RedemptionType)
+		require.Equal(t, 12, result.SubscriptionPlanId)
+		require.NotZero(t, result.SubscriptionId)
+
+		var sub UserSubscription
+		require.NoError(t, DB.First(&sub, "id = ?", result.SubscriptionId).Error)
+		require.Equal(t, 3, sub.UserId)
+		require.Equal(t, 12, sub.PlanId)
+		require.Equal(t, "redemption", sub.Source)
+
+		var plan SubscriptionPlan
+		require.NoError(t, DB.First(&plan, "id = ?", 12).Error)
+		require.EqualValues(t, 2, plan.SoldCount)
+	})
+}

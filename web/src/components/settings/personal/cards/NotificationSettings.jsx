@@ -279,7 +279,7 @@ const NotificationSettings = ({
       title: t('个人中心区域'),
       description: t('用户个人功能'),
       modules: [
-        { key: 'topup', title: t('额度充值'), description: t('余额与兑换码充值') },
+        { key: 'topup', title: t('充值兑换'), description: t('在线充值与兑换码管理') },
         { key: 'invite', title: t('邀请拉新'), description: t('邀请链接与奖励管理') },
         {
           key: 'personal',

@@ -669,7 +669,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, errors.New("已达到该套餐购买上限")
 		}
 	}
-	if lockedPlan.IsSoldOut() {
+	// Redemption codes represent an entitlement that has already been issued.
+	// They should remain redeemable even if the plan is later marked sold out.
+	if source != "redemption" && lockedPlan.IsSoldOut() {
 		return nil, errors.New("该套餐已售罄")
 	}
 	nowUnix := GetDBTimestamp()

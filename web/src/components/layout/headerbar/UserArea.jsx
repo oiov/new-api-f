@@ -98,7 +98,7 @@ const UserArea = ({
                     size='small'
                     className='text-gray-500 dark:text-gray-400'
                   />
-                  <span>{t('额度充值')}</span>
+                  <span>{t('充值兑换')}</span>
                 </div>
               </Dropdown.Item>
               <Dropdown.Item

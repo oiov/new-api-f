@@ -532,6 +532,35 @@ html.dark .package-usage-card-header {
   height: auto !important;
 }
 
+.topup-recharge-tabs {
+  min-height: 480px;
+}
+
+.topup-recharge-tabs > .semi-tabs-bar-left {
+  min-width: 132px;
+  padding-right: 12px;
+}
+
+.topup-recharge-tabs > .semi-tabs-bar-left .semi-tabs-tab {
+  justify-content: flex-start;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.topup-recharge-tabs > .semi-tabs-content-left {
+  height: auto !important;
+  min-height: 420px;
+}
+
+.topup-recharge-tabs > .semi-tabs-content-left .semi-tabs-pane {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.topup-recharge-tabs > .semi-tabs-content-left .semi-tabs-pane > div {
+  height: auto !important;
+}
+
 /* 表格样式 */
 .tableShow {
   display: revert;

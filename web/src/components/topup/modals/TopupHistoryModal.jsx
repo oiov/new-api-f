@@ -27,19 +27,24 @@ import {
   Button,
   Input,
   Tag,
+  Tabs,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { Coins } from 'lucide-react';
+import { Coins, Gift, Package2 } from 'lucide-react';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
 import { isAdmin } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
-const { Text } = Typography;
 
-// 状态映射配置
+const { Text } = Typography;
+const { TabPane } = Tabs;
+
+const HISTORY_TAB_TOPUP = 'topup';
+const HISTORY_TAB_REDEMPTION = 'redemption';
+
 const STATUS_CONFIG = {
   success: { type: 'success', key: '成功' },
   pending: { type: 'warning', key: '待支付' },
@@ -47,7 +52,6 @@ const STATUS_CONFIG = {
   expired: { type: 'danger', key: '已过期' },
 };
 
-// 支付方式映射
 const PAYMENT_METHOD_MAP = {
   stripe: 'Stripe',
   creem: 'Creem',
@@ -58,41 +62,62 @@ const PAYMENT_METHOD_MAP = {
 
 const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [loading, setLoading] = useState(false);
-  const [topups, setTopups] = useState([]);
+  const [records, setRecords] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
+  const [activeTab, setActiveTab] = useState(HISTORY_TAB_TOPUP);
   const isMobile = useIsMobile();
+  const userIsAdmin = useMemo(() => isAdmin(), []);
 
-  const loadTopups = async (currentPage, currentPageSize) => {
+  const loadHistory = async (
+    currentPage,
+    currentPageSize,
+    currentTab = activeTab,
+    currentKeyword = keyword,
+  ) => {
     setLoading(true);
     try {
-      const base = isAdmin() ? '/api/user/topup' : '/api/user/topup/self';
+      const base =
+        currentTab === HISTORY_TAB_TOPUP
+          ? userIsAdmin
+            ? '/api/user/topup'
+            : '/api/user/topup/self'
+          : userIsAdmin
+            ? '/api/user/redemption/history'
+            : '/api/user/redemption/history/self';
       const qs =
         `p=${currentPage}&page_size=${currentPageSize}` +
-        (keyword ? `&keyword=${encodeURIComponent(keyword)}` : '');
-      const endpoint = `${base}?${qs}`;
-      const res = await API.get(endpoint);
+        (currentKeyword
+          ? `&keyword=${encodeURIComponent(currentKeyword)}`
+          : '');
+      const res = await API.get(`${base}?${qs}`);
       const { success, message, data } = res.data;
       if (success) {
-        setTopups(data.items || []);
+        setRecords(data.items || []);
         setTotal(data.total || 0);
       } else {
         Toast.error({ content: message || t('加载失败') });
       }
     } catch (error) {
-      Toast.error({ content: t('加载账单失败') });
+      Toast.error({
+        content:
+          currentTab === HISTORY_TAB_TOPUP
+            ? t('加载账单失败')
+            : t('加载兑换记录失败'),
+      });
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (visible) {
-      loadTopups(page, pageSize);
+    if (!visible) {
+      return;
     }
-  }, [visible, page, pageSize, keyword]);
+    loadHistory(page, pageSize, activeTab, keyword);
+  }, [visible, page, pageSize, keyword, activeTab]);
 
   const handlePageChange = (currentPage) => {
     setPage(currentPage);
@@ -108,7 +133,14 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     setPage(1);
   };
 
-  // 管理员补单
+  const handleTabChange = (tabKey) => {
+    setActiveTab(tabKey);
+    setPage(1);
+    setKeyword('');
+    setRecords([]);
+    setTotal(0);
+  };
+
   const handleAdminComplete = async (tradeNo) => {
     try {
       const res = await API.post('/api/user/topup/complete', {
@@ -117,7 +149,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       const { success, message } = res.data;
       if (success) {
         Toast.success({ content: t('补单成功') });
-        await loadTopups(page, pageSize);
+        await loadHistory(page, pageSize, HISTORY_TAB_TOPUP, keyword);
       } else {
         Toast.error({ content: message || t('补单失败') });
       }
@@ -134,7 +166,6 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     });
   };
 
-  // 渲染状态徽章
   const renderStatusBadge = (status) => {
     const config = STATUS_CONFIG[status] || { type: 'primary', key: status };
     return (
@@ -145,7 +176,6 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     );
   };
 
-  // 渲染支付方式
   const renderPaymentMethod = (pm) => {
     const displayName = PAYMENT_METHOD_MAP[pm];
     return <Text>{displayName ? t(displayName) : pm || '-'}</Text>;
@@ -156,10 +186,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     return Number(record?.amount || 0) === 0 && tradeNo.startsWith('sub');
   };
 
-  // 检查是否为管理员
-  const userIsAdmin = useMemo(() => isAdmin(), []);
-
-  const columns = useMemo(() => {
+  const topupColumns = useMemo(() => {
     const baseColumns = [
       {
         title: t('订单号'),
@@ -207,27 +234,24 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       },
     ];
 
-    // 管理员才显示操作列
     if (userIsAdmin) {
       baseColumns.push({
         title: t('操作'),
         key: 'action',
         render: (_, record) => {
-          const actions = [];
-          if (record.status === 'pending') {
-            actions.push(
-              <Button
-                key="complete"
-                size='small'
-                type='primary'
-                theme='outline'
-                onClick={() => confirmAdminComplete(record.trade_no)}
-              >
-                {t('补单')}
-              </Button>
-            );
+          if (record.status !== 'pending') {
+            return null;
           }
-          return actions.length > 0 ? <>{actions}</> : null;
+          return (
+            <Button
+              size='small'
+              type='primary'
+              theme='outline'
+              onClick={() => confirmAdminComplete(record.trade_no)}
+            >
+              {t('补单')}
+            </Button>
+          );
         },
       });
     }
@@ -242,26 +266,142 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     return baseColumns;
   }, [t, userIsAdmin]);
 
+  const redemptionColumns = useMemo(() => {
+    const columns = [
+      {
+        title: t('兑换码ID'),
+        dataIndex: 'id',
+        key: 'id',
+        render: (value) => <Text copyable>{String(value)}</Text>,
+      },
+      {
+        title: t('兑换项'),
+        dataIndex: 'name',
+        key: 'name',
+        render: (value, record) => {
+          if (record.redemption_type === 'subscription') {
+            return (
+              <div className='flex items-center gap-2'>
+                <Package2 size={16} />
+                <Text>{value || record.subscription_plan_title || '--'}</Text>
+              </div>
+            );
+          }
+          return (
+            <div className='flex items-center gap-2'>
+              <Gift size={16} />
+              <Text>{value || '--'}</Text>
+            </div>
+          );
+        },
+      },
+      {
+        title: t('兑换类型'),
+        dataIndex: 'redemption_type',
+        key: 'redemption_type',
+        render: (value) =>
+          value === 'subscription' ? (
+            <Tag color='purple' shape='circle' size='small'>
+              {t('套餐兑换')}
+            </Tag>
+          ) : (
+            <Tag color='green' shape='circle' size='small'>
+              {t('额度兑换')}
+            </Tag>
+          ),
+      },
+      {
+        title: t('兑换内容'),
+        key: 'redemption_value',
+        render: (_, record) => {
+          if (record.redemption_type === 'subscription') {
+            return (
+              <div className='flex flex-col gap-1'>
+                <Text>{record.subscription_plan_title || '--'}</Text>
+                <Text type='tertiary' size='small'>
+                  {t('套餐ID')}: {record.subscription_plan_id || '--'}
+                </Text>
+              </div>
+            );
+          }
+          return (
+            <span className='flex items-center gap-1'>
+              <Coins size={16} />
+              <Text>{record.quota}</Text>
+            </span>
+          );
+        },
+      },
+      {
+        title: t('兑换时间'),
+        dataIndex: 'redeemed_time',
+        key: 'redeemed_time',
+        render: (time) => timestamp2string(time),
+      },
+    ];
+
+    if (userIsAdmin) {
+      columns.splice(1, 0, {
+        title: t('用户名'),
+        dataIndex: 'username',
+        key: 'username',
+        render: (value, record) => (
+          <div className='flex flex-col gap-1'>
+            <Text>{value || '--'}</Text>
+            <Text type='tertiary' size='small'>
+              UID: {record.used_user_id || '--'}
+            </Text>
+          </div>
+        ),
+      });
+    }
+
+    return columns;
+  }, [t, userIsAdmin]);
+
+  const searchPlaceholder =
+    activeTab === HISTORY_TAB_TOPUP
+      ? t('订单号')
+      : userIsAdmin
+        ? t('兑换码ID / 套餐ID / 用户名')
+        : t('兑换码ID / 套餐ID / 兑换项');
+
+  const emptyDescription =
+    activeTab === HISTORY_TAB_TOPUP ? t('暂无充值记录') : t('暂无兑换记录');
+
   return (
     <Modal
-      title={t('充值账单')}
+      title={t('充值兑换记录')}
       visible={visible}
       onCancel={onCancel}
       footer={null}
       size={isMobile ? 'full-width' : 'large'}
     >
+      <Tabs
+        type='line'
+        activeKey={activeTab}
+        onChange={handleTabChange}
+        className='topup-page-tabs'
+      >
+        <TabPane tab={t('充值记录')} itemKey={HISTORY_TAB_TOPUP} />
+        <TabPane tab={t('兑换记录')} itemKey={HISTORY_TAB_REDEMPTION} />
+      </Tabs>
+
       <div className='mb-3'>
         <Input
           prefix={<IconSearch />}
-          placeholder={t('订单号')}
+          placeholder={searchPlaceholder}
           value={keyword}
           onChange={handleKeywordChange}
           showClear
         />
       </div>
+
       <Table
-        columns={columns}
-        dataSource={topups}
+        columns={
+          activeTab === HISTORY_TAB_TOPUP ? topupColumns : redemptionColumns
+        }
+        dataSource={records}
         loading={loading}
         rowKey='id'
         pagination={{
@@ -280,7 +420,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
             darkModeImage={
               <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
             }
-            description={t('暂无充值记录')}
+            description={emptyDescription}
             style={{ padding: 30 }}
           />
         }

@@ -7,7 +7,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
-LISTEN_HOST = os.getenv("PROXY_LISTEN_HOST", "127.0.0.1")
+LISTEN_HOST = os.getenv("PROXY_LISTEN_HOST", "localhost")
 LISTEN_PORT = int(os.getenv("PROXY_LISTEN_PORT", "8787"))
 UPSTREAM_BASE_URL = os.getenv("UPSTREAM_BASE_URL", "https://fishxcode.com").rstrip("/")
 FORCE_API_KEY = os.getenv("FORCE_API_KEY", "")

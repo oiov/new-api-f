@@ -46,6 +46,18 @@ type RedeemResult struct {
 	SubscriptionId        int    `json:"subscription_id"`
 }
 
+type RedemptionHistoryItem struct {
+	Id                    int    `json:"id"`
+	Name                  string `json:"name"`
+	Quota                 int    `json:"quota"`
+	RedemptionType        string `json:"redemption_type"`
+	SubscriptionPlanId    int    `json:"subscription_plan_id"`
+	SubscriptionPlanTitle string `json:"subscription_plan_title"`
+	RedeemedTime          int64  `json:"redeemed_time"`
+	UsedUserId            int    `json:"used_user_id"`
+	Username              string `json:"username"`
+}
+
 func NormalizeRedemptionType(redemptionType string) string {
 	switch strings.TrimSpace(strings.ToLower(redemptionType)) {
 	case "", RedemptionTypeQuota:
@@ -135,6 +147,42 @@ func SearchRedemptions(keyword string, startIdx int, num int) (redemptions []*Re
 	attachRedemptionPlanTitles(redemptions)
 
 	return redemptions, total, nil
+}
+
+func GetRedemptionHistory(userId int, keyword string, startIdx int, num int) (items []*RedemptionHistoryItem, total int64, err error) {
+	tx := DB.Table("redemptions").
+		Select(
+			"redemptions.id, redemptions.name, redemptions.quota, redemptions.redemption_type, redemptions.subscription_plan_id, redemptions.redeemed_time, redemptions.used_user_id, COALESCE(users.username, '') as username",
+		).
+		Joins("LEFT JOIN users ON users.id = redemptions.used_user_id").
+		Where("redemptions.status = ? AND redemptions.redeemed_time > 0", common.RedemptionCodeStatusUsed)
+
+	if userId > 0 {
+		tx = tx.Where("redemptions.used_user_id = ?", userId)
+	}
+
+	keyword = strings.TrimSpace(keyword)
+	if keyword != "" {
+		keywordTx := DB.Where("redemptions.name LIKE ?", "%"+keyword+"%")
+		if userId == 0 {
+			keywordTx = keywordTx.Or("users.username LIKE ?", "%"+keyword+"%")
+		}
+		if id, convErr := strconv.Atoi(keyword); convErr == nil {
+			keywordTx = keywordTx.Or("redemptions.id = ?", id).
+				Or("redemptions.subscription_plan_id = ?", id).
+				Or("redemptions.used_user_id = ?", id)
+		}
+		tx = tx.Where(keywordTx)
+	}
+
+	if err = tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err = tx.Order("redemptions.id desc").Limit(num).Offset(startIdx).Find(&items).Error; err != nil {
+		return nil, 0, err
+	}
+	attachRedemptionHistoryPlanTitles(items)
+	return items, total, nil
 }
 
 func GetRedemptionById(id int) (*Redemption, error) {
@@ -310,4 +358,39 @@ func attachRedemptionPlanTitle(redemption *Redemption) {
 		return
 	}
 	redemption.SubscriptionPlanTitle = plan.Title
+}
+
+func attachRedemptionHistoryPlanTitles(items []*RedemptionHistoryItem) {
+	if len(items) == 0 {
+		return
+	}
+	planIDs := make([]int, 0, len(items))
+	planIDSet := make(map[int]struct{}, len(items))
+	for _, item := range items {
+		if item == nil || item.SubscriptionPlanId <= 0 {
+			continue
+		}
+		if _, ok := planIDSet[item.SubscriptionPlanId]; ok {
+			continue
+		}
+		planIDSet[item.SubscriptionPlanId] = struct{}{}
+		planIDs = append(planIDs, item.SubscriptionPlanId)
+	}
+	if len(planIDs) == 0 {
+		return
+	}
+	var plans []SubscriptionPlan
+	if err := DB.Select("id", "title").Where("id IN ?", planIDs).Find(&plans).Error; err != nil {
+		return
+	}
+	planTitleMap := make(map[int]string, len(plans))
+	for _, plan := range plans {
+		planTitleMap[plan.Id] = plan.Title
+	}
+	for _, item := range items {
+		if item == nil || item.SubscriptionPlanId <= 0 {
+			continue
+		}
+		item.SubscriptionPlanTitle = planTitleMap[item.SubscriptionPlanId]
+	}
 }
