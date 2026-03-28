@@ -99,6 +99,10 @@ const SubscriptionsPage = () => {
               <SubscriptionsActions
                 openCreate={openCreate}
                 openMigration={() => setShowMigration(true)}
+                enableBatchMode={subscriptionsData.enableBatchMode}
+                setEnableBatchMode={subscriptionsData.setEnableBatchMode}
+                batchSetPlansEnabled={subscriptionsData.batchSetPlansEnabled}
+                batchUpdatingPlans={subscriptionsData.batchUpdatingPlans}
                 t={t}
               />
             </div>

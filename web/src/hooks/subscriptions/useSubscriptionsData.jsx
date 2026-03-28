@@ -31,6 +31,9 @@ export const useSubscriptionsData = () => {
   const [allPlans, setAllPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [groupOptions, setGroupOptions] = useState([]);
+  const [enableBatchMode, setEnableBatchMode] = useState(false);
+  const [selectedPlans, setSelectedPlans] = useState([]);
+  const [batchUpdatingPlans, setBatchUpdatingPlans] = useState(false);
 
   // Pagination (client-side for now)
   const [activePage, setActivePage] = useState(1);
@@ -164,7 +167,8 @@ export const useSubscriptionsData = () => {
   };
 
   // Update plan enabled status (single endpoint)
-  const setPlanEnabled = async (planRecordOrId, enabled) => {
+  const setPlanEnabled = async (planRecordOrId, enabled, options = {}) => {
+    const { silent = false, skipReload = false } = options;
     const planId =
       typeof planRecordOrId === 'number'
         ? planRecordOrId
@@ -176,8 +180,13 @@ export const useSubscriptionsData = () => {
         enabled: !!enabled,
       });
       if (res.data?.success) {
-        showSuccess(enabled ? t('已启用') : t('已禁用'));
-        await loadPlans();
+        if (!silent) {
+          showSuccess(enabled ? t('已启用') : t('已禁用'));
+        }
+        if (!skipReload) {
+          await loadPlans();
+        }
+        return true;
       } else {
         showError(res.data?.message || t('操作失败'));
       }
@@ -185,6 +194,69 @@ export const useSubscriptionsData = () => {
       showError(t('请求失败'));
     } finally {
       setLoading(false);
+    }
+    return false;
+  };
+
+  const batchSetPlansEnabled = async (enabled) => {
+    if (selectedPlans.length === 0) {
+      showError(
+        enabled ? t('请先选择要启用的套餐！') : t('请先选择要禁用的套餐！'),
+      );
+      return;
+    }
+    setBatchUpdatingPlans(true);
+    try {
+      const selectedIds = selectedPlans
+        .map((item) => item?.plan?.id)
+        .filter((id) => Number(id) > 0);
+      let successCount = 0;
+      let failedCount = 0;
+      const concurrencyLimit = 5;
+
+      for (let i = 0; i < selectedIds.length; i += concurrencyLimit) {
+        const batch = selectedIds.slice(i, i + concurrencyLimit);
+        const results = await Promise.all(
+          batch.map((id) =>
+            setPlanEnabled(id, enabled, { silent: true, skipReload: true }),
+          ),
+        );
+        results.forEach((result) => {
+          if (result) {
+            successCount += 1;
+          } else {
+            failedCount += 1;
+          }
+        });
+      }
+
+      await loadPlans();
+      if (failedCount > 0) {
+        showSuccess(
+          enabled
+            ? t('批量启用完成，成功 ${success} 个，失败 ${failed} 个。')
+                .replace('${success}', successCount)
+                .replace('${failed}', failedCount)
+            : t('批量禁用完成，成功 ${success} 个，失败 ${failed} 个。')
+                .replace('${success}', successCount)
+                .replace('${failed}', failedCount),
+        );
+      } else {
+        showSuccess(
+          enabled
+            ? t('已批量启用 ${count} 个套餐。').replace(
+                '${count}',
+                successCount,
+              )
+            : t('已批量禁用 ${count} 个套餐。').replace(
+                '${count}',
+                successCount,
+              ),
+        );
+      }
+      setSelectedPlans([]);
+    } finally {
+      setBatchUpdatingPlans(false);
     }
   };
 
@@ -212,6 +284,12 @@ export const useSubscriptionsData = () => {
     loadUserSubscriptions();
     fetchGroups();
   }, []);
+
+  useEffect(() => {
+    if (!enableBatchMode) {
+      setSelectedPlans([]);
+    }
+  }, [enableBatchMode]);
 
   const planCount = allPlans.length;
   const plans = allPlans.slice(
@@ -251,6 +329,11 @@ export const useSubscriptionsData = () => {
     // UI state
     compactMode,
     setCompactMode,
+    enableBatchMode,
+    setEnableBatchMode,
+    selectedPlans,
+    setSelectedPlans,
+    batchUpdatingPlans,
 
     // Pagination
     activePage,
@@ -266,6 +349,7 @@ export const useSubscriptionsData = () => {
     loadUserSubscriptions,
     searchUserSubscriptions,
     setPlanEnabled,
+    batchSetPlansEnabled,
     refresh,
     closeEdit,
     openCreate,

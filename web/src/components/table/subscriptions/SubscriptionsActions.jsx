@@ -18,9 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Button } from '@douyinfe/semi-ui';
+import { Button, Modal } from '@douyinfe/semi-ui';
 
-const SubscriptionsActions = ({ openCreate, openMigration, t }) => {
+const SubscriptionsActions = ({
+  openCreate,
+  openMigration,
+  enableBatchMode,
+  setEnableBatchMode,
+  batchSetPlansEnabled,
+  batchUpdatingPlans,
+  t,
+}) => {
   return (
     <div className='flex gap-2 w-full md:w-auto'>
       <Button
@@ -37,6 +45,48 @@ const SubscriptionsActions = ({ openCreate, openMigration, t }) => {
         size='small'
       >
         {t('订阅迁移')}
+      </Button>
+      <Button
+        className='w-full md:w-auto'
+        type={enableBatchMode ? 'primary' : 'tertiary'}
+        theme={enableBatchMode ? 'solid' : 'light'}
+        onClick={() => setEnableBatchMode((prev) => !prev)}
+        size='small'
+      >
+        {enableBatchMode ? t('退出批量模式') : t('批量模式')}
+      </Button>
+      <Button
+        className='w-full md:w-auto'
+        disabled={!enableBatchMode || batchUpdatingPlans}
+        loading={batchUpdatingPlans}
+        onClick={() => {
+          Modal.confirm({
+            title: t('确认批量启用'),
+            content: t('启用后选中的套餐将在用户端展示。是否继续？'),
+            centered: true,
+            onOk: () => batchSetPlansEnabled(true),
+          });
+        }}
+        size='small'
+      >
+        {t('批量启用')}
+      </Button>
+      <Button
+        className='w-full md:w-auto'
+        type='danger'
+        disabled={!enableBatchMode || batchUpdatingPlans}
+        loading={batchUpdatingPlans}
+        onClick={() => {
+          Modal.confirm({
+            title: t('确认批量禁用'),
+            content: t('禁用后选中的套餐不再展示，但历史订单不受影响。是否继续？'),
+            centered: true,
+            onOk: () => batchSetPlansEnabled(false),
+          });
+        }}
+        size='small'
+      >
+        {t('批量禁用')}
       </Button>
     </div>
   );
