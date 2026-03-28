@@ -25,6 +25,13 @@ const PUBLIC_CACHE_RULES = [
   { pattern: /^\/api\/ratio_config\/?$/, ttl: 300 },
 ];
 
+const ANTI_DISTRIBUTION_CACHE_TTL = 30 * 1000;
+
+let antiDistributionCache = {
+  expiresAt: 0,
+  data: null,
+};
+
 function getBackendOrigin() {
   const raw =
     process.env.BACKEND_ORIGIN ||
@@ -73,10 +80,191 @@ function applyCacheHeaders(headers, ttl) {
   headers.set('Vercel-CDN-Cache-Control', cacheValue);
 }
 
+function normalizeHost(raw) {
+  if (!raw) {
+    return '';
+  }
+  try {
+    if (raw.includes('://')) {
+      return new URL(raw).hostname.toLowerCase();
+    }
+  } catch {
+    return '';
+  }
+  return raw
+    .trim()
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .replace(/:\d+$/, '')
+    .toLowerCase();
+}
+
+function hostMatchesPattern(host, pattern) {
+  const normalizedHost = normalizeHost(host);
+  const normalizedPattern = normalizeHost(pattern);
+  if (!normalizedHost || !normalizedPattern) {
+    return false;
+  }
+  if (normalizedHost === normalizedPattern) {
+    return true;
+  }
+  if (normalizedPattern.startsWith('*.')) {
+    return normalizedHost.endsWith(normalizedPattern.slice(1));
+  }
+  return false;
+}
+
+function hostMatchesAny(host, patterns = []) {
+  return patterns.some((pattern) => hostMatchesPattern(host, pattern));
+}
+
+function extractHeaderHost(value) {
+  if (!value) {
+    return '';
+  }
+  try {
+    return normalizeHost(new URL(value).hostname);
+  } catch {
+    return '';
+  }
+}
+
+async function getAntiDistributionConfig(backendOrigin) {
+  const now = Date.now();
+  if (antiDistributionCache.data && antiDistributionCache.expiresAt > now) {
+    return antiDistributionCache.data;
+  }
+
+  try {
+    const response = await fetch(`${backendOrigin}/api/anti_distribution/public`, {
+      headers: {
+        accept: 'application/json',
+      },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json();
+    const data = payload?.data || null;
+    antiDistributionCache = {
+      data,
+      expiresAt: now + ANTI_DISTRIBUTION_CACHE_TTL,
+    };
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function evaluateAntiDistribution(request, config) {
+  const requestUrl = new URL(request.url);
+  const requestHost = normalizeHost(requestUrl.hostname);
+  const originHost = extractHeaderHost(request.headers.get('origin'));
+  const refererHost = extractHeaderHost(request.headers.get('referer'));
+  const allowedHosts = config?.allowed_hosts || [];
+  const allowedSources = config?.allowed_sources || [];
+
+  if (!hostMatchesAny(requestHost, allowedHosts)) {
+    return {
+      action: config?.log_only ? 'observe' : 'block',
+      reason: 'request_host_not_allowed',
+      detail: '请求 Host 不在白名单',
+    };
+  }
+  if (originHost && !hostMatchesAny(originHost, allowedSources)) {
+    return {
+      action: config?.log_only ? 'observe' : 'block',
+      reason: 'origin_host_not_allowed',
+      detail: 'Origin 不在白名单',
+    };
+  }
+  if (refererHost && !hostMatchesAny(refererHost, allowedSources)) {
+    return {
+      action: config?.log_only ? 'observe' : 'block',
+      reason: 'referer_host_not_allowed',
+      detail: 'Referer 不在白名单',
+    };
+  }
+  return {
+    action: 'allow',
+    reason: '',
+    detail: '',
+  };
+}
+
+function buildBlockedResponse(request, config, decision) {
+  const message = `${(config?.blocked_message || '请勿使用反代等程序，请使用 https://fishxcode.com 中转站，如需外接请联系。').trim()} 原因：${decision.detail}`;
+  const pathname = new URL(request.url).pathname;
+  const headers = {
+    'cache-control': 'no-store',
+    'access-control-allow-origin': '*',
+    'access-control-expose-headers': '*',
+    'x-anti-distribution-layer': 'web',
+    'x-anti-distribution-action': 'block',
+    'x-anti-distribution-reason': decision.reason,
+  };
+  if (/^\/api\//.test(pathname)) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message,
+        reason: decision.reason,
+      }),
+      {
+        status: 403,
+        headers: {
+          ...headers,
+          'content-type': 'application/json; charset=utf-8',
+        },
+      },
+    );
+  }
+  if (
+    /^\/v1\//.test(pathname) ||
+    /^\/v1beta\//.test(pathname) ||
+    /^\/mj\//.test(pathname) ||
+    /^\/pg\//.test(pathname) ||
+    /^\/suno\//.test(pathname) ||
+    /^\/kling\//.test(pathname) ||
+    /^\/jimeng/.test(pathname)
+  ) {
+    return new Response(
+      JSON.stringify({
+        error: {
+          message,
+          type: 'new_api_error',
+        },
+      }),
+      {
+        status: 403,
+        headers: {
+          ...headers,
+          'content-type': 'application/json; charset=utf-8',
+        },
+      },
+    );
+  }
+  return new Response(message, {
+    status: 403,
+    headers: {
+      ...headers,
+      'content-type': 'text/plain; charset=utf-8',
+    },
+  });
+}
+
 export async function proxyToPath(request, upstreamPath) {
   const backendOrigin = getBackendOrigin();
   if (!backendOrigin) {
     throw new Error('Missing backend origin.');
+  }
+
+  const antiDistributionConfig = await getAntiDistributionConfig(backendOrigin);
+  if (antiDistributionConfig?.enabled) {
+    const decision = evaluateAntiDistribution(request, antiDistributionConfig);
+    if (decision.action === 'block') {
+      return buildBlockedResponse(request, antiDistributionConfig, decision);
+    }
   }
 
   const requestUrl = new URL(request.url);

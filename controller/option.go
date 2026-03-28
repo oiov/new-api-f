@@ -325,6 +325,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "error_setting.restrict_proxy_distribution_allowed_hosts", "error_setting.restrict_proxy_distribution_allowed_sources":
+		var hosts []string
+		if err = common.UnmarshalJsonStr(option.Value.(string), &hosts); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "防分发白名单必须是字符串数组 JSON",
+			})
+			return
+		}
 	}
 	err = model.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {

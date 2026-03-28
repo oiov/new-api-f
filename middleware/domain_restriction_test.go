@@ -12,7 +12,7 @@ import (
 )
 
 func TestIsAllowedFishxcodeHost(t *testing.T) {
-	t.Run("allow fishxcode domain family", func(t *testing.T) {
+	t.Run("allow configured host family", func(t *testing.T) {
 		require.True(t, isAllowedFishxcodeHost("fishxcode.com"))
 		require.True(t, isAllowedFishxcodeHost("api.fishxcode.com"))
 		require.True(t, isAllowedFishxcodeHost("API.FISHXCODE.COM:443"))
@@ -24,22 +24,93 @@ func TestIsAllowedFishxcodeHost(t *testing.T) {
 		require.True(t, isAllowedFishxcodeHost("[::1]:8080"))
 	})
 
-	t.Run("block non fishxcode hosts", func(t *testing.T) {
+	t.Run("block non allowed hosts", func(t *testing.T) {
 		require.False(t, isAllowedFishxcodeHost("example.com"))
 		require.False(t, isAllowedFishxcodeHost("fishxcode.com.evil.com"))
 	})
 }
 
-func TestDisallowProxyDistribution(t *testing.T) {
-	orig := system_setting.GetErrorSetting().RestrictProxyDistribution
-	t.Cleanup(func() {
-		system_setting.GetErrorSetting().RestrictProxyDistribution = orig
+func TestEvaluateProxyDistributionRequest(t *testing.T) {
+	allowedHosts := []string{"fishxcode.com", "*.fishxcode.com", "localhost"}
+	allowedSources := []string{"fishxcode.com", "*.fishxcode.com", "localhost"}
+
+	t.Run("allow configured host and origin", func(t *testing.T) {
+		decision := EvaluateProxyDistributionRequest(
+			"fishxcode.com",
+			"https://console.fishxcode.com",
+			"https://console.fishxcode.com/path",
+			allowedHosts,
+			allowedSources,
+			false,
+		)
+		require.True(t, decision.Allowed)
+		require.Equal(t, "allow", decision.Action)
 	})
+
+	t.Run("block request host outside allow list", func(t *testing.T) {
+		decision := EvaluateProxyDistributionRequest(
+			"example.com",
+			"",
+			"",
+			allowedHosts,
+			allowedSources,
+			false,
+		)
+		require.False(t, decision.Allowed)
+		require.Equal(t, "block", decision.Action)
+		require.Equal(t, "request_host_not_allowed", decision.Reason)
+	})
+
+	t.Run("block invalid origin host", func(t *testing.T) {
+		decision := EvaluateProxyDistributionRequest(
+			"fishxcode.com",
+			"https://evil.example.com",
+			"",
+			allowedHosts,
+			allowedSources,
+			false,
+		)
+		require.False(t, decision.Allowed)
+		require.Equal(t, "origin_host_not_allowed", decision.Reason)
+	})
+
+	t.Run("observe only when log only enabled", func(t *testing.T) {
+		decision := EvaluateProxyDistributionRequest(
+			"fishxcode.com",
+			"https://evil.example.com",
+			"",
+			allowedHosts,
+			allowedSources,
+			true,
+		)
+		require.False(t, decision.Allowed)
+		require.Equal(t, "observe", decision.Action)
+	})
+}
+
+func TestDisallowProxyDistribution(t *testing.T) {
+	setting := system_setting.GetErrorSetting()
+	origEnabled := setting.RestrictProxyDistribution
+	origLogOnly := setting.RestrictProxyDistributionLogOnly
+	origHosts := append([]string(nil), setting.RestrictProxyDistributionAllowedHosts...)
+	origSources := append([]string(nil), setting.RestrictProxyDistributionAllowedSources...)
+	origMessage := setting.RestrictProxyDistributionBlockedMessage
+	t.Cleanup(func() {
+		setting.RestrictProxyDistribution = origEnabled
+		setting.RestrictProxyDistributionLogOnly = origLogOnly
+		setting.RestrictProxyDistributionAllowedHosts = origHosts
+		setting.RestrictProxyDistributionAllowedSources = origSources
+		setting.RestrictProxyDistributionBlockedMessage = origMessage
+	})
+
+	setting.RestrictProxyDistributionAllowedHosts = []string{"fishxcode.com", "*.fishxcode.com", "localhost"}
+	setting.RestrictProxyDistributionAllowedSources = []string{"fishxcode.com", "*.fishxcode.com", "localhost"}
 
 	gin.SetMode(gin.TestMode)
 
 	t.Run("skip restriction when disabled", func(t *testing.T) {
-		system_setting.GetErrorSetting().RestrictProxyDistribution = false
+		setting.RestrictProxyDistribution = false
+		setting.RestrictProxyDistributionLogOnly = false
 		recorder := httptest.NewRecorder()
 		ctx, engine := gin.CreateTestContext(recorder)
 		ctx.Request = httptest.NewRequest(http.MethodGet, "/api/status", nil)
@@ -53,25 +124,26 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		require.Equal(t, http.StatusOK, recorder.Code)
 	})
 
-	t.Run("block non fishxcode api host when enabled", func(t *testing.T) {
-		system_setting.GetErrorSetting().RestrictProxyDistribution = true
+	t.Run("bypass public config route", func(t *testing.T) {
+		setting.RestrictProxyDistribution = true
+		setting.RestrictProxyDistributionLogOnly = false
 		recorder := httptest.NewRecorder()
 		_, engine := gin.CreateTestContext(recorder)
-		engine.Use(RouteTag("api"), DisallowProxyDistribution())
-		engine.GET("/api/status", func(c *gin.Context) {
+		engine.Use(DisallowProxyDistribution())
+		engine.GET("/api/anti_distribution/public", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"success": true})
 		})
 
-		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/anti_distribution/public", nil)
 		req.Host = "example.com"
 		engine.ServeHTTP(recorder, req)
 
-		require.Equal(t, http.StatusForbidden, recorder.Code)
-		require.Contains(t, recorder.Body.String(), proxyDistributionBlockedMessage)
+		require.Equal(t, http.StatusOK, recorder.Code)
 	})
 
 	t.Run("block relay with openai error format", func(t *testing.T) {
-		system_setting.GetErrorSetting().RestrictProxyDistribution = true
+		setting.RestrictProxyDistribution = true
+		setting.RestrictProxyDistributionLogOnly = false
 		recorder := httptest.NewRecorder()
 		_, engine := gin.CreateTestContext(recorder)
 		engine.Use(DisallowProxyDistribution())
@@ -86,30 +158,32 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, recorder.Code)
 		var body map[string]map[string]string
 		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
-		require.Contains(t, body["error"]["message"], proxyDistributionBlockedMessage)
+		require.Contains(t, body["error"]["message"], "请求 Host 不在白名单")
+		require.Equal(t, "backend", recorder.Header().Get("X-Anti-Distribution-Layer"))
 	})
 
-	t.Run("block mode mj route with openai error format", func(t *testing.T) {
-		system_setting.GetErrorSetting().RestrictProxyDistribution = true
+	t.Run("block disallowed origin", func(t *testing.T) {
+		setting.RestrictProxyDistribution = true
+		setting.RestrictProxyDistributionLogOnly = false
 		recorder := httptest.NewRecorder()
 		_, engine := gin.CreateTestContext(recorder)
-		engine.Use(DisallowProxyDistribution())
-		engine.POST("/fast/mj/submit/imagine", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"ok": true})
+		engine.Use(RouteTag("api"), DisallowProxyDistribution())
+		engine.GET("/api/status", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"success": true})
 		})
 
-		req := httptest.NewRequest(http.MethodPost, "/fast/mj/submit/imagine", nil)
-		req.Host = "example.com"
+		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+		req.Host = "fishxcode.com"
+		req.Header.Set("Origin", "https://evil.example.com")
 		engine.ServeHTTP(recorder, req)
 
 		require.Equal(t, http.StatusForbidden, recorder.Code)
-		var body map[string]map[string]string
-		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
-		require.Contains(t, body["error"]["message"], proxyDistributionBlockedMessage)
+		require.Contains(t, recorder.Body.String(), "Origin 不在白名单")
 	})
 
 	t.Run("ignore forged x forwarded host header", func(t *testing.T) {
-		system_setting.GetErrorSetting().RestrictProxyDistribution = true
+		setting.RestrictProxyDistribution = true
+		setting.RestrictProxyDistributionLogOnly = false
 		recorder := httptest.NewRecorder()
 		_, engine := gin.CreateTestContext(recorder)
 		engine.Use(DisallowProxyDistribution())
@@ -123,28 +197,12 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		engine.ServeHTTP(recorder, req)
 
 		require.Equal(t, http.StatusForbidden, recorder.Code)
-		require.Contains(t, recorder.Body.String(), proxyDistributionBlockedMessage)
-	})
-
-	t.Run("block empty host", func(t *testing.T) {
-		system_setting.GetErrorSetting().RestrictProxyDistribution = true
-		recorder := httptest.NewRecorder()
-		_, engine := gin.CreateTestContext(recorder)
-		engine.Use(DisallowProxyDistribution())
-		engine.GET("/api/status", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"success": true})
-		})
-
-		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-		req.Host = ""
-		engine.ServeHTTP(recorder, req)
-
-		require.Equal(t, http.StatusForbidden, recorder.Code)
-		require.Contains(t, recorder.Body.String(), proxyDistributionBlockedMessage)
+		require.Contains(t, recorder.Body.String(), "请求 Host 不在白名单")
 	})
 
 	t.Run("allow fishxcode subdomain when enabled", func(t *testing.T) {
-		system_setting.GetErrorSetting().RestrictProxyDistribution = true
+		setting.RestrictProxyDistribution = true
+		setting.RestrictProxyDistributionLogOnly = false
 		recorder := httptest.NewRecorder()
 		_, engine := gin.CreateTestContext(recorder)
 		engine.Use(RouteTag("api"), DisallowProxyDistribution())
@@ -154,6 +212,24 @@ func TestDisallowProxyDistribution(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 		req.Host = "console.fishxcode.com"
+		req.Header.Set("Origin", "https://www.fishxcode.com")
+		engine.ServeHTTP(recorder, req)
+
+		require.Equal(t, http.StatusOK, recorder.Code)
+	})
+
+	t.Run("observe only in log mode", func(t *testing.T) {
+		setting.RestrictProxyDistribution = true
+		setting.RestrictProxyDistributionLogOnly = true
+		recorder := httptest.NewRecorder()
+		_, engine := gin.CreateTestContext(recorder)
+		engine.Use(RouteTag("api"), DisallowProxyDistribution())
+		engine.GET("/api/status", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"success": true})
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+		req.Host = "example.com"
 		engine.ServeHTTP(recorder, req)
 
 		require.Equal(t, http.StatusOK, recorder.Code)
