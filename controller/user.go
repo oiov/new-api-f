@@ -881,6 +881,31 @@ func ManageUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	myRole := c.GetInt("role")
+	if req.Action == "reset_all_aff_count" {
+		if myRole != common.RoleRootUser {
+			common.ApiError(c, errors.New("仅超级管理员可执行该操作"))
+			return
+		}
+		if err := model.ResetAllInviteRewardGrants(); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		affected, err := model.ResetAllUsersAffCount()
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ResetAllInviteRewardLimiters()
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data": gin.H{
+				"affected": affected,
+			},
+		})
+		return
+	}
 	user := model.User{
 		Id: req.Id,
 	}
@@ -890,7 +915,6 @@ func ManageUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
 		return
 	}
-	myRole := c.GetInt("role")
 	if myRole <= user.Role && myRole != common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
@@ -936,6 +960,24 @@ func ManageUser(c *gin.Context) {
 			return
 		}
 		user.Role = common.RoleCommonUser
+	case "reset_aff_count":
+		if err := model.ResetInviteRewardGrantsByInviterId(user.Id); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.ResetUserAffCountById(user.Id); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ResetInviteRewardLimiter(user.Id)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data": gin.H{
+				"aff_count": 0,
+			},
+		})
+		return
 	}
 
 	if err := user.Update(false); err != nil {

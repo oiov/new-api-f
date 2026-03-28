@@ -29,7 +29,14 @@ import {
   Dropdown,
 } from '@douyinfe/semi-ui';
 import { IconMore } from '@douyinfe/semi-icons';
-import { renderGroup, renderNumber, renderQuota } from '../../../helpers';
+import {
+  copy,
+  renderGroup,
+  renderNumber,
+  renderQuota,
+  showError,
+  showSuccess,
+} from '../../../helpers';
 
 /**
  * Render user role
@@ -174,9 +181,31 @@ const renderQuotaUsage = (text, record, t) => {
  * Render invite information
  */
 const renderInviteInfo = (text, record, t) => {
+  const handleCopyAffCode = async () => {
+    if (!record.aff_code) {
+      showError(t('该用户暂无 aff'));
+      return;
+    }
+    if (await copy(record.aff_code)) {
+      showSuccess(t('已复制：') + record.aff_code);
+      return;
+    }
+    showError(t('复制失败'));
+  };
+
   return (
     <div>
       <Space spacing={1}>
+        <Tooltip content={t('点击复制 aff')} position='top'>
+          <Tag
+            color='cyan'
+            shape='circle'
+            className='!text-xs cursor-pointer'
+            onClick={handleCopyAffCode}
+          >
+            AFF: {record.aff_code || '-'}
+          </Tag>
+        </Tooltip>
         <Tag color='white' shape='circle' className='!text-xs'>
           {t('邀请')}: {renderNumber(record.aff_count)}
         </Tag>
@@ -209,6 +238,7 @@ const renderOperations = (
     showResetPasskeyModal,
     showResetTwoFAModal,
     showUserSubscriptionsModal,
+    resetAffCount,
     t,
   },
 ) => {
@@ -219,11 +249,31 @@ const renderOperations = (
   const moreMenu = [
     {
       node: 'item',
-      name: t('订阅管理'),
-      onClick: () => showUserSubscriptionsModal(record),
+      name: t('复制 aff'),
+      onClick: async () => {
+        if (!record.aff_code) {
+          showError(t('该用户暂无 aff'));
+          return;
+        }
+        if (await copy(record.aff_code)) {
+          showSuccess(t('已复制：') + record.aff_code);
+          return;
+        }
+        showError(t('复制失败'));
+      },
+    },
+    {
+      node: 'item',
+      name: t('重置邀请次数'),
+      onClick: () => resetAffCount(record),
     },
     {
       node: 'divider',
+    },
+    {
+      node: 'item',
+      name: t('订阅管理'),
+      onClick: () => showUserSubscriptionsModal(record),
     },
     {
       node: 'item',
@@ -309,6 +359,7 @@ export const getUsersColumns = ({
   showResetPasskeyModal,
   showResetTwoFAModal,
   showUserSubscriptionsModal,
+  resetAffCount,
 }) => {
   return [
     {
@@ -366,6 +417,7 @@ export const getUsersColumns = ({
           showResetPasskeyModal,
           showResetTwoFAModal,
           showUserSubscriptionsModal,
+          resetAffCount,
           t,
         }),
     },

@@ -251,7 +251,10 @@ func listInviteRewardSubscriptionsByUser(userId int, startIdx int, pageSize int)
 
 func listInvitedUsers(inviterId int, startIdx int, pageSize int) ([]User, int64, error) {
 	var total int64
-	query := DB.Model(&User{}).Where("inviter_id = ?", inviterId)
+	subQuery := DB.Model(&InviteRewardGrant{}).
+		Select("DISTINCT invitee_id").
+		Where("inviter_id = ?", inviterId)
+	query := DB.Model(&User{}).Where("id IN (?)", subQuery)
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -261,7 +264,7 @@ func listInvitedUsers(inviterId int, startIdx int, pageSize int) ([]User, int64,
 	}
 	err := DB.
 		Select("id", "username", "display_name", "status").
-		Where("inviter_id = ?", inviterId).
+		Where("id IN (?)", subQuery).
 		Order("id desc").
 		Offset(startIdx).
 		Limit(pageSize).
@@ -330,7 +333,7 @@ func getInviteCodeUsableCount(inviterId int) int {
 		return -1
 	}
 
-	query := DB.Model(&User{}).Where("inviter_id = ?", inviterId)
+	query := DB.Model(&InviteRewardGrant{}).Where("inviter_id = ?", inviterId)
 	if common.InviteRewardLimitWindowMinutes > 0 {
 		windowStart := time.Now().
 			Add(-time.Duration(common.InviteRewardLimitWindowMinutes) * time.Minute).
@@ -339,7 +342,7 @@ func getInviteCodeUsableCount(inviterId int) int {
 	}
 
 	var usedCount int64
-	if err := query.Count(&usedCount).Error; err != nil {
+	if err := query.Distinct("invitee_id").Count(&usedCount).Error; err != nil {
 		return maxCount
 	}
 
@@ -348,6 +351,17 @@ func getInviteCodeUsableCount(inviterId int) int {
 		return 0
 	}
 	return remaining
+}
+
+func ResetInviteRewardGrantsByInviterId(inviterId int) error {
+	if inviterId <= 0 {
+		return errors.New("inviter id 为空！")
+	}
+	return DB.Where("inviter_id = ?", inviterId).Delete(&InviteRewardGrant{}).Error
+}
+
+func ResetAllInviteRewardGrants() error {
+	return DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&InviteRewardGrant{}).Error
 }
 
 func normalizePage(page int, pageSize int) (int, int) {

@@ -339,6 +339,18 @@ func inviteUser(inviterId int) (err error) {
 	return DB.Save(user).Error
 }
 
+func ResetUserAffCountById(id int) error {
+	if id == 0 {
+		return errors.New("id 为空！")
+	}
+	return DB.Unscoped().Model(&User{}).Where("id = ?", id).Update("aff_count", 0).Error
+}
+
+func ResetAllUsersAffCount() (int64, error) {
+	result := DB.Unscoped().Model(&User{}).Where("aff_count <> ?", 0).Update("aff_count", 0)
+	return result.RowsAffected, result.Error
+}
+
 func bindSubscriptionReward(userId int, planId int, logPrefix string) (*UserSubscription, error) {
 	if planId <= 0 {
 		return nil, nil

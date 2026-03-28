@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useMemo, useState } from 'react';
-import { Empty } from '@douyinfe/semi-ui';
+import { Empty, Modal } from '@douyinfe/semi-ui';
 import CardTable from '../../common/ui/CardTable';
 import {
   IllustrationNoResult,
@@ -102,6 +102,15 @@ const UsersTable = (usersData) => {
     setShowUserSubscriptionsModal(true);
   };
 
+  const showResetAffCountModal = (user) => {
+    Modal.confirm({
+      title: t('确认重置邀请次数'),
+      content: t('此操作会将目标用户的邀请次数清零，但不会修改 aff、邀请收益和邀请关系。'),
+      type: 'warning',
+      onOk: () => manageUser(user.id, 'reset_aff_count', user),
+    });
+  };
+
   // Modal confirm handlers
   const handlePromoteConfirm = () => {
     manageUser(modalUser.id, 'promote', modalUser);
@@ -141,6 +150,7 @@ const UsersTable = (usersData) => {
       showResetPasskeyModal: showResetPasskeyUserModal,
       showResetTwoFAModal: showResetTwoFAUserModal,
       showUserSubscriptionsModal: showUserSubscriptionsUserModal,
+      resetAffCount: showResetAffCountModal,
     });
   }, [
     t,
@@ -153,6 +163,7 @@ const UsersTable = (usersData) => {
     showResetPasskeyUserModal,
     showResetTwoFAUserModal,
     showUserSubscriptionsUserModal,
+    showResetAffCountModal,
   ]);
 
   // Handle compact mode by removing fixed positioning

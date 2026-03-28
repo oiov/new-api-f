@@ -22,6 +22,19 @@ var inviteRewardLimiter = &inviteRewardMemoryLimiter{
 	store: make(map[string]inviteRewardLimitEntry),
 }
 
+func (l *inviteRewardMemoryLimiter) deleteByPrefix(prefix string) {
+	if prefix == "" {
+		return
+	}
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	for key := range l.store {
+		if strings.HasPrefix(key, prefix) {
+			delete(l.store, key)
+		}
+	}
+}
+
 func (l *inviteRewardMemoryLimiter) allow(keys []string, limits []int, now int64, ttlSeconds int64) bool {
 	if len(keys) == 0 || len(keys) != len(limits) {
 		return true
@@ -156,4 +169,70 @@ func CheckInviteRewardEligibility(inviterId int, clientIP string) (bool, string)
 		return false, "invite_reward_limit"
 	}
 	return true, ""
+}
+
+func ResetInviteRewardLimiter(inviterId int) {
+	if inviterId <= 0 {
+		return
+	}
+	prefix := fmt.Sprintf("inviteReward:")
+	inviterMarker := fmt.Sprintf(":inviter:%d", inviterId)
+
+	inviteRewardLimiter.mutex.Lock()
+	for key := range inviteRewardLimiter.store {
+		if strings.HasPrefix(key, prefix) && strings.Contains(key, inviterMarker) {
+			delete(inviteRewardLimiter.store, key)
+		}
+	}
+	inviteRewardLimiter.mutex.Unlock()
+
+	if !RedisEnabled || RDB == nil {
+		return
+	}
+	ctx := context.Background()
+	var cursor uint64
+	pattern := fmt.Sprintf("inviteReward:*:inviter:%d*", inviterId)
+	for {
+		keys, nextCursor, err := RDB.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			SysError(fmt.Sprintf("reset invite reward limiter failed: inviter=%d err=%v", inviterId, err))
+			return
+		}
+		if len(keys) > 0 {
+			if err := RDB.Del(ctx, keys...).Err(); err != nil {
+				SysError(fmt.Sprintf("reset invite reward limiter delete failed: inviter=%d err=%v", inviterId, err))
+				return
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+}
+
+func ResetAllInviteRewardLimiters() {
+	inviteRewardLimiter.deleteByPrefix("inviteReward:")
+	if !RedisEnabled || RDB == nil {
+		return
+	}
+	ctx := context.Background()
+	var cursor uint64
+	for {
+		keys, nextCursor, err := RDB.Scan(ctx, cursor, "inviteReward:*", 200).Result()
+		if err != nil {
+			SysError(fmt.Sprintf("reset all invite reward limiters failed: err=%v", err))
+			return
+		}
+		if len(keys) > 0 {
+			if err := RDB.Del(ctx, keys...).Err(); err != nil {
+				SysError(fmt.Sprintf("reset all invite reward limiters delete failed: err=%v", err))
+				return
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
 }

@@ -135,11 +135,21 @@ export const useUsersData = () => {
       showSuccess(t('操作成功完成！'));
       const user = res.data.data;
 
+      if (action === 'reset_all_aff_count') {
+        const newUsers = users.map((u) => ({ ...u, aff_count: 0 }));
+        setUsers(newUsers);
+        setLoading(false);
+        return user;
+      }
+
       // Create a new array and new object to ensure React detects changes
       const newUsers = users.map((u) => {
         if (u.id === userId) {
           if (action === 'delete') {
             return { ...u, DeletedAt: new Date() };
+          }
+          if (action === 'reset_aff_count') {
+            return { ...u, aff_count: 0 };
           }
           return { ...u, status: user.status, role: user.role };
         }
@@ -147,11 +157,14 @@ export const useUsersData = () => {
       });
 
       setUsers(newUsers);
+      setLoading(false);
+      return user;
     } else {
       showError(message);
     }
 
     setLoading(false);
+    return null;
   };
 
   const resetUserPasskey = async (user) => {
