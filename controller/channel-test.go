@@ -758,7 +758,7 @@ func TestChannel(c *gin.Context) {
 	if result.localErr != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": result.localErr.Error(),
+			"message": common.AppendDisplaySite(c, result.localErr.Error()),
 			"time":    0.0,
 		})
 		return

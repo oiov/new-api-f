@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -178,17 +179,38 @@ func GetContextKeyType[T any](c *gin.Context, key constant.ContextKey) (T, bool)
 	return t, false
 }
 
+func AppendDisplaySite(c *gin.Context, message string) string {
+	message = strings.TrimSpace(message)
+	if message == "" || c == nil || c.Request == nil {
+		return message
+	}
+	host := strings.TrimSpace(c.Request.Host)
+	if host == "" {
+		return message
+	}
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	} else if strings.Count(host, ":") == 1 {
+		host = strings.Split(host, ":")[0]
+	}
+	host = strings.TrimSpace(host)
+	if host == "" || strings.Contains(message, host) {
+		return message
+	}
+	return fmt.Sprintf("%s (site: %s)", message, host)
+}
+
 func ApiError(c *gin.Context, err error) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"message": err.Error(),
+		"message": AppendDisplaySite(c, err.Error()),
 	})
 }
 
 func ApiErrorMsg(c *gin.Context, msg string) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"message": msg,
+		"message": AppendDisplaySite(c, msg),
 	})
 }
 
@@ -206,7 +228,7 @@ func ApiErrorI18n(c *gin.Context, key string, args ...map[string]any) {
 	msg := TranslateMessage(c, key, args...)
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"message": msg,
+		"message": AppendDisplaySite(c, msg),
 	})
 }
 
