@@ -102,6 +102,7 @@ const SystemSetting = () => {
     LinuxDOMinimumTrustLevel: '',
     ServerAddress: '',
     'error_setting.show_site_domain_in_error': true,
+    'error_setting.restrict_proxy_distribution': false,
     // SSRF防护配置
     'fetch_setting.enable_ssrf_protection': true,
     'fetch_setting.allow_private_ip': '',
@@ -148,6 +149,7 @@ const SystemSetting = () => {
           case 'fetch_setting.ip_filter_mode':
           case 'fetch_setting.apply_ip_filter_for_domain':
           case 'error_setting.show_site_domain_in_error':
+          case 'error_setting.restrict_proxy_distribution':
             item.value = toBoolean(item.value);
             break;
           case 'fetch_setting.domain_list':
@@ -729,6 +731,30 @@ const SystemSetting = () => {
                           '该服务器地址将影响支付回调地址以及默认首页展示的地址，请确保正确配置',
                         )}
                       />
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Col xs={24} sm={24} md={24} lg={24} xl={24}>
+                      <Form.Checkbox
+                        field='error_setting.restrict_proxy_distribution'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'error_setting.restrict_proxy_distribution',
+                            e,
+                          )
+                        }
+                      >
+                        {t('限制非 fishxcode.com 系列域名访问')}
+                      </Form.Checkbox>
+                      <Text type='secondary'>
+                        {t(
+                          '开启后仅允许 fishxcode.com 及其子域名访问，本地 localhost/127.0.0.1 调试地址会放行；其他域名访问将提示请勿使用反代等程序',
+                        )}
+                      </Text>
                     </Col>
                   </Row>
                   <Row
