@@ -36,6 +36,8 @@ import { getCurrencyConfig } from '../../../helpers/render';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
+  getSubscriptionEffectivePrice,
+  isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
@@ -60,14 +62,17 @@ const SubscriptionPurchaseModal = ({
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
   const { symbol, rate } = getCurrencyConfig();
-  const price = plan ? Number(plan.price_amount || 0) : 0;
+  const price = plan ? getSubscriptionEffectivePrice(plan) : 0;
+  const hasActiveDiscount = isSubscriptionDiscountActive(plan);
   const convertedPrice = price * rate;
   const displayPrice = convertedPrice.toFixed(
     Number.isInteger(convertedPrice) ? 0 : 2,
   );
   // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
-  const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
-  const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
+  const hasStripe =
+    enableStripeTopUp && !!plan?.stripe_price_id && !hasActiveDiscount;
+  const hasCreem =
+    enableCreemTopUp && !!plan?.creem_product_id && !hasActiveDiscount;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
   const hasAnyPayment = hasStripe || hasCreem || hasEpay;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
@@ -161,13 +166,50 @@ const SubscriptionPurchaseModal = ({
                 <Text strong className='text-slate-700 dark:text-slate-200'>
                   {t('应付金额')}：
                 </Text>
-                <Text strong className='text-xl text-purple-600'>
-                  {symbol}
-                  {displayPrice}
-                </Text>
+                <div className='text-right'>
+                  {hasActiveDiscount ? (
+                    <Text
+                      type='tertiary'
+                      delete
+                      className='block text-sm'
+                    >
+                      {symbol}
+                      {(Number(plan?.price_amount || 0) * rate).toFixed(
+                        Number.isInteger(Number(plan?.price_amount || 0) * rate)
+                          ? 0
+                          : 2,
+                      )}
+                    </Text>
+                  ) : null}
+                  <Text strong className='text-xl text-purple-600'>
+                    {symbol}
+                    {displayPrice}
+                  </Text>
+                </div>
               </div>
             </div>
           </Card>
+
+          {hasActiveDiscount && (
+            <Banner
+              type='success'
+              description={
+                `${t('当前套餐正在限时优惠中，优惠截止时间')}：` +
+                new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()
+              }
+              className='!rounded-xl'
+              closeIcon={null}
+            />
+          )}
+
+          {hasActiveDiscount && !hasEpay && (enableStripeTopUp || enableCreemTopUp) ? (
+            <Banner
+              type='warning'
+              description={t('当前套餐存在限时优惠，当前仅支持易支付购买；请先启用易支付。')}
+              className='!rounded-xl'
+              closeIcon={null}
+            />
+          ) : null}
 
           {/* 支付方式 */}
           {purchaseLimitReached && (

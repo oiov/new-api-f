@@ -27,6 +27,7 @@ import {
   loadChannelModels,
   copy,
   toBoolean,
+  verifyJSON,
 } from '../../helpers';
 import {
   CHANNEL_OPTIONS,
@@ -64,6 +65,10 @@ export const useChannelsData = () => {
   const [enableTagMode, setEnableTagMode] = useState(false);
   const [showBatchSetTag, setShowBatchSetTag] = useState(false);
   const [batchSetTagValue, setBatchSetTagValue] = useState('');
+  const [showBatchModelMapping, setShowBatchModelMapping] = useState(false);
+  const [batchModelMappingValue, setBatchModelMappingValue] = useState('');
+  const [batchUpdatingModelMapping, setBatchUpdatingModelMapping] =
+    useState(false);
   const [compactMode, setCompactMode] = useTableCompactMode('channels');
   const [batchTestingChannels, setBatchTestingChannels] = useState(false);
 
@@ -726,6 +731,127 @@ export const useChannelsData = () => {
     setLoading(false);
   };
 
+  const batchSetChannelModelMapping = async () => {
+    if (enableTagMode) {
+      showError(t('标签聚合模式下不支持批量修改模型映射，请先关闭标签聚合模式。'));
+      return;
+    }
+    if (selectedChannels.length === 0) {
+      showError(t('请先选择要修改模型映射的通道！'));
+      return;
+    }
+
+    const trimmedModelMapping = String(batchModelMappingValue || '').trim();
+    if (trimmedModelMapping === '') {
+      showError(t('模型映射不能为空！'));
+      return;
+    }
+    if (!verifyJSON(trimmedModelMapping)) {
+      showError(t('模型映射必须是合法的 JSON 格式！'));
+      return;
+    }
+
+    let normalizedModelMapping = trimmedModelMapping;
+    try {
+      normalizedModelMapping = JSON.stringify(
+        JSON.parse(trimmedModelMapping),
+        null,
+        2,
+      );
+    } catch (error) {
+      showError(t('模型映射必须是合法的 JSON 格式！'));
+      return;
+    }
+
+    setBatchUpdatingModelMapping(true);
+    const channelsToUpdate = [...selectedChannels];
+    let successCount = 0;
+    const failedChannels = [];
+
+    try {
+      showInfo(
+        t('开始批量更新 ${count} 个通道的模型映射，请稍候...').replace(
+          '${count}',
+          channelsToUpdate.length,
+        ),
+      );
+
+      const concurrencyLimit = 5;
+      for (let i = 0; i < channelsToUpdate.length; i += concurrencyLimit) {
+        const batch = channelsToUpdate.slice(i, i + concurrencyLimit);
+        const batchResults = await Promise.all(
+          batch.map(async (channel) => {
+            try {
+              const res = await API.put('/api/channel/', {
+                id: channel.id,
+                model_mapping: normalizedModelMapping,
+              });
+              if (res?.data?.success) {
+                return { success: true };
+              }
+              return {
+                success: false,
+                id: channel.id,
+                name: channel.name,
+                message: res?.data?.message || t('更新失败'),
+              };
+            } catch (error) {
+              return {
+                success: false,
+                id: channel.id,
+                name: channel.name,
+                message: error?.message || t('网络错误'),
+              };
+            }
+          }),
+        );
+
+        batchResults.forEach((result) => {
+          if (result?.success) {
+            successCount++;
+          } else if (result) {
+            failedChannels.push(result);
+          }
+        });
+
+        if (i + concurrencyLimit < channelsToUpdate.length) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+
+      if (failedChannels.length === 0) {
+        showSuccess(
+          t('批量更新完成，已成功修改 ${count} 个通道的模型映射。').replace(
+            '${count}',
+            successCount,
+          ),
+        );
+      } else {
+        const failedSummary = failedChannels
+          .slice(0, 5)
+          .map(
+            (item) =>
+              `#${item.id}${item.name ? ` (${item.name})` : ''}: ${item.message}`,
+          )
+          .join('\n');
+        showError(
+          t('批量更新完成，成功 ${success} 个，失败 ${failed} 个。')
+            .replace('${success}', successCount)
+            .replace('${failed}', failedChannels.length) +
+            (failedSummary ? `\n${failedSummary}` : ''),
+        );
+        await refresh();
+        return;
+      }
+
+      await refresh();
+      setBatchModelMappingValue('');
+      setShowBatchModelMapping(false);
+    } finally {
+      setBatchUpdatingModelMapping(false);
+    }
+  };
+
   // Channel operations
   const testAllChannels = async () => {
     const res = await API.get(`/api/channel/test`);
@@ -1241,6 +1367,11 @@ export const useChannelsData = () => {
     setShowBatchSetTag,
     batchSetTagValue,
     setBatchSetTagValue,
+    showBatchModelMapping,
+    setShowBatchModelMapping,
+    batchModelMappingValue,
+    setBatchModelMappingValue,
+    batchUpdatingModelMapping,
 
     // Column states
     visibleColumns,
@@ -1305,6 +1436,7 @@ export const useChannelsData = () => {
     closeEdit,
     handleRow,
     batchSetChannelTag,
+    batchSetChannelModelMapping,
     batchDeleteChannels,
     batchTestSelectedChannels,
     batchTestingChannels,

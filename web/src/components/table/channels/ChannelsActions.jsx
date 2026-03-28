@@ -34,6 +34,8 @@ const ChannelsActions = ({
   batchTestSelectedChannels,
   batchTestingChannels,
   setShowBatchSetTag,
+  setShowBatchModelMapping,
+  batchUpdatingModelMapping,
   testAllChannels,
   fixChannelsAbilities,
   updateAllChannelsBalance,
@@ -107,6 +109,19 @@ const ChannelsActions = ({
             className='w-full md:w-auto'
           >
             {t('批量设置标签')}
+          </Button>
+
+          <Button
+            size='small'
+            disabled={
+              !enableBatchDelete || batchUpdatingModelMapping || enableTagMode
+            }
+            loading={batchUpdatingModelMapping}
+            type='tertiary'
+            onClick={() => setShowBatchModelMapping(true)}
+            className='w-full md:w-auto'
+          >
+            {t('批量修改模型映射')}
           </Button>
 
           <Dropdown

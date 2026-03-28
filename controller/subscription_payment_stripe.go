@@ -37,6 +37,10 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
+	if plan.HasActiveDiscount(common.GetTimestamp()) {
+		common.ApiErrorMsg(c, "限时优惠套餐当前仅支持易支付购买")
+		return
+	}
 	if plan.StripePriceId == "" {
 		common.ApiErrorMsg(c, "该套餐未配置 StripePriceId")
 		return
@@ -86,7 +90,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	order := &model.SubscriptionOrder{
 		UserId:        userId,
 		PlanId:        plan.Id,
-		Money:         plan.PriceAmount,
+		Money:         plan.GetEffectivePriceAmount(common.GetTimestamp()),
 		TradeNo:       referenceId,
 		PaymentMethod: PaymentMethodStripe,
 		CreateTime:    time.Now().Unix(),

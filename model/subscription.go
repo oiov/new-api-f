@@ -159,7 +159,13 @@ type SubscriptionPlan struct {
 
 	// Display money amount (follow existing code style: float64 for money)
 	PriceAmount float64 `json:"price_amount" gorm:"type:decimal(10,6);not null;default:0"`
-	Currency    string  `json:"currency" gorm:"type:varchar(8);not null;default:'USD'"`
+	// DiscountPriceAmount is the limited-time promo price. 0 means no discount.
+	DiscountPriceAmount float64 `json:"discount_price_amount" gorm:"type:decimal(10,6);not null;default:0"`
+	// DiscountDeadline is the unix timestamp in seconds when promo ends. 0 means no deadline / inactive.
+	DiscountDeadline     int64   `json:"discount_deadline" gorm:"bigint;not null;default:0"`
+	Currency             string  `json:"currency" gorm:"type:varchar(8);not null;default:'USD'"`
+	EffectivePriceAmount float64 `json:"effective_price_amount" gorm:"-"`
+	ActiveDiscount       bool    `json:"has_active_discount" gorm:"-"`
 
 	DurationUnit  string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
 	DurationValue int    `json:"duration_value" gorm:"type:int;not null;default:1"`
@@ -191,6 +197,40 @@ type SubscriptionPlan struct {
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+}
+
+func (p *SubscriptionPlan) HasActiveDiscount(now int64) bool {
+	if p == nil {
+		return false
+	}
+	if now <= 0 {
+		now = common.GetTimestamp()
+	}
+	return p.DiscountPriceAmount > 0 &&
+		p.PriceAmount > 0 &&
+		p.DiscountPriceAmount < p.PriceAmount &&
+		p.DiscountDeadline > now
+}
+
+func (p *SubscriptionPlan) GetEffectivePriceAmount(now int64) float64 {
+	if p == nil {
+		return 0
+	}
+	if p.HasActiveDiscount(now) {
+		return p.DiscountPriceAmount
+	}
+	return p.PriceAmount
+}
+
+func (p *SubscriptionPlan) ApplyDisplayPrice(now int64) {
+	if p == nil {
+		return
+	}
+	p.ActiveDiscount = p.HasActiveDiscount(now)
+	p.EffectivePriceAmount = p.PriceAmount
+	if p.ActiveDiscount {
+		p.EffectivePriceAmount = p.DiscountPriceAmount
+	}
 }
 
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -21,6 +22,13 @@ type BillingPreferenceRequest struct {
 	BillingPreference string `json:"billing_preference"`
 }
 
+func applySubscriptionPlanDisplayFields(plan *model.SubscriptionPlan, now int64) {
+	if plan == nil {
+		return
+	}
+	plan.ApplyDisplayPrice(now)
+}
+
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
@@ -29,8 +37,10 @@ func GetSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	now := common.GetTimestamp()
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		applySubscriptionPlanDisplayFields(&p, now)
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})
@@ -137,8 +147,10 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	now := common.GetTimestamp()
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		applySubscriptionPlanDisplayFields(&p, now)
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})
@@ -148,6 +160,38 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 
 type AdminUpsertSubscriptionPlanRequest struct {
 	Plan model.SubscriptionPlan `json:"plan"`
+}
+
+func normalizeSubscriptionPlanPriceFields(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	if plan.PriceAmount < 0 {
+		return fmt.Errorf("价格不能为负数")
+	}
+	if plan.PriceAmount > 9999 {
+		return fmt.Errorf("价格不能超过9999")
+	}
+	if plan.DiscountPriceAmount < 0 {
+		return fmt.Errorf("优惠价格不能为负数")
+	}
+	if plan.DiscountPriceAmount > 9999 {
+		return fmt.Errorf("优惠价格不能超过9999")
+	}
+	if plan.DiscountPriceAmount > 0 {
+		if plan.DiscountPriceAmount >= plan.PriceAmount {
+			return fmt.Errorf("优惠价格必须小于原价")
+		}
+		if plan.DiscountDeadline <= 0 {
+			return fmt.Errorf("设置优惠价格时必须填写优惠截止时间")
+		}
+	} else {
+		plan.DiscountDeadline = 0
+	}
+	if plan.DiscountDeadline < 0 {
+		return fmt.Errorf("优惠截止时间无效")
+	}
+	return nil
 }
 
 func AdminCreateSubscriptionPlan(c *gin.Context) {
@@ -161,12 +205,8 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
 		return
 	}
-	if req.Plan.PriceAmount < 0 {
-		common.ApiErrorMsg(c, "价格不能为负数")
-		return
-	}
-	if req.Plan.PriceAmount > 9999 {
-		common.ApiErrorMsg(c, "价格不能超过9999")
+	if err := normalizeSubscriptionPlanPriceFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	if req.Plan.Currency == "" {
@@ -215,6 +255,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	model.InvalidateSubscriptionPlanCache(req.Plan.Id)
+	applySubscriptionPlanDisplayFields(&req.Plan, common.GetTimestamp())
 	common.ApiSuccess(c, req.Plan)
 }
 
@@ -233,12 +274,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
 		return
 	}
-	if req.Plan.PriceAmount < 0 {
-		common.ApiErrorMsg(c, "价格不能为负数")
-		return
-	}
-	if req.Plan.PriceAmount > 9999 {
-		common.ApiErrorMsg(c, "价格不能超过9999")
+	if err := normalizeSubscriptionPlanPriceFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	req.Plan.Id = id
@@ -289,6 +326,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
 			"price_amount":               req.Plan.PriceAmount,
+			"discount_price_amount":      req.Plan.DiscountPriceAmount,
+			"discount_deadline":          req.Plan.DiscountDeadline,
 			"currency":                   req.Plan.Currency,
 			"duration_unit":              req.Plan.DurationUnit,
 			"duration_value":             req.Plan.DurationValue,

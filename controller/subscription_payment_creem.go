@@ -44,6 +44,10 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
+	if plan.HasActiveDiscount(common.GetTimestamp()) {
+		common.ApiErrorMsg(c, "限时优惠套餐当前仅支持易支付购买")
+		return
+	}
 	if plan.CreemProductId == "" {
 		common.ApiErrorMsg(c, "该套餐未配置 CreemProductId")
 		return
@@ -83,7 +87,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	order := &model.SubscriptionOrder{
 		UserId:        userId,
 		PlanId:        plan.Id,
-		Money:         plan.PriceAmount,
+		Money:         plan.GetEffectivePriceAmount(common.GetTimestamp()),
 		TradeNo:       referenceId,
 		PaymentMethod: PaymentMethodCreem,
 		CreateTime:    time.Now().Unix(),
@@ -107,7 +111,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	product := &CreemProduct{
 		ProductId: plan.CreemProductId,
 		Name:      plan.Title,
-		Price:     plan.PriceAmount,
+		Price:     plan.GetEffectivePriceAmount(common.GetTimestamp()),
 		Currency:  currency,
 		Quota:     0,
 	}

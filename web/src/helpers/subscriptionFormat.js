@@ -41,6 +41,25 @@ export function getSubscriptionResourceType(plan) {
   return plan?.resource_type === 'request_count' ? 'request_count' : 'quota';
 }
 
+export function isSubscriptionDiscountActive(plan, now = Date.now() / 1000) {
+  if (typeof plan?.has_active_discount === 'boolean') {
+    return plan.has_active_discount;
+  }
+  const original = Number(plan?.price_amount || 0);
+  const discount = Number(plan?.discount_price_amount || 0);
+  const deadline = Number(plan?.discount_deadline || 0);
+  return discount > 0 && original > 0 && discount < original && deadline > now;
+}
+
+export function getSubscriptionEffectivePrice(plan, now = Date.now() / 1000) {
+  if (plan?.effective_price_amount !== undefined && plan?.effective_price_amount !== null) {
+    return Number(plan.effective_price_amount || 0);
+  }
+  return isSubscriptionDiscountActive(plan, now)
+    ? Number(plan?.discount_price_amount || 0)
+    : Number(plan?.price_amount || 0);
+}
+
 export function formatSubscriptionResourceLabel(plan, t) {
   return getSubscriptionResourceType(plan) === 'request_count'
     ? t('总次数')

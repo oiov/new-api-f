@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useRef } from 'react';
+import dayjs from 'dayjs';
 import {
   Avatar,
   Button,
@@ -91,6 +92,8 @@ const AddEditSubscriptionModal = ({
     title: '',
     subtitle: '',
     price_amount: 0,
+    discount_price_amount: 0,
+    discount_deadline: null,
     currency: 'USD',
     duration_unit: 'month',
     duration_value: 1,
@@ -117,6 +120,10 @@ const AddEditSubscriptionModal = ({
       title: p.title || '',
       subtitle: p.subtitle || '',
       price_amount: Number(p.price_amount || 0),
+      discount_price_amount: Number(p.discount_price_amount || 0),
+      discount_deadline: p.discount_deadline
+        ? dayjs(Number(p.discount_deadline) * 1000).toDate()
+        : null,
       currency: 'USD',
       duration_unit: p.duration_unit || 'month',
       duration_value: Number(p.duration_value || 1),
@@ -163,6 +170,10 @@ const AddEditSubscriptionModal = ({
         plan: {
           ...values,
           price_amount: Number(values.price_amount || 0),
+          discount_price_amount: Number(values.discount_price_amount || 0),
+          discount_deadline: values.discount_deadline
+            ? Math.floor(new Date(values.discount_deadline).getTime() / 1000)
+            : 0,
           currency: 'USD',
           duration_value: Number(values.duration_value || 0),
           custom_seconds: Number(values.custom_seconds || 0),
@@ -332,11 +343,36 @@ const AddEditSubscriptionModal = ({
                     <Col span={12}>
                       <Form.InputNumber
                         field='price_amount'
-                        label={t('实付金额')}
+                        label={t('原价')}
                         required
                         min={0}
                         precision={2}
                         rules={[{ required: true, message: t('请输入金额') }]}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='discount_price_amount'
+                        label={t('优惠价格')}
+                        min={0}
+                        precision={2}
+                        extraText={t('0 表示不启用限时优惠')}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={24}>
+                      <Form.DatePicker
+                        field='discount_deadline'
+                        label={t('优惠截止时间')}
+                        type='dateTime'
+                        showClear
+                        insetLabel={t('截止')}
+                        extraText={t(
+                          '仅当优惠价格大于 0 且截止时间晚于当前时间时，前台才会展示并按优惠价结算',
+                        )}
                         style={{ width: '100%' }}
                       />
                     </Col>

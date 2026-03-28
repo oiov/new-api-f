@@ -61,8 +61,10 @@ import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
   formatSubscriptionResourceLabel,
+  getSubscriptionEffectivePrice,
   getSubscriptionResourceType,
   getSubscriptionUsageSummary,
+  isSubscriptionDiscountActive,
 } from '../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
@@ -1006,17 +1008,33 @@ const SubscriptionPlansCard = ({
         render: (text, record) => {
           const plan = record?.plan || {};
           const { symbol, rate } = getCurrencyConfig();
-          const price = Number(plan?.price_amount || 0) * rate;
+          const price = getSubscriptionEffectivePrice(plan) * rate;
           const displayPrice = price.toFixed(Number.isInteger(price) ? 0 : 2);
+          const activeDiscount = isSubscriptionDiscountActive(plan);
           return (
             <div className='inline-flex flex-col items-start'>
               <div className='text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent'>
                 {symbol}
                 {displayPrice}
               </div>
+              {activeDiscount ? (
+                <Text type='tertiary' size='small' delete>
+                  {symbol}
+                  {(Number(plan?.price_amount || 0) * rate).toFixed(
+                    Number.isInteger(Number(plan?.price_amount || 0) * rate)
+                      ? 0
+                      : 2,
+                  )}
+                </Text>
+              ) : null}
               <Text type='tertiary' size='small'>
                 {formatSubscriptionDuration(plan, t)}
               </Text>
+              {activeDiscount ? (
+                <Text type='tertiary' size='small'>
+                  {t('截止')} {new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()}
+                </Text>
+              ) : null}
             </div>
           );
         },

@@ -35,6 +35,8 @@ import {
   formatSubscriptionResourceLabel,
   getSubscriptionResourceType,
   getSubscriptionUsageSummary,
+  getSubscriptionEffectivePrice,
+  isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
@@ -85,8 +87,16 @@ const renderPlanTitle = (text, record, t) => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <Text type='tertiary'>{t('价格')}</Text>
         <Text strong style={{ color: 'var(--semi-color-success)' }}>
-          {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+          {convertUSDToCurrency(getSubscriptionEffectivePrice(plan), 2)}
         </Text>
+        {isSubscriptionDiscountActive(plan) ? (
+          <>
+            <Text type='tertiary'>{t('原价')}</Text>
+            <Text delete>{convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}</Text>
+            <Text type='tertiary'>{t('优惠截止')}</Text>
+            <Text>{new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()}</Text>
+          </>
+        ) : null}
         <Text type='tertiary'>{formatSubscriptionResourceLabel(plan, t)}</Text>
         {(() => {
           const summary = getSubscriptionUsageSummary(plan);
@@ -317,8 +327,22 @@ export const getSubscriptionsColumns = ({
     {
       title: t('价格'),
       dataIndex: ['plan', 'price_amount'],
-      width: 100,
-      render: (text) => renderPrice(text),
+      width: 140,
+      render: (text, record) => {
+        const plan = record?.plan || {};
+        const effective = getSubscriptionEffectivePrice(plan);
+        const activeDiscount = isSubscriptionDiscountActive(plan);
+        return (
+          <div>
+            {renderPrice(effective)}
+            {activeDiscount ? (
+              <Text type='tertiary' size='small' delete style={{ display: 'block' }}>
+                {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+              </Text>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       title: t('购买上限'),
