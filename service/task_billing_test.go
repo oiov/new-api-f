@@ -11,6 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -397,6 +399,51 @@ func TestPreConsumeUserSubscription_PrefersEarliestRequestCountThenQuota(t *test
 	require.NoError(t, model.DB.Where("id = ?", requestSubEarly.Id).First(&refreshedRequest).Error)
 	assert.Equal(t, int64(0), refreshedQuota.AmountUsed)
 	assert.Equal(t, int64(1), refreshedRequest.RequestCountUsed)
+}
+
+func TestPreConsumeUserSubscription_AllowsUsableChildGroupOfCurrentSubscriptionGroup(t *testing.T) {
+	truncate(t)
+
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组"}`))
+	ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Set("default", map[string]string{
+		"claude": "Claude 分组",
+	})
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"vip分组"}`))
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Clear()
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.AddAll(map[string]map[string]string{
+			"vip": {
+				"append_1":   "vip_special_group_1",
+				"-:remove_1": "vip_removed_group_1",
+			},
+		})
+	})
+
+	const userID = 11
+	seedUser(t, userID, 10000)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Update("group", "default").Error)
+
+	seedSubscriptionPlan(t, 111, model.SubscriptionResourceQuota)
+	sub := &model.UserSubscription{
+		Id:           111,
+		UserId:       userID,
+		PlanId:       111,
+		AmountTotal:  5000,
+		AmountUsed:   0,
+		UpgradeGroup: "default",
+		Status:       "active",
+		StartTime:    time.Now().Unix(),
+		EndTime:      time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	res, err := model.PreConsumeUserSubscription("req-usable-child-group", userID, "test-model", "claude", 0, 500)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, sub.Id, res.UserSubscriptionId)
+	assert.Equal(t, int64(500), res.PreConsumed)
+	assert.Equal(t, model.SubscriptionResourceQuota, res.ResourceType)
+	assert.Equal(t, int64(500), getSubscriptionUsed(t, sub.Id))
 }
 
 func TestRefundTaskQuota_NoToken(t *testing.T) {

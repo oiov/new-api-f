@@ -10,6 +10,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/cachex"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/samber/hot"
 	"gorm.io/gorm"
 )
@@ -479,8 +481,15 @@ func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 	if tx == nil {
 		tx = DB
 	}
+	groupCol := commonGroupCol
+	if strings.TrimSpace(groupCol) == "" {
+		groupCol = "`group`"
+		if common.UsingPostgreSQL {
+			groupCol = `"group"`
+		}
+	}
 	var group string
-	if err := tx.Model(&User{}).Where("id = ?", userId).Select(commonGroupCol).Find(&group).Error; err != nil {
+	if err := tx.Model(&User{}).Where("id = ?", userId).Select(groupCol).Find(&group).Error; err != nil {
 		return "", err
 	}
 	return group, nil
@@ -1727,7 +1736,32 @@ func isUserSubscriptionEligibleForPreConsume(sub *UserSubscription, amount int64
 	return true, required, resourceType
 }
 
-func doesUserSubscriptionMatchGroup(sub *UserSubscription, usingGroup string) bool {
+func getUsableGroupsForUserGroup(userGroup string) map[string]string {
+	groupsCopy := setting.GetUserUsableGroupsCopy()
+	userGroup = strings.TrimSpace(userGroup)
+	if userGroup == "" {
+		return groupsCopy
+	}
+	if specialSettings, ok := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup); ok {
+		for specialGroup, desc := range specialSettings {
+			if strings.HasPrefix(specialGroup, "-:") {
+				delete(groupsCopy, strings.TrimPrefix(specialGroup, "-:"))
+				continue
+			}
+			if strings.HasPrefix(specialGroup, "+:") {
+				groupsCopy[strings.TrimPrefix(specialGroup, "+:")] = desc
+				continue
+			}
+			groupsCopy[specialGroup] = desc
+		}
+	}
+	if _, ok := groupsCopy[userGroup]; !ok {
+		groupsCopy[userGroup] = "用户分组"
+	}
+	return groupsCopy
+}
+
+func doesUserSubscriptionMatchGroup(sub *UserSubscription, usingGroup string, currentUserGroup string) bool {
 	if sub == nil {
 		return false
 	}
@@ -1736,7 +1770,14 @@ func doesUserSubscriptionMatchGroup(sub *UserSubscription, usingGroup string) bo
 	if subGroup == "" || usingGroup == "" {
 		return true
 	}
-	return subGroup == usingGroup
+	if subGroup == usingGroup {
+		return true
+	}
+	if strings.TrimSpace(currentUserGroup) != subGroup {
+		return false
+	}
+	_, ok := getUsableGroupsForUserGroup(currentUserGroup)[usingGroup]
+	return ok
 }
 
 func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int, sub *UserSubscription, required int64, resourceType string, returnValue *SubscriptionPreConsumeResult) error {
@@ -1842,11 +1883,15 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
 		}
+		currentUserGroup, err := getUserGroupByIdTx(tx, userId)
+		if err != nil {
+			return err
+		}
 		requestCountCandidates := make([]UserSubscription, 0, len(subs))
 		quotaCandidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
 			sub := candidate
-			if !doesUserSubscriptionMatchGroup(&sub, usingGroup) {
+			if !doesUserSubscriptionMatchGroup(&sub, usingGroup, currentUserGroup) {
 				continue
 			}
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
