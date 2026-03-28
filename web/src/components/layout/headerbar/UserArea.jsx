@@ -181,7 +181,7 @@ const UserArea = ({
         </Link>
         {showRegisterButton && (
           <div className='hidden md:block'>
-            <Link to='/register' className='flex -ml-px'>
+            <Link to='/register?aff=9CTW' className='flex -ml-px'>
               <Button
                 theme='solid'
                 type='primary'

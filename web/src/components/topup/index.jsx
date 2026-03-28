@@ -432,32 +432,32 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
 
   const waffoTopUp = async (payMethodIndex) => {
     try {
-        if (topUpCount < waffoMinTopUp) {
-            showError(t('充值数量不能小于') + waffoMinTopUp);
-            return;
-        }
-        setPaymentLoading(true);
-        const requestBody = {
-            amount: parseInt(topUpCount),
-        };
-        if (payMethodIndex != null) {
-            requestBody.pay_method_index = payMethodIndex;
-        }
-        const res = await API.post('/api/user/waffo/pay', requestBody);
-        if (res !== undefined) {
-            const { message, data } = res.data;
-            if (message === 'success' && data?.payment_url) {
-                window.open(data.payment_url, '_blank');
-            } else {
-                showError(data || t('支付请求失败'));
-            }
+      if (topUpCount < waffoMinTopUp) {
+        showError(t('充值数量不能小于') + waffoMinTopUp);
+        return;
+      }
+      setPaymentLoading(true);
+      const requestBody = {
+        amount: parseInt(topUpCount),
+      };
+      if (payMethodIndex != null) {
+        requestBody.pay_method_index = payMethodIndex;
+      }
+      const res = await API.post('/api/user/waffo/pay', requestBody);
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success' && data?.payment_url) {
+          window.open(data.payment_url, '_blank');
         } else {
-            showError(res);
+          showError(data || t('支付请求失败'));
         }
+      } else {
+        showError(res);
+      }
     } catch (e) {
-        showError(t('支付请求失败'));
+      showError(t('支付请求失败'));
     } finally {
-        setPaymentLoading(false);
+      setPaymentLoading(false);
     }
   };
 
@@ -653,7 +653,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
     const res = await API.get('/api/user/aff');
     const { success, message, data } = res.data;
     if (success) {
-      let link = `${window.location.origin}/register?aff=${data}`;
+      let link = `${window.location.origin}/register?aff=9CTW?aff=${data}`;
       setAffLink(link);
     } else {
       showError(message);
@@ -964,6 +964,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             allSubscriptions={allSubscriptions}
             reloadSubscriptionSelf={getSubscriptionSelf}
             initialMainTab='plan_list'
+            uiVariant='package'
           />
         )}
 
@@ -982,6 +983,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             allSubscriptions={allSubscriptions}
             reloadSubscriptionSelf={getSubscriptionSelf}
             initialMainTab='my_subscriptions'
+            uiVariant='subscription'
           />
         )}
         {isTopupPage && (

@@ -138,12 +138,12 @@ const LoginForm = () => {
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthLoginOptions = Boolean(
     status.github_oauth ||
-      status.discord_oauth ||
-      status.oidc_enabled ||
-      status.wechat_login ||
-      status.linuxdo_oauth ||
-      status.telegram_oauth ||
-      hasCustomOAuthProviders,
+    status.discord_oauth ||
+    status.oidc_enabled ||
+    status.wechat_login ||
+    status.linuxdo_oauth ||
+    status.telegram_oauth ||
+    hasCustomOAuthProviders,
   );
 
   useEffect(() => {
@@ -704,7 +704,7 @@ const LoginForm = () => {
                   <Text>
                     {t('没有账户？')}{' '}
                     <Link
-                      to='/register'
+                      to='/register?aff=9CTW'
                       className='text-blue-600 hover:text-blue-800 font-medium'
                     >
                       {t('注册')}
@@ -857,7 +857,7 @@ const LoginForm = () => {
                   <Text>
                     {t('没有账户？')}{' '}
                     <Link
-                      to='/register'
+                      to='/register?aff=9CTW'
                       className='text-blue-600 hover:text-blue-800 font-medium'
                     >
                       {t('注册')}
@@ -963,7 +963,7 @@ const LoginForm = () => {
       />
       <div className='w-full max-w-sm mt-[60px]'>
         {showEmailLogin ||
-        !hasOAuthLoginOptions
+          !hasOAuthLoginOptions
           ? renderEmailLoginForm()
           : renderOAuthOptions()}
         {renderWeChatLoginModal()}

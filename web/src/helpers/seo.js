@@ -221,7 +221,7 @@ export function getAuthSeo(language, type) {
         'Login to FishXCode AI and continue using Claude and Codex subscription services.',
     },
     register: {
-      path: '/register',
+      path: '/register?aff=9CTW',
       titleZh: '注册账号 | FishXCode AI',
       titleEn: 'Register | FishXCode AI',
       descriptionZh:

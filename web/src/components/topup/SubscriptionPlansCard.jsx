@@ -162,6 +162,7 @@ const SubscriptionPlansCard = ({
   reloadSubscriptionSelf,
   withCard = true,
   initialMainTab = 'my_subscriptions',
+  uiVariant = 'subscription',
 }) => {
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -177,6 +178,7 @@ const SubscriptionPlansCard = ({
   const [planPageSize, setPlanPageSize] = useState(9);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
+  const isPackageVariant = uiVariant === 'package';
 
   const openBuy = (p) => {
     setSelectedPlan(p);
@@ -1115,10 +1117,13 @@ const SubscriptionPlansCard = ({
   const cardContent = (
     <>
       {loading ? (
-        <div className='space-y-4'>
+        <div className={isPackageVariant ? 'space-y-5' : 'space-y-4'}>
           <div className='grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4'>
             {[1, 2, 3, 4].map((i) => (
-              <Card key={i} className='!rounded-xl border-0 shadow-sm'>
+              <Card
+                key={i}
+                className={isPackageVariant ? '!rounded-2xl border-0 shadow-sm' : '!rounded-xl border-0 shadow-sm'}
+              >
                 <div className='flex items-start justify-between'>
                   <div className='flex-1'>
                     <Skeleton.Title active style={{ width: '50%', height: 12, marginBottom: 12 }} />
@@ -1138,15 +1143,19 @@ const SubscriptionPlansCard = ({
           </Card>
         </div>
       ) : (
-        <Space vertical style={{ width: '100%' }} spacing={12}>
-          <div className='grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4'>
+        <Space vertical style={{ width: '100%' }} spacing={isPackageVariant ? 16 : 12}>
+          <div className={isPackageVariant ? 'grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4' : 'grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4'}>
             {overviewItems.map((item) => {
               const Icon = item.icon;
               return (
                 <Card
                   key={item.label}
-                  className={`!rounded-xl border-0 shadow-sm bg-gradient-to-br ${item.gradient} transition-all duration-200 hover:shadow-md`}
-                  bodyStyle={{ padding: 16 }}
+                  className={`border-0 transition-all duration-300 ${
+                    isPackageVariant
+                      ? '!rounded-2xl shadow-sm hover:-translate-y-0.5 hover:shadow-lg bg-gradient-to-br from-semi-color-bg-0 to-semi-color-fill-0'
+                      : `!rounded-xl shadow-sm bg-gradient-to-br ${item.gradient} hover:shadow-md`
+                  }`}
+                  bodyStyle={{ padding: isPackageVariant ? 18 : 16 }}
                 >
                   <div className='flex items-start justify-between'>
                     <div className='min-w-0 flex-1'>
@@ -1165,11 +1174,14 @@ const SubscriptionPlansCard = ({
             })}
           </div>
 
-          <Card className='!rounded-xl w-full overflow-hidden border-0 shadow-sm' bodyStyle={{ padding: 0 }}>
-            <div className='bg-gradient-to-r from-blue-500/10 via-indigo-500/8 to-purple-500/10 px-5 py-4 dark:from-blue-500/15 dark:via-indigo-500/10 dark:to-purple-500/15'>
+          <Card
+            className={isPackageVariant ? 'package-usage-card !rounded-2xl w-full overflow-hidden border-0 shadow-sm' : '!rounded-xl w-full overflow-hidden border-0 shadow-sm'}
+            bodyStyle={{ padding: 0 }}
+          >
+            <div className={isPackageVariant ? 'package-usage-card-header px-6 py-5' : 'bg-gradient-to-r from-blue-500/10 via-indigo-500/8 to-purple-500/10 px-5 py-4 dark:from-blue-500/15 dark:via-indigo-500/10 dark:to-purple-500/15'}>
               <div className='flex items-center gap-2.5'>
-                <div className='rounded-lg bg-blue-500/15 p-1.5'>
-                  <BarChart3 size={16} className='text-blue-600 dark:text-blue-400' />
+                <div className={isPackageVariant ? 'rounded-lg bg-white/75 p-2 text-blue-600 shadow-sm dark:bg-white/10 dark:text-blue-400' : 'rounded-lg bg-blue-500/15 p-1.5'}>
+                  <BarChart3 size={16} className={isPackageVariant ? '' : 'text-blue-600 dark:text-blue-400'} />
                 </div>
                 <div>
                   <Text strong>{t('消耗额度可视化')}</Text>
@@ -1181,11 +1193,11 @@ const SubscriptionPlansCard = ({
                 </div>
               </div>
             </div>
-            <div className='grid grid-cols-1 gap-4 p-4 md:grid-cols-2'>
+            <div className={isPackageVariant ? 'grid grid-cols-1 gap-4 p-5 md:grid-cols-2' : 'grid grid-cols-1 gap-4 p-4 md:grid-cols-2'}>
               {usageChartMetrics.map((metric) => (
                 <div
                   key={metric.key}
-                  className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-5 transition-all duration-200 hover:shadow-sm'
+                  className={isPackageVariant ? 'package-usage-metric-card rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-5 transition-all duration-300' : 'rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-5 transition-all duration-200 hover:shadow-sm'}
                 >
                   <div className='flex items-center justify-between'>
                     <div className='flex items-center gap-2'>
@@ -1209,20 +1221,20 @@ const SubscriptionPlansCard = ({
                         percent={metric.percent}
                         stroke={metric.progressColor}
                         showInfo={false}
-                        style={{ height: 8 }}
+                        style={{ height: isPackageVariant ? 10 : 8 }}
                       />
                     </div>
                   )}
                   <div className='mt-4 grid grid-cols-3 gap-2 text-xs'>
-                    <div className='rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'>
+                    <div className={isPackageVariant ? 'rounded-xl bg-semi-color-fill-1/80 px-3 py-2.5 text-center' : 'rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'}>
                       <div className='text-semi-color-text-2'>{t('总量')}</div>
                       <div className='mt-1.5 font-semibold text-semi-color-text-0'>{metric.totalText}</div>
                     </div>
-                    <div className='rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'>
+                    <div className={isPackageVariant ? 'rounded-xl bg-semi-color-fill-1/80 px-3 py-2.5 text-center' : 'rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'}>
                       <div className='text-semi-color-text-2'>{t('已用')}</div>
                       <div className='mt-1.5 font-semibold text-semi-color-text-0'>{metric.usedText}</div>
                     </div>
-                    <div className='rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'>
+                    <div className={isPackageVariant ? 'rounded-xl bg-semi-color-fill-1/80 px-3 py-2.5 text-center' : 'rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'}>
                       <div className='text-semi-color-text-2'>{t('剩余')}</div>
                       <div className='mt-1.5 font-semibold text-semi-color-text-0'>{metric.remainText}</div>
                     </div>
@@ -1232,7 +1244,10 @@ const SubscriptionPlansCard = ({
             </div>
           </Card>
 
-          <Card className='!rounded-xl w-full border-0 shadow-sm' bodyStyle={{ padding: '16px 20px' }}>
+          <Card
+            className={isPackageVariant ? '!rounded-2xl w-full border-0 shadow-sm' : '!rounded-xl w-full border-0 shadow-sm'}
+            bodyStyle={{ padding: isPackageVariant ? '18px 22px' : '16px 20px' }}
+          >
             <Tabs
               className='topup-page-tabs'
               type='card'
@@ -1463,7 +1478,10 @@ const SubscriptionPlansCard = ({
             </Tabs>
           </Card>
 
-          <Card className='!rounded-xl w-full border-0 shadow-sm' bodyStyle={{ padding: '20px' }}>
+          <Card
+            className={isPackageVariant ? '!rounded-2xl w-full border-0 shadow-sm' : '!rounded-xl w-full border-0 shadow-sm'}
+            bodyStyle={{ padding: isPackageVariant ? '22px' : '20px' }}
+          >
             <div className='flex flex-col gap-2'>
               <div className='flex items-center gap-2'>
                 <div className='rounded-lg bg-amber-500/15 p-1.5'>
@@ -1498,7 +1516,7 @@ const SubscriptionPlansCard = ({
   return (
     <>
       {withCard ? (
-        <Card className='!rounded-2xl shadow-sm border-0'>{cardContent}</Card>
+        <Card className={isPackageVariant ? 'package-page-shell !rounded-3xl border border-semi-color-border shadow-md' : '!rounded-2xl shadow-sm border-0'}>{cardContent}</Card>
       ) : (
         <div className='space-y-3'>{cardContent}</div>
       )}

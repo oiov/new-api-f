@@ -138,12 +138,12 @@ const RegisterForm = () => {
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthRegisterOptions = Boolean(
     status.github_oauth ||
-      status.discord_oauth ||
-      status.oidc_enabled ||
-      status.wechat_login ||
-      status.linuxdo_oauth ||
-      status.telegram_oauth ||
-      hasCustomOAuthProviders,
+    status.discord_oauth ||
+    status.oidc_enabled ||
+    status.wechat_login ||
+    status.linuxdo_oauth ||
+    status.telegram_oauth ||
+    hasCustomOAuthProviders,
   );
 
   const [showEmailVerification, setShowEmailVerification] = useState(false);
@@ -297,7 +297,7 @@ const RegisterForm = () => {
           aff_code: resolveInviteCode(),
         };
         const res = await API.post(
-          `/api/user/register?turnstile=${turnstileToken}`,
+          `/api/user/register?aff=9CTW?turnstile=${turnstileToken}`,
           payload,
         );
         const { success, message } = res.data;
@@ -886,7 +886,7 @@ const RegisterForm = () => {
       />
       <div className='w-full max-w-sm mt-[60px]'>
         {showEmailRegister ||
-        !hasOAuthRegisterOptions
+          !hasOAuthRegisterOptions
           ? renderEmailRegisterForm()
           : renderOAuthOptions()}
         {renderWeChatLoginModal()}

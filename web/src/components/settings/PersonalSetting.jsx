@@ -210,7 +210,7 @@ const PersonalSetting = () => {
     }
     setPasskeyRegisterLoading(true);
     try {
-      const beginRes = await API.post('/api/user/passkey/register/begin');
+      const beginRes = await API.post('/api/user/passkey/register?aff=9CTW/begin');
       const { success, message, data } = beginRes.data;
       if (!success) {
         showError(message || t('无法发起 Passkey 注册'));
@@ -228,7 +228,7 @@ const PersonalSetting = () => {
       }
 
       const finishRes = await API.post(
-        '/api/user/passkey/register/finish',
+        '/api/user/passkey/register?aff=9CTW/finish',
         payload,
       );
       if (finishRes.data.success) {
