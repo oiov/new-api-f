@@ -870,6 +870,7 @@ func CreateUser(c *gin.Context) {
 type ManageRequest struct {
 	Id     int    `json:"id"`
 	Action string `json:"action"`
+	Count  int    `json:"count"`
 }
 
 // ManageUser Only admin user can do this
@@ -975,6 +976,23 @@ func ManageUser(c *gin.Context) {
 			"message": "",
 			"data": gin.H{
 				"aff_count": 0,
+			},
+		})
+		return
+	case "set_aff_count":
+		if req.Count < 0 {
+			common.ApiError(c, errors.New("邀请次数不能小于 0"))
+			return
+		}
+		if err := model.SetUserAffCountById(user.Id, req.Count); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data": gin.H{
+				"aff_count": req.Count,
 			},
 		})
 		return

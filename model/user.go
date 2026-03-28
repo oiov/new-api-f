@@ -346,6 +346,16 @@ func ResetUserAffCountById(id int) error {
 	return DB.Unscoped().Model(&User{}).Where("id = ?", id).Update("aff_count", 0).Error
 }
 
+func SetUserAffCountById(id int, count int) error {
+	if id == 0 {
+		return errors.New("id 为空！")
+	}
+	if count < 0 {
+		return errors.New("邀请次数不能小于 0")
+	}
+	return DB.Unscoped().Model(&User{}).Where("id = ?", id).Update("aff_count", count).Error
+}
+
 func ResetAllUsersAffCount() (int64, error) {
 	result := DB.Unscoped().Model(&User{}).Where("aff_count <> ?", 0).Update("aff_count", 0)
 	return result.RowsAffected, result.Error

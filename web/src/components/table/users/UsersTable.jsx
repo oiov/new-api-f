@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useMemo, useState } from 'react';
-import { Empty, Modal } from '@douyinfe/semi-ui';
+import { Empty, InputNumber, Modal } from '@douyinfe/semi-ui';
 import CardTable from '../../common/ui/CardTable';
 import {
   IllustrationNoResult,
@@ -64,6 +64,8 @@ const UsersTable = (usersData) => {
   const [showResetTwoFAModal, setShowResetTwoFAModal] = useState(false);
   const [showUserSubscriptionsModal, setShowUserSubscriptionsModal] =
     useState(false);
+  const [showSetAffCountModal, setShowSetAffCountModal] = useState(false);
+  const [setAffCountValue, setSetAffCountValue] = useState(0);
 
   // Modal handlers
   const showPromoteUserModal = (user) => {
@@ -111,6 +113,12 @@ const UsersTable = (usersData) => {
     });
   };
 
+  const showSetAffCountUserModal = (user) => {
+    setModalUser(user);
+    setSetAffCountValue(user?.aff_count || 0);
+    setShowSetAffCountModal(true);
+  };
+
   // Modal confirm handlers
   const handlePromoteConfirm = () => {
     manageUser(modalUser.id, 'promote', modalUser);
@@ -137,6 +145,13 @@ const UsersTable = (usersData) => {
     setShowResetTwoFAModal(false);
   };
 
+  const handleSetAffCountConfirm = async () => {
+    await manageUser(modalUser.id, 'set_aff_count', modalUser, {
+      count: Number(setAffCountValue) || 0,
+    });
+    setShowSetAffCountModal(false);
+  };
+
   // Get all columns
   const columns = useMemo(() => {
     return getUsersColumns({
@@ -151,6 +166,7 @@ const UsersTable = (usersData) => {
       showResetTwoFAModal: showResetTwoFAUserModal,
       showUserSubscriptionsModal: showUserSubscriptionsUserModal,
       resetAffCount: showResetAffCountModal,
+      setAffCount: showSetAffCountUserModal,
     });
   }, [
     t,
@@ -164,6 +180,7 @@ const UsersTable = (usersData) => {
     showResetTwoFAUserModal,
     showUserSubscriptionsUserModal,
     showResetAffCountModal,
+    showSetAffCountUserModal,
   ]);
 
   // Handle compact mode by removing fixed positioning
@@ -271,6 +288,26 @@ const UsersTable = (usersData) => {
         t={t}
         onSuccess={() => refresh?.()}
       />
+
+      <Modal
+        title={t('设置邀请次数')}
+        visible={showSetAffCountModal}
+        onCancel={() => setShowSetAffCountModal(false)}
+        onOk={handleSetAffCountConfirm}
+      >
+        <div className='mb-2'>
+          {modalUser?.username
+            ? t('目标用户：{{username}}', { username: modalUser.username })
+            : ''}
+        </div>
+        <InputNumber
+          min={0}
+          value={setAffCountValue}
+          onChange={(value) => setSetAffCountValue(value ?? 0)}
+          style={{ width: '100%' }}
+          placeholder={t('请输入邀请次数')}
+        />
+      </Modal>
     </>
   );
 };

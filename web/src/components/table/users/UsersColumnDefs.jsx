@@ -239,6 +239,7 @@ const renderOperations = (
     showResetTwoFAModal,
     showUserSubscriptionsModal,
     resetAffCount,
+    setAffCount,
     t,
   },
 ) => {
@@ -266,6 +267,11 @@ const renderOperations = (
       node: 'item',
       name: t('重置邀请次数'),
       onClick: () => resetAffCount(record),
+    },
+    {
+      node: 'item',
+      name: t('设置邀请次数'),
+      onClick: () => setAffCount(record),
     },
     {
       node: 'divider',
@@ -360,6 +366,7 @@ export const getUsersColumns = ({
   showResetTwoFAModal,
   showUserSubscriptionsModal,
   resetAffCount,
+  setAffCount,
 }) => {
   return [
     {
@@ -418,6 +425,7 @@ export const getUsersColumns = ({
           showResetTwoFAModal,
           showUserSubscriptionsModal,
           resetAffCount,
+          setAffCount,
           t,
         }),
     },

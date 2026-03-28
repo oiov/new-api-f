@@ -121,13 +121,14 @@ export const useUsersData = () => {
   };
 
   // Manage user operations (promote, demote, enable, disable, delete)
-  const manageUser = async (userId, action, record) => {
+  const manageUser = async (userId, action, record, extraPayload = {}) => {
     // Trigger loading state to force table re-render
     setLoading(true);
 
     const res = await API.post('/api/user/manage', {
       id: userId,
       action,
+      ...extraPayload,
     });
 
     const { success, message } = res.data;
@@ -150,6 +151,9 @@ export const useUsersData = () => {
           }
           if (action === 'reset_aff_count') {
             return { ...u, aff_count: 0 };
+          }
+          if (action === 'set_aff_count') {
+            return { ...u, aff_count: user.aff_count };
           }
           return { ...u, status: user.status, role: user.role };
         }
