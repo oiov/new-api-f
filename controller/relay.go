@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -22,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -88,7 +91,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
-			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			message := appendSiteDomainForRateLimitError(c, newAPIError)
+			newAPIError.SetMessage(common.MessageWithRequestId(message, requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -239,6 +243,59 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		retryLogStr := fmt.Sprintf("重试：%s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
 		logger.LogInfo(c, retryLogStr)
 	}
+}
+
+func appendSiteDomainForRateLimitError(c *gin.Context, apiErr *types.NewAPIError) string {
+	if apiErr == nil {
+		return ""
+	}
+	message := apiErr.Error()
+	if apiErr.StatusCode != http.StatusTooManyRequests {
+		return message
+	}
+	lowerMessage := strings.ToLower(message)
+	if !strings.Contains(lowerMessage, "account rpm limit exceeded") &&
+		!strings.Contains(lowerMessage, "please slow down") {
+		return message
+	}
+	siteDomain := getCurrentSiteDomain(c)
+	if siteDomain == "" || strings.Contains(message, siteDomain) {
+		return message
+	}
+	return fmt.Sprintf("%s (site: %s)", message, siteDomain)
+}
+
+func getCurrentSiteDomain(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	if host := extractHost(system_setting.ServerAddress); host != "" {
+		return host
+	}
+	if forwardedHost := strings.TrimSpace(c.Request.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
+		if host := extractHost(strings.TrimSpace(strings.Split(forwardedHost, ",")[0])); host != "" {
+			return host
+		}
+	}
+	return extractHost(c.Request.Host)
+}
+
+func extractHost(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.Contains(raw, "://") {
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			return ""
+		}
+		raw = parsed.Host
+	}
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		return host
+	}
+	return raw
 }
 
 var upgrader = websocket.Upgrader{
