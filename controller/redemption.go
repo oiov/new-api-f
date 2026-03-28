@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,6 +13,78 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+func buildDefaultRedemptionName(redemption *model.Redemption, plan *model.SubscriptionPlan) string {
+	if redemption == nil {
+		return ""
+	}
+	name := strings.TrimSpace(redemption.Name)
+	if name != "" {
+		return name
+	}
+	if plan != nil {
+		name = strings.TrimSpace(plan.Title)
+		if name == "" {
+			name = fmt.Sprintf("套餐#%d", plan.Id)
+		}
+	} else if redemption.Quota > 0 {
+		name = fmt.Sprintf("%d", redemption.Quota)
+	}
+	nameRunes := []rune(name)
+	if len(nameRunes) > 20 {
+		name = string(nameRunes[:20])
+	}
+	return name
+}
+
+func normalizeAndValidateRedemption(c *gin.Context, redemption *model.Redemption, requireCount bool) (*model.SubscriptionPlan, bool) {
+	if redemption == nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return nil, false
+	}
+	redemption.RedemptionType = model.NormalizeRedemptionType(redemption.RedemptionType)
+	var plan *model.SubscriptionPlan
+	switch redemption.RedemptionType {
+	case model.RedemptionTypeSubscription:
+		if redemption.SubscriptionPlanId <= 0 {
+			common.ApiErrorMsg(c, "请选择订阅套餐")
+			return nil, false
+		}
+		var err error
+		plan, err = model.GetSubscriptionPlanById(redemption.SubscriptionPlanId)
+		if err != nil {
+			common.ApiError(c, err)
+			return nil, false
+		}
+		redemption.Quota = 0
+	default:
+		redemption.SubscriptionPlanId = 0
+		if redemption.Quota <= 0 {
+			common.ApiErrorMsg(c, "额度必须大于0")
+			return nil, false
+		}
+	}
+	redemption.Name = buildDefaultRedemptionName(redemption, plan)
+	if utf8.RuneCountInString(redemption.Name) == 0 || utf8.RuneCountInString(redemption.Name) > 20 {
+		common.ApiErrorI18n(c, i18n.MsgRedemptionNameLength)
+		return nil, false
+	}
+	if requireCount {
+		if redemption.Count <= 0 {
+			common.ApiErrorI18n(c, i18n.MsgRedemptionCountPositive)
+			return nil, false
+		}
+		if redemption.Count > 100 {
+			common.ApiErrorI18n(c, i18n.MsgRedemptionCountMax)
+			return nil, false
+		}
+	}
+	if valid, msg := validateExpiredTime(c, redemption.ExpiredTime); !valid {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
+		return nil, false
+	}
+	return plan, true
+}
 
 func GetAllRedemptions(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
@@ -65,32 +139,22 @@ func AddRedemption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if utf8.RuneCountInString(redemption.Name) == 0 || utf8.RuneCountInString(redemption.Name) > 20 {
-		common.ApiErrorI18n(c, i18n.MsgRedemptionNameLength)
-		return
-	}
-	if redemption.Count <= 0 {
-		common.ApiErrorI18n(c, i18n.MsgRedemptionCountPositive)
-		return
-	}
-	if redemption.Count > 100 {
-		common.ApiErrorI18n(c, i18n.MsgRedemptionCountMax)
-		return
-	}
-	if valid, msg := validateExpiredTime(c, redemption.ExpiredTime); !valid {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
+	_, ok := normalizeAndValidateRedemption(c, &redemption, true)
+	if !ok {
 		return
 	}
 	var keys []string
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
 		cleanRedemption := model.Redemption{
-			UserId:      c.GetInt("id"),
-			Name:        redemption.Name,
-			Key:         key,
-			CreatedTime: common.GetTimestamp(),
-			Quota:       redemption.Quota,
-			ExpiredTime: redemption.ExpiredTime,
+			UserId:             c.GetInt("id"),
+			Name:               redemption.Name,
+			Key:                key,
+			CreatedTime:        common.GetTimestamp(),
+			Quota:              redemption.Quota,
+			RedemptionType:     redemption.RedemptionType,
+			SubscriptionPlanId: redemption.SubscriptionPlanId,
+			ExpiredTime:        redemption.ExpiredTime,
 		}
 		err = cleanRedemption.Insert()
 		if err != nil {
@@ -140,13 +204,14 @@ func UpdateRedemption(c *gin.Context) {
 		return
 	}
 	if statusOnly == "" {
-		if valid, msg := validateExpiredTime(c, redemption.ExpiredTime); !valid {
-			c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
+		_, ok := normalizeAndValidateRedemption(c, &redemption, false)
+		if !ok {
 			return
 		}
-		// If you add more fields, please also update redemption.Update()
 		cleanRedemption.Name = redemption.Name
 		cleanRedemption.Quota = redemption.Quota
+		cleanRedemption.RedemptionType = redemption.RedemptionType
+		cleanRedemption.SubscriptionPlanId = redemption.SubscriptionPlanId
 		cleanRedemption.ExpiredTime = redemption.ExpiredTime
 	}
 	if statusOnly != "" {

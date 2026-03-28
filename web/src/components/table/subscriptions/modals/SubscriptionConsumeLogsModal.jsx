@@ -50,6 +50,21 @@ function formatTs(ts) {
   return new Date(ts * 1000).toLocaleString();
 }
 
+function getSubscriptionDisplay(other, planMetaMap) {
+  const subscriptionId = Number(other?.subscription_id || 0);
+  const planId = Number(other?.subscription_plan_id || 0);
+  const planTitleFromLog = String(other?.subscription_plan_title || '').trim();
+  const planMeta = planMetaMap?.get(planId);
+  const planTitle = planTitleFromLog || String(planMeta?.title || '').trim();
+  const planLabel = planTitle || (planId > 0 ? `#${planId}` : '-');
+
+  return {
+    subscriptionLabel: subscriptionId > 0 ? `#${subscriptionId}` : '-',
+    planLabel,
+    planIdLabel: planId > 0 ? `#${planId}` : '-',
+  };
+}
+
 const SubscriptionConsumeLogsModal = ({
   visible,
   onCancel,
@@ -179,10 +194,20 @@ const SubscriptionConsumeLogsModal = ({
         width: 200,
         render: (_, record) => {
           const other = getLogOther(record?.other) || {};
+          const display = getSubscriptionDisplay(other, planMetaMap);
           return (
             <div className='text-xs text-gray-600'>
-              <div>#{other?.subscription_id || '-'}</div>
-              <div>#{other?.subscription_plan_id || '-'}</div>
+              <div>
+                {t('订阅实例')}：{display.subscriptionLabel}
+              </div>
+              <div>
+                {t('套餐')}：{display.planLabel}
+              </div>
+              {display.planLabel !== display.planIdLabel ? (
+                <div>
+                  {t('ID')}：{display.planIdLabel}
+                </div>
+              ) : null}
             </div>
           );
         },
@@ -280,7 +305,7 @@ const SubscriptionConsumeLogsModal = ({
         'user_id',
         'channel_id',
         'subscription_id',
-        'subscription_plan_id',
+        'subscription_plan',
         t('资源类型'),
         t('本次消耗'),
         t('剩余'),
@@ -298,7 +323,7 @@ const SubscriptionConsumeLogsModal = ({
             record?.user_id || '',
             record?.channel || '',
             other?.subscription_id || '',
-            other?.subscription_plan_id || '',
+            getSubscriptionDisplay(other, planMetaMap).planLabel,
             resourceType === 'request_count' ? 'request_count' : 'quota',
             formatConsumedValue(other?.subscription_consumed || 0, resourceType),
             formatConsumedValue(other?.subscription_remain || 0, resourceType),

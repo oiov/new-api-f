@@ -45,6 +45,24 @@ const renderTimestamp = (timestamp) => {
   return <>{timestamp2string(timestamp)}</>;
 };
 
+const renderBenefit = (record, t) => {
+  if (record.redemption_type === 'subscription') {
+    const planLabel =
+      record.subscription_plan_title ||
+      (record.subscription_plan_id ? `#${record.subscription_plan_id}` : '-');
+    return (
+      <Tag color='blue' shape='circle'>
+        {t('订阅套餐')} · {planLabel}
+      </Tag>
+    );
+  }
+  return (
+    <Tag color='grey' shape='circle'>
+      {renderQuota(parseInt(record.quota, 10) || 0)}
+    </Tag>
+  );
+};
+
 /**
  * Render redemption code status
  */
@@ -105,16 +123,21 @@ export const getRedemptionsColumns = ({
       },
     },
     {
-      title: t('额度'),
-      dataIndex: 'quota',
+      title: t('兑换类型'),
+      dataIndex: 'redemption_type',
       render: (text) => {
         return (
-          <div>
-            <Tag color='grey' shape='circle'>
-              {renderQuota(parseInt(text))}
-            </Tag>
-          </div>
+          <Tag color={text === 'subscription' ? 'blue' : 'grey'} shape='circle'>
+            {text === 'subscription' ? t('订阅套餐') : t('额度兑换')}
+          </Tag>
         );
+      },
+    },
+    {
+      title: t('权益'),
+      dataIndex: 'benefit',
+      render: (text, record) => {
+        return <div>{renderBenefit(record, t)}</div>;
       },
     },
     {
