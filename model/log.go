@@ -109,6 +109,30 @@ func RecordLog(userId int, logType int, content string) {
 	}
 }
 
+func GetChannelSuccessRequestCountMapSince(channelIds []int, since int64) (map[int]int64, error) {
+	result := make(map[int]int64, len(channelIds))
+	if len(channelIds) == 0 {
+		return result, nil
+	}
+	type channelRequestCountRow struct {
+		ChannelId int
+		Count     int64
+	}
+	rows := make([]channelRequestCountRow, 0, len(channelIds))
+	err := LOG_DB.Model(&Log{}).
+		Select("channel_id", "count(*) as count").
+		Where("type = ? AND created_at >= ? AND channel_id IN ? AND token_name <> ?", LogTypeConsume, since, channelIds, "模型测试").
+		Group("channel_id").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.ChannelId] = row.Count
+	}
+	return result, nil
+}
+
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
 	isStream bool, group string, other map[string]interface{}) {
 	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, content))

@@ -31,6 +31,8 @@ import CompactModeToggle from '../../common/ui/CompactModeToggle';
 const ChannelsActions = ({
   enableBatchDelete,
   batchDeleteChannels,
+  batchTestSelectedChannels,
+  batchTestingChannels,
   setShowBatchSetTag,
   testAllChannels,
   fixChannelsAbilities,
@@ -64,6 +66,23 @@ const ChannelsActions = ({
       <div className='flex flex-col md:flex-row justify-between gap-2'>
         {/* 左侧：批量操作按钮 */}
         <div className='flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto order-2 md:order-1'>
+          <Button
+            size='small'
+            disabled={!enableBatchDelete || batchTestingChannels}
+            loading={batchTestingChannels}
+            type='secondary'
+            className='w-full md:w-auto'
+            onClick={() => {
+              Modal.confirm({
+                title: t('确定是否要测试所选通道？'),
+                content: t('将按当前筛选结果中的勾选项逐个测试'),
+                onOk: () => batchTestSelectedChannels(),
+              });
+            }}
+          >
+            {t('测试所选通道')}
+          </Button>
+
           <Button
             size='small'
             disabled={!enableBatchDelete}
