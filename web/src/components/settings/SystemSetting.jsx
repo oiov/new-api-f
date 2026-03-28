@@ -101,6 +101,7 @@ const SystemSetting = () => {
     LinuxDOClientSecret: '',
     LinuxDOMinimumTrustLevel: '',
     ServerAddress: '',
+    'error_setting.show_site_domain_in_error': true,
     // SSRF防护配置
     'fetch_setting.enable_ssrf_protection': true,
     'fetch_setting.allow_private_ip': '',
@@ -146,6 +147,7 @@ const SystemSetting = () => {
           case 'fetch_setting.domain_filter_mode':
           case 'fetch_setting.ip_filter_mode':
           case 'fetch_setting.apply_ip_filter_for_domain':
+          case 'error_setting.show_site_domain_in_error':
             item.value = toBoolean(item.value);
             break;
           case 'fetch_setting.domain_list':
@@ -727,6 +729,30 @@ const SystemSetting = () => {
                           '该服务器地址将影响支付回调地址以及默认首页展示的地址，请确保正确配置',
                         )}
                       />
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Col xs={24} sm={24} md={24} lg={24} xl={24}>
+                      <Form.Checkbox
+                        field='error_setting.show_site_domain_in_error'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'error_setting.show_site_domain_in_error',
+                            e,
+                          )
+                        }
+                      >
+                        {t('在限流错误中展示本站域名')}
+                      </Form.Checkbox>
+                      <Text type='secondary'>
+                        {t(
+                          '开启后会在特定限流错误中追加本站域名，优先使用服务器地址，未配置时回退到当前请求域名；不会影响其他错误类型',
+                        )}
+                      </Text>
                     </Col>
                   </Row>
                   <Button onClick={submitServerAddress}>

@@ -250,6 +250,9 @@ func appendSiteDomainForRateLimitError(c *gin.Context, apiErr *types.NewAPIError
 		return ""
 	}
 	message := apiErr.Error()
+	if !system_setting.GetErrorSetting().ShowSiteDomainInError {
+		return message
+	}
 	if apiErr.StatusCode != http.StatusTooManyRequests {
 		return message
 	}
