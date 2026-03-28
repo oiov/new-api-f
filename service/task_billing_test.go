@@ -123,6 +123,25 @@ func seedRequestCountSubscription(t *testing.T, id int, userId int, total int64,
 	require.NoError(t, model.DB.Create(sub).Error)
 }
 
+func seedDualLimitSubscription(t *testing.T, id int, userId int, amountTotal int64, amountUsed int64, countTotal int64, countUsed int64, resourceType string) {
+	t.Helper()
+	seedSubscriptionPlan(t, id, resourceType)
+	sub := &model.UserSubscription{
+		Id:                id,
+		UserId:            userId,
+		PlanId:            id,
+		ResourceType:      resourceType,
+		AmountTotal:       amountTotal,
+		AmountUsed:        amountUsed,
+		RequestCountTotal: countTotal,
+		RequestCountUsed:  countUsed,
+		Status:            "active",
+		StartTime:         time.Now().Unix(),
+		EndTime:           time.Now().Add(30 * 24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+}
+
 func seedSubscriptionPlan(t *testing.T, id int, resourceType string) {
 	t.Helper()
 	plan := &model.SubscriptionPlan{
@@ -659,6 +678,33 @@ func TestRefundSubscriptionPreConsume_RequestCountMarksRecordRefunded(t *testing
 	assert.Equal(t, "refunded", record.Status)
 }
 
+func TestRefundSubscriptionPreConsume_LegacyPreConsumedRecordCompatible(t *testing.T) {
+	truncate(t)
+
+	const userID = 31
+	const subID = 31
+	const requestID = "req-legacy-refund"
+
+	seedUser(t, userID, 0)
+	seedRequestCountSubscription(t, subID, userID, 100, 1)
+
+	record := &model.SubscriptionPreConsumeRecord{
+		RequestId:          requestID,
+		UserId:             userID,
+		UserSubscriptionId: subID,
+		PreConsumed:        1,
+		Status:             "consumed",
+	}
+	require.NoError(t, model.DB.Create(record).Error)
+
+	require.NoError(t, model.RefundSubscriptionPreConsume(requestID))
+	assert.Equal(t, int64(0), getSubscriptionRequestCountUsed(t, subID))
+
+	var refreshed model.SubscriptionPreConsumeRecord
+	require.NoError(t, model.DB.Where("request_id = ?", requestID).First(&refreshed).Error)
+	assert.Equal(t, "refunded", refreshed.Status)
+}
+
 func TestAppendBillingInfo_RequestCountSubscriptionUsesRequestCountTotals(t *testing.T) {
 	relayInfo := &relaycommon.RelayInfo{
 		BillingSource:                               BillingSourceSubscription,
@@ -680,6 +726,64 @@ func TestAppendBillingInfo_RequestCountSubscriptionUsesRequestCountTotals(t *tes
 	assert.Equal(t, int64(8), other["subscription_used"])
 	assert.Equal(t, int64(92), other["subscription_remain"])
 	assert.Equal(t, int64(1), other["subscription_consumed"])
+}
+
+func TestRefundTaskQuota_DualLimitRequestCountSubscriptionAlsoRefundsTokenQuota(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID, subID = 41, 41, 41, 41
+	const tokenRemain = 5000
+
+	seedUser(t, userID, 0)
+	seedToken(t, tokenID, userID, "sk-dual-request-count", tokenRemain)
+	seedChannel(t, channelID)
+	seedDualLimitSubscription(t, subID, userID, 10000, 4800, 100, 5, model.SubscriptionResourceRequestCount)
+
+	task := makeTask(userID, channelID, 4800, tokenID, BillingSourceSubscription, subID)
+	task.PrivateData.SubscriptionResourceType = model.SubscriptionResourceRequestCount
+	task.PrivateData.SubscriptionPreConsumed = 1
+	task.PrivateData.SubscriptionPreConsumedAmount = 4800
+	task.PrivateData.SubscriptionPreConsumedCount = 1
+	task.PrivateData.SubscriptionAmountTotal = 10000
+	task.PrivateData.SubscriptionRequestCountTotal = 100
+
+	RefundTaskQuota(ctx, task, "dual limit request_count task failed")
+
+	var sub model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", subID).First(&sub).Error)
+	assert.Equal(t, int64(0), sub.AmountUsed)
+	assert.Equal(t, int64(4), sub.RequestCountUsed)
+	assert.Equal(t, tokenRemain+4800, getTokenRemainQuota(t, tokenID))
+}
+
+func TestRecalculateTaskQuota_DualLimitRequestCountSubscriptionStillSettlesAmount(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID, subID = 42, 42, 42, 42
+	const tokenRemain = 9000
+
+	seedUser(t, userID, 0)
+	seedToken(t, tokenID, userID, "sk-dual-request-count-recalc", tokenRemain)
+	seedChannel(t, channelID)
+	seedDualLimitSubscription(t, subID, userID, 20000, 5000, 100, 8, model.SubscriptionResourceRequestCount)
+
+	task := makeTask(userID, channelID, 5000, tokenID, BillingSourceSubscription, subID)
+	task.PrivateData.SubscriptionResourceType = model.SubscriptionResourceRequestCount
+	task.PrivateData.SubscriptionPreConsumed = 1
+	task.PrivateData.SubscriptionPreConsumedAmount = 5000
+	task.PrivateData.SubscriptionPreConsumedCount = 1
+	task.PrivateData.SubscriptionAmountTotal = 20000
+	task.PrivateData.SubscriptionRequestCountTotal = 100
+
+	RecalculateTaskQuota(ctx, task, 9000, "dual limit settle")
+
+	var sub model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", subID).First(&sub).Error)
+	assert.Equal(t, int64(9000), sub.AmountUsed)
+	assert.Equal(t, int64(8), sub.RequestCountUsed)
+	assert.Equal(t, tokenRemain-4000, getTokenRemainQuota(t, tokenID))
 }
 
 // ===========================================================================

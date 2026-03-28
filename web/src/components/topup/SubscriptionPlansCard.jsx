@@ -63,6 +63,7 @@ import {
   formatSubscriptionResourceLabel,
   getSubscriptionEffectivePrice,
   getSubscriptionResourceType,
+  getSubscriptionSaleSummary,
   getSubscriptionUsageSummary,
   isSubscriptionDiscountActive,
 } from '../../helpers/subscriptionFormat';
@@ -914,6 +915,7 @@ const SubscriptionPlansCard = ({
     const resourceType = getSubscriptionResourceType(plan);
     const count = getPlanPurchaseCount(plan?.id);
     const limit = Number(plan?.max_purchase_per_user || 0);
+    const saleSummary = getSubscriptionSaleSummary(plan);
     const resetPeriod = formatSubscriptionResetPeriod(plan, t);
 
     return (
@@ -936,6 +938,9 @@ const SubscriptionPlansCard = ({
             {limit > 0
               ? `${t('已购')} ${count} / ${limit}`
               : `${t('已购')} ${count}`}
+            {saleSummary.unlimited
+              ? ` · ${t('已售')} ${saleSummary.soldCount}`
+              : ` · ${t('已售')} ${saleSummary.soldCount} / ${t('剩余')} ${saleSummary.remainingSaleCount}`}
           </div>
         </div>
         <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'>
@@ -962,6 +967,7 @@ const SubscriptionPlansCard = ({
           const count = getPlanPurchaseCount(plan?.id);
           const limit = Number(plan?.max_purchase_per_user || 0);
           const reached = limit > 0 && count >= limit;
+          const saleSummary = getSubscriptionSaleSummary(plan);
           const isPopular =
             planSort === 'recommended' &&
             sortedPlans.length > 1 &&
@@ -989,6 +995,11 @@ const SubscriptionPlansCard = ({
                   {reached && (
                     <Tag color='orange' shape='circle' size='small'>
                       {t('已达上限')}
+                    </Tag>
+                  )}
+                  {saleSummary.soldOut && (
+                    <Tag color='red' shape='circle' size='small'>
+                      {t('已售罄')}
                     </Tag>
                   )}
                 </div>
@@ -1071,6 +1082,7 @@ const SubscriptionPlansCard = ({
         render: (text, record) => {
           const plan = record?.plan || {};
           const limit = Number(plan?.max_purchase_per_user || 0);
+          const saleSummary = getSubscriptionSaleSummary(plan);
           return (
             <div className='flex flex-wrap gap-2'>
               {limit > 0 && (
@@ -1078,12 +1090,31 @@ const SubscriptionPlansCard = ({
                   {t('限购')} {limit}
                 </Tag>
               )}
+              {!saleSummary.unlimited && (
+                <>
+                  <Tag color='white' shape='circle' size='small'>
+                    {t('已售')} {saleSummary.soldCount}
+                  </Tag>
+                  <Tag
+                    color={saleSummary.soldOut ? 'red' : 'white'}
+                    shape='circle'
+                    size='small'
+                  >
+                    {t('剩余')} {saleSummary.remainingSaleCount}
+                  </Tag>
+                </>
+              )}
+              {saleSummary.unlimited && saleSummary.soldCount > 0 && (
+                <Tag color='white' shape='circle' size='small'>
+                  {t('已售')} {saleSummary.soldCount}
+                </Tag>
+              )}
               {plan?.upgrade_group && (
                 <Tag color='white' shape='circle' size='small'>
                   {t('升级分组')}: {plan.upgrade_group}
                 </Tag>
               )}
-              {!limit && !plan?.upgrade_group && (
+              {!limit && !plan?.upgrade_group && saleSummary.soldCount <= 0 && (
                 <Text type='tertiary' size='small'>
                   --
                 </Text>
@@ -1101,15 +1132,20 @@ const SubscriptionPlansCard = ({
           const limit = Number(plan?.max_purchase_per_user || 0);
           const count = getPlanPurchaseCount(plan?.id);
           const reached = limit > 0 && count >= limit;
+          const saleSummary = getSubscriptionSaleSummary(plan);
+          const soldOut = saleSummary.soldOut;
+          const disabled = reached || soldOut;
           const tip = reached
             ? t('已达到购买上限') + ` (${count}/${limit})`
-            : '';
+            : soldOut
+              ? t('该套餐已售罄')
+              : '';
 
-          if (reached) {
+          if (disabled) {
             return (
               <Tooltip content={tip} position='top'>
                 <Button theme='outline' type='primary' disabled>
-                  {t('已达上限')}
+                  {soldOut ? t('已售罄') : t('已达上限')}
                 </Button>
               </Tooltip>
             );

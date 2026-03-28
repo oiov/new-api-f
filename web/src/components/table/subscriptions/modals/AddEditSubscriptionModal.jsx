@@ -103,6 +103,8 @@ const AddEditSubscriptionModal = ({
     enabled: true,
     sort_order: 0,
     max_purchase_per_user: 0,
+    sale_limit_count: 0,
+    sold_count: 0,
     resource_type: 'quota',
     total_amount: 0,
     request_count_total: 0,
@@ -133,6 +135,8 @@ const AddEditSubscriptionModal = ({
       enabled: p.enabled !== false,
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
+      sale_limit_count: Number(p.sale_limit_count || 0),
+      sold_count: Number(p.sold_count || 0),
       resource_type: getSubscriptionResourceType(p),
       total_amount: Number(
         quotaToDisplayAmount(p.total_amount || 0).toFixed(2),
@@ -164,6 +168,13 @@ const AddEditSubscriptionModal = ({
       showError(t('套餐标题不能为空'));
       return;
     }
+    if (
+      Number(values.total_amount || 0) <= 0 &&
+      Number(values.request_count_total || 0) <= 0
+    ) {
+      showError(t('总额度和总次数不能同时为 0'));
+      return;
+    }
     setLoading(true);
     try {
       const payload = {
@@ -184,15 +195,11 @@ const AddEditSubscriptionModal = ({
               : 0,
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
+          sale_limit_count: Number(values.sale_limit_count || 0),
+          sold_count: Number(values.sold_count || 0),
           resource_type: values.resource_type || 'quota',
-          total_amount:
-            values.resource_type === 'request_count'
-              ? 0
-              : displayAmountToQuota(values.total_amount),
-          request_count_total:
-            values.resource_type === 'request_count'
-              ? Number(values.request_count_total || 0)
-              : 0,
+          total_amount: displayAmountToQuota(values.total_amount),
+          request_count_total: Number(values.request_count_total || 0),
           upgrade_group: values.upgrade_group || '',
         },
       };
@@ -378,31 +385,27 @@ const AddEditSubscriptionModal = ({
                     </Col>
 
                     <Col span={12}>
-                      {values.resource_type === 'request_count' ? (
-                        <Form.InputNumber
-                          field='request_count_total'
-                          label={t('总次数')}
-                          required
-                          min={0}
-                          precision={0}
-                          rules={[{ required: true, message: t('请输入总次数') }]}
-                          extraText={t('0 表示不限')}
-                          style={{ width: '100%' }}
-                        />
-                      ) : (
-                        <Form.InputNumber
-                          field='total_amount'
-                          label={t('总额度')}
-                          required
-                          min={0}
-                          precision={2}
-                          rules={[{ required: true, message: t('请输入总额度') }]}
-                          extraText={`${t('0 表示不限')} · ${t('原生额度')}：${displayAmountToQuota(
-                            values.total_amount,
-                          )}`}
-                          style={{ width: '100%' }}
-                        />
-                      )}
+                      <Form.InputNumber
+                        field='request_count_total'
+                        label={t('总次数')}
+                        min={0}
+                        precision={0}
+                        extraText={t('0 表示不限制，可与总额度同时生效')}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='total_amount'
+                        label={t('总额度')}
+                        min={0}
+                        precision={2}
+                        extraText={`${t('0 表示不限制，可与总次数同时生效')} · ${t('原生额度')}：${displayAmountToQuota(
+                          values.total_amount,
+                        )}`}
+                        style={{ width: '100%' }}
+                      />
                     </Col>
 
                     <Col span={12}>
@@ -450,6 +453,28 @@ const AddEditSubscriptionModal = ({
                         min={0}
                         precision={0}
                         extraText={t('0 表示不限')}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='sale_limit_count'
+                        label={t('可购买总数')}
+                        min={0}
+                        precision={0}
+                        extraText={t('0 表示不限')}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='sold_count'
+                        label={t('已售数量')}
+                        min={0}
+                        precision={0}
+                        extraText={t('可手动调整；若设置了可购买总数，则不能超过该值')}
                         style={{ width: '100%' }}
                       />
                     </Col>

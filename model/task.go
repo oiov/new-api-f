@@ -105,6 +105,10 @@ type TaskPrivateData struct {
 	SubscriptionId           int                 `json:"subscription_id,omitempty"`            // 订阅 ID，用于订阅退款
 	SubscriptionResourceType string              `json:"subscription_resource_type,omitempty"` // quota / request_count
 	SubscriptionPreConsumed  int64               `json:"subscription_pre_consumed,omitempty"`  // 订阅实际预扣量
+	SubscriptionPreConsumedAmount int64          `json:"subscription_pre_consumed_amount,omitempty"` // 订阅预扣额度
+	SubscriptionPreConsumedCount  int64          `json:"subscription_pre_consumed_count,omitempty"`  // 订阅预扣次数
+	SubscriptionAmountTotal       int64          `json:"subscription_amount_total,omitempty"`        // 订阅额度上限
+	SubscriptionRequestCountTotal int64          `json:"subscription_request_count_total,omitempty"` // 订阅次数上限
 	TokenId                  int                 `json:"token_id,omitempty"`                   // 令牌 ID，用于令牌额度退款
 	BillingContext           *TaskBillingContext `json:"billing_context,omitempty"`            // 计费参数快照（用于轮询阶段重新计算）
 }

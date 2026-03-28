@@ -34,12 +34,45 @@ import { convertUSDToCurrency } from '../../../helpers/render';
 import {
   formatSubscriptionResourceLabel,
   getSubscriptionResourceType,
+  getSubscriptionSaleSummary,
   getSubscriptionUsageSummary,
   getSubscriptionEffectivePrice,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
+
+function hasRequestCountLimit(plan) {
+  return Number(plan?.request_count_total || 0) > 0;
+}
+
+function hasAmountLimit(plan) {
+  return Number(plan?.total_amount || 0) > 0;
+}
+
+function renderPlanLimits(plan, t) {
+  const items = [];
+  if (hasRequestCountLimit(plan)) {
+    items.push(`${t('总次数')} ${Number(plan?.request_count_total || 0)}`);
+  }
+  if (hasAmountLimit(plan)) {
+    items.push(
+      `${t('总额度')} ${renderQuota(Number(plan?.total_amount || 0))}`,
+    );
+  }
+  if (items.length === 0) {
+    return t('不限');
+  }
+  return items.join(' / ');
+}
+
+function renderPlanSales(plan, t) {
+  const saleSummary = getSubscriptionSaleSummary(plan);
+  if (saleSummary.unlimited) {
+    return `${t('已售')} ${saleSummary.soldCount}`;
+  }
+  return `${t('已售')} ${saleSummary.soldCount} / ${t('剩余')} ${saleSummary.remainingSaleCount}`;
+}
 
 function formatDuration(plan, t) {
   if (!plan) return '';
@@ -97,21 +130,8 @@ const renderPlanTitle = (text, record, t) => {
             <Text>{new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()}</Text>
           </>
         ) : null}
-        <Text type='tertiary'>{formatSubscriptionResourceLabel(plan, t)}</Text>
-        {(() => {
-          const summary = getSubscriptionUsageSummary(plan);
-          if (summary.unlimited) {
-            return <Text>{t('不限')}</Text>;
-          }
-          if (getSubscriptionResourceType(plan) === 'request_count') {
-            return <Text>{summary.total}</Text>;
-          }
-          return (
-            <Tooltip content={`${t('原生额度')}：${summary.total}`}>
-              <Text>{renderQuota(summary.total)}</Text>
-            </Tooltip>
-          );
-        })()}
+        <Text type='tertiary'>{t('套餐权益')}</Text>
+        <Text>{renderPlanLimits(plan, t)}</Text>
         <Text type='tertiary'>{t('升级分组')}</Text>
         <Text>{plan?.upgrade_group ? plan.upgrade_group : t('不升级')}</Text>
         <Text type='tertiary'>{t('购买上限')}</Text>
@@ -120,6 +140,8 @@ const renderPlanTitle = (text, record, t) => {
             ? plan.max_purchase_per_user
             : t('不限')}
         </Text>
+        <Text type='tertiary'>{t('营销库存')}</Text>
+        <Text>{renderPlanSales(plan, t)}</Text>
         <Text type='tertiary'>{t('有效期')}</Text>
         <Text>{formatDuration(plan, t)}</Text>
         <Text type='tertiary'>{t('重置')}</Text>
@@ -165,6 +187,27 @@ const renderPurchaseLimit = (text, record, t) => {
   );
 };
 
+const renderInventory = (text, record, t) => {
+  const saleSummary = getSubscriptionSaleSummary(record?.plan);
+  if (saleSummary.unlimited) {
+    return (
+      <Text type='secondary'>
+        {t('已售')} {saleSummary.soldCount}
+      </Text>
+    );
+  }
+  return (
+    <div>
+      <Text type={saleSummary.soldOut ? 'danger' : 'secondary'}>
+        {t('剩余')} {saleSummary.remainingSaleCount}
+      </Text>
+      <Text type='tertiary' size='small' style={{ display: 'block' }}>
+        {t('已售')} {saleSummary.soldCount}/{saleSummary.saleLimitCount}
+      </Text>
+    </div>
+  );
+};
+
 const renderDuration = (text, record, t) => {
   return <Text type='secondary'>{formatDuration(record?.plan, t)}</Text>;
 };
@@ -193,22 +236,7 @@ const renderEnabled = (text, record, t) => {
 
 const renderTotalAmount = (text, record, t) => {
   const plan = record?.plan;
-  const summary = getSubscriptionUsageSummary(plan);
-  return (
-    <Text type={!summary.unlimited ? 'secondary' : 'tertiary'}>
-      {!summary.unlimited ? (
-        getSubscriptionResourceType(plan) === 'request_count' ? (
-          summary.total
-        ) : (
-          <Tooltip content={`${t('原生额度')}：${summary.total}`}>
-            <span>{renderQuota(summary.total)}</span>
-          </Tooltip>
-        )
-      ) : (
-        t('不限')
-      )}
-    </Text>
-  );
+  return <Text type='secondary'>{renderPlanLimits(plan, t)}</Text>;
 };
 
 const renderUpgradeGroup = (text, record, t) => {
@@ -348,6 +376,11 @@ export const getSubscriptionsColumns = ({
       title: t('购买上限'),
       width: 90,
       render: (text, record) => renderPurchaseLimit(text, record, t),
+    },
+    {
+      title: t('库存'),
+      width: 120,
+      render: (text, record) => renderInventory(text, record, t),
     },
     {
       title: t('优先级'),

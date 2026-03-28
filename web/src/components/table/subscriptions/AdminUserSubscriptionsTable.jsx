@@ -26,13 +26,42 @@ import {
 import { renderQuota } from '../../../helpers';
 import {
   formatSubscriptionResetPeriod,
-  formatSubscriptionResourceLabel,
-  getSubscriptionResourceType,
   getSubscriptionUsageSummary,
 } from '../../../helpers/subscriptionFormat';
 import CardTable from '../../common/ui/CardTable';
 
 const { Text } = Typography;
+
+function renderUsageBlock(sub, t) {
+  const blocks = [];
+  const requestTotal = Number(sub?.request_count_total || 0);
+  const requestUsed = Number(sub?.request_count_used || 0);
+  if (requestTotal > 0) {
+    blocks.push(
+      <div key='count'>
+        {t('总次数')} {requestUsed}/{requestTotal} · {t('剩余')}{' '}
+        {Math.max(0, requestTotal - requestUsed)}
+      </div>,
+    );
+  }
+  const amountTotal = Number(sub?.amount_total || 0);
+  const amountUsed = Number(sub?.amount_used || 0);
+  if (amountTotal > 0) {
+    blocks.push(
+      <div key='amount'>
+        {t('总额度')} {renderQuota(amountUsed)}/{renderQuota(amountTotal)} ·{' '}
+        {t('剩余')} {renderQuota(Math.max(0, amountTotal - amountUsed))}
+      </div>,
+    );
+  }
+  if (blocks.length === 0) {
+    const summary = getSubscriptionUsageSummary(sub);
+    if (summary.unlimited) {
+      return <div>{t('不限')}</div>;
+    }
+  }
+  return blocks;
+}
 
 function formatTs(ts) {
   if (!ts) return '-';
@@ -109,18 +138,9 @@ const AdminUserSubscriptionsTable = ({
         width: 170,
         render: (_, record) => {
           const sub = record?.subscription;
-          const summary = getSubscriptionUsageSummary(sub);
-          const resourceType = getSubscriptionResourceType(sub);
           return (
             <div className='text-xs text-gray-600'>
-              <div>{formatSubscriptionResourceLabel(sub, t)}</div>
-              <div>
-                {!summary.unlimited
-                  ? resourceType === 'request_count'
-                    ? `${summary.used}/${summary.total} · ${t('剩余')} ${summary.remain}`
-                    : `${renderQuota(summary.used)}/${renderQuota(summary.total)} · ${t('剩余')} ${renderQuota(summary.remain)}`
-                  : t('不限')}
-              </div>
+              {renderUsageBlock(sub, t)}
             </div>
           );
         },

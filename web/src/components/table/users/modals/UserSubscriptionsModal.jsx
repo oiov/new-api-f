@@ -253,32 +253,6 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
     });
   };
 
-  const deleteSubscription = (subId) => {
-    Modal.confirm({
-      title: t('确认删除'),
-      content: t('删除会彻底移除该订阅记录（含权益明细）。是否继续？'),
-      centered: true,
-      okType: 'danger',
-      onOk: async () => {
-        try {
-          const res = await API.delete(
-            `/api/subscription/admin/user_subscriptions/${subId}`,
-          );
-          if (res.data?.success) {
-            const msg = res.data?.data?.message;
-            showSuccess(msg ? msg : t('已删除'));
-            await loadUserSubscriptions();
-            onSuccess?.();
-          } else {
-            showError(res.data?.message || t('删除失败'));
-          }
-        } catch (e) {
-          showError(t('请求失败'));
-        }
-      },
-    });
-  };
-
   const operateSubscription = (subId, action, title, content) => {
     Modal.confirm({
       title,
@@ -471,14 +445,6 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
                 onClick={() => invalidateSubscription(sub?.id)}
               >
                 {t('作废')}
-              </Button>
-              <Button
-                size='small'
-                type='danger'
-                theme='light'
-                onClick={() => deleteSubscription(sub?.id)}
-              >
-                {t('删除')}
               </Button>
             </Space>
           );

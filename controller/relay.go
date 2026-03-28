@@ -636,6 +636,10 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.SubscriptionResourceType = relayInfo.SubscriptionResourceType
 		task.PrivateData.SubscriptionPreConsumed = relayInfo.SubscriptionPreConsumed
+		task.PrivateData.SubscriptionPreConsumedAmount = relayInfo.SubscriptionPreConsumedAmount
+		task.PrivateData.SubscriptionPreConsumedCount = relayInfo.SubscriptionPreConsumedCount
+		task.PrivateData.SubscriptionAmountTotal = relayInfo.SubscriptionAmountTotal
+		task.PrivateData.SubscriptionRequestCountTotal = relayInfo.SubscriptionRequestCountTotal
 		task.PrivateData.TokenId = relayInfo.TokenId
 		task.PrivateData.BillingContext = &model.TaskBillingContext{
 			ModelPrice:      relayInfo.PriceData.ModelPrice,

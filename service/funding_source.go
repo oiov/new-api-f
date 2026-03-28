@@ -85,6 +85,7 @@ type SubscriptionFunding struct {
 	amount         int64 // 预扣的订阅额度（subConsume）
 	subscriptionId int
 	preConsumed    int64
+	preConsumedCnt int64
 	ResourceType   string
 	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
 	AmountTotal           int64
@@ -98,7 +99,7 @@ type SubscriptionFunding struct {
 func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription }
 
 func (s *SubscriptionFunding) UseTokenQuota() bool {
-	return s.ResourceType != model.SubscriptionResourceRequestCount
+	return s.AmountTotal > 0
 }
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
@@ -108,7 +109,8 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 		return err
 	}
 	s.subscriptionId = res.UserSubscriptionId
-	s.preConsumed = res.PreConsumed
+	s.preConsumed = res.PreConsumedAmount
+	s.preConsumedCnt = res.PreConsumedCount
 	s.ResourceType = model.NormalizeSubscriptionResourceType(res.ResourceType)
 	s.AmountTotal = res.AmountTotal
 	s.AmountUsedAfter = res.AmountUsedAfter
@@ -130,14 +132,14 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 }
 
 func (s *SubscriptionFunding) SettleDelta(actualQuota int, preConsumedQuota int) int {
-	if s.ResourceType == model.SubscriptionResourceRequestCount {
+	if s.AmountTotal <= 0 {
 		return 0
 	}
 	return actualQuota - preConsumedQuota
 }
 
 func (s *SubscriptionFunding) Refund() error {
-	if s.preConsumed <= 0 {
+	if s.preConsumed <= 0 && s.preConsumedCnt <= 0 {
 		return nil
 	}
 	return refundWithRetry(func() error {

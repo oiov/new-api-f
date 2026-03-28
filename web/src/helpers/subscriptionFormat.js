@@ -92,6 +92,35 @@ export function getSubscriptionUsageSummary(plan) {
   };
 }
 
+export function getSubscriptionSaleSummary(plan) {
+  const saleLimitCount = Number(plan?.sale_limit_count || 0);
+  const soldCount = Number(plan?.sold_count || 0);
+  const remainingSaleCount =
+    saleLimitCount > 0
+      ? Math.max(
+          0,
+          Number(
+            plan?.remaining_sale_count !== undefined &&
+              plan?.remaining_sale_count !== null
+              ? plan.remaining_sale_count
+              : saleLimitCount - soldCount,
+          ),
+        )
+      : 0;
+  const soldOut =
+    typeof plan?.sold_out === 'boolean'
+      ? plan.sold_out
+      : saleLimitCount > 0 && soldCount >= saleLimitCount;
+
+  return {
+    saleLimitCount,
+    soldCount,
+    remainingSaleCount,
+    soldOut,
+    unlimited: saleLimitCount <= 0,
+  };
+}
+
 export function formatSubscriptionResetPeriod(plan, t) {
   const period = plan?.reset_period || plan?.quota_reset_period || 'never';
   if (period === 'never') return t('不重置');

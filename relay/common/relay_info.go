@@ -133,6 +133,9 @@ type RelayInfo struct {
 	SubscriptionId int
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
 	SubscriptionPreConsumed int64
+	// SubscriptionPreConsumedAmount / SubscriptionPreConsumedCount expose dual-limit pre-consume details.
+	SubscriptionPreConsumedAmount int64
+	SubscriptionPreConsumedCount  int64
 	// SubscriptionResourceType is "quota" or "request_count".
 	SubscriptionResourceType string
 	// SubscriptionPostDelta is the post-consume delta applied to amount_used (quota units; can be negative).

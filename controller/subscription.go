@@ -27,6 +27,27 @@ func applySubscriptionPlanDisplayFields(plan *model.SubscriptionPlan, now int64)
 		return
 	}
 	plan.ApplyDisplayPrice(now)
+	plan.ApplyDisplayInventory()
+}
+
+func validateSubscriptionPlanPurchaseAvailability(userId int, plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return fmt.Errorf("套餐不存在")
+	}
+	if plan.IsSoldOut() {
+		return fmt.Errorf("该套餐已售罄")
+	}
+	if userId <= 0 || plan.MaxPurchasePerUser <= 0 {
+		return nil
+	}
+	count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+	if err != nil {
+		return err
+	}
+	if count >= int64(plan.MaxPurchasePerUser) {
+		return fmt.Errorf("已达到该套餐购买上限")
+	}
+	return nil
 }
 
 // ---- User APIs ----
@@ -194,6 +215,32 @@ func normalizeSubscriptionPlanPriceFields(plan *model.SubscriptionPlan) error {
 	return nil
 }
 
+func normalizeSubscriptionPlanLimitFields(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	plan.ResourceType = model.NormalizeSubscriptionResourceType(plan.ResourceType)
+	if plan.TotalAmount < 0 {
+		return fmt.Errorf("总额度不能为负数")
+	}
+	if plan.RequestCountTotal < 0 {
+		return fmt.Errorf("次数不能为负数")
+	}
+	if plan.TotalAmount <= 0 && plan.RequestCountTotal <= 0 {
+		return fmt.Errorf("总额度和次数不能同时为0")
+	}
+	if plan.SaleLimitCount < 0 {
+		return fmt.Errorf("可购买总数不能为负数")
+	}
+	if plan.SoldCount < 0 {
+		return fmt.Errorf("已售数量不能为负数")
+	}
+	if plan.SaleLimitCount > 0 && plan.SoldCount > plan.SaleLimitCount {
+		return fmt.Errorf("已售数量不能大于可购买总数")
+	}
+	return nil
+}
+
 func AdminCreateSubscriptionPlan(c *gin.Context) {
 	var req AdminUpsertSubscriptionPlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -223,10 +270,6 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
-	if req.Plan.TotalAmount < 0 {
-		common.ApiErrorMsg(c, "总额度不能为负数")
-		return
-	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
@@ -234,15 +277,9 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
-	req.Plan.ResourceType = model.NormalizeSubscriptionResourceType(req.Plan.ResourceType)
-	if req.Plan.RequestCountTotal < 0 {
-		common.ApiErrorMsg(c, "次数不能为负数")
+	if err := normalizeSubscriptionPlanLimitFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
-	}
-	if req.Plan.ResourceType == model.SubscriptionResourceRequestCount {
-		req.Plan.TotalAmount = 0
-	} else {
-		req.Plan.RequestCountTotal = 0
 	}
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
@@ -293,10 +330,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
-	if req.Plan.TotalAmount < 0 {
-		common.ApiErrorMsg(c, "总额度不能为负数")
-		return
-	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
 	if req.Plan.UpgradeGroup != "" {
 		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
@@ -304,15 +337,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
-	req.Plan.ResourceType = model.NormalizeSubscriptionResourceType(req.Plan.ResourceType)
-	if req.Plan.RequestCountTotal < 0 {
-		common.ApiErrorMsg(c, "次数不能为负数")
+	if err := normalizeSubscriptionPlanLimitFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
-	}
-	if req.Plan.ResourceType == model.SubscriptionResourceRequestCount {
-		req.Plan.TotalAmount = 0
-	} else {
-		req.Plan.RequestCountTotal = 0
 	}
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
@@ -337,6 +364,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"stripe_price_id":            req.Plan.StripePriceId,
 			"creem_product_id":           req.Plan.CreemProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
+			"sale_limit_count":           req.Plan.SaleLimitCount,
+			"sold_count":                 req.Plan.SoldCount,
 			"total_amount":               req.Plan.TotalAmount,
 			"resource_type":              req.Plan.ResourceType,
 			"request_count_total":        req.Plan.RequestCountTotal,
@@ -609,6 +638,10 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 	subId, _ := strconv.Atoi(c.Param("id"))
 	if subId <= 0 {
 		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	if c.GetInt("role") != common.RoleRootUser {
+		common.ApiErrorMsg(c, "仅超级管理员可删除订阅记录，请优先使用作废")
 		return
 	}
 	msg, err := model.AdminDeleteUserSubscription(subId)

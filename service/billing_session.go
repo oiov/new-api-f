@@ -233,6 +233,11 @@ func (s *BillingSession) syncRelayInfo() {
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
 		info.SubscriptionId = sub.subscriptionId
 		info.SubscriptionPreConsumed = sub.preConsumed
+		info.SubscriptionPreConsumedAmount = sub.preConsumed
+		info.SubscriptionPreConsumedCount = sub.preConsumedCnt
+		if sub.preConsumed <= 0 && sub.preConsumedCnt > 0 {
+			info.SubscriptionPreConsumed = sub.preConsumedCnt
+		}
 		info.SubscriptionResourceType = sub.ResourceType
 		info.SubscriptionPostDelta = 0
 		info.SubscriptionAmountTotal = sub.AmountTotal
@@ -244,6 +249,8 @@ func (s *BillingSession) syncRelayInfo() {
 	} else {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
+		info.SubscriptionPreConsumedAmount = 0
+		info.SubscriptionPreConsumedCount = 0
 		info.SubscriptionResourceType = ""
 		info.SubscriptionPostDelta = 0
 		info.SubscriptionAmountTotal = 0

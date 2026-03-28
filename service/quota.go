@@ -366,18 +366,12 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 
 func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (err error) {
 	useTokenQuota := relayInfo == nil || relayInfo.BillingSource != BillingSourceSubscription ||
-		relayInfo.SubscriptionResourceType != model.SubscriptionResourceRequestCount
+		relayInfo.SubscriptionAmountTotal > 0
 
 	// 1) Consume from wallet quota OR subscription item
 	if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
 		if relayInfo.SubscriptionId == 0 {
 			return errors.New("subscription id is missing")
-		}
-		if relayInfo.SubscriptionResourceType == model.SubscriptionResourceRequestCount {
-			if preConsumedQuota <= 0 && quota != 0 {
-				return errors.New("request_count subscription cannot settle quota delta without pre-consume")
-			}
-			quota = 0
 		}
 		delta := int64(quota)
 		if delta != 0 {
@@ -490,7 +484,7 @@ func checkAndSendSubscriptionQuotaNotify(relayInfo *relaycommon.RelayInfo) {
 
 		var remaining int64
 		var formatRemaining func() string
-		if resourceType == model.SubscriptionResourceRequestCount {
+		if resourceType == model.SubscriptionResourceRequestCount && relayInfo.SubscriptionRequestCountTotal > 0 {
 			if relayInfo.SubscriptionRequestCountTotal <= 0 {
 				return
 			}
@@ -517,7 +511,7 @@ func checkAndSendSubscriptionQuotaNotify(relayInfo *relaycommon.RelayInfo) {
 		}
 
 		prompt := "您的订阅额度即将用尽"
-		if resourceType == model.SubscriptionResourceRequestCount {
+		if resourceType == model.SubscriptionResourceRequestCount && relayInfo.SubscriptionRequestCountTotal > 0 {
 			prompt = "您的订阅次数即将用尽"
 		}
 		topUpLink := fmt.Sprintf("%s/console/topup", system_setting.ServerAddress)
