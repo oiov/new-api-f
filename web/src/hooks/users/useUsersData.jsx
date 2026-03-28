@@ -47,6 +47,8 @@ export const useUsersData = () => {
   const formInitValues = {
     searchKeyword: '',
     searchGroup: '',
+    sortBy: 'id',
+    sortOrder: 'desc',
   };
 
   // Form API reference
@@ -58,7 +60,27 @@ export const useUsersData = () => {
     return {
       searchKeyword: formValues.searchKeyword || '',
       searchGroup: formValues.searchGroup || '',
+      sortBy: formValues.sortBy || 'id',
+      sortOrder: formValues.sortOrder || 'desc',
     };
+  };
+
+  const buildUserListQuery = ({
+    page,
+    size,
+    searchKeyword = '',
+    searchGroup = '',
+    sortBy = 'id',
+    sortOrder = 'desc',
+  }) => {
+    const params = new URLSearchParams();
+    params.set('p', page);
+    params.set('page_size', size);
+    if (searchKeyword) params.set('keyword', searchKeyword);
+    if (searchGroup) params.set('group', searchGroup);
+    if (sortBy) params.set('sort_by', sortBy);
+    if (sortOrder) params.set('sort_order', sortOrder);
+    return params.toString();
   };
 
   // Set user format with key field
@@ -72,7 +94,15 @@ export const useUsersData = () => {
   // Load users data
   const loadUsers = async (startIdx, pageSize) => {
     setLoading(true);
-    const res = await API.get(`/api/user/?p=${startIdx}&page_size=${pageSize}`);
+    const { sortBy, sortOrder } = getFormValues();
+    const res = await API.get(
+      `/api/user/?${buildUserListQuery({
+        page: startIdx,
+        size: pageSize,
+        sortBy,
+        sortOrder,
+      })}`,
+    );
     const { success, message, data } = res.data;
     if (success) {
       const newPageData = data.items;
@@ -91,12 +121,21 @@ export const useUsersData = () => {
     pageSize,
     searchKeyword = null,
     searchGroup = null,
+    sortBy = null,
+    sortOrder = null,
   ) => {
     // If no parameters passed, get values from form
-    if (searchKeyword === null || searchGroup === null) {
+    if (
+      searchKeyword === null ||
+      searchGroup === null ||
+      sortBy === null ||
+      sortOrder === null
+    ) {
       const formValues = getFormValues();
       searchKeyword = formValues.searchKeyword;
       searchGroup = formValues.searchGroup;
+      sortBy = formValues.sortBy;
+      sortOrder = formValues.sortOrder;
     }
 
     if (searchKeyword === '' && searchGroup === '') {
@@ -106,7 +145,14 @@ export const useUsersData = () => {
     }
     setSearching(true);
     const res = await API.get(
-      `/api/user/search?keyword=${searchKeyword}&group=${searchGroup}&p=${startIdx}&page_size=${pageSize}`,
+      `/api/user/search?${buildUserListQuery({
+        page: startIdx,
+        size: pageSize,
+        searchKeyword,
+        searchGroup,
+        sortBy,
+        sortOrder,
+      })}`,
     );
     const { success, message, data } = res.data;
     if (success) {
@@ -208,11 +254,11 @@ export const useUsersData = () => {
   // Handle page change
   const handlePageChange = (page) => {
     setActivePage(page);
-    const { searchKeyword, searchGroup } = getFormValues();
+    const { searchKeyword, searchGroup, sortBy, sortOrder } = getFormValues();
     if (searchKeyword === '' && searchGroup === '') {
       loadUsers(page, pageSize).then();
     } else {
-      searchUsers(page, pageSize, searchKeyword, searchGroup).then();
+      searchUsers(page, pageSize, searchKeyword, searchGroup, sortBy, sortOrder).then();
     }
   };
 
@@ -243,11 +289,11 @@ export const useUsersData = () => {
 
   // Refresh data
   const refresh = async (page = activePage) => {
-    const { searchKeyword, searchGroup } = getFormValues();
+    const { searchKeyword, searchGroup, sortBy, sortOrder } = getFormValues();
     if (searchKeyword === '' && searchGroup === '') {
       await loadUsers(page, pageSize);
     } else {
-      await searchUsers(page, pageSize, searchKeyword, searchGroup);
+      await searchUsers(page, pageSize, searchKeyword, searchGroup, sortBy, sortOrder);
     }
   };
 

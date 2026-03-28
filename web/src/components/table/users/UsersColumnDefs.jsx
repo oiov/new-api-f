@@ -193,6 +193,24 @@ const renderInviteInfo = (text, record, t) => {
     showError(t('复制失败'));
   };
 
+  const inviterLabel = record.inviter_username
+    ? `${t('邀请人')}: ${record.inviter_username}`
+    : record.inviter_id === 0
+      ? t('无邀请人')
+      : `${t('邀请人')}: #${record.inviter_id}`;
+  const inviteeUsernames = Array.isArray(record.invitee_usernames)
+    ? record.invitee_usernames
+    : [];
+  const inviteePreview =
+    inviteeUsernames.length > 0
+      ? inviteeUsernames.slice(0, 3).join('、')
+      : t('暂无');
+  const inviteeCount = Number(record.invitee_count || inviteeUsernames.length || 0);
+  const remainingInviteeCount = Math.max(
+    0,
+    inviteeCount - Math.min(3, inviteeUsernames.length),
+  );
+
   return (
     <div>
       <Space spacing={1}>
@@ -213,9 +231,11 @@ const renderInviteInfo = (text, record, t) => {
           {t('收益')}: {renderQuota(record.aff_history_quota)}
         </Tag>
         <Tag color='white' shape='circle' className='!text-xs'>
-          {record.inviter_id === 0
-            ? t('无邀请人')
-            : `${t('邀请人')}: ${record.inviter_id}`}
+          {inviterLabel}
+        </Tag>
+        <Tag color='white' shape='circle' className='!text-xs'>
+          {t('邀请了')}: {inviteePreview}
+          {remainingInviteeCount > 0 ? ` +${remainingInviteeCount}` : ''}
         </Tag>
       </Space>
     </div>

@@ -50,6 +50,11 @@ type User struct {
 	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
 	Remark           string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	InviterUsername  string         `json:"inviter_username,omitempty" gorm:"-"`
+	InviteeUsernames []string       `json:"invitee_usernames,omitempty" gorm:"-"`
+	InviteeCount     int            `json:"invitee_count,omitempty" gorm:"-"`
+	RemainingQuota   int            `json:"remaining_quota,omitempty" gorm:"-"`
+	TotalQuota       int            `json:"total_quota,omitempty" gorm:"-"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -188,7 +193,95 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
-func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err error) {
+func normalizeUserListSort(sortBy string, sortOrder string) string {
+	order := "desc"
+	if strings.EqualFold(strings.TrimSpace(sortOrder), "asc") {
+		order = "asc"
+	}
+	switch strings.TrimSpace(sortBy) {
+	case "quota_remain":
+		return "quota " + order + ", id desc"
+	case "quota_total":
+		return "quota + used_quota " + order + ", id desc"
+	default:
+		return "id desc"
+	}
+}
+
+func enrichUsersInviteInfo(tx *gorm.DB, users []*User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	userIDs := make([]int, 0, len(users))
+	inviterIDs := make([]int, 0, len(users))
+	inviterIDSet := make(map[int]struct{}, len(users))
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		user.RemainingQuota = user.Quota
+		user.TotalQuota = user.Quota + user.UsedQuota
+		user.InviteeCount = user.AffCount
+		userIDs = append(userIDs, user.Id)
+		if user.InviterId > 0 {
+			if _, ok := inviterIDSet[user.InviterId]; !ok {
+				inviterIDSet[user.InviterId] = struct{}{}
+				inviterIDs = append(inviterIDs, user.InviterId)
+			}
+		}
+	}
+
+	if len(inviterIDs) > 0 {
+		var inviters []*User
+		if err := tx.Unscoped().
+			Select("id", "username").
+			Where("id IN ?", inviterIDs).
+			Find(&inviters).Error; err != nil {
+			return err
+		}
+		inviterNameMap := make(map[int]string, len(inviters))
+		for _, inviter := range inviters {
+			if inviter == nil {
+				continue
+			}
+			inviterNameMap[inviter.Id] = inviter.Username
+		}
+		for _, user := range users {
+			if user == nil || user.InviterId <= 0 {
+				continue
+			}
+			user.InviterUsername = inviterNameMap[user.InviterId]
+		}
+	}
+
+	var invitees []*User
+	if err := tx.Unscoped().
+		Select("id", "username", "inviter_id").
+		Where("inviter_id IN ?", userIDs).
+		Order("id asc").
+		Find(&invitees).Error; err != nil {
+		return err
+	}
+	inviteeNameMap := make(map[int][]string, len(users))
+	for _, invitee := range invitees {
+		if invitee == nil || invitee.InviterId <= 0 {
+			continue
+		}
+		if len(inviteeNameMap[invitee.InviterId]) < 5 {
+			inviteeNameMap[invitee.InviterId] = append(inviteeNameMap[invitee.InviterId], invitee.Username)
+		}
+	}
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		user.InviteeUsernames = inviteeNameMap[user.Id]
+	}
+	return nil
+}
+
+func GetAllUsers(pageInfo *common.PageInfo, sortBy string, sortOrder string) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -208,8 +301,17 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
+	err = tx.Unscoped().
+		Order(normalizeUserListSort(sortBy, sortOrder)).
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Omit("password").
+		Find(&users).Error
 	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+	if err = enrichUsersInviteInfo(tx, users); err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
@@ -222,7 +324,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, startIdx int, num int, sortBy string, sortOrder string) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -275,8 +377,16 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 	}
 
 	// 获取分页数据
-	err = query.Omit("password").Order("id desc").Limit(num).Offset(startIdx).Find(&users).Error
+	err = query.Omit("password").
+		Order(normalizeUserListSort(sortBy, sortOrder)).
+		Limit(num).
+		Offset(startIdx).
+		Find(&users).Error
 	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+	if err = enrichUsersInviteInfo(tx, users); err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
