@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -21,6 +22,14 @@ type TopUp struct {
 	CreateTime       int64   `json:"create_time"`
 	CompleteTime     int64   `json:"complete_time"`
 	Status           string  `json:"status"`
+}
+
+type TopUpAdminFilters struct {
+	UserID         int
+	Keyword        string
+	Status         string
+	StartTimestamp int64
+	EndTimestamp   int64
 }
 
 func (topUp *TopUp) Insert() error {
@@ -203,6 +212,10 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 
 // SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用）
 func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+	return GetAllTopUpsWithFilters(pageInfo, TopUpAdminFilters{Keyword: keyword})
+}
+
+func GetAllTopUpsWithFilters(pageInfo *common.PageInfo, filters TopUpAdminFilters) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -214,9 +227,21 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 	}()
 
 	query := tx.Model(&TopUp{})
-	if keyword != "" {
+	if filters.UserID > 0 {
+		query = query.Where("user_id = ?", filters.UserID)
+	}
+	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
 		like := "%%" + keyword + "%%"
 		query = query.Where("trade_no LIKE ?", like)
+	}
+	if status := strings.TrimSpace(filters.Status); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if filters.StartTimestamp > 0 {
+		query = query.Where("create_time >= ?", filters.StartTimestamp)
+	}
+	if filters.EndTimestamp > 0 {
+		query = query.Where("create_time <= ?", filters.EndTimestamp)
 	}
 
 	if err = query.Count(&total).Error; err != nil {

@@ -944,6 +944,57 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+func GetUserSubscriptionsByAdmin(userId int, pageInfo *common.PageInfo, keyword string, status string, startTimestamp int64, endTimestamp int64) ([]SubscriptionSummary, int64, error) {
+	if userId <= 0 {
+		return nil, 0, errors.New("invalid userId")
+	}
+	if pageInfo == nil {
+		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
+	}
+
+	keyword = strings.TrimSpace(keyword)
+	status = strings.TrimSpace(status)
+	now := common.GetTimestamp()
+
+	query := DB.Model(&UserSubscription{}).Where("user_id = ?", userId)
+	if keyword != "" {
+		if keywordInt, err := strconv.Atoi(keyword); err == nil {
+			query = query.Where("id = ? OR plan_id = ?", keywordInt, keywordInt)
+		} else {
+			like := "%" + keyword + "%"
+			query = query.Where("source LIKE ? OR status LIKE ?", like, like)
+		}
+	}
+
+	switch status {
+	case "active":
+		query = query.Where("status = ? AND end_time > ?", "active", now)
+	case "expired":
+		query = query.Where("(status = ? OR (status = ? AND end_time <= ?))", "expired", "active", now)
+	case "cancelled":
+		query = query.Where("status = ?", "cancelled")
+	}
+
+	if startTimestamp > 0 {
+		query = query.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp > 0 {
+		query = query.Where("created_at <= ?", endTimestamp)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var subs []UserSubscription
+	if err := query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&subs).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return buildSubscriptionSummaries(subs), total, nil
+}
+
 func GetUserSubscriptionById(userSubscriptionId int) (*UserSubscription, error) {
 	if userSubscriptionId <= 0 {
 		return nil, errors.New("invalid userSubscriptionId")
@@ -953,6 +1004,26 @@ func GetUserSubscriptionById(userSubscriptionId int) (*UserSubscription, error) 
 		return nil, err
 	}
 	return &sub, nil
+}
+
+func isUserSubscriptionActive(sub *UserSubscription, now int64) bool {
+	if sub == nil {
+		return false
+	}
+	return sub.Status == "active" && sub.EndTime > now
+}
+
+func getUserSubscriptionStatusForQuery(sub *UserSubscription, now int64) string {
+	if sub == nil {
+		return ""
+	}
+	if sub.Status == "cancelled" {
+		return "cancelled"
+	}
+	if isUserSubscriptionActive(sub, now) {
+		return "active"
+	}
+	return "expired"
 }
 
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {

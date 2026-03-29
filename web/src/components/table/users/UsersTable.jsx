@@ -32,6 +32,7 @@ import DeleteUserModal from './modals/DeleteUserModal';
 import ResetPasskeyModal from './modals/ResetPasskeyModal';
 import ResetTwoFAModal from './modals/ResetTwoFAModal';
 import UserSubscriptionsModal from './modals/UserSubscriptionsModal';
+import UserBillingSubscriptionHistoryModal from './modals/UserBillingSubscriptionHistoryModal';
 
 const UsersTable = (usersData) => {
   const {
@@ -64,6 +65,7 @@ const UsersTable = (usersData) => {
   const [showResetTwoFAModal, setShowResetTwoFAModal] = useState(false);
   const [showUserSubscriptionsModal, setShowUserSubscriptionsModal] =
     useState(false);
+  const [showUserHistoryModal, setShowUserHistoryModal] = useState(false);
   const [showSetAffCountModal, setShowSetAffCountModal] = useState(false);
   const [setAffCountValue, setSetAffCountValue] = useState(0);
 
@@ -102,6 +104,11 @@ const UsersTable = (usersData) => {
   const showUserSubscriptionsUserModal = (user) => {
     setModalUser(user);
     setShowUserSubscriptionsModal(true);
+  };
+
+  const showUserHistoryUserModal = (user) => {
+    setModalUser(user);
+    setShowUserHistoryModal(true);
   };
 
   const showResetAffCountModal = (user) => {
@@ -165,6 +172,7 @@ const UsersTable = (usersData) => {
       showResetPasskeyModal: showResetPasskeyUserModal,
       showResetTwoFAModal: showResetTwoFAUserModal,
       showUserSubscriptionsModal: showUserSubscriptionsUserModal,
+      showUserHistoryModal: showUserHistoryUserModal,
       resetAffCount: showResetAffCountModal,
       setAffCount: showSetAffCountUserModal,
     });
@@ -179,6 +187,7 @@ const UsersTable = (usersData) => {
     showResetPasskeyUserModal,
     showResetTwoFAUserModal,
     showUserSubscriptionsUserModal,
+    showUserHistoryUserModal,
     showResetAffCountModal,
     showSetAffCountUserModal,
   ]);
@@ -287,6 +296,13 @@ const UsersTable = (usersData) => {
         user={modalUser}
         t={t}
         onSuccess={() => refresh?.()}
+      />
+
+      <UserBillingSubscriptionHistoryModal
+        visible={showUserHistoryModal}
+        onCancel={() => setShowUserHistoryModal(false)}
+        user={modalUser}
+        t={t}
       />
 
       <Modal
