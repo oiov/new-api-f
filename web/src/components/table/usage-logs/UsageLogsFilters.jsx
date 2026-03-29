@@ -131,6 +131,14 @@ const LogsFilters = ({
                 size='small'
               />
               <Form.Input
+                field='user_id'
+                prefix={<IconSearch />}
+                placeholder={t('用户 ID')}
+                showClear
+                pure
+                size='small'
+              />
+              <Form.Input
                 field='username'
                 prefix={<IconSearch />}
                 placeholder={t('用户名称')}
