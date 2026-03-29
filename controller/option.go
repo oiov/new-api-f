@@ -124,7 +124,7 @@ func UpdateOption(c *gin.Context) {
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
 	switch option.Key {
-	case "GitHubOAuthEnabled":
+	case "GitHubOAuthEnabled", "GitHubOAuthRegisterEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -132,7 +132,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "discord.enabled":
+	case "discord.enabled", "discord.register_enabled":
 		if option.Value == "true" && system_setting.GetDiscordSettings().ClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -140,7 +140,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "oidc.enabled":
+	case "oidc.enabled", "oidc.register_enabled":
 		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -148,7 +148,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "LinuxDOOAuthEnabled":
+	case "LinuxDOOAuthEnabled", "LinuxDOOAuthRegisterEnabled":
 		if option.Value == "true" && common.LinuxDOClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -164,7 +164,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "WeChatAuthEnabled":
+	case "WeChatAuthEnabled", "WeChatRegisterEnabled":
 		if option.Value == "true" && common.WeChatServerAddress == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -181,7 +181,7 @@ func UpdateOption(c *gin.Context) {
 
 			return
 		}
-	case "TelegramOAuthEnabled":
+	case "TelegramOAuthEnabled", "TelegramOAuthRegisterEnabled":
 		if option.Value == "true" && common.TelegramBotToken == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,

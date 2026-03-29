@@ -42,7 +42,15 @@ func (p *GitHubProvider) GetName() string {
 }
 
 func (p *GitHubProvider) IsEnabled() bool {
+	return common.IsGitHubOAuthFlowEnabled()
+}
+
+func (p *GitHubProvider) IsLoginEnabled() bool {
 	return common.GitHubOAuthEnabled
+}
+
+func (p *GitHubProvider) IsRegistrationEnabled() bool {
+	return common.IsGitHubOAuthRegisterEnabled()
 }
 
 func (p *GitHubProvider) ExchangeToken(ctx context.Context, code string, c *gin.Context) (*OAuthToken, error) {

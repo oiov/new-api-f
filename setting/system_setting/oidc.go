@@ -1,9 +1,13 @@
 package system_setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import (
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/config"
+)
 
 type OIDCSettings struct {
 	Enabled               bool   `json:"enabled"`
+	RegisterEnabled       bool   `json:"register_enabled"`
 	ClientId              string `json:"client_id"`
 	ClientSecret          string `json:"client_secret"`
 	WellKnown             string `json:"well_known"`
@@ -22,4 +26,22 @@ func init() {
 
 func GetOIDCSettings() *OIDCSettings {
 	return &defaultOIDCSettings
+}
+
+func IsOIDCLoginEnabled() bool {
+	return defaultOIDCSettings.Enabled
+}
+
+func IsOIDCRegisterEnabled() bool {
+	common.OptionMapRWMutex.RLock()
+	_, ok := common.OptionMap["oidc.register_enabled"]
+	common.OptionMapRWMutex.RUnlock()
+	if ok {
+		return defaultOIDCSettings.RegisterEnabled
+	}
+	return defaultOIDCSettings.Enabled
+}
+
+func IsOIDCOAuthEnabled() bool {
+	return IsOIDCLoginEnabled() || IsOIDCRegisterEnabled()
 }

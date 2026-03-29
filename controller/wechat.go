@@ -54,13 +54,6 @@ func getWeChatIdByCode(code string) (string, error) {
 }
 
 func WeChatAuth(c *gin.Context) {
-	if !common.WeChatAuthEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "管理员未开启通过微信登录以及注册",
-			"success": false,
-		})
-		return
-	}
 	code := c.Query("code")
 	wechatId, err := getWeChatIdByCode(code)
 	if err != nil {
@@ -74,6 +67,13 @@ func WeChatAuth(c *gin.Context) {
 		WeChatId: wechatId,
 	}
 	if model.IsWeChatIdAlreadyTaken(wechatId) {
+		if !common.WeChatAuthEnabled {
+			c.JSON(http.StatusOK, gin.H{
+				"message": "管理员未开启通过微信登录",
+				"success": false,
+			})
+			return
+		}
 		err := user.FillUserByWeChatId()
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
@@ -90,7 +90,7 @@ func WeChatAuth(c *gin.Context) {
 			return
 		}
 	} else {
-		if common.RegisterEnabled {
+		if common.RegisterEnabled && common.IsWeChatOAuthRegisterEnabled() {
 			inviterId, inviteErrorKey := resolveInviteRegistration(c, c.Query("aff"))
 			if inviteErrorKey != "" {
 				c.JSON(http.StatusOK, gin.H{
@@ -114,7 +114,7 @@ func WeChatAuth(c *gin.Context) {
 		} else {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "管理员关闭了新用户注册",
+				"message": "管理员未开启通过微信注册",
 			})
 			return
 		}
@@ -131,9 +131,9 @@ func WeChatAuth(c *gin.Context) {
 }
 
 func WeChatBind(c *gin.Context) {
-	if !common.WeChatAuthEnabled {
+	if !common.IsWeChatOAuthFlowEnabled() {
 		c.JSON(http.StatusOK, gin.H{
-			"message": "管理员未开启通过微信登录以及注册",
+			"message": "管理员未开启通过微信登录或注册",
 			"success": false,
 		})
 		return

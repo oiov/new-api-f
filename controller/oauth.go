@@ -109,6 +109,8 @@ func HandleOAuth(c *gin.Context) {
 		switch err.(type) {
 		case *OAuthUserDeletedError:
 			common.ApiErrorI18n(c, i18n.MsgOAuthUserDeleted)
+		case *OAuthLoginDisabledError:
+			common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams(provider.GetName()))
 		case *OAuthRegistrationDisabledError:
 			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
 		default:
@@ -209,6 +211,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		if user.Id == 0 {
 			return nil, &OAuthUserDeletedError{}
 		}
+		if !provider.IsLoginEnabled() {
+			return nil, &OAuthLoginDisabledError{}
+		}
 		return user, nil
 	}
 
@@ -227,13 +232,16 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 					common.SysError(fmt.Sprintf("[OAuth] Failed to migrate user %d: %s", user.Id, err.Error()))
 					// Continue with login even if migration fails
 				}
+				if !provider.IsLoginEnabled() {
+					return nil, &OAuthLoginDisabledError{}
+				}
 				return user, nil
 			}
 		}
 	}
 
 	// User doesn't exist, create new user if registration is enabled
-	if !common.RegisterEnabled {
+	if !common.RegisterEnabled || !provider.IsRegistrationEnabled() {
 		return nil, &OAuthRegistrationDisabledError{}
 	}
 
@@ -347,6 +355,12 @@ type OAuthRegistrationDisabledError struct{}
 
 func (e *OAuthRegistrationDisabledError) Error() string {
 	return "registration is disabled"
+}
+
+type OAuthLoginDisabledError struct{}
+
+func (e *OAuthLoginDisabledError) Error() string {
+	return "login is disabled"
 }
 
 // handleOAuthError handles OAuth errors and returns translated message

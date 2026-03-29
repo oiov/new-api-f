@@ -29,9 +29,7 @@ import {
   getSystemName,
   setUserData,
   onDiscordOAuthClicked,
-  onCustomOAuthClicked,
 } from '../../helpers';
-import { getOAuthProviderIcon } from '../../helpers/providerIcons';
 import Turnstile from 'react-turnstile';
 import {
   Button,
@@ -72,9 +70,9 @@ const RegisterForm = () => {
   let navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const githubButtonTextKeyByState = {
-    idle: '使用 GitHub 继续',
+    idle: '使用 GitHub 注册',
     redirecting: '正在跳转 GitHub...',
-    timeout: '请求超时，请刷新页面后重新发起 GitHub 登录',
+    timeout: '请求超时，请刷新页面后重新发起 GitHub 注册',
   };
   const [inputs, setInputs] = useState({
     username: '',
@@ -104,7 +102,6 @@ const RegisterForm = () => {
   const [otherRegisterOptionsLoading, setOtherRegisterOptionsLoading] =
     useState(false);
   const [wechatCodeSubmitLoading, setWechatCodeSubmitLoading] = useState(false);
-  const [customOAuthLoading, setCustomOAuthLoading] = useState({});
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -134,16 +131,13 @@ const RegisterForm = () => {
       return {};
     }
   }, [statusState?.status]);
-  const hasCustomOAuthProviders =
-    (status.custom_oauth_providers || []).length > 0;
   const hasOAuthRegisterOptions = Boolean(
-    status.github_oauth ||
-    status.discord_oauth ||
-    status.oidc_enabled ||
-    status.wechat_login ||
-    status.linuxdo_oauth ||
-    status.telegram_oauth ||
-    hasCustomOAuthProviders,
+    status.github_oauth_register ||
+    status.discord_oauth_register ||
+    status.oidc_register_enabled ||
+    status.wechat_register ||
+    status.linuxdo_oauth_register ||
+    status.telegram_oauth_register,
   );
 
   const [showEmailVerification, setShowEmailVerification] = useState(false);
@@ -224,7 +218,7 @@ const RegisterForm = () => {
     };
   }, []);
 
-  const onWeChatLoginClicked = () => {
+  const onWeChatRegisterClicked = () => {
     if (!ensureInviteCodeReady()) {
       return;
     }
@@ -254,13 +248,13 @@ const RegisterForm = () => {
         setUserData(data);
         updateAPI();
         navigate('/');
-        showSuccess('登录成功！');
+        showSuccess('注册成功！');
         setShowWeChatLoginModal(false);
       } else {
         showError(message);
       }
     } catch (error) {
-      showError('登录失败，请重试');
+      showError('注册失败，请重试');
     } finally {
       setWechatCodeSubmitLoading(false);
     }
@@ -359,7 +353,10 @@ const RegisterForm = () => {
       setGithubButtonDisabled(true);
     }, 20000);
     try {
-      onGitHubOAuthClicked(status.github_client_id, { shouldLogout: true });
+      onGitHubOAuthClicked(status.github_client_id, {
+        shouldLogout: true,
+        authIntent: 'register',
+      });
     } finally {
       setTimeout(() => setGithubLoading(false), 3000);
     }
@@ -371,7 +368,10 @@ const RegisterForm = () => {
     }
     setDiscordLoading(true);
     try {
-      onDiscordOAuthClicked(status.discord_client_id, { shouldLogout: true });
+      onDiscordOAuthClicked(status.discord_client_id, {
+        shouldLogout: true,
+        authIntent: 'register',
+      });
     } finally {
       setTimeout(() => setDiscordLoading(false), 3000);
     }
@@ -387,7 +387,7 @@ const RegisterForm = () => {
         status.oidc_authorization_endpoint,
         status.oidc_client_id,
         false,
-        { shouldLogout: true },
+        { shouldLogout: true, authIntent: 'register' },
       );
     } finally {
       setTimeout(() => setOidcLoading(false), 3000);
@@ -400,23 +400,12 @@ const RegisterForm = () => {
     }
     setLinuxdoLoading(true);
     try {
-      onLinuxDOOAuthClicked(status.linuxdo_client_id, { shouldLogout: true });
+      onLinuxDOOAuthClicked(status.linuxdo_client_id, {
+        shouldLogout: true,
+        authIntent: 'register',
+      });
     } finally {
       setTimeout(() => setLinuxdoLoading(false), 3000);
-    }
-  };
-
-  const handleCustomOAuthClick = (provider) => {
-    if (!ensureInviteCodeReady()) {
-      return;
-    }
-    setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: true }));
-    try {
-      onCustomOAuthClicked(provider, { shouldLogout: true });
-    } finally {
-      setTimeout(() => {
-        setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: false }));
-      }, 3000);
     }
   };
 
@@ -432,7 +421,7 @@ const RegisterForm = () => {
     setOtherRegisterOptionsLoading(false);
   };
 
-  const onTelegramLoginClicked = async (response) => {
+  const onTelegramRegisterClicked = async (response) => {
     if (!ensureInviteCodeReady()) {
       return;
     }
@@ -452,13 +441,17 @@ const RegisterForm = () => {
         params[field] = response[field];
       }
     });
+    const inviteCode = resolveInviteCode();
+    if (inviteCode) {
+      params.aff = inviteCode;
+    }
     try {
       const res = await API.get(`/api/oauth/telegram/login`, { params });
       const { success, message, data } = res.data;
       if (success) {
         userDispatch({ type: 'login', payload: data });
         localStorage.setItem('user', JSON.stringify(data));
-        showSuccess('登录成功！');
+        showSuccess('注册成功！');
         setUserData(data);
         updateAPI();
         navigate('/');
@@ -466,7 +459,7 @@ const RegisterForm = () => {
         showError(message);
       }
     } catch (error) {
-      showError('登录失败，请重试');
+      showError('注册失败，请重试');
     }
   };
 
@@ -501,7 +494,7 @@ const RegisterForm = () => {
                   </div>
                 )}
 
-                {status.wechat_login && (
+                {status.wechat_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -509,14 +502,14 @@ const RegisterForm = () => {
                     icon={
                       <Icon svg={<WeChatIcon />} style={{ color: '#07C160' }} />
                     }
-                    onClick={onWeChatLoginClicked}
+                    onClick={onWeChatRegisterClicked}
                     loading={wechatLoading}
                   >
-                    <span className='ml-3'>{t('使用 微信 继续')}</span>
+                    <span className='ml-3'>{t('使用 微信 注册')}</span>
                   </Button>
                 )}
 
-                {status.github_oauth && (
+                {status.github_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -530,7 +523,7 @@ const RegisterForm = () => {
                   </Button>
                 )}
 
-                {status.discord_oauth && (
+                {status.discord_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -547,11 +540,11 @@ const RegisterForm = () => {
                     onClick={handleDiscordClick}
                     loading={discordLoading}
                   >
-                    <span className='ml-3'>{t('使用 Discord 继续')}</span>
+                    <span className='ml-3'>{t('使用 Discord 注册')}</span>
                   </Button>
                 )}
 
-                {status.oidc_enabled && (
+                {status.oidc_register_enabled && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -560,11 +553,11 @@ const RegisterForm = () => {
                     onClick={handleOIDCClick}
                     loading={oidcLoading}
                   >
-                    <span className='ml-3'>{t('使用 OIDC 继续')}</span>
+                    <span className='ml-3'>{t('使用 OIDC 注册')}</span>
                   </Button>
                 )}
 
-                {status.linuxdo_oauth && (
+                {status.linuxdo_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -581,31 +574,14 @@ const RegisterForm = () => {
                     onClick={handleLinuxDOClick}
                     loading={linuxdoLoading}
                   >
-                    <span className='ml-3'>{t('使用 LinuxDO 继续')}</span>
+                    <span className='ml-3'>{t('使用 LinuxDO 注册')}</span>
                   </Button>
                 )}
 
-                {status.custom_oauth_providers &&
-                  status.custom_oauth_providers.map((provider) => (
-                    <Button
-                      key={provider.slug}
-                      theme='outline'
-                      className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
-                      type='tertiary'
-                      icon={getOAuthProviderIcon(provider.icon || '', 20)}
-                      onClick={() => handleCustomOAuthClick(provider)}
-                      loading={customOAuthLoading[provider.slug]}
-                    >
-                      <span className='ml-3'>
-                        {t('使用 {{name}} 继续', { name: provider.name })}
-                      </span>
-                    </Button>
-                  ))}
-
-                {status.telegram_oauth && (
+                {status.telegram_oauth_register && (
                   <div className='flex justify-center my-2'>
                     <TelegramLoginButton
-                      dataOnauth={onTelegramLoginClicked}
+                      dataOnauth={onTelegramRegisterClicked}
                       botName={status.telegram_bot_name}
                     />
                   </div>

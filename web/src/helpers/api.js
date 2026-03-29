@@ -310,13 +310,18 @@ export async function getOAuthState() {
 }
 
 async function prepareOAuthState(options = {}) {
-  const { shouldLogout = false } = options;
+  const { shouldLogout = false, authIntent } = options;
   if (shouldLogout) {
     try {
       await API.get('/api/user/logout', { skipErrorHandler: true });
     } catch (err) {}
     localStorage.removeItem('user');
     updateAPI();
+  }
+  if (authIntent) {
+    localStorage.setItem('oauth_auth_intent', authIntent);
+  } else {
+    localStorage.removeItem('oauth_auth_intent');
   }
   return await getOAuthState();
 }

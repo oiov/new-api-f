@@ -186,8 +186,10 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.POST("/migrate_console_setting", controller.MigrateConsoleSetting) // 用于迁移检测的旧键，下个版本会删除
 		}
 		antiDistributionRoute := apiRouter.Group("/anti_distribution")
-		antiDistributionRoute.Use(middleware.RootAuth())
+		antiDistributionRoute.Use(middleware.AdminAuth())
 		{
+			antiDistributionRoute.GET("/options", controller.GetAntiDistributionOptions)
+			antiDistributionRoute.PUT("/options", controller.UpdateAntiDistributionOptions)
 			antiDistributionRoute.GET("/logs", controller.GetAntiDistributionLogs)
 			antiDistributionRoute.POST("/reset_defaults", controller.ResetAntiDistributionDefaults)
 		}

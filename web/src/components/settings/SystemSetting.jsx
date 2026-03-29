@@ -31,7 +31,6 @@ import {
   Card,
   Radio,
   Select,
-  Tag,
 } from '@douyinfe/semi-ui';
 const { Text } = Typography;
 import {
@@ -52,12 +51,15 @@ const SystemSetting = () => {
     PasswordRegisterEnabled: '',
     EmailVerificationEnabled: '',
     GitHubOAuthEnabled: '',
+    GitHubOAuthRegisterEnabled: '',
     GitHubClientId: '',
     GitHubClientSecret: '',
     'discord.enabled': '',
+    'discord.register_enabled': '',
     'discord.client_id': '',
     'discord.client_secret': '',
     'oidc.enabled': '',
+    'oidc.register_enabled': '',
     'oidc.client_id': '',
     'oidc.client_secret': '',
     'oidc.well_known': '',
@@ -75,6 +77,7 @@ const SystemSetting = () => {
     WorkerAllowHttpImageRequestEnabled: '',
     Footer: '',
     WeChatAuthEnabled: '',
+    WeChatRegisterEnabled: '',
     WeChatServerAddress: '',
     WeChatServerToken: '',
     WeChatAccountQRCodeImageURL: '',
@@ -95,17 +98,15 @@ const SystemSetting = () => {
     SMTPSSLEnabled: '',
     EmailDomainWhitelist: [],
     TelegramOAuthEnabled: '',
+    TelegramOAuthRegisterEnabled: '',
     TelegramBotToken: '',
     TelegramBotName: '',
     LinuxDOOAuthEnabled: '',
+    LinuxDOOAuthRegisterEnabled: '',
     LinuxDOClientId: '',
     LinuxDOClientSecret: '',
     LinuxDOMinimumTrustLevel: '',
     ServerAddress: '',
-    'error_setting.show_site_domain_in_error': true,
-    'error_setting.restrict_proxy_distribution': false,
-    'error_setting.restrict_proxy_distribution_log_only': false,
-    'error_setting.restrict_proxy_distribution_blocked_message': '',
     // SSRF防护配置
     'fetch_setting.enable_ssrf_protection': true,
     'fetch_setting.allow_private_ip': '',
@@ -131,13 +132,6 @@ const SystemSetting = () => {
   const [domainList, setDomainList] = useState([]);
   const [ipList, setIpList] = useState([]);
   const [allowedPorts, setAllowedPorts] = useState([]);
-  const [antiDistributionAllowedHosts, setAntiDistributionAllowedHosts] =
-    useState([]);
-  const [antiDistributionAllowedSources, setAntiDistributionAllowedSources] =
-    useState([]);
-  const [antiDistributionLogs, setAntiDistributionLogs] = useState([]);
-  const [antiDistributionLogsLoading, setAntiDistributionLogsLoading] =
-    useState(false);
 
   const getOptions = async () => {
     setLoading(true);
@@ -158,30 +152,7 @@ const SystemSetting = () => {
           case 'fetch_setting.domain_filter_mode':
           case 'fetch_setting.ip_filter_mode':
           case 'fetch_setting.apply_ip_filter_for_domain':
-          case 'error_setting.show_site_domain_in_error':
-          case 'error_setting.restrict_proxy_distribution':
-          case 'error_setting.restrict_proxy_distribution_log_only':
             item.value = toBoolean(item.value);
-            break;
-          case 'error_setting.restrict_proxy_distribution_allowed_hosts':
-            try {
-              const hosts = item.value ? JSON.parse(item.value) : [];
-              setAntiDistributionAllowedHosts(
-                Array.isArray(hosts) ? hosts : [],
-              );
-            } catch (e) {
-              setAntiDistributionAllowedHosts([]);
-            }
-            break;
-          case 'error_setting.restrict_proxy_distribution_allowed_sources':
-            try {
-              const sources = item.value ? JSON.parse(item.value) : [];
-              setAntiDistributionAllowedSources(
-                Array.isArray(sources) ? sources : [],
-              );
-            } catch (e) {
-              setAntiDistributionAllowedSources([]);
-            }
             break;
           case 'fetch_setting.domain_list':
             try {
@@ -211,8 +182,11 @@ const SystemSetting = () => {
           case 'PasswordRegisterEnabled':
           case 'EmailVerificationEnabled':
           case 'GitHubOAuthEnabled':
+          case 'GitHubOAuthRegisterEnabled':
           case 'WeChatAuthEnabled':
+          case 'WeChatRegisterEnabled':
           case 'TelegramOAuthEnabled':
+          case 'TelegramOAuthRegisterEnabled':
           case 'RegisterEnabled':
           case 'InviteRegisterEnabled':
           case 'TurnstileCheckEnabled':
@@ -220,8 +194,11 @@ const SystemSetting = () => {
           case 'EmailAliasRestrictionEnabled':
           case 'SMTPSSLEnabled':
           case 'LinuxDOOAuthEnabled':
+          case 'LinuxDOOAuthRegisterEnabled':
           case 'discord.enabled':
+          case 'discord.register_enabled':
           case 'oidc.enabled':
+          case 'oidc.register_enabled':
           case 'passkey.enabled':
           case 'passkey.allow_insecure_origin':
           case 'WorkerAllowHttpImageRequestEnabled':
@@ -250,6 +227,25 @@ const SystemSetting = () => {
         }
         newInputs[item.key] = item.value;
       });
+      if (typeof newInputs.GitHubOAuthRegisterEnabled === 'undefined') {
+        newInputs.GitHubOAuthRegisterEnabled = !!newInputs.GitHubOAuthEnabled;
+      }
+      if (typeof newInputs['discord.register_enabled'] === 'undefined') {
+        newInputs['discord.register_enabled'] = !!newInputs['discord.enabled'];
+      }
+      if (typeof newInputs['oidc.register_enabled'] === 'undefined') {
+        newInputs['oidc.register_enabled'] = !!newInputs['oidc.enabled'];
+      }
+      if (typeof newInputs.LinuxDOOAuthRegisterEnabled === 'undefined') {
+        newInputs.LinuxDOOAuthRegisterEnabled = !!newInputs.LinuxDOOAuthEnabled;
+      }
+      if (typeof newInputs.WeChatRegisterEnabled === 'undefined') {
+        newInputs.WeChatRegisterEnabled = !!newInputs.WeChatAuthEnabled;
+      }
+      if (typeof newInputs.TelegramOAuthRegisterEnabled === 'undefined') {
+        newInputs.TelegramOAuthRegisterEnabled =
+          !!newInputs.TelegramOAuthEnabled;
+      }
       setInputs(newInputs);
       setOriginInputs(newInputs);
       // 同步模式布尔到本地状态
@@ -265,7 +261,6 @@ const SystemSetting = () => {
         formApiRef.current.setValues(newInputs);
       }
       setIsLoaded(true);
-      fetchAntiDistributionLogs();
     } else {
       showError(message);
     }
@@ -333,67 +328,6 @@ const SystemSetting = () => {
 
   const handleFormChange = (values) => {
     setInputs(values);
-  };
-
-  const normalizeTagValues = (items) => {
-    if (!Array.isArray(items)) {
-      return [];
-    }
-    return Array.from(
-      new Set(
-        items
-          .map((item) => `${item}`.trim())
-          .filter((item) => item !== ''),
-      ),
-    );
-  };
-
-  const fetchAntiDistributionLogs = async () => {
-    setAntiDistributionLogsLoading(true);
-    try {
-      const res = await API.get('/api/anti_distribution/logs?p=1&page_size=20');
-      const { success, data, message } = res.data;
-      if (!success) {
-        showError(message);
-        return;
-      }
-      setAntiDistributionLogs(data.items || []);
-    } catch (error) {
-      showError(t('获取防分发命中记录失败'));
-    } finally {
-      setAntiDistributionLogsLoading(false);
-    }
-  };
-
-  const submitAntiDistributionSettings = async () => {
-    const options = [
-      {
-        key: 'error_setting.restrict_proxy_distribution',
-        value: !!inputs['error_setting.restrict_proxy_distribution'],
-      },
-      {
-        key: 'error_setting.restrict_proxy_distribution_log_only',
-        value: !!inputs['error_setting.restrict_proxy_distribution_log_only'],
-      },
-      {
-        key: 'error_setting.restrict_proxy_distribution_blocked_message',
-        value:
-          inputs['error_setting.restrict_proxy_distribution_blocked_message'] ||
-          '',
-      },
-      {
-        key: 'error_setting.restrict_proxy_distribution_allowed_hosts',
-        value: JSON.stringify(normalizeTagValues(antiDistributionAllowedHosts)),
-      },
-      {
-        key: 'error_setting.restrict_proxy_distribution_allowed_sources',
-        value: JSON.stringify(
-          normalizeTagValues(antiDistributionAllowedSources),
-        ),
-      },
-    ];
-    await updateOptions(options);
-    await fetchAntiDistributionLogs();
   };
 
   const submitWorker = async () => {
@@ -778,19 +712,6 @@ const SystemSetting = () => {
   const handleCheckboxChange = async (optionKey, event) => {
     const value = event.target.checked;
 
-    if (
-      optionKey === 'error_setting.restrict_proxy_distribution' ||
-      optionKey === 'error_setting.restrict_proxy_distribution_log_only'
-    ) {
-      const newInputs = {
-        ...inputs,
-        [optionKey]: value,
-      };
-      setInputs(newInputs);
-      formApiRef.current?.setValue(optionKey, value);
-      return;
-    }
-
     if (optionKey === 'PasswordLoginEnabled' && !value) {
       setShowPasswordLoginConfirmModal(true);
     } else {
@@ -804,31 +725,6 @@ const SystemSetting = () => {
   const handlePasswordLoginConfirm = async () => {
     await updateOptions([{ key: 'PasswordLoginEnabled', value: false }]);
     setShowPasswordLoginConfirmModal(false);
-  };
-
-  const resetAntiDistributionSettings = async () => {
-    Modal.confirm({
-      title: t('确认重置防分发配置'),
-      content: t(
-        '这会把防分发开关、观察模式、白名单和提示文案恢复为默认值，用于快速回滚到稳定状态。',
-      ),
-      okText: t('确认重置'),
-      cancelText: t('取消'),
-      onOk: async () => {
-        try {
-          const res = await API.post('/api/anti_distribution/reset_defaults');
-          const { success, message } = res.data;
-          if (!success) {
-            showError(message);
-            return;
-          }
-          showSuccess(t('已重置为默认配置'));
-          await getOptions();
-        } catch (error) {
-          showError(t('重置失败'));
-        }
-      },
-    });
   };
 
   return (
@@ -864,123 +760,6 @@ const SystemSetting = () => {
                       />
                     </Col>
                   </Row>
-                  <Row
-                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
-                    style={{ marginTop: 16 }}
-                  >
-                    <Col xs={24} sm={24} md={24} lg={24} xl={24}>
-                      <Form.Checkbox
-                        field='error_setting.restrict_proxy_distribution'
-                        noLabel
-                        onChange={(e) =>
-                          handleCheckboxChange(
-                            'error_setting.restrict_proxy_distribution',
-                            e,
-                          )
-                        }
-                      >
-                        {t('限制非 fishxcode.com 系列域名访问')}
-                      </Form.Checkbox>
-                      <Text type='secondary'>
-                        {t(
-                          '开启后 web 入口层和后端都会按同一套白名单校验 Host / Origin / Referer，先拦常规分发，再由后端兜底',
-                        )}
-                      </Text>
-                      <Form.Checkbox
-                        field='error_setting.restrict_proxy_distribution_log_only'
-                        noLabel
-                        onChange={(e) =>
-                          handleCheckboxChange(
-                            'error_setting.restrict_proxy_distribution_log_only',
-                            e,
-                          )
-                        }
-                        style={{ marginTop: 12 }}
-                      >
-                        {t('仅记录不拦截')}
-                      </Form.Checkbox>
-                      <Text type='secondary'>
-                        {t(
-                          '建议先观察再正式拦截，这样更容易发现误伤而不是直接影响用户请求',
-                        )}
-                      </Text>
-                    </Col>
-                  </Row>
-                  <Row
-                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
-                    style={{ marginTop: 16 }}
-                  >
-                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
-                      <Text strong>{t('允许的请求 Host')}</Text>
-                      <Text
-                        type='secondary'
-                        style={{ display: 'block', marginBottom: 8 }}
-                      >
-                        {t(
-                          '支持精确域名或 *.fishxcode.com 这种通配符；未命中的请求 Host 会被视为疑似分发',
-                        )}
-                      </Text>
-                      <TagInput
-                        value={antiDistributionAllowedHosts}
-                        onChange={setAntiDistributionAllowedHosts}
-                        placeholder={t('例如：fishxcode.com, *.fishxcode.com')}
-                      />
-                    </Col>
-                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
-                      <Text strong>{t('允许的来源 Host')}</Text>
-                      <Text
-                        type='secondary'
-                        style={{ display: 'block', marginBottom: 8 }}
-                      >
-                        {t(
-                          '会校验 Origin / Referer 的 Host，浏览器分发通常会在这里暴露来源站点',
-                        )}
-                      </Text>
-                      <TagInput
-                        value={antiDistributionAllowedSources}
-                        onChange={setAntiDistributionAllowedSources}
-                        placeholder={t('例如：fishxcode.com, *.fishxcode.com')}
-                      />
-                    </Col>
-                  </Row>
-                  <Row
-                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
-                    style={{ marginTop: 16 }}
-                  >
-                    <Col xs={24} sm={24} md={24} lg={24} xl={24}>
-                      <Form.Input
-                        field='error_setting.restrict_proxy_distribution_blocked_message'
-                        label={t('拦截提示文案')}
-                        placeholder={t(
-                          '请勿使用反代等程序，请使用 https://fishxcode.com 中转站，如需外接请联系。',
-                        )}
-                      />
-                    </Col>
-                  </Row>
-                  <Row
-                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
-                    style={{ marginTop: 16 }}
-                  >
-                    <Col xs={24} sm={24} md={24} lg={24} xl={24}>
-                      <Form.Checkbox
-                        field='error_setting.show_site_domain_in_error'
-                        noLabel
-                        onChange={(e) =>
-                          handleCheckboxChange(
-                            'error_setting.show_site_domain_in_error',
-                            e,
-                          )
-                        }
-                      >
-                        {t('在限流错误中展示本站域名')}
-                      </Form.Checkbox>
-                      <Text type='secondary'>
-                        {t(
-                          '开启后会在特定限流错误中追加本站域名，优先使用服务器地址，未配置时回退到当前请求域名；不会影响其他错误类型',
-                        )}
-                      </Text>
-                    </Col>
-                  </Row>
                   <div
                     style={{
                       display: 'flex',
@@ -991,74 +770,6 @@ const SystemSetting = () => {
                     <Button onClick={submitServerAddress}>
                       {t('更新服务器地址')}
                     </Button>
-                    <Button type='primary' onClick={submitAntiDistributionSettings}>
-                      {t('保存防分发设置')}
-                    </Button>
-                    <Button theme='light' onClick={fetchAntiDistributionLogs}>
-                      {t('刷新命中记录')}
-                    </Button>
-                    <Button theme='borderless' type='danger' onClick={resetAntiDistributionSettings}>
-                      {t('重置为默认')}
-                    </Button>
-                  </div>
-                  <div style={{ marginTop: 20 }}>
-                    <Text strong>{t('最近命中记录')}</Text>
-                    <Text
-                      type='secondary'
-                      style={{ display: 'block', marginBottom: 12 }}
-                    >
-                      {t(
-                        '这里展示后端已经落库的命中记录；web 入口层直接拦截时也会把具体原因返回给调用方，方便定位到底是哪里被拦了',
-                      )}
-                    </Text>
-                    <Spin spinning={antiDistributionLogsLoading}>
-                      {antiDistributionLogs.length === 0 ? (
-                        <Text type='secondary'>{t('暂无命中记录')}</Text>
-                      ) : (
-                        antiDistributionLogs.map((log) => (
-                          <div
-                            key={log.id}
-                            style={{
-                              padding: 12,
-                              border: '1px solid var(--semi-color-border)',
-                              borderRadius: 8,
-                              marginBottom: 12,
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: 'flex',
-                                gap: 8,
-                                flexWrap: 'wrap',
-                                marginBottom: 8,
-                              }}
-                            >
-                              <Tag color='red'>{log.action}</Tag>
-                              <Tag color='blue'>{log.layer}</Tag>
-                              <Tag>{log.reason}</Tag>
-                              <Text type='secondary'>
-                                {new Date(log.created_at * 1000).toLocaleString()}
-                              </Text>
-                            </div>
-                            <Text style={{ display: 'block' }}>
-                              {t('路径')}：{log.method} {log.path}
-                            </Text>
-                            <Text style={{ display: 'block' }}>
-                              {t('请求 Host')}：{log.request_host || '-'}
-                            </Text>
-                            <Text style={{ display: 'block' }}>
-                              Origin：{log.origin_host || '-'}
-                            </Text>
-                            <Text style={{ display: 'block' }}>
-                              Referer：{log.referer_host || '-'}
-                            </Text>
-                            <Text style={{ display: 'block' }}>
-                              IP：{log.client_ip || '-'}
-                            </Text>
-                          </div>
-                        ))
-                      )}
-                    </Spin>
                   </div>
                 </Form.Section>
               </Card>
@@ -1381,7 +1092,16 @@ const SystemSetting = () => {
                           handleCheckboxChange('GitHubOAuthEnabled', e)
                         }
                       >
-                        {t('允许通过 GitHub 账户登录 & 注册')}
+                        {t('允许通过 GitHub 账户登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='GitHubOAuthRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('GitHubOAuthRegisterEnabled', e)
+                        }
+                      >
+                        {t('允许通过 GitHub 账户注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
                         field='discord.enabled'
@@ -1390,7 +1110,16 @@ const SystemSetting = () => {
                           handleCheckboxChange('discord.enabled', e)
                         }
                       >
-                        {t('允许通过 Discord 账户登录 & 注册')}
+                        {t('允许通过 Discord 账户登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='discord.register_enabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('discord.register_enabled', e)
+                        }
+                      >
+                        {t('允许通过 Discord 账户注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
                         field='LinuxDOOAuthEnabled'
@@ -1399,7 +1128,19 @@ const SystemSetting = () => {
                           handleCheckboxChange('LinuxDOOAuthEnabled', e)
                         }
                       >
-                        {t('允许通过 Linux DO 账户登录 & 注册')}
+                        {t('允许通过 Linux DO 账户登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='LinuxDOOAuthRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'LinuxDOOAuthRegisterEnabled',
+                            e,
+                          )
+                        }
+                      >
+                        {t('允许通过 Linux DO 账户注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
                         field='WeChatAuthEnabled'
@@ -1408,7 +1149,16 @@ const SystemSetting = () => {
                           handleCheckboxChange('WeChatAuthEnabled', e)
                         }
                       >
-                        {t('允许通过微信登录 & 注册')}
+                        {t('允许通过微信登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='WeChatRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('WeChatRegisterEnabled', e)
+                        }
+                      >
+                        {t('允许通过微信注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
                         field='TelegramOAuthEnabled'
@@ -1420,6 +1170,18 @@ const SystemSetting = () => {
                         {t('允许通过 Telegram 进行登录')}
                       </Form.Checkbox>
                       <Form.Checkbox
+                        field='TelegramOAuthRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'TelegramOAuthRegisterEnabled',
+                            e,
+                          )
+                        }
+                      >
+                        {t('允许通过 Telegram 进行注册')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
                         field="['oidc.enabled']"
                         noLabel
                         onChange={(e) =>
@@ -1427,6 +1189,15 @@ const SystemSetting = () => {
                         }
                       >
                         {t('允许通过 OIDC 进行登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field="['oidc.register_enabled']"
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('oidc.register_enabled', e)
+                        }
+                      >
+                        {t('允许通过 OIDC 进行注册')}
                       </Form.Checkbox>
                     </Col>
                   </Row>

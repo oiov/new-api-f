@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -9,6 +10,44 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
+
+var antiDistributionOptionKeys = map[string]struct{}{
+	"error_setting.show_site_domain_in_error":                   {},
+	"error_setting.restrict_proxy_distribution":                 {},
+	"error_setting.restrict_proxy_distribution_log_only":        {},
+	"error_setting.restrict_proxy_distribution_blocked_message": {},
+	"error_setting.restrict_proxy_distribution_allowed_hosts":   {},
+	"error_setting.restrict_proxy_distribution_allowed_sources": {},
+}
+
+var antiDistributionJSONOptionKeys = map[string]struct{}{
+	"error_setting.restrict_proxy_distribution_allowed_hosts":   {},
+	"error_setting.restrict_proxy_distribution_allowed_sources": {},
+}
+
+func stringifyOptionValue(key string, value any) (string, error) {
+	if _, ok := antiDistributionJSONOptionKeys[key]; ok {
+		if text, ok := value.(string); ok {
+			return text, nil
+		}
+		jsonBytes, err := common.Marshal(value)
+		if err != nil {
+			return "", err
+		}
+		return string(jsonBytes), nil
+	}
+
+	switch typed := value.(type) {
+	case bool:
+		return common.Interface2String(typed), nil
+	case float64:
+		return common.Interface2String(typed), nil
+	case int:
+		return common.Interface2String(typed), nil
+	default:
+		return fmt.Sprintf("%v", value), nil
+	}
+}
 
 func GetAntiDistributionPublicConfig(c *gin.Context) {
 	setting := system_setting.GetErrorSetting()
@@ -35,6 +74,56 @@ func GetAntiDistributionLogs(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
+}
+
+func GetAntiDistributionOptions(c *gin.Context) {
+	setting := system_setting.GetErrorSetting()
+	common.ApiSuccess(c, gin.H{
+		"error_setting.show_site_domain_in_error":                   setting.ShowSiteDomainInError,
+		"error_setting.restrict_proxy_distribution":                 setting.RestrictProxyDistribution,
+		"error_setting.restrict_proxy_distribution_log_only":        setting.RestrictProxyDistributionLogOnly,
+		"error_setting.restrict_proxy_distribution_blocked_message": setting.RestrictProxyDistributionBlockedMessage,
+		"error_setting.restrict_proxy_distribution_allowed_hosts":   setting.RestrictProxyDistributionAllowedHosts,
+		"error_setting.restrict_proxy_distribution_allowed_sources": setting.RestrictProxyDistributionAllowedSources,
+	})
+}
+
+func UpdateAntiDistributionOptions(c *gin.Context) {
+	var options []OptionUpdateRequest
+	if err := common.DecodeJson(c.Request.Body, &options); err != nil {
+		common.ApiErrorMsg(c, "无效的参数")
+		return
+	}
+	if len(options) == 0 {
+		common.ApiErrorMsg(c, "更新项不能为空")
+		return
+	}
+
+	for _, option := range options {
+		if _, ok := antiDistributionOptionKeys[option.Key]; !ok {
+			common.ApiErrorMsg(c, "包含未授权的配置项")
+			return
+		}
+	}
+
+	optionValues := make(map[string]string, len(options))
+	for _, option := range options {
+		value, err := stringifyOptionValue(option.Key, option.Value)
+		if err != nil {
+			common.ApiErrorMsg(c, "配置值格式错误")
+			return
+		}
+		optionValues[option.Key] = value
+	}
+
+	if err := model.BatchUpdateOptions(optionValues); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{
+		"message": "更新成功",
+	})
 }
 
 func ResetAntiDistributionDefaults(c *gin.Context) {

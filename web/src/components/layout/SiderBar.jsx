@@ -40,6 +40,7 @@ const routerMap = {
   invite: '/console/invite',
   user: '/console/user',
   subscription: '/console/subscription',
+  riskControl: '/console/risk-control',
   log: '/console/log',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
@@ -222,6 +223,12 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         itemKey: 'setting',
         to: '/setting',
         className: isRoot() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('风险封控'),
+        itemKey: 'riskControl',
+        to: '/risk-control',
+        className: isAdmin() ? '' : 'tableHiddle',
       },
     ];
 

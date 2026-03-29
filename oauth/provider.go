@@ -15,6 +15,12 @@ type Provider interface {
 	// IsEnabled returns whether this OAuth provider is enabled
 	IsEnabled() bool
 
+	// IsLoginEnabled returns whether this OAuth provider allows existing users to log in
+	IsLoginEnabled() bool
+
+	// IsRegistrationEnabled returns whether this OAuth provider allows new user registration
+	IsRegistrationEnabled() bool
+
 	// ExchangeToken exchanges the authorization code for an access token
 	// The gin.Context is passed for providers that need request info (e.g., for redirect_uri)
 	ExchangeToken(ctx context.Context, code string, c *gin.Context) (*OAuthToken, error)

@@ -56,6 +56,7 @@ const Task = lazy(() => import('./pages/Task'));
 const ModelPage = lazy(() => import('./pages/Model'));
 const ModelDeploymentPage = lazy(() => import('./pages/ModelDeployment'));
 const Playground = lazy(() => import('./pages/Playground'));
+const RiskControl = lazy(() => import('./pages/RiskControl'));
 const Subscription = lazy(() => import('./pages/Subscription'));
 const OAuth2Callback = lazy(() => import('./components/auth/OAuth2Callback'));
 const PersonalSetting = lazy(
@@ -178,6 +179,16 @@ function App() {
             element={
               <AdminRoute>
                 <User />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path='/console/risk-control'
+            element={
+              <AdminRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <RiskControl />
+                </Suspense>
               </AdminRoute>
             }
           />

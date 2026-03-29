@@ -60,11 +60,15 @@ const OAuth2Callback = (props) => {
         showSuccess(t('绑定成功！'));
         navigate('/console/personal');
       } else {
+        const authIntent = localStorage.getItem('oauth_auth_intent');
+        localStorage.removeItem('oauth_auth_intent');
         userDispatch({ type: 'login', payload: data });
         localStorage.setItem('user', JSON.stringify(data));
         setUserData(data);
         updateAPI();
-        showSuccess(t('登录成功！'));
+        showSuccess(
+          authIntent === 'register' ? t('注册成功！') : t('登录成功！'),
+        );
         navigate('/console/package');
       }
     } catch (error) {

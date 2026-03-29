@@ -73,7 +73,7 @@ const LoginForm = () => {
   let navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const githubButtonTextKeyByState = {
-    idle: '使用 GitHub 继续',
+    idle: '使用 GitHub 登录',
     redirecting: '正在跳转 GitHub...',
     timeout: '请求超时，请刷新页面后重新发起 GitHub 登录',
   };
@@ -333,7 +333,10 @@ const LoginForm = () => {
       setGithubButtonDisabled(true);
     }, 20000);
     try {
-      onGitHubOAuthClicked(status.github_client_id, { shouldLogout: true });
+      onGitHubOAuthClicked(status.github_client_id, {
+        shouldLogout: true,
+        authIntent: 'login',
+      });
     } finally {
       // 由于重定向，这里不会执行到，但为了完整性添加
       setTimeout(() => setGithubLoading(false), 3000);
@@ -348,7 +351,10 @@ const LoginForm = () => {
     }
     setDiscordLoading(true);
     try {
-      onDiscordOAuthClicked(status.discord_client_id, { shouldLogout: true });
+      onDiscordOAuthClicked(status.discord_client_id, {
+        shouldLogout: true,
+        authIntent: 'login',
+      });
     } finally {
       // 由于重定向，这里不会执行到，但为了完整性添加
       setTimeout(() => setDiscordLoading(false), 3000);
@@ -367,7 +373,7 @@ const LoginForm = () => {
         status.oidc_authorization_endpoint,
         status.oidc_client_id,
         false,
-        { shouldLogout: true },
+        { shouldLogout: true, authIntent: 'login' },
       );
     } finally {
       // 由于重定向，这里不会执行到，但为了完整性添加
@@ -383,7 +389,10 @@ const LoginForm = () => {
     }
     setLinuxdoLoading(true);
     try {
-      onLinuxDOOAuthClicked(status.linuxdo_client_id, { shouldLogout: true });
+      onLinuxDOOAuthClicked(status.linuxdo_client_id, {
+        shouldLogout: true,
+        authIntent: 'login',
+      });
     } finally {
       // 由于重定向，这里不会执行到，但为了完整性添加
       setTimeout(() => setLinuxdoLoading(false), 3000);
@@ -398,7 +407,10 @@ const LoginForm = () => {
     }
     setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: true }));
     try {
-      onCustomOAuthClicked(provider, { shouldLogout: true });
+      onCustomOAuthClicked(provider, {
+        shouldLogout: true,
+        authIntent: 'login',
+      });
     } finally {
       // 由于重定向，这里不会执行到，但为了完整性添加
       setTimeout(() => {
@@ -533,7 +545,7 @@ const LoginForm = () => {
                     onClick={onWeChatLoginClicked}
                     loading={wechatLoading}
                   >
-                    <span className='ml-3'>{t('使用 微信 继续')}</span>
+                    <span className='ml-3'>{t('使用 微信 登录')}</span>
                   </Button>
                 )}
 
@@ -568,7 +580,7 @@ const LoginForm = () => {
                     onClick={handleDiscordClick}
                     loading={discordLoading}
                   >
-                    <span className='ml-3'>{t('使用 Discord 继续')}</span>
+                    <span className='ml-3'>{t('使用 Discord 登录')}</span>
                   </Button>
                 )}
 
@@ -581,7 +593,7 @@ const LoginForm = () => {
                     onClick={handleOIDCClick}
                     loading={oidcLoading}
                   >
-                    <span className='ml-3'>{t('使用 OIDC 继续')}</span>
+                    <span className='ml-3'>{t('使用 OIDC 登录')}</span>
                   </Button>
                 )}
 
@@ -602,7 +614,7 @@ const LoginForm = () => {
                     onClick={handleLinuxDOClick}
                     loading={linuxdoLoading}
                   >
-                    <span className='ml-3'>{t('使用 LinuxDO 继续')}</span>
+                    <span className='ml-3'>{t('使用 LinuxDO 登录')}</span>
                   </Button>
                 )}
 
@@ -618,7 +630,7 @@ const LoginForm = () => {
                       loading={customOAuthLoading[provider.slug]}
                     >
                       <span className='ml-3'>
-                        {t('使用 {{name}} 继续', { name: provider.name })}
+                        {t('使用 {{name}} 登录', { name: provider.name })}
                       </span>
                     </Button>
                   ))}

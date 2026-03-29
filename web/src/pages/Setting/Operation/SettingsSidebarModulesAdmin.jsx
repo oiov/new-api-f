@@ -66,6 +66,7 @@ const createDefaultSidebarModulesAdmin = () => ({
     user: true,
     subscription: true,
     setting: true,
+    riskControl: true,
   },
 });
 
@@ -279,6 +280,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'setting',
           title: t('系统设置'),
           description: t('系统参数配置'),
+        },
+        {
+          key: 'riskControl',
+          title: t('风险封控'),
+          description: t('防分发策略与命中记录'),
         },
       ],
     },

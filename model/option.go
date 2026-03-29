@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"gorm.io/gorm"
 )
 
 type Option struct {
@@ -217,6 +218,36 @@ func UpdateOption(key string, value string) error {
 	return updateOptionMap(key, value)
 }
 
+func BatchUpdateOptions(optionValues map[string]string) error {
+	if len(optionValues) == 0 {
+		return nil
+	}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		for key, value := range optionValues {
+			option := Option{Key: key}
+			if err := tx.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+				return err
+			}
+			option.Value = value
+			if err := tx.Save(&option).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for key, value := range optionValues {
+		if err := updateOptionMap(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
@@ -252,12 +283,20 @@ func updateOptionMap(key string, value string) (err error) {
 			common.EmailVerificationEnabled = boolValue
 		case "GitHubOAuthEnabled":
 			common.GitHubOAuthEnabled = boolValue
+		case "GitHubOAuthRegisterEnabled":
+			common.GitHubOAuthRegisterEnabled = boolValue
 		case "LinuxDOOAuthEnabled":
 			common.LinuxDOOAuthEnabled = boolValue
+		case "LinuxDOOAuthRegisterEnabled":
+			common.LinuxDOOAuthRegisterEnabled = boolValue
 		case "WeChatAuthEnabled":
 			common.WeChatAuthEnabled = boolValue
+		case "WeChatRegisterEnabled":
+			common.WeChatRegisterEnabled = boolValue
 		case "TelegramOAuthEnabled":
 			common.TelegramOAuthEnabled = boolValue
+		case "TelegramOAuthRegisterEnabled":
+			common.TelegramOAuthRegisterEnabled = boolValue
 		case "TurnstileCheckEnabled":
 			common.TurnstileCheckEnabled = boolValue
 		case "RegisterEnabled":
