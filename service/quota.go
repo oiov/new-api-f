@@ -417,6 +417,12 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int) {
 	gopool.Go(func() {
 		userSetting := relayInfo.UserSetting
+		if !userSetting.IsSubscriptionQuotaNotifyEnabled() {
+			return
+		}
+		if userSetting.NotifySubscriptionId > 0 && userSetting.NotifySubscriptionId != relayInfo.SubscriptionId {
+			return
+		}
 		threshold := common.QuotaRemindThreshold
 		if userSetting.QuotaWarningThreshold != 0 {
 			threshold = int(userSetting.QuotaWarningThreshold)

@@ -1145,6 +1145,8 @@ func TopUp(c *gin.Context) {
 type UpdateUserSettingRequest struct {
 	QuotaWarningType                 string  `json:"notify_type"`
 	QuotaWarningThreshold            float64 `json:"quota_warning_threshold"`
+	SubscriptionQuotaNotifyEnabled   *bool   `json:"subscription_quota_notify_enabled,omitempty"`
+	NotifySubscriptionId             int     `json:"notify_subscription_id,omitempty"`
 	WebhookUrl                       string  `json:"webhook_url,omitempty"`
 	WebhookSecret                    string  `json:"webhook_secret,omitempty"`
 	NotificationEmail                string  `json:"notification_email,omitempty"`
@@ -1244,16 +1246,33 @@ func UpdateUserSetting(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if req.NotifySubscriptionId < 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if req.NotifySubscriptionId > 0 {
+		sub, err := model.GetUserSubscriptionById(req.NotifySubscriptionId)
+		if err != nil || sub == nil || sub.UserId != userId {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	}
 	existingSettings := user.GetSetting()
 	upstreamModelUpdateNotifyEnabled := existingSettings.UpstreamModelUpdateNotifyEnabled
 	if user.Role >= common.RoleAdminUser && req.UpstreamModelUpdateNotifyEnabled != nil {
 		upstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
+	}
+	subscriptionQuotaNotifyEnabled := existingSettings.IsSubscriptionQuotaNotifyEnabled()
+	if req.SubscriptionQuotaNotifyEnabled != nil {
+		subscriptionQuotaNotifyEnabled = *req.SubscriptionQuotaNotifyEnabled
 	}
 
 	// 构建设置
 	settings := dto.UserSetting{
 		NotifyType:                       req.QuotaWarningType,
 		QuotaWarningThreshold:            req.QuotaWarningThreshold,
+		SubscriptionQuotaNotifyEnabled:   &subscriptionQuotaNotifyEnabled,
+		NotifySubscriptionId:             req.NotifySubscriptionId,
 		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
 		RecordIpLog:                      req.RecordIpLog,
