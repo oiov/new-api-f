@@ -30,6 +30,7 @@ import {
   updateAPI,
   getSystemName,
   setUserData,
+  onGoogleOAuthClicked,
   onGitHubOAuthClicked,
   onDiscordOAuthClicked,
   onOIDCClicked,
@@ -66,7 +67,7 @@ import LinuxDoIcon from '../common/logo/LinuxDoIcon';
 import SeoMeta from '../common/seo/SeoMeta';
 import TwoFAVerification from './TwoFAVerification';
 import { useTranslation } from 'react-i18next';
-import { SiDiscord } from 'react-icons/si';
+import { SiDiscord, SiGoogle } from 'react-icons/si';
 import { getAuthSeo } from '../../helpers/seo';
 
 const LoginForm = () => {
@@ -93,6 +94,7 @@ const LoginForm = () => {
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [wechatLoading, setWechatLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [discordLoading, setDiscordLoading] = useState(false);
   const [oidcLoading, setOidcLoading] = useState(false);
@@ -138,6 +140,7 @@ const LoginForm = () => {
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthLoginOptions = Boolean(
     status.github_oauth ||
+    status.google_oauth ||
     status.discord_oauth ||
     status.oidc_enabled ||
     status.wechat_login ||
@@ -340,6 +343,22 @@ const LoginForm = () => {
     } finally {
       // 由于重定向，这里不会执行到，但为了完整性添加
       setTimeout(() => setGithubLoading(false), 3000);
+    }
+  };
+
+  const handleGoogleClick = () => {
+    if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
+      showInfo(t('请先阅读并同意用户协议和隐私政策'));
+      return;
+    }
+    setGoogleLoading(true);
+    try {
+      onGoogleOAuthClicked(status.google_client_id, {
+        shouldLogout: true,
+        authIntent: 'login',
+      });
+    } finally {
+      setTimeout(() => setGoogleLoading(false), 3000);
     }
   };
 
@@ -560,6 +579,27 @@ const LoginForm = () => {
                     disabled={githubButtonDisabled}
                   >
                     <span className='ml-3'>{githubButtonText}</span>
+                  </Button>
+                )}
+
+                {status.google_oauth && (
+                  <Button
+                    theme='outline'
+                    className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
+                    type='tertiary'
+                    icon={
+                      <SiGoogle
+                        style={{
+                          color: '#DB4437',
+                          width: '20px',
+                          height: '20px',
+                        }}
+                      />
+                    }
+                    onClick={handleGoogleClick}
+                    loading={googleLoading}
+                  >
+                    <span className='ml-3'>{t('使用 Google 登录')}</span>
                   </Button>
                 )}
 

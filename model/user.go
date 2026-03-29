@@ -29,6 +29,7 @@ type User struct {
 	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
 	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
 	Email            string         `json:"email" gorm:"index" validate:"max=50"`
+	GoogleId         string         `json:"google_id" gorm:"column:google_id;index"`
 	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
 	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
 	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
@@ -721,6 +722,7 @@ func (user *User) ClearBinding(bindingType string) error {
 
 	bindingColumnMap := map[string]string{
 		"email":    "email",
+		"google":   "google_id",
 		"github":   "github_id",
 		"discord":  "discord_id",
 		"oidc":     "oidc_id",
@@ -808,6 +810,14 @@ func (user *User) FillUserByGitHubId() error {
 	return nil
 }
 
+func (user *User) FillUserByGoogleId() error {
+	if user.GoogleId == "" {
+		return errors.New("Google id 为空！")
+	}
+	DB.Where(User{GoogleId: user.GoogleId}).First(user)
+	return nil
+}
+
 // UpdateGitHubId updates the user's GitHub ID (used for migration from login to numeric ID)
 func (user *User) UpdateGitHubId(newGitHubId string) error {
 	if user.Id == 0 {
@@ -861,6 +871,10 @@ func IsWeChatIdAlreadyTaken(wechatId string) bool {
 
 func IsGitHubIdAlreadyTaken(githubId string) bool {
 	return DB.Unscoped().Where("github_id = ?", githubId).Find(&User{}).RowsAffected == 1
+}
+
+func IsGoogleIdAlreadyTaken(googleId string) bool {
+	return DB.Unscoped().Where("google_id = ?", googleId).Find(&User{}).RowsAffected == 1
 }
 
 func IsDiscordIdAlreadyTaken(discordId string) bool {

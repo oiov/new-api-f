@@ -674,7 +674,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if source != "redemption" && lockedPlan.IsSoldOut() {
 		return nil, errors.New("该套餐已售罄")
 	}
-	nowUnix := GetDBTimestamp()
+	nowUnix := GetDBTimestampWithTx(tx)
 	now := time.Unix(nowUnix, 0)
 	endUnix, err := calcPlanEndTime(now, lockedPlan)
 	if err != nil {

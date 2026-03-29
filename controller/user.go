@@ -423,6 +423,7 @@ func GetSelf(c *gin.Context) {
 		"role":              user.Role,
 		"status":            user.Status,
 		"email":             user.Email,
+		"google_id":         user.GoogleId,
 		"github_id":         user.GitHubId,
 		"discord_id":        user.DiscordId,
 		"oidc_id":           user.OidcId,

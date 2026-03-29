@@ -14,6 +14,17 @@ func IsGitHubOAuthRegisterEnabled() bool {
 	return GitHubOAuthEnabled
 }
 
+func IsGoogleOAuthRegisterEnabled() bool {
+	if hasOptionKey("GoogleOAuthRegisterEnabled") {
+		return GoogleOAuthRegisterEnabled
+	}
+	return GoogleOAuthEnabled
+}
+
+func IsGoogleOAuthFlowEnabled() bool {
+	return GoogleOAuthEnabled || IsGoogleOAuthRegisterEnabled()
+}
+
 func IsGitHubOAuthFlowEnabled() bool {
 	return GitHubOAuthEnabled || IsGitHubOAuthRegisterEnabled()
 }

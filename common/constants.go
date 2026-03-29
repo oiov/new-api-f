@@ -44,6 +44,8 @@ var MaxRecentItems = 1000
 var PasswordLoginEnabled = true
 var PasswordRegisterEnabled = true
 var EmailVerificationEnabled = false
+var GoogleOAuthEnabled = false
+var GoogleOAuthRegisterEnabled = false
 var GitHubOAuthEnabled = false
 var GitHubOAuthRegisterEnabled = false
 var LinuxDOOAuthEnabled = false
@@ -89,6 +91,8 @@ var SMTPAccount = ""
 var SMTPFrom = ""
 var SMTPToken = ""
 
+var GoogleClientId = ""
+var GoogleClientSecret = ""
 var GitHubClientId = ""
 var GitHubClientSecret = ""
 var LinuxDOClientId = ""

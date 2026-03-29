@@ -39,6 +39,8 @@ func InitOptionMap() {
 	common.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(common.PasswordLoginEnabled)
 	common.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(common.PasswordRegisterEnabled)
 	common.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(common.EmailVerificationEnabled)
+	common.OptionMap["GoogleOAuthEnabled"] = strconv.FormatBool(common.GoogleOAuthEnabled)
+	common.OptionMap["GoogleOAuthRegisterEnabled"] = strconv.FormatBool(common.GoogleOAuthRegisterEnabled)
 	common.OptionMap["GitHubOAuthEnabled"] = strconv.FormatBool(common.GitHubOAuthEnabled)
 	common.OptionMap["LinuxDOOAuthEnabled"] = strconv.FormatBool(common.LinuxDOOAuthEnabled)
 	common.OptionMap["TelegramOAuthEnabled"] = strconv.FormatBool(common.TelegramOAuthEnabled)
@@ -112,6 +114,8 @@ func InitOptionMap() {
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
+	common.OptionMap["GoogleClientId"] = ""
+	common.OptionMap["GoogleClientSecret"] = ""
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
 	common.OptionMap["TelegramBotToken"] = ""
@@ -281,6 +285,10 @@ func updateOptionMap(key string, value string) (err error) {
 			common.PasswordLoginEnabled = boolValue
 		case "EmailVerificationEnabled":
 			common.EmailVerificationEnabled = boolValue
+		case "GoogleOAuthEnabled":
+			common.GoogleOAuthEnabled = boolValue
+		case "GoogleOAuthRegisterEnabled":
+			common.GoogleOAuthRegisterEnabled = boolValue
 		case "GitHubOAuthEnabled":
 			common.GitHubOAuthEnabled = boolValue
 		case "GitHubOAuthRegisterEnabled":
@@ -455,6 +463,10 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoMinTopUp, _ = strconv.Atoi(value)
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
+	case "GoogleClientId":
+		common.GoogleClientId = value
+	case "GoogleClientSecret":
+		common.GoogleClientSecret = value
 	case "GitHubClientId":
 		common.GitHubClientId = value
 	case "GitHubClientSecret":

@@ -354,6 +354,20 @@ export async function onOIDCClicked(
   redirectToOAuthUrl(url, { openInNewTab });
 }
 
+export async function onGoogleOAuthClicked(google_client_id, options = {}) {
+  const state = await prepareOAuthState(options);
+  if (!state) return;
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.searchParams.set('client_id', google_client_id);
+  url.searchParams.set('redirect_uri', `${window.location.origin}/oauth/google`);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'openid profile email');
+  url.searchParams.set('state', state);
+  url.searchParams.set('access_type', 'online');
+  url.searchParams.set('prompt', 'select_account');
+  redirectToOAuthUrl(url);
+}
+
 export async function onGitHubOAuthClicked(github_client_id, options = {}) {
   const state = await prepareOAuthState(options);
   if (!state) return;

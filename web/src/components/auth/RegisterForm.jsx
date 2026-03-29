@@ -28,6 +28,7 @@ import {
   updateAPI,
   getSystemName,
   setUserData,
+  onGoogleOAuthClicked,
   onDiscordOAuthClicked,
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
@@ -63,7 +64,7 @@ import TelegramLoginButton from 'react-telegram-login/src';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
-import { SiDiscord } from 'react-icons/si';
+import { SiDiscord, SiGoogle } from 'react-icons/si';
 import { getAuthSeo } from '../../helpers/seo';
 
 const RegisterForm = () => {
@@ -92,6 +93,7 @@ const RegisterForm = () => {
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
   const [showEmailRegister, setShowEmailRegister] = useState(false);
   const [wechatLoading, setWechatLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [discordLoading, setDiscordLoading] = useState(false);
   const [oidcLoading, setOidcLoading] = useState(false);
@@ -133,6 +135,7 @@ const RegisterForm = () => {
   }, [statusState?.status]);
   const hasOAuthRegisterOptions = Boolean(
     status.github_oauth_register ||
+    status.google_oauth_register ||
     status.discord_oauth_register ||
     status.oidc_register_enabled ||
     status.wechat_register ||
@@ -362,6 +365,21 @@ const RegisterForm = () => {
     }
   };
 
+  const handleGoogleClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
+    setGoogleLoading(true);
+    try {
+      onGoogleOAuthClicked(status.google_client_id, {
+        shouldLogout: true,
+        authIntent: 'register',
+      });
+    } finally {
+      setTimeout(() => setGoogleLoading(false), 3000);
+    }
+  };
+
   const handleDiscordClick = () => {
     if (!ensureInviteCodeReady()) {
       return;
@@ -520,6 +538,27 @@ const RegisterForm = () => {
                     disabled={githubButtonDisabled}
                   >
                     <span className='ml-3'>{githubButtonText}</span>
+                  </Button>
+                )}
+
+                {status.google_oauth_register && (
+                  <Button
+                    theme='outline'
+                    className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
+                    type='tertiary'
+                    icon={
+                      <SiGoogle
+                        style={{
+                          color: '#DB4437',
+                          width: '20px',
+                          height: '20px',
+                        }}
+                      />
+                    }
+                    onClick={handleGoogleClick}
+                    loading={googleLoading}
+                  >
+                    <span className='ml-3'>{t('使用 Google 注册')}</span>
                   </Button>
                 )}
 
