@@ -23,10 +23,38 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import {
   REDEMPTION_ACTIONS,
   REDEMPTION_STATUS,
+  REDEMPTION_KEY_PREFIX,
+  REDEMPTION_PREFIX_KEYWORDS,
 } from '../../constants/redemption.constants';
 import { Modal } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+
+const mapKeywordToPrefix = (keyword) => {
+  const normalized = (keyword || '').trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized.startsWith('prefix:')) {
+    if (normalized === 'prefix:p') {
+      return REDEMPTION_KEY_PREFIX.SUBSCRIPTION;
+    }
+    if (normalized === 'prefix:q') {
+      return REDEMPTION_KEY_PREFIX.QUOTA;
+    }
+  }
+
+  if (REDEMPTION_PREFIX_KEYWORDS.SUBSCRIPTION.includes(normalized)) {
+    return REDEMPTION_KEY_PREFIX.SUBSCRIPTION;
+  }
+
+  if (REDEMPTION_PREFIX_KEYWORDS.QUOTA.includes(normalized)) {
+    return REDEMPTION_KEY_PREFIX.QUOTA;
+  }
+
+  return keyword;
+};
 
 export const useRedemptionsData = () => {
   const { t } = useTranslation();
@@ -93,17 +121,18 @@ export const useRedemptionsData = () => {
   };
 
   // Search redemption codes
-  const searchRedemptions = async () => {
+  const searchRedemptions = async (page = 1, size = pageSize) => {
     const { searchKeyword } = getFormValues();
     if (searchKeyword === '') {
-      await loadRedemptions(1, pageSize);
+      await loadRedemptions(page, size);
       return;
     }
 
     setSearching(true);
     try {
+      const normalizedKeyword = mapKeywordToPrefix(searchKeyword);
       const res = await API.get(
-        `/api/redemption/search?keyword=${searchKeyword}&p=1&page_size=${pageSize}`,
+        `/api/redemption/search?keyword=${encodeURIComponent(normalizedKeyword)}&p=${page}&page_size=${size}`,
       );
       const { success, message, data } = res.data;
       if (success) {
@@ -167,7 +196,7 @@ export const useRedemptionsData = () => {
     if (searchKeyword === '') {
       await loadRedemptions(page, pageSize);
     } else {
-      await searchRedemptions();
+      await searchRedemptions(page, pageSize);
     }
   };
 
@@ -178,7 +207,7 @@ export const useRedemptionsData = () => {
     if (searchKeyword === '') {
       loadRedemptions(page, pageSize);
     } else {
-      searchRedemptions();
+      searchRedemptions(page, pageSize);
     }
   };
 
@@ -190,7 +219,7 @@ export const useRedemptionsData = () => {
     if (searchKeyword === '') {
       loadRedemptions(1, size);
     } else {
-      searchRedemptions();
+      searchRedemptions(1, size);
     }
   };
 

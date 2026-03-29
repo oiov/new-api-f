@@ -23,6 +23,16 @@ export const REDEMPTION_STATUS = {
   USED: 3, // Used
 };
 
+export const REDEMPTION_KEY_PREFIX = {
+  SUBSCRIPTION: 'fishxredemptionP',
+  QUOTA: 'fishxredemptionQ',
+};
+
+export const REDEMPTION_PREFIX_KEYWORDS = {
+  SUBSCRIPTION: ['套餐码', '套餐', '订阅码', 'subscription', 'prefix:p'],
+  QUOTA: ['额度码', '额度', 'quota', 'prefix:q'],
+};
+
 // Redemption code status display mapping
 export const REDEMPTION_STATUS_MAP = {
   [REDEMPTION_STATUS.UNUSED]: {

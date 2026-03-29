@@ -599,19 +599,23 @@ const RechargeCard = ({
           showClear
           style={{ width: '100%' }}
           extraText={
-            topUpLink && (
-              <Text type='tertiary'>
-                {t('在找兑换码？')}
-                <Text
-                  type='secondary'
-                  underline
-                  className='cursor-pointer'
-                  onClick={openTopUpLink}
-                >
-                  {t('购买兑换码')}
+            <div className='flex flex-col gap-1'>
+              <Text type='tertiary'>{t('支持两种兑换码：套餐兑换码、额度兑换码。')}</Text>
+              <Text type='tertiary'>{t('输入后将自动识别并发放对应权益。')}</Text>
+              {topUpLink && (
+                <Text type='tertiary'>
+                  {t('在找兑换码？')}
+                  <Text
+                    type='secondary'
+                    underline
+                    className='cursor-pointer'
+                    onClick={openTopUpLink}
+                  >
+                    {t('购买兑换码')}
+                  </Text>
                 </Text>
-              </Text>
-            )
+              )}
+            </div>
           }
         />
       </Form>
