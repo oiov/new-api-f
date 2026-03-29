@@ -25,13 +25,27 @@ var antiDistributionJSONOptionKeys = map[string]struct{}{
 	"error_setting.restrict_proxy_distribution_allowed_sources": {},
 }
 
+func validateStringSliceJSON(raw string) error {
+	var values []string
+	if err := common.UnmarshalJsonStr(raw, &values); err != nil {
+		return err
+	}
+	return nil
+}
+
 func stringifyOptionValue(key string, value any) (string, error) {
 	if _, ok := antiDistributionJSONOptionKeys[key]; ok {
 		if text, ok := value.(string); ok {
+			if err := validateStringSliceJSON(text); err != nil {
+				return "", err
+			}
 			return text, nil
 		}
 		jsonBytes, err := common.Marshal(value)
 		if err != nil {
+			return "", err
+		}
+		if err := validateStringSliceJSON(string(jsonBytes)); err != nil {
 			return "", err
 		}
 		return string(jsonBytes), nil
