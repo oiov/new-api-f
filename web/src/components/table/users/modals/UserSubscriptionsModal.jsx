@@ -170,7 +170,8 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
         `/api/subscription/admin/users/${user.id}/subscriptions`,
       );
       if (res.data?.success) {
-        const next = res.data.data || [];
+        const payload = res.data.data;
+        const next = Array.isArray(payload) ? payload : payload?.items || [];
         setSubs(next);
         setCurrentPage(1);
       } else {
