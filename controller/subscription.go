@@ -441,12 +441,20 @@ func AdminListUserSubscriptions(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的用户ID")
 		return
 	}
-	subs, err := model.GetAllUserSubscriptions(userId)
+	pageInfo := common.GetPageQuery(c)
+	keyword := c.Query("keyword")
+	status := c.Query("status")
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+
+	subs, total, err := model.GetUserSubscriptionsByAdmin(userId, pageInfo, keyword, status, startTimestamp, endTimestamp)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, subs)
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(subs)
+	common.ApiSuccess(c, pageInfo)
 }
 
 func AdminListAllUserSubscriptions(c *gin.Context) {

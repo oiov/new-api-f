@@ -258,6 +258,7 @@ const renderOperations = (
     showResetPasskeyModal,
     showResetTwoFAModal,
     showUserSubscriptionsModal,
+    showUserHistoryModal,
     resetAffCount,
     setAffCount,
     t,
@@ -295,6 +296,11 @@ const renderOperations = (
     },
     {
       node: 'divider',
+    },
+    {
+      node: 'item',
+      name: t('历史记录'),
+      onClick: () => showUserHistoryModal(record),
     },
     {
       node: 'item',
@@ -385,6 +391,7 @@ export const getUsersColumns = ({
   showResetPasskeyModal,
   showResetTwoFAModal,
   showUserSubscriptionsModal,
+  showUserHistoryModal,
   resetAffCount,
   setAffCount,
 }) => {
@@ -444,6 +451,7 @@ export const getUsersColumns = ({
           showResetPasskeyModal,
           showResetTwoFAModal,
           showUserSubscriptionsModal,
+          showUserHistoryModal,
           resetAffCount,
           setAffCount,
           t,
