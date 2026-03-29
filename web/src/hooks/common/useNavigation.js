@@ -31,6 +31,7 @@ export const useNavigation = (
       home: true,
       console: true,
       pricing: true,
+      package: true,
       docs: true,
       about: true,
       contact: true,
@@ -57,6 +58,11 @@ export const useNavigation = (
         text: t('模型广场'),
         itemKey: 'pricing',
         to: '/pricing',
+      },
+      {
+        text: t('价格'),
+        itemKey: 'package',
+        to: '/console/package#package-pricing',
       },
       ...(docsLink
         ? [

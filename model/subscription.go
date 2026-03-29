@@ -1046,13 +1046,25 @@ type adminUserSubscriptionListRow struct {
 	UserGroup string `gorm:"column:user_group"`
 }
 
-func GetAdminUserSubscriptions(pageInfo *common.PageInfo, username string, userGroup string, status string) ([]AdminUserSubscriptionSummary, int64, error) {
+func GetAdminUserSubscriptions(
+	pageInfo *common.PageInfo,
+	username string,
+	userGroup string,
+	status string,
+	planId int,
+	source string,
+	timeField string,
+	startTimestamp int64,
+	endTimestamp int64,
+) ([]AdminUserSubscriptionSummary, int64, error) {
 	if pageInfo == nil {
 		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
 	}
 	username = strings.TrimSpace(username)
 	userGroup = strings.TrimSpace(userGroup)
 	status = strings.TrimSpace(status)
+	source = strings.TrimSpace(source)
+	timeField = strings.TrimSpace(timeField)
 	now := common.GetTimestamp()
 
 	baseQuery := DB.Table("user_subscriptions").
@@ -1069,6 +1081,12 @@ func GetAdminUserSubscriptions(pageInfo *common.PageInfo, username string, userG
 	if userGroup != "" {
 		baseQuery = baseQuery.Where("users."+commonGroupCol+" = ?", userGroup)
 	}
+	if planId > 0 {
+		baseQuery = baseQuery.Where("user_subscriptions.plan_id = ?", planId)
+	}
+	if source != "" {
+		baseQuery = baseQuery.Where("user_subscriptions.source = ?", source)
+	}
 	switch status {
 	case "active":
 		baseQuery = baseQuery.Where("user_subscriptions.status = ? AND user_subscriptions.end_time > ?", "active", now)
@@ -1076,6 +1094,19 @@ func GetAdminUserSubscriptions(pageInfo *common.PageInfo, username string, userG
 		baseQuery = baseQuery.Where("(user_subscriptions.status = ? OR (user_subscriptions.status = ? AND user_subscriptions.end_time <= ?))", "expired", "active", now)
 	case "cancelled":
 		baseQuery = baseQuery.Where("user_subscriptions.status = ?", "cancelled")
+	}
+	timeColumn := "user_subscriptions.created_at"
+	switch timeField {
+	case "start_time":
+		timeColumn = "user_subscriptions.start_time"
+	case "end_time":
+		timeColumn = "user_subscriptions.end_time"
+	}
+	if startTimestamp > 0 {
+		baseQuery = baseQuery.Where(timeColumn+" >= ?", startTimestamp)
+	}
+	if endTimestamp > 0 {
+		baseQuery = baseQuery.Where(timeColumn+" <= ?", endTimestamp)
 	}
 
 	var total int64

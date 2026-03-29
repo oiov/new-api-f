@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useContext, useState } from 'react';
-import { Banner, Button } from '@douyinfe/semi-ui';
+import { Banner, Button, TabPane, Tabs } from '@douyinfe/semi-ui';
 import CardPro from '../../common/ui/CardPro';
 import SubscriptionsTable from './SubscriptionsTable';
 import SubscriptionsActions from './SubscriptionsActions';
@@ -83,105 +83,111 @@ const SubscriptionsPage = () => {
         t={t}
       />
 
-      <CardPro
-        type='type1'
-        descriptionArea={
-          <SubscriptionsDescription
-            compactMode={compactMode}
-            setCompactMode={setCompactMode}
-            t={t}
-          />
-        }
-        actionsArea={
-          <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-2 w-full'>
-            {/* Mobile: actions first; Desktop: actions left */}
-            <div className='order-1 md:order-0 w-full md:w-auto'>
-              <SubscriptionsActions
-                openCreate={openCreate}
-                openMigration={() => setShowMigration(true)}
-                enableBatchMode={subscriptionsData.enableBatchMode}
-                setEnableBatchMode={subscriptionsData.setEnableBatchMode}
-                batchSetPlansEnabled={subscriptionsData.batchSetPlansEnabled}
-                batchUpdatingPlans={subscriptionsData.batchUpdatingPlans}
+      <Tabs type='card' defaultActiveKey='config' className='mt-1'>
+        <TabPane tab={t('订阅管理配置')} itemKey='config'>
+          <CardPro
+            type='type1'
+            descriptionArea={
+              <SubscriptionsDescription
+                compactMode={compactMode}
+                setCompactMode={setCompactMode}
+                title={t('订阅管理配置')}
                 t={t}
               />
-            </div>
-            <Banner
-              type='info'
-              description={t('Stripe/Creem 需在第三方平台创建商品并填入 ID')}
-              closeIcon={null}
-              // Mobile: banner below; Desktop: banner right
-              className='!rounded-lg order-2 md:order-1'
-              style={{ maxWidth: '100%' }}
-            />
-          </div>
-        }
-        paginationArea={createCardProPagination({
-          currentPage: subscriptionsData.activePage,
-          pageSize: subscriptionsData.pageSize,
-          total: subscriptionsData.planCount,
-          onPageChange: subscriptionsData.handlePageChange,
-          onPageSizeChange: subscriptionsData.handlePageSizeChange,
-          isMobile,
-          t: subscriptionsData.t,
-        })}
-        t={t}
-      >
-        <SubscriptionsTable {...subscriptionsData} enableEpay={enableEpay} />
-      </CardPro>
-
-      <div className='mt-4'>
-        <CardPro
-          type='type1'
-          descriptionArea={
-            <SubscriptionsDescription
-              compactMode={compactMode}
-              setCompactMode={setCompactMode}
-              t={t}
-            />
-          }
-          actionsArea={
-            <div className='flex items-center justify-between gap-2 w-full'>
-              <div className='text-sm text-gray-500'>
-                {t('管理员可在此查看所有用户的订阅记录与当前状态')}
+            }
+            actionsArea={
+              <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-2 w-full'>
+                <div className='order-1 md:order-0 w-full md:w-auto'>
+                  <SubscriptionsActions
+                    openCreate={openCreate}
+                    openMigration={() => setShowMigration(true)}
+                    enableBatchMode={subscriptionsData.enableBatchMode}
+                    setEnableBatchMode={subscriptionsData.setEnableBatchMode}
+                    batchSetPlansEnabled={subscriptionsData.batchSetPlansEnabled}
+                    batchUpdatingPlans={subscriptionsData.batchUpdatingPlans}
+                    t={t}
+                  />
+                </div>
+                <Banner
+                  type='info'
+                  description={t('Stripe/Creem 需在第三方平台创建商品并填入 ID')}
+                  closeIcon={null}
+                  className='!rounded-lg order-2 md:order-1'
+                  style={{ maxWidth: '100%' }}
+                />
               </div>
-              <Button size='small' onClick={() => setConsumeLogsFilter({})}>
-                {t('全部订阅消耗')}
-              </Button>
-            </div>
-          }
-          searchArea={
-            <AdminUserSubscriptionsFilters
-              formInitValues={subscriptionsData.userSubscriptionsFormInitValues}
-              setFormApi={subscriptionsData.setUserSubscriptionsFormApi}
-              searchUserSubscriptions={subscriptionsData.searchUserSubscriptions}
+            }
+            paginationArea={createCardProPagination({
+              currentPage: subscriptionsData.activePage,
+              pageSize: subscriptionsData.pageSize,
+              total: subscriptionsData.planCount,
+              onPageChange: subscriptionsData.handlePageChange,
+              onPageSizeChange: subscriptionsData.handlePageSizeChange,
+              isMobile,
+              t: subscriptionsData.t,
+            })}
+            t={t}
+          >
+            <SubscriptionsTable {...subscriptionsData} enableEpay={enableEpay} />
+          </CardPro>
+        </TabPane>
+
+        <TabPane tab={t('订阅管理详情')} itemKey='detail'>
+          <CardPro
+            type='type1'
+            descriptionArea={
+                <SubscriptionsDescription
+                  compactMode={compactMode}
+                  setCompactMode={setCompactMode}
+                  title={t('订阅管理详情')}
+                  subtitle={t('支持按创建时间、生效开始时间、到期时间，以及套餐、状态、来源、用户和分组进行组合筛选，适合统计与财务审计')}
+                  t={t}
+                />
+            }
+            actionsArea={
+              <div className='flex items-center justify-between gap-2 w-full'>
+                <div className='text-sm text-gray-500'>
+                  {t('可筛选全部订阅记录，并重点识别兑换码兑换来源')}
+                </div>
+                <Button size='small' onClick={() => setConsumeLogsFilter({})}>
+                  {t('全部订阅消耗')}
+                </Button>
+              </div>
+            }
+            searchArea={
+              <AdminUserSubscriptionsFilters
+                formInitValues={subscriptionsData.userSubscriptionsFormInitValues}
+                setFormApi={subscriptionsData.setUserSubscriptionsFormApi}
+                searchUserSubscriptions={subscriptionsData.searchUserSubscriptions}
+                loading={subscriptionsData.userSubscriptionsLoading}
+                groupOptions={subscriptionsData.groupOptions}
+                planOptions={subscriptionsData.planOptions}
+                t={t}
+              />
+            }
+            paginationArea={createCardProPagination({
+              currentPage: subscriptionsData.userSubscriptionsPage,
+              pageSize: subscriptionsData.userSubscriptionsPageSize,
+              total: subscriptionsData.userSubscriptionsTotal,
+              onPageChange: subscriptionsData.handleUserSubscriptionsPageChange,
+              onPageSizeChange:
+                subscriptionsData.handleUserSubscriptionsPageSizeChange,
+              isMobile,
+              t: subscriptionsData.t,
+            })}
+            t={t}
+          >
+            <AdminUserSubscriptionsTable
+              dataSource={subscriptionsData.userSubscriptions}
               loading={subscriptionsData.userSubscriptionsLoading}
-              groupOptions={subscriptionsData.groupOptions}
+              compactMode={compactMode}
+              planTitleMap={subscriptionsData.planTitleMap}
+              openConsumeLogs={(filter) => setConsumeLogsFilter(filter)}
               t={t}
             />
-          }
-          paginationArea={createCardProPagination({
-            currentPage: subscriptionsData.userSubscriptionsPage,
-            pageSize: subscriptionsData.userSubscriptionsPageSize,
-            total: subscriptionsData.userSubscriptionsTotal,
-            onPageChange: subscriptionsData.handleUserSubscriptionsPageChange,
-            onPageSizeChange:
-              subscriptionsData.handleUserSubscriptionsPageSizeChange,
-            isMobile,
-            t: subscriptionsData.t,
-          })}
-          t={t}
-        >
-          <AdminUserSubscriptionsTable
-            dataSource={subscriptionsData.userSubscriptions}
-            loading={subscriptionsData.userSubscriptionsLoading}
-            compactMode={compactMode}
-            planTitleMap={subscriptionsData.planTitleMap}
-            openConsumeLogs={(filter) => setConsumeLogsFilter(filter)}
-            t={t}
-          />
-        </CardPro>
-      </div>
+          </CardPro>
+        </TabPane>
+      </Tabs>
     </>
   );
 };

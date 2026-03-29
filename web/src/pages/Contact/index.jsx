@@ -41,7 +41,7 @@ const CONTACT_CARDS = [
   {
     key: 'qq-group',
     titleKey: 'QQ群',
-    subtitleKey: '适合问题交流、功能反馈与新版本讨论',
+    subtitleKey: '用于问题答疑解决，适合群内交流与经验分享',
     imageSrc: '/qq_group.jpg',
     imageAltKey: 'QQ群二维码',
     value: '373865837',
@@ -56,7 +56,7 @@ const CONTACT_CARDS = [
   {
     key: 'wechat-account',
     titleKey: '微信号',
-    subtitleKey: '适合商务沟通、合作咨询与一对一联系',
+    subtitleKey: '用于发票开具相关沟通，也可一对一联系',
     imageSrc: '/fishxcode_user.jpg',
     imageAltKey: '微信号二维码',
     value: 'fishxcode',
@@ -68,7 +68,7 @@ const CONTACT_CARDS = [
   {
     key: 'wechat-group',
     titleKey: '微信群',
-    subtitleKey: '适合快速获取公告、活动信息与群内答疑',
+    subtitleKey: '用于问题答疑解决，适合接收群内公告与通知',
     imageSrc: '/wechat_group.jpg',
     imageAltKey: '微信群二维码',
     icon: QrCode,
@@ -78,7 +78,7 @@ const CONTACT_CARDS = [
   {
     key: 'qq-service',
     titleKey: 'QQ客服',
-    subtitleKey: '适合处理账号问题、充值协助与售后支持',
+    subtitleKey: '用于技术服务支持，处理账号、接入与售后问题',
     imageSrc: '/qq.png',
     imageAltKey: 'QQ客服二维码',
     value: '2013571175',
@@ -213,7 +213,7 @@ const Contact = () => {
                 </div>
                 <div className='contact-quick-card__title'>{t('加入QQ群')}</div>
                 <div className='contact-quick-card__desc'>
-                  {t('适合公开讨论、问题互助与接收更新通知')}
+                  {t('用于问题答疑解决，适合群内交流与经验分享')}
                 </div>
                 <div className='contact-quick-card__value'>373865837</div>
               </button>
@@ -229,7 +229,7 @@ const Contact = () => {
                 </div>
                 <div className='contact-quick-card__title'>{t('添加微信号')}</div>
                 <div className='contact-quick-card__desc'>
-                  {t('适合合作咨询、商务沟通与一对一协助')}
+                  {t('用于发票开具相关沟通，也可一对一联系')}
                 </div>
                 <div className='contact-quick-card__value'>fishxcode</div>
               </button>

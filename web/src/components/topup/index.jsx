@@ -966,22 +966,24 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
       {/* 主布局区域 */}
       <div className='pt-4 space-y-4'>
         {isPackagePage && (
-          <SubscriptionPlansCard
-            t={t}
-            loading={subscriptionLoading}
-            plans={subscriptionPlans}
-            payMethods={payMethods}
-            enableOnlineTopUp={enableOnlineTopUp}
-            enableStripeTopUp={enableStripeTopUp}
-            enableCreemTopUp={enableCreemTopUp}
-            billingPreference={billingPreference}
-            onChangeBillingPreference={updateBillingPreference}
-            activeSubscriptions={activeSubscriptions}
-            allSubscriptions={allSubscriptions}
-            reloadSubscriptionSelf={getSubscriptionSelf}
-            initialMainTab='plan_list'
-            uiVariant='package'
-          />
+          <div id='package-pricing' className='scroll-mt-24'>
+            <SubscriptionPlansCard
+              t={t}
+              loading={subscriptionLoading}
+              plans={subscriptionPlans}
+              payMethods={payMethods}
+              enableOnlineTopUp={enableOnlineTopUp}
+              enableStripeTopUp={enableStripeTopUp}
+              enableCreemTopUp={enableCreemTopUp}
+              billingPreference={billingPreference}
+              onChangeBillingPreference={updateBillingPreference}
+              activeSubscriptions={activeSubscriptions}
+              allSubscriptions={allSubscriptions}
+              reloadSubscriptionSelf={getSubscriptionSelf}
+              initialMainTab='plan_list'
+              uiVariant='package'
+            />
+          </div>
         )}
 
         {isSubscriptionPage && (

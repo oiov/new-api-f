@@ -95,10 +95,25 @@ export const useSubscriptionsData = () => {
     const values = userSubscriptionsFormApi
       ? userSubscriptionsFormApi.getValues()
       : {};
+    let start_timestamp = '';
+    let end_timestamp = '';
+    if (
+      values.dateRange &&
+      Array.isArray(values.dateRange) &&
+      values.dateRange.length === 2
+    ) {
+      start_timestamp = values.dateRange[0] || '';
+      end_timestamp = values.dateRange[1] || '';
+    }
     return {
       username: values.username || '',
       group: values.group || '',
       status: values.status || '',
+      plan_id: values.plan_id || '',
+      source: values.source || '',
+      time_field: values.time_field || 'created_at',
+      start_timestamp,
+      end_timestamp,
     };
   };
 
@@ -116,6 +131,15 @@ export const useSubscriptionsData = () => {
         username: nextFilters.username || '',
         group: nextFilters.group || '',
         status: nextFilters.status || '',
+        plan_id: nextFilters.plan_id || '',
+        source: nextFilters.source || '',
+        time_field: nextFilters.time_field || 'created_at',
+        start_timestamp: nextFilters.start_timestamp
+          ? String(Date.parse(nextFilters.start_timestamp) / 1000)
+          : '',
+        end_timestamp: nextFilters.end_timestamp
+          ? String(Date.parse(nextFilters.end_timestamp) / 1000)
+          : '',
       });
       const res = await API.get(
         `/api/subscription/admin/user_subscriptions?${searchParams.toString()}`,
@@ -299,6 +323,10 @@ export const useSubscriptionsData = () => {
   const planTitleMap = new Map(
     (allPlans || []).map((item) => [item?.plan?.id, item?.plan?.title || '']),
   );
+  const planOptions = (allPlans || []).map((item) => ({
+    label: item?.plan?.title || `#${item?.plan?.id}`,
+    value: item?.plan?.id,
+  }));
 
   return {
     // Data state
@@ -307,6 +335,7 @@ export const useSubscriptionsData = () => {
     loading,
     allPlans,
     planTitleMap,
+    planOptions,
     groupOptions,
     userSubscriptions,
     userSubscriptionsLoading,
@@ -317,6 +346,10 @@ export const useSubscriptionsData = () => {
       username: '',
       group: '',
       status: '',
+      plan_id: '',
+      source: '',
+      time_field: 'created_at',
+      dateRange: [],
     },
 
     // Modal state

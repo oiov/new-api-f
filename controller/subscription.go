@@ -462,7 +462,22 @@ func AdminListAllUserSubscriptions(c *gin.Context) {
 	username := c.Query("username")
 	group := c.Query("group")
 	status := c.Query("status")
-	items, total, err := model.GetAdminUserSubscriptions(pageInfo, username, group, status)
+	planId, _ := strconv.Atoi(c.Query("plan_id"))
+	source := c.Query("source")
+	timeField := c.Query("time_field")
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	items, total, err := model.GetAdminUserSubscriptions(
+		pageInfo,
+		username,
+		group,
+		status,
+		planId,
+		source,
+		timeField,
+		startTimestamp,
+		endTimestamp,
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return

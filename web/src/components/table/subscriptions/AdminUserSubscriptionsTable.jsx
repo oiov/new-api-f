@@ -83,6 +83,37 @@ function renderStatusTag(sub, t) {
   return <Tag color='orange' size='small'>{t('已过期')}</Tag>;
 }
 
+function renderSourceTag(source, t) {
+  switch (source) {
+    case 'redemption':
+      return (
+        <Tag color='orange' size='small'>
+          {t('兑换码兑换')}
+        </Tag>
+      );
+    case 'admin':
+      return (
+        <Tag color='blue' size='small'>
+          {t('管理员发放')}
+        </Tag>
+      );
+    case 'invite_reward':
+      return (
+        <Tag color='purple' size='small'>
+          {t('邀请奖励')}
+        </Tag>
+      );
+    case 'order':
+      return (
+        <Tag color='green' size='small'>
+          {t('在线购买')}
+        </Tag>
+      );
+    default:
+      return <Tag size='small'>{source || '-'}</Tag>;
+  }
+}
+
 const AdminUserSubscriptionsTable = ({
   dataSource,
   loading,
@@ -132,6 +163,11 @@ const AdminUserSubscriptionsTable = ({
             </div>
           );
         },
+      },
+      {
+        title: t('来源'),
+        width: 120,
+        render: (_, record) => renderSourceTag(record?.subscription?.source, t),
       },
       {
         title: t('资源'),
