@@ -92,7 +92,25 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         (currentKeyword
           ? `&keyword=${encodeURIComponent(currentKeyword)}`
           : '');
-      const res = await API.get(`${base}?${qs}`);
+
+      let res;
+      try {
+        res = await API.get(`${base}?${qs}`);
+      } catch (error) {
+        const shouldFallbackToSelfHistory =
+          currentTab === HISTORY_TAB_REDEMPTION &&
+          userIsAdmin &&
+          (error?.response?.status === 404 ||
+            error?.response?.data?.error?.message
+              ?.includes('Invalid URL'));
+
+        if (!shouldFallbackToSelfHistory) {
+          throw error;
+        }
+
+        res = await API.get(`/api/user/redemption/history/self?${qs}`);
+      }
+
       const { success, message, data } = res.data;
       if (success) {
         setRecords(data.items || []);
