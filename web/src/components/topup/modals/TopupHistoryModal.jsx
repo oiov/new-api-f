@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Drawer,
+  SideSheet,
   Table,
   Badge,
   Typography,
@@ -30,6 +30,7 @@ import {
   Tabs,
   Select,
   Space,
+  Modal,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
@@ -461,24 +462,23 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     activeTab === HISTORY_TAB_TOPUP ? t('暂无充值记录') : t('暂无兑换记录');
 
   return (
-    <Drawer
+    <SideSheet
       title={t('充值兑换记录')}
       visible={visible}
       onCancel={onCancel}
-      width={isMobile ? '100%' : 1000}
-      height={isMobile ? '100%' : undefined}
+      width={isMobile ? '100vw' : 1000}
       placement={isMobile ? 'bottom' : 'right'}
-      headerStyle={{ 
+      height={isMobile ? '90vh' : undefined}
+      headerStyle={{
         borderBottom: '1px solid var(--semi-color-border)',
         padding: '16px 24px'
       }}
-      bodyStyle={{ 
+      bodyStyle={{
         padding: 0,
         display: 'flex',
         flexDirection: 'column',
         height: '100%'
       }}
-      footer={null}
     >
       <div style={{ 
         padding: '16px 24px', 
@@ -555,7 +555,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
           }
         />
       </div>
-    </Drawer>
+    </SideSheet>
   );
 };
 
