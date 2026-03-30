@@ -15,6 +15,7 @@ import (
 type TopUp struct {
 	Id               int     `json:"id"`
 	UserId           int     `json:"user_id" gorm:"index"`
+	Username         string  `json:"username,omitempty" gorm:"-"`
 	Amount           int64   `json:"amount"`
 	Money            float64 `json:"money"`
 	TradeNo          string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
@@ -226,30 +227,26 @@ func GetAllTopUpsWithFilters(pageInfo *common.PageInfo, filters TopUpAdminFilter
 		}
 	}()
 
-	query := tx.Model(&TopUp{})
-	if filters.UserID > 0 {
-		query = query.Where("user_id = ?", filters.UserID)
-	}
-	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
-		like := "%%" + keyword + "%%"
-		query = query.Where("trade_no LIKE ?", like)
-	}
-	if status := strings.TrimSpace(filters.Status); status != "" {
-		query = query.Where("status = ?", status)
-	}
-	if filters.StartTimestamp > 0 {
-		query = query.Where("create_time >= ?", filters.StartTimestamp)
-	}
-	if filters.EndTimestamp > 0 {
-		query = query.Where("create_time <= ?", filters.EndTimestamp)
-	}
+	// Build base query for counting
+	countQuery := tx.Model(&TopUp{})
+	countQuery = applyTopUpFilters(countQuery, filters)
 
-	if err = query.Count(&total).Error; err != nil {
+	if err = countQuery.Count(&total).Error; err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
-	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
+	// Build query for fetching records with username
+	dataQuery := tx.Table("top_ups").
+		Select("top_ups.*, users.username").
+		Joins("LEFT JOIN users ON top_ups.user_id = users.id")
+
+	dataQuery = applyTopUpFiltersWithPrefix(dataQuery, filters, "top_ups.")
+
+	if err = dataQuery.Order("top_ups.id desc").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Find(&topups).Error; err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
@@ -258,6 +255,32 @@ func GetAllTopUpsWithFilters(pageInfo *common.PageInfo, filters TopUpAdminFilter
 		return nil, 0, err
 	}
 	return topups, total, nil
+}
+
+// applyTopUpFilters applies filter conditions to a query without table prefix
+func applyTopUpFilters(query *gorm.DB, filters TopUpAdminFilters) *gorm.DB {
+	return applyTopUpFiltersWithPrefix(query, filters, "")
+}
+
+// applyTopUpFiltersWithPrefix applies filter conditions to a query with optional table prefix
+func applyTopUpFiltersWithPrefix(query *gorm.DB, filters TopUpAdminFilters, prefix string) *gorm.DB {
+	if filters.UserID > 0 {
+		query = query.Where(prefix+"user_id = ?", filters.UserID)
+	}
+	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
+		like := "%%" + keyword + "%%"
+		query = query.Where(prefix+"trade_no LIKE ?", like)
+	}
+	if status := strings.TrimSpace(filters.Status); status != "" {
+		query = query.Where(prefix+"status = ?", status)
+	}
+	if filters.StartTimestamp > 0 {
+		query = query.Where(prefix+"create_time >= ?", filters.StartTimestamp)
+	}
+	if filters.EndTimestamp > 0 {
+		query = query.Where(prefix+"create_time <= ?", filters.EndTimestamp)
+	}
+	return query
 }
 
 // ManualCompleteTopUp 管理员手动完成订单并给用户充值

@@ -207,11 +207,47 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const topupColumns = useMemo(() => {
     const baseColumns = [
       {
+        title: t('ID'),
+        dataIndex: 'id',
+        key: 'id',
+        width: 80,
+        render: (text) => <Text copyable>{text}</Text>,
+      },
+      {
         title: t('订单号'),
         dataIndex: 'trade_no',
         key: 'trade_no',
         render: (text) => <Text copyable>{text}</Text>,
       },
+      {
+        title: t('充值名称'),
+        key: 'name',
+        render: (_, record) => {
+          if (isSubscriptionTopup(record)) {
+            return <Text>{t('订阅套餐充值')}</Text>;
+          }
+          return <Text>{t('充值')} {record.amount} {t('额度')}</Text>;
+        },
+      },
+    ];
+
+    // 管理员可见：用户信息列
+    if (userIsAdmin) {
+      baseColumns.push({
+        title: t('充值用户'),
+        key: 'user_info',
+        render: (_, record) => (
+          <div className='flex flex-col gap-1'>
+            <Text>{record.username || '--'}</Text>
+            <Text type='tertiary' size='small'>
+              UID: {record.user_id || '--'}
+            </Text>
+          </div>
+        ),
+      });
+    }
+
+    baseColumns.push(
       {
         title: t('支付方式'),
         dataIndex: 'payment_method',
@@ -250,7 +286,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         key: 'status',
         render: renderStatusBadge,
       },
-    ];
+    );
 
     if (userIsAdmin) {
       baseColumns.push({

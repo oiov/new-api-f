@@ -40,6 +40,10 @@ const createDefaultHeaderNavModules = () => ({
     enabled: true,
     requireAuth: false,
   },
+  package: {
+    enabled: true,
+    requireAuth: false,
+  },
   docs: true,
   about: true,
   contact: true,
@@ -60,6 +64,18 @@ const normalizeHeaderNavModules = (modules) => {
     normalized.pricing = {
       ...createDefaultHeaderNavModules().pricing,
       ...(normalized.pricing || {}),
+    };
+  }
+
+  if (typeof normalized.package === 'boolean') {
+    normalized.package = {
+      enabled: normalized.package,
+      requireAuth: false,
+    };
+  } else {
+    normalized.package = {
+      ...createDefaultHeaderNavModules().package,
+      ...(normalized.package || {}),
     };
   }
 
@@ -84,8 +100,8 @@ export default function SettingsHeaderNavModules(props) {
   function handleHeaderNavModuleChange(moduleKey) {
     return (checked) => {
       const newModules = { ...headerNavModules };
-      if (moduleKey === 'pricing') {
-        // 对于pricing模块，只更新enabled属性
+      if (moduleKey === 'pricing' || moduleKey === 'package') {
+        // 对于对象模块，只更新enabled属性
         newModules[moduleKey] = {
           ...newModules[moduleKey],
           enabled: checked,
@@ -102,6 +118,16 @@ export default function SettingsHeaderNavModules(props) {
     const newModules = { ...headerNavModules };
     newModules.pricing = {
       ...newModules.pricing,
+      requireAuth: checked,
+    };
+    setHeaderNavModules(newModules);
+  }
+
+  // 处理套餐权限控制变更
+  function handlePackageAuthChange(checked) {
+    const newModules = { ...headerNavModules };
+    newModules.package = {
+      ...newModules.package,
       requireAuth: checked,
     };
     setHeaderNavModules(newModules);
@@ -181,6 +207,12 @@ export default function SettingsHeaderNavModules(props) {
       hasSubConfig: true, // 标识该模块有子配置
     },
     {
+      key: 'package',
+      title: t('套餐'),
+      description: t('订阅套餐落地页入口'),
+      hasSubConfig: true,
+    },
+    {
       key: 'docs',
       title: t('文档'),
       description: t('系统文档和帮助信息'),
@@ -252,7 +284,7 @@ export default function SettingsHeaderNavModules(props) {
                   <div style={{ marginLeft: '16px' }}>
                     <Switch
                       checked={
-                        module.key === 'pricing'
+                        module.key === 'pricing' || module.key === 'package'
                           ? headerNavModules[module.key]?.enabled
                           : headerNavModules[module.key]
                       }
@@ -262,11 +294,9 @@ export default function SettingsHeaderNavModules(props) {
                   </div>
                 </div>
 
-                {/* 为模型广场添加权限控制子开关 */}
-                {module.key === 'pricing' &&
-                  (module.key === 'pricing'
-                    ? headerNavModules[module.key]?.enabled
-                    : headerNavModules[module.key]) && (
+                {/* 为对象模块添加权限控制子开关 */}
+                {(module.key === 'pricing' || module.key === 'package') &&
+                  headerNavModules[module.key]?.enabled && (
                     <div
                       style={{
                         borderTop: '1px solid var(--semi-color-border)',
@@ -302,15 +332,23 @@ export default function SettingsHeaderNavModules(props) {
                               display: 'block',
                             }}
                           >
-                            {t('开启后未登录用户无法访问模型广场')}
+                            {module.key === 'pricing'
+                              ? t('开启后未登录用户无法访问模型广场')
+                              : t('开启后未登录用户无法访问套餐页面')}
                           </Text>
                         </div>
                         <div style={{ marginLeft: '16px' }}>
                           <Switch
                             checked={
-                              headerNavModules.pricing?.requireAuth || false
+                              module.key === 'pricing'
+                                ? headerNavModules.pricing?.requireAuth || false
+                                : headerNavModules.package?.requireAuth || false
                             }
-                            onChange={handlePricingAuthChange}
+                            onChange={
+                              module.key === 'pricing'
+                                ? handlePricingAuthChange
+                                : handlePackageAuthChange
+                            }
                             size='default'
                           />
                         </div>

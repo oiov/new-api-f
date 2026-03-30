@@ -60,7 +60,7 @@ export const useNavigation = (
         to: '/pricing',
       },
       {
-        text: t('价格'),
+        text: t('套餐'),
         itemKey: 'package',
         to: '/console/package#package-pricing',
       },
@@ -95,6 +95,12 @@ export const useNavigation = (
         return typeof modules.pricing === 'object'
           ? modules.pricing.enabled
           : modules.pricing;
+      }
+      if (link.itemKey === 'package') {
+        // 支持新的package配置格式
+        return typeof modules.package === 'object'
+          ? modules.package.enabled
+          : modules.package;
       }
       return modules[link.itemKey] === true;
     });
