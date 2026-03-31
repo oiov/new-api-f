@@ -13,8 +13,8 @@ import (
 
 func TestIsAllowedFishxcodeHost(t *testing.T) {
 	t.Run("allow configured host family", func(t *testing.T) {
-		require.True(t, isAllowedFishxcodeHost("fishxcode.com"))
-		require.True(t, isAllowedFishxcodeHost("api.fishxcode.com"))
+		require.True(t, isAllowedFishxcodeHost("www.aicentos.com"))
+		require.True(t, isAllowedFishxcodeHost("api.www.aicentos.com"))
 		require.True(t, isAllowedFishxcodeHost("API.FISHXCODE.COM:443"))
 	})
 
@@ -26,19 +26,19 @@ func TestIsAllowedFishxcodeHost(t *testing.T) {
 
 	t.Run("block non allowed hosts", func(t *testing.T) {
 		require.False(t, isAllowedFishxcodeHost("example.com"))
-		require.False(t, isAllowedFishxcodeHost("fishxcode.com.evil.com"))
+		require.False(t, isAllowedFishxcodeHost("www.aicentos.com.evil.com"))
 	})
 }
 
 func TestEvaluateProxyDistributionRequest(t *testing.T) {
-	allowedHosts := []string{"fishxcode.com", "*.fishxcode.com", "localhost"}
-	allowedSources := []string{"fishxcode.com", "*.fishxcode.com", "localhost"}
+	allowedHosts := []string{"www.aicentos.com", "*.www.aicentos.com", "localhost"}
+	allowedSources := []string{"www.aicentos.com", "*.www.aicentos.com", "localhost"}
 
 	t.Run("allow configured host and origin", func(t *testing.T) {
 		decision := EvaluateProxyDistributionRequest(
-			"fishxcode.com",
-			"https://console.fishxcode.com",
-			"https://console.fishxcode.com/path",
+			"www.aicentos.com",
+			"https://console.www.aicentos.com",
+			"https://console.www.aicentos.com/path",
 			allowedHosts,
 			allowedSources,
 			false,
@@ -63,7 +63,7 @@ func TestEvaluateProxyDistributionRequest(t *testing.T) {
 
 	t.Run("block invalid origin host", func(t *testing.T) {
 		decision := EvaluateProxyDistributionRequest(
-			"fishxcode.com",
+			"www.aicentos.com",
 			"https://evil.example.com",
 			"",
 			allowedHosts,
@@ -76,7 +76,7 @@ func TestEvaluateProxyDistributionRequest(t *testing.T) {
 
 	t.Run("observe only when log only enabled", func(t *testing.T) {
 		decision := EvaluateProxyDistributionRequest(
-			"fishxcode.com",
+			"www.aicentos.com",
 			"https://evil.example.com",
 			"",
 			allowedHosts,
@@ -103,8 +103,8 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		setting.RestrictProxyDistributionBlockedMessage = origMessage
 	})
 
-	setting.RestrictProxyDistributionAllowedHosts = []string{"fishxcode.com", "*.fishxcode.com", "localhost"}
-	setting.RestrictProxyDistributionAllowedSources = []string{"fishxcode.com", "*.fishxcode.com", "localhost"}
+	setting.RestrictProxyDistributionAllowedHosts = []string{"www.aicentos.com", "*.www.aicentos.com", "localhost"}
+	setting.RestrictProxyDistributionAllowedSources = []string{"www.aicentos.com", "*.www.aicentos.com", "localhost"}
 
 	gin.SetMode(gin.TestMode)
 
@@ -173,7 +173,7 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		})
 
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-		req.Host = "fishxcode.com"
+		req.Host = "www.aicentos.com"
 		req.Header.Set("Origin", "https://evil.example.com")
 		engine.ServeHTTP(recorder, req)
 
@@ -193,14 +193,14 @@ func TestDisallowProxyDistribution(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 		req.Host = "example.com"
-		req.Header.Set("X-Forwarded-Host", "fishxcode.com")
+		req.Header.Set("X-Forwarded-Host", "www.aicentos.com")
 		engine.ServeHTTP(recorder, req)
 
 		require.Equal(t, http.StatusForbidden, recorder.Code)
 		require.Contains(t, recorder.Body.String(), "请求 Host 不在白名单")
 	})
 
-	t.Run("allow fishxcode subdomain when enabled", func(t *testing.T) {
+	t.Run("allow aicentos subdomain when enabled", func(t *testing.T) {
 		setting.RestrictProxyDistribution = true
 		setting.RestrictProxyDistributionLogOnly = false
 		recorder := httptest.NewRecorder()
@@ -211,8 +211,8 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		})
 
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-		req.Host = "console.fishxcode.com"
-		req.Header.Set("Origin", "https://www.fishxcode.com")
+		req.Host = "console.www.aicentos.com"
+		req.Header.Set("Origin", "https://www.www.aicentos.com")
 		engine.ServeHTTP(recorder, req)
 
 		require.Equal(t, http.StatusOK, recorder.Code)

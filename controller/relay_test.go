@@ -23,7 +23,7 @@ func TestAppendSiteDomainForRateLimitError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	t.Run("append server address domain for upstream rpm limit", func(t *testing.T) {
-		system_setting.ServerAddress = "https://fishxcode.com"
+		system_setting.ServerAddress = "https://www.aicentos.com"
 		system_setting.GetErrorSetting().ShowSiteDomainInError = true
 		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 		ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
@@ -36,7 +36,7 @@ func TestAppendSiteDomainForRateLimitError(t *testing.T) {
 		)
 
 		message := appendSiteDomainForRateLimitError(ctx, apiErr)
-		require.Equal(t, "Account RPM limit exceeded. Please slow down (Max 20/min). (site: fishxcode.com)", message)
+		require.Equal(t, "Account RPM limit exceeded. Please slow down (Max 20/min). (site: www.aicentos.com)", message)
 	})
 
 	t.Run("fallback to request host when server address is empty", func(t *testing.T) {
@@ -57,7 +57,7 @@ func TestAppendSiteDomainForRateLimitError(t *testing.T) {
 	})
 
 	t.Run("skip non target 429 message", func(t *testing.T) {
-		system_setting.ServerAddress = "https://fishxcode.com"
+		system_setting.ServerAddress = "https://www.aicentos.com"
 		system_setting.GetErrorSetting().ShowSiteDomainInError = true
 		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 		ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
@@ -74,7 +74,7 @@ func TestAppendSiteDomainForRateLimitError(t *testing.T) {
 	})
 
 	t.Run("skip append when disabled", func(t *testing.T) {
-		system_setting.ServerAddress = "https://fishxcode.com"
+		system_setting.ServerAddress = "https://www.aicentos.com"
 		system_setting.GetErrorSetting().ShowSiteDomainInError = false
 		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 		ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
