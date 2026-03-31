@@ -3,6 +3,7 @@ package dto
 type UserSetting struct {
 	NotifyType                       string  `json:"notify_type,omitempty"`                          // QuotaWarningType 额度预警类型
 	QuotaWarningThreshold            float64 `json:"quota_warning_threshold,omitempty"`              // QuotaWarningThreshold 额度预警阈值
+	QuotaNotifyEnabled               *bool   `json:"quota_notify_enabled,omitempty"`                 // QuotaNotifyEnabled 总额度提醒开关，nil 表示默认开启
 	SubscriptionQuotaNotifyEnabled   *bool   `json:"subscription_quota_notify_enabled,omitempty"`    // SubscriptionQuotaNotifyEnabled 套餐额度提醒开关，nil 表示默认开启
 	NotifySubscriptionId             int     `json:"notify_subscription_id,omitempty"`               // NotifySubscriptionId 指定提醒的订阅 ID，0 表示跟随当前使用的订阅
 	WebhookUrl                       string  `json:"webhook_url,omitempty"`                          // WebhookUrl webhook地址
@@ -29,6 +30,10 @@ var (
 
 func (s UserSetting) IsSubscriptionQuotaNotifyEnabled() bool {
 	return s.SubscriptionQuotaNotifyEnabled == nil || *s.SubscriptionQuotaNotifyEnabled
+}
+
+func (s UserSetting) IsQuotaNotifyEnabled() bool {
+	return s.QuotaNotifyEnabled == nil || *s.QuotaNotifyEnabled
 }
 
 func (s UserSetting) IsRecordIpLogEnabled() bool {

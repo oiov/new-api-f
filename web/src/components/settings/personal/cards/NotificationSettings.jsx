@@ -405,6 +405,8 @@ const NotificationSettings = ({
     }
   };
 
+  const quotaNotifyDisabled = !notificationSettings.quotaNotifyEnabled;
+
   return (
     <Card
       className='!rounded-2xl shadow-sm border-0'
@@ -480,6 +482,7 @@ const NotificationSettings = ({
                   label={t('通知方式')}
                   initValue={notificationSettings.warningType}
                   onChange={(value) => handleFormChange('warningType', value)}
+                  disabled={quotaNotifyDisabled}
                   rules={[{ required: true, message: t('请选择通知方式') }]}
                 >
                   <Radio value='email'>{t('邮件通知')}</Radio>
@@ -507,6 +510,7 @@ const NotificationSettings = ({
                   ]}
                   onChange={(val) => handleFormChange('warningThreshold', val)}
                   prefix={<IconBell />}
+                  disabled={quotaNotifyDisabled}
                   extraText={t(
                     '当钱包或订阅剩余额度低于此数值时，系统将通过选择的方式发送通知',
                   )}
@@ -526,10 +530,24 @@ const NotificationSettings = ({
                 />
 
                 <Form.Switch
+                  field='quotaNotifyEnabled'
+                  label={t('总额度提醒')}
+                  checkedText={t('开')}
+                  uncheckedText={t('关')}
+                  onChange={(value) =>
+                    handleFormChange('quotaNotifyEnabled', value)
+                  }
+                  extraText={t(
+                    '默认开启。关闭后将不再接收钱包额度、套餐额度或剩余次数提醒。',
+                  )}
+                />
+
+                <Form.Switch
                   field='subscriptionQuotaNotifyEnabled'
                   label={t('套餐额度提醒')}
                   checkedText={t('开')}
                   uncheckedText={t('关')}
+                  disabled={quotaNotifyDisabled}
                   onChange={(value) =>
                     handleFormChange('subscriptionQuotaNotifyEnabled', value)
                   }
@@ -551,6 +569,7 @@ const NotificationSettings = ({
                   }
                   loading={subscriptionLoading}
                   disabled={
+                    !notificationSettings.quotaNotifyEnabled ||
                     !notificationSettings.subscriptionQuotaNotifyEnabled ||
                     subscriptionOptions.length === 0
                   }
@@ -593,6 +612,7 @@ const NotificationSettings = ({
                     onChange={(val) =>
                       handleFormChange('notificationEmail', val)
                     }
+                    disabled={quotaNotifyDisabled}
                     prefix={<IconMail />}
                     extraText={t(
                       '设置用于接收额度预警的邮箱地址，不填则使用账号绑定的邮箱',
@@ -610,6 +630,7 @@ const NotificationSettings = ({
                       placeholder={t(
                         '请输入Webhook地址，例如: https://example.com/webhook',
                       )}
+                      disabled={quotaNotifyDisabled}
                       onChange={(val) => handleFormChange('webhookUrl', val)}
                       prefix={<IconLink />}
                       extraText={t(
@@ -633,6 +654,7 @@ const NotificationSettings = ({
                       field='webhookSecret'
                       label={t('接口凭证')}
                       placeholder={t('请输入密钥')}
+                      disabled={quotaNotifyDisabled}
                       onChange={(val) => handleFormChange('webhookSecret', val)}
                       prefix={<IconKey />}
                       extraText={t(
@@ -691,6 +713,7 @@ const NotificationSettings = ({
                       placeholder={t(
                         '请输入Bark推送URL，例如: https://api.day.app/yourkey/{{title}}/{{content}}',
                       )}
+                      disabled={quotaNotifyDisabled}
                       onChange={(val) => handleFormChange('barkUrl', val)}
                       prefix={<IconLink />}
                       extraText={t(
@@ -751,6 +774,7 @@ const NotificationSettings = ({
                       placeholder={t(
                         '请输入Gotify服务器地址，例如: https://gotify.example.com',
                       )}
+                      disabled={quotaNotifyDisabled}
                       onChange={(val) => handleFormChange('gotifyUrl', val)}
                       prefix={<IconLink />}
                       extraText={t(
@@ -776,6 +800,7 @@ const NotificationSettings = ({
                       field='gotifyToken'
                       label={t('Gotify应用令牌')}
                       placeholder={t('请输入Gotify应用令牌')}
+                      disabled={quotaNotifyDisabled}
                       onChange={(val) => handleFormChange('gotifyToken', val)}
                       prefix={<IconKey />}
                       extraText={t(
@@ -805,6 +830,7 @@ const NotificationSettings = ({
                       onChange={(val) =>
                         handleFormChange('gotifyPriority', val)
                       }
+                      disabled={quotaNotifyDisabled}
                       prefix={<IconBell />}
                       extraText={t('消息优先级，范围0-10，默认为5')}
                       style={{ width: '100%', maxWidth: '300px' }}

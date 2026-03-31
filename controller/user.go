@@ -1147,6 +1147,7 @@ func TopUp(c *gin.Context) {
 type UpdateUserSettingRequest struct {
 	QuotaWarningType                 string  `json:"notify_type"`
 	QuotaWarningThreshold            float64 `json:"quota_warning_threshold"`
+	QuotaNotifyEnabled               *bool   `json:"quota_notify_enabled,omitempty"`
 	SubscriptionQuotaNotifyEnabled   *bool   `json:"subscription_quota_notify_enabled,omitempty"`
 	NotifySubscriptionId             int     `json:"notify_subscription_id,omitempty"`
 	WebhookUrl                       string  `json:"webhook_url,omitempty"`
@@ -1264,6 +1265,10 @@ func UpdateUserSetting(c *gin.Context) {
 	if user.Role >= common.RoleAdminUser && req.UpstreamModelUpdateNotifyEnabled != nil {
 		upstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
 	}
+	quotaNotifyEnabled := existingSettings.IsQuotaNotifyEnabled()
+	if req.QuotaNotifyEnabled != nil {
+		quotaNotifyEnabled = *req.QuotaNotifyEnabled
+	}
 	subscriptionQuotaNotifyEnabled := existingSettings.IsSubscriptionQuotaNotifyEnabled()
 	if req.SubscriptionQuotaNotifyEnabled != nil {
 		subscriptionQuotaNotifyEnabled = *req.SubscriptionQuotaNotifyEnabled
@@ -1273,18 +1278,26 @@ func UpdateUserSetting(c *gin.Context) {
 		recordIpLog = req.RecordIpLog
 	}
 
-	// 构建设置
-	settings := dto.UserSetting{
-		NotifyType:                       req.QuotaWarningType,
-		QuotaWarningThreshold:            req.QuotaWarningThreshold,
-		SubscriptionQuotaNotifyEnabled:   &subscriptionQuotaNotifyEnabled,
-		NotifySubscriptionId:             req.NotifySubscriptionId,
-		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
-		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
-		RecordIpLog:                      recordIpLog,
-	}
+	// 基于现有设置增量更新，避免覆盖掉无关用户偏好
+	settings := existingSettings
+	settings.NotifyType = req.QuotaWarningType
+	settings.QuotaWarningThreshold = req.QuotaWarningThreshold
+	settings.QuotaNotifyEnabled = &quotaNotifyEnabled
+	settings.SubscriptionQuotaNotifyEnabled = &subscriptionQuotaNotifyEnabled
+	settings.NotifySubscriptionId = req.NotifySubscriptionId
+	settings.UpstreamModelUpdateNotifyEnabled = upstreamModelUpdateNotifyEnabled
+	settings.AcceptUnsetRatioModel = req.AcceptUnsetModelRatioModel
+	settings.RecordIpLog = recordIpLog
 
-	// 如果是webhook类型,添加webhook相关设置
+	// 仅保留当前通知类型对应的配置，避免旧配置残留造成语义混乱
+	settings.NotificationEmail = ""
+	settings.WebhookUrl = ""
+	settings.WebhookSecret = ""
+	settings.BarkUrl = ""
+	settings.GotifyUrl = ""
+	settings.GotifyToken = ""
+	settings.GotifyPriority = 0
+
 	if req.QuotaWarningType == dto.NotifyTypeWebhook {
 		settings.WebhookUrl = req.WebhookUrl
 		if req.WebhookSecret != "" {
@@ -1292,21 +1305,17 @@ func UpdateUserSetting(c *gin.Context) {
 		}
 	}
 
-	// 如果提供了通知邮箱，添加到设置中
 	if req.QuotaWarningType == dto.NotifyTypeEmail && req.NotificationEmail != "" {
 		settings.NotificationEmail = req.NotificationEmail
 	}
 
-	// 如果是Bark类型，添加Bark URL到设置中
 	if req.QuotaWarningType == dto.NotifyTypeBark {
 		settings.BarkUrl = req.BarkUrl
 	}
 
-	// 如果是Gotify类型，添加Gotify配置到设置中
 	if req.QuotaWarningType == dto.NotifyTypeGotify {
 		settings.GotifyUrl = req.GotifyUrl
 		settings.GotifyToken = req.GotifyToken
-		// Gotify优先级范围0-10，超出范围则使用默认值5
 		if req.GotifyPriority < 0 || req.GotifyPriority > 10 {
 			settings.GotifyPriority = 5
 		} else {
