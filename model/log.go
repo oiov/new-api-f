@@ -142,7 +142,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	// 判断是否需要记录 IP
 	needRecordIp := false
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
+		if settingMap.IsRecordIpLogEnabled() {
 			needRecordIp = true
 		}
 	}
@@ -203,7 +203,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	// 判断是否需要记录 IP
 	needRecordIp := false
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
+		if settingMap.IsRecordIpLogEnabled() {
 			needRecordIp = true
 		}
 	}

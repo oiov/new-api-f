@@ -36,7 +36,10 @@ type Channel struct {
 	BalanceUpdatedTime int64   `json:"balance_updated_time" gorm:"bigint"`
 	Models             string  `json:"models"`
 	Group              string  `json:"group" gorm:"type:varchar(64);default:'default'"`
+	UsedCount          int64   `json:"used_count" gorm:"bigint;default:0"`
 	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
+	MaxRequestCount    int64   `json:"max_request_count" gorm:"bigint;default:0"`
+	MaxRequestQuota    int64   `json:"max_request_quota" gorm:"bigint;default:0"`
 	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
@@ -237,6 +240,18 @@ func (channel *Channel) GetTag() string {
 		return ""
 	}
 	return *channel.Tag
+}
+
+func (channel *Channel) IsRequestCountLimited() bool {
+	return channel != nil && channel.MaxRequestCount > 0 && channel.UsedCount >= channel.MaxRequestCount
+}
+
+func (channel *Channel) IsRequestQuotaLimited() bool {
+	return channel != nil && channel.MaxRequestQuota > 0 && channel.UsedQuota >= channel.MaxRequestQuota
+}
+
+func (channel *Channel) ReachedUsageLimit() bool {
+	return channel.IsRequestCountLimited() || channel.IsRequestQuotaLimited()
 }
 
 func (channel *Channel) SetTag(tag string) {
@@ -754,19 +769,41 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	return nil
 }
 
-func UpdateChannelUsedQuota(id int, quota int) {
+func UpdateChannelUsage(id int, quota int, count int) {
 	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
+		if quota != 0 {
+			addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
+		}
+		if count != 0 {
+			addNewRecord(BatchUpdateTypeChannelRequestCount, id, count)
+		}
+		CacheAddChannelUsage(id, quota, count)
 		return
 	}
-	updateChannelUsedQuota(id, quota)
+	updateChannelUsage(id, quota, count)
 }
 
-func updateChannelUsedQuota(id int, quota int) {
-	err := DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
-	if err != nil {
-		common.SysLog(fmt.Sprintf("failed to update channel used quota: channel_id=%d, delta_quota=%d, error=%v", id, quota, err))
+func UpdateChannelUsedQuota(id int, quota int) {
+	UpdateChannelUsage(id, quota, 0)
+}
+
+func UpdateChannelRequestCount(id int, count int) {
+	UpdateChannelUsage(id, 0, count)
+}
+
+func updateChannelUsage(id int, quota int, count int) {
+	updates := map[string]interface{}{
+		"used_quota": gorm.Expr("used_quota + ?", quota),
 	}
+	if count != 0 {
+		updates["used_count"] = gorm.Expr("used_count + ?", count)
+	}
+	err := DB.Model(&Channel{}).Where("id = ?", id).Updates(updates).Error
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to update channel usage: channel_id=%d, delta_quota=%d, delta_count=%d, error=%v", id, quota, count, err))
+		return
+	}
+	CacheAddChannelUsage(id, quota, count)
 }
 
 func DeleteChannelByStatus(status int64) (int64, error) {

@@ -1233,6 +1233,7 @@ func CopyChannel(c *gin.Context) {
 	clone.ResponseTime = 0
 	if resetBalance {
 		clone.Balance = 0
+		clone.UsedCount = 0
 		clone.UsedQuota = 0
 	}
 
