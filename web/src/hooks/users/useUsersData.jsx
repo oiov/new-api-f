@@ -17,8 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { API, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
@@ -26,6 +27,12 @@ import { useTableCompactMode } from '../common/useTableCompactMode';
 export const useUsersData = () => {
   const { t } = useTranslation();
   const [compactMode, setCompactMode] = useTableCompactMode('users');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Get initial keyword from URL
+  const initialKeyword = useMemo(() => {
+    return searchParams.get('keyword') || '';
+  }, []);
 
   // State management
   const [users, setUsers] = useState([]);
@@ -35,6 +42,7 @@ export const useUsersData = () => {
   const [searching, setSearching] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [userCount, setUserCount] = useState(0);
+  const [urlKeywordProcessed, setUrlKeywordProcessed] = useState(false);
 
   // Modal states
   const [showAddUser, setShowAddUser] = useState(false);
@@ -45,7 +53,7 @@ export const useUsersData = () => {
 
   // Form initial values
   const formInitValues = {
-    searchKeyword: '',
+    searchKeyword: initialKeyword,
     searchGroup: '',
     sortBy: 'id',
     sortOrder: 'desc',
@@ -336,6 +344,20 @@ export const useUsersData = () => {
       });
     fetchGroups().then();
   }, []);
+
+  // Handle URL keyword parameter
+  useEffect(() => {
+    if (initialKeyword && formApi && !urlKeywordProcessed) {
+      setUrlKeywordProcessed(true);
+      // Set form value
+      formApi.setValue('searchKeyword', initialKeyword);
+      // Trigger search
+      searchUsers(1, pageSize, initialKeyword, '', 'id', 'desc').then(() => {
+        // Clear URL parameter after processing
+        setSearchParams({});
+      });
+    }
+  }, [initialKeyword, formApi, urlKeywordProcessed]);
 
   return {
     // Data state

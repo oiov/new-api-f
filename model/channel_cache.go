@@ -115,20 +115,19 @@ func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel,
 		return nil, nil
 	}
 
-	if len(channels) == 1 {
-		if channel, ok := channelsIDM[channels[0]]; ok {
-			return channel, nil
-		}
-		return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channels[0])
-	}
-
 	uniquePriorities := make(map[int]bool)
 	for _, channelId := range channels {
 		if channel, ok := channelsIDM[channelId]; ok {
+			if channel.ReachedUsageLimit() {
+				continue
+			}
 			uniquePriorities[int(channel.GetPriority())] = true
 		} else {
 			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
 		}
+	}
+	if len(uniquePriorities) == 0 {
+		return nil, nil
 	}
 	var sortedUniquePriorities []int
 	for priority := range uniquePriorities {
@@ -146,6 +145,9 @@ func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel,
 	var targetChannels []*Channel
 	for _, channelId := range channels {
 		if channel, ok := channelsIDM[channelId]; ok {
+			if channel.ReachedUsageLimit() {
+				continue
+			}
 			if channel.GetPriority() == targetPriority {
 				sumWeight += channel.GetWeight()
 				targetChannels = append(targetChannels, channel)
@@ -262,4 +264,19 @@ func CacheUpdateChannel(channel *Channel) {
 	println("before:", channelsIDM[channel.Id].ChannelInfo.MultiKeyPollingIndex)
 	channelsIDM[channel.Id] = channel
 	println("after :", channelsIDM[channel.Id].ChannelInfo.MultiKeyPollingIndex)
+}
+
+func CacheAddChannelUsage(id int, quota int, count int) {
+	if !common.MemoryCacheEnabled {
+		return
+	}
+	channelSyncLock.Lock()
+	defer channelSyncLock.Unlock()
+
+	channel, ok := channelsIDM[id]
+	if !ok || channel == nil {
+		return
+	}
+	channel.UsedQuota += int64(quota)
+	channel.UsedCount += int64(count)
 }

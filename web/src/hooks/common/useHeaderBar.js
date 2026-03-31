@@ -69,6 +69,14 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
           };
         }
 
+        // 处理向后兼容性：如果package是boolean，转换为对象格式
+        if (typeof modules.package === 'boolean') {
+          modules.package = {
+            enabled: modules.package,
+            requireAuth: false, // 默认不需要登录鉴权
+          };
+        }
+
         return modules;
       } catch (error) {
         console.error('解析顶栏模块配置失败:', error);
@@ -83,6 +91,16 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     if (headerNavModules?.pricing) {
       return typeof headerNavModules.pricing === 'object'
         ? headerNavModules.pricing.requireAuth
+        : false; // 默认不需要登录
+    }
+    return false; // 默认不需要登录
+  }, [headerNavModules]);
+
+  // 获取套餐权限配置
+  const packageRequireAuth = useMemo(() => {
+    if (headerNavModules?.package) {
+      return typeof headerNavModules.package === 'object'
+        ? headerNavModules.package.requireAuth
         : false; // 默认不需要登录
     }
     return false; // 默认不需要登录
@@ -246,6 +264,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     drawerOpen,
     headerNavModules,
     pricingRequireAuth,
+    packageRequireAuth,
 
     // Actions
     logout,

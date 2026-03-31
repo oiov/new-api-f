@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Modal,
+  SideSheet,
   Table,
   Badge,
   Typography,
@@ -28,6 +28,9 @@ import {
   Input,
   Tag,
   Tabs,
+  Select,
+  Space,
+  Modal,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
@@ -38,6 +41,7 @@ import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
 import { isAdmin } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
+import { useNavigate } from 'react-router-dom';
 
 const { Text } = Typography;
 const { TabPane } = Tabs;
@@ -67,15 +71,18 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [activeTab, setActiveTab] = useState(HISTORY_TAB_TOPUP);
   const isMobile = useIsMobile();
   const userIsAdmin = useMemo(() => isAdmin(), []);
+  const navigate = useNavigate();
 
   const loadHistory = async (
     currentPage,
     currentPageSize,
     currentTab = activeTab,
     currentKeyword = keyword,
+    currentStatus = statusFilter,
   ) => {
     setLoading(true);
     try {
@@ -87,11 +94,14 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
           : userIsAdmin
             ? '/api/user/redemption/history'
             : '/api/user/redemption/history/self';
-      const qs =
-        `p=${currentPage}&page_size=${currentPageSize}` +
-        (currentKeyword
-          ? `&keyword=${encodeURIComponent(currentKeyword)}`
-          : '');
+      
+      let qs = `p=${currentPage}&page_size=${currentPageSize}`;
+      if (currentKeyword) {
+        qs += `&keyword=${encodeURIComponent(currentKeyword)}`;
+      }
+      if (currentStatus && currentTab === HISTORY_TAB_TOPUP) {
+        qs += `&status=${encodeURIComponent(currentStatus)}`;
+      }
 
       let res;
       try {
@@ -134,8 +144,8 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     if (!visible) {
       return;
     }
-    loadHistory(page, pageSize, activeTab, keyword);
-  }, [visible, page, pageSize, keyword, activeTab]);
+    loadHistory(page, pageSize, activeTab, keyword, statusFilter);
+  }, [visible, page, pageSize, keyword, activeTab, statusFilter]);
 
   const handlePageChange = (currentPage) => {
     setPage(currentPage);
@@ -151,12 +161,24 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     setPage(1);
   };
 
+  const handleStatusFilterChange = (value) => {
+    setStatusFilter(value);
+    setPage(1);
+  };
+
   const handleTabChange = (tabKey) => {
     setActiveTab(tabKey);
     setPage(1);
     setKeyword('');
+    setStatusFilter('');
     setRecords([]);
     setTotal(0);
+  };
+
+  const handleUserClick = (userId) => {
+    if (!userId || !userIsAdmin) return;
+    onCancel();
+    navigate(`/console/user?keyword=${userId}`);
   };
 
   const handleAdminComplete = async (tradeNo) => {
@@ -167,7 +189,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       const { success, message } = res.data;
       if (success) {
         Toast.success({ content: t('补单成功') });
-        await loadHistory(page, pageSize, HISTORY_TAB_TOPUP, keyword);
+        await loadHistory(page, pageSize, HISTORY_TAB_TOPUP, keyword, statusFilter);
       } else {
         Toast.error({ content: message || t('补单失败') });
       }
@@ -207,11 +229,53 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const topupColumns = useMemo(() => {
     const baseColumns = [
       {
+        title: t('ID'),
+        dataIndex: 'id',
+        key: 'id',
+        width: 80,
+        render: (text) => <Text copyable>{text}</Text>,
+      },
+      {
         title: t('订单号'),
         dataIndex: 'trade_no',
         key: 'trade_no',
         render: (text) => <Text copyable>{text}</Text>,
       },
+      {
+        title: t('充值名称'),
+        key: 'name',
+        render: (_, record) => {
+          if (isSubscriptionTopup(record)) {
+            return <Text copyable>{t('订阅套餐充值')}</Text>;
+          }
+          return <Text copyable>{t('充值')} {record.amount} {t('额度')}</Text>;
+        },
+      },
+    ];
+
+    // 管理员可见：用户信息列
+    if (userIsAdmin) {
+      baseColumns.push({
+        title: t('充值用户'),
+        key: 'user_info',
+        render: (_, record) => (
+          <div className='flex flex-col gap-1'>
+            <Text>{record.username || '--'}</Text>
+            <Text 
+              type='tertiary' 
+              size='small'
+              link
+              onClick={() => handleUserClick(record.user_id)}
+              style={{ cursor: 'pointer' }}
+            >
+              UID: {record.user_id || '--'}
+            </Text>
+          </div>
+        ),
+      });
+    }
+
+    baseColumns.push(
       {
         title: t('支付方式'),
         dataIndex: 'payment_method',
@@ -242,7 +306,11 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         title: t('支付金额'),
         dataIndex: 'money',
         key: 'money',
-        render: (money) => <Text type='danger'>¥{money.toFixed(2)}</Text>,
+        render: (money) => (
+          <Text type='danger'>
+            ¥{money != null ? money.toFixed(2) : '0.00'}
+          </Text>
+        ),
       },
       {
         title: t('状态'),
@@ -250,7 +318,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         key: 'status',
         render: renderStatusBadge,
       },
-    ];
+    );
 
     if (userIsAdmin) {
       baseColumns.push({
@@ -301,14 +369,14 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
             return (
               <div className='flex items-center gap-2'>
                 <Package2 size={16} />
-                <Text>{value || record.subscription_plan_title || '--'}</Text>
+                <Text copyable>{value || record.subscription_plan_title || '--'}</Text>
               </div>
             );
           }
           return (
             <div className='flex items-center gap-2'>
               <Gift size={16} />
-              <Text>{value || '--'}</Text>
+              <Text copyable>{value || '--'}</Text>
             </div>
           );
         },
@@ -366,7 +434,13 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         render: (value, record) => (
           <div className='flex flex-col gap-1'>
             <Text>{value || '--'}</Text>
-            <Text type='tertiary' size='small'>
+            <Text 
+              type='tertiary' 
+              size='small'
+              link
+              onClick={() => handleUserClick(record.used_user_id)}
+              style={{ cursor: 'pointer' }}
+            >
               UID: {record.used_user_id || '--'}
             </Text>
           </div>
@@ -388,62 +462,100 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     activeTab === HISTORY_TAB_TOPUP ? t('暂无充值记录') : t('暂无兑换记录');
 
   return (
-    <Modal
+    <SideSheet
       title={t('充值兑换记录')}
       visible={visible}
       onCancel={onCancel}
-      footer={null}
-      size={isMobile ? 'full-width' : 'large'}
+      width={isMobile ? '100vw' : 1000}
+      placement={isMobile ? 'bottom' : 'right'}
+      height={isMobile ? '90vh' : undefined}
+      headerStyle={{
+        borderBottom: '1px solid var(--semi-color-border)',
+        padding: '16px 24px'
+      }}
+      bodyStyle={{
+        padding: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%'
+      }}
     >
-      <Tabs
-        type='line'
-        activeKey={activeTab}
-        onChange={handleTabChange}
-        className='topup-page-tabs'
-      >
-        <TabPane tab={t('充值记录')} itemKey={HISTORY_TAB_TOPUP} />
-        <TabPane tab={t('兑换记录')} itemKey={HISTORY_TAB_REDEMPTION} />
-      </Tabs>
+      <div style={{ 
+        padding: '16px 24px', 
+        borderBottom: '1px solid var(--semi-color-border)',
+        flexShrink: 0
+      }}>
+        <Tabs
+          type='line'
+          activeKey={activeTab}
+          onChange={handleTabChange}
+          className='topup-page-tabs'
+        >
+          <TabPane tab={t('充值记录')} itemKey={HISTORY_TAB_TOPUP} />
+          <TabPane tab={t('兑换记录')} itemKey={HISTORY_TAB_REDEMPTION} />
+        </Tabs>
 
-      <div className='mb-3'>
-        <Input
-          prefix={<IconSearch />}
-          placeholder={searchPlaceholder}
-          value={keyword}
-          onChange={handleKeywordChange}
-          showClear
-        />
+        <Space style={{ width: '100%', marginTop: 16 }} spacing='loose'>
+          <Input
+            prefix={<IconSearch />}
+            placeholder={searchPlaceholder}
+            value={keyword}
+            onChange={handleKeywordChange}
+            showClear
+            style={{ flex: 1 }}
+          />
+          {activeTab === HISTORY_TAB_TOPUP && (
+            <Select
+              placeholder={t('状态筛选')}
+              value={statusFilter}
+              onChange={handleStatusFilterChange}
+              style={{ width: 150 }}
+              showClear
+            >
+              <Select.Option value='success'>{t('成功')}</Select.Option>
+              <Select.Option value='pending'>{t('待支付')}</Select.Option>
+              <Select.Option value='failed'>{t('失败')}</Select.Option>
+              <Select.Option value='expired'>{t('已过期')}</Select.Option>
+            </Select>
+          )}
+        </Space>
       </div>
 
-      <Table
-        columns={
-          activeTab === HISTORY_TAB_TOPUP ? topupColumns : redemptionColumns
-        }
-        dataSource={records}
-        loading={loading}
-        rowKey='id'
-        pagination={{
-          currentPage: page,
-          pageSize: pageSize,
-          total: total,
-          showSizeChanger: true,
-          pageSizeOpts: [10, 20, 50, 100],
-          onPageChange: handlePageChange,
-          onPageSizeChange: handlePageSizeChange,
-        }}
-        size='small'
-        empty={
-          <Empty
-            image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
-            darkModeImage={
-              <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
-            }
-            description={emptyDescription}
-            style={{ padding: 30 }}
-          />
-        }
-      />
-    </Modal>
+      <div style={{ 
+        flex: 1, 
+        overflow: 'auto',
+        padding: '0 24px'
+      }}>
+        <Table
+          columns={
+            activeTab === HISTORY_TAB_TOPUP ? topupColumns : redemptionColumns
+          }
+          dataSource={records}
+          loading={loading}
+          rowKey='id'
+          pagination={{
+            currentPage: page,
+            pageSize: pageSize,
+            total: total,
+            showSizeChanger: true,
+            pageSizeOpts: [10, 20, 50, 100],
+            onPageChange: handlePageChange,
+            onPageSizeChange: handlePageSizeChange,
+          }}
+          size='small'
+          empty={
+            <Empty
+              image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
+              darkModeImage={
+                <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
+              }
+              description={emptyDescription}
+              style={{ padding: 30 }}
+            />
+          }
+        />
+      </div>
+    </SideSheet>
   );
 };
 

@@ -97,6 +97,26 @@ function App() {
     return false; // 默认不需要登录
   }, [statusState?.status?.HeaderNavModules]);
 
+  // 获取套餐页权限配置
+  const packageRequireAuth = useMemo(() => {
+    const headerNavModulesConfig = statusState?.status?.HeaderNavModules;
+    if (headerNavModulesConfig) {
+      try {
+        const modules = JSON.parse(headerNavModulesConfig);
+
+        if (typeof modules.package === 'boolean') {
+          return false; // 默认不需要登录鉴权
+        }
+
+        return modules.package?.requireAuth === true;
+      } catch (error) {
+        console.error('解析顶栏模块配置失败:', error);
+        return false; // 默认不需要登录
+      }
+    }
+    return false; // 默认不需要登录
+  }, [statusState?.status?.HeaderNavModules]);
+
   return (
     <Suspense fallback={<Loading></Loading>}>
       <SetupCheck>
@@ -281,11 +301,17 @@ function App() {
           <Route
             path='/console/package'
             element={
-              <PrivateRoute>
+              packageRequireAuth ? (
+                <PrivateRoute>
+                  <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                    <PackagePage />
+                  </Suspense>
+                </PrivateRoute>
+              ) : (
                 <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                   <PackagePage />
                 </Suspense>
-              </PrivateRoute>
+              )
             }
           />
           <Route

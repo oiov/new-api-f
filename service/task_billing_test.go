@@ -231,6 +231,13 @@ func getSubscriptionRequestCountUsed(t *testing.T, id int) int64 {
 	return sub.RequestCountUsed
 }
 
+func getChannelUsage(t *testing.T, id int) (int64, int64) {
+	t.Helper()
+	var ch model.Channel
+	require.NoError(t, model.DB.Select("used_quota", "used_count").Where("id = ?", id).First(&ch).Error)
+	return ch.UsedQuota, ch.UsedCount
+}
+
 func getLastLog(t *testing.T) *model.Log {
 	t.Helper()
 	var log model.Log
@@ -523,6 +530,10 @@ func TestRecalculate_PositiveDelta(t *testing.T) {
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeConsume, log.Type)
 	assert.Equal(t, actualQuota-preConsumed, log.Quota)
+
+	usedQuota, usedCount := getChannelUsage(t, channelID)
+	assert.Equal(t, int64(actualQuota-preConsumed), usedQuota)
+	assert.Equal(t, int64(0), usedCount)
 }
 
 func TestRecalculate_NegativeDelta(t *testing.T) {

@@ -185,6 +185,8 @@ const EditChannelModal = (props) => {
     groups: ['default'],
     priority: 0,
     weight: 0,
+    max_request_count: 0,
+    max_request_quota: 0,
     tag: '',
     multi_key_mode: 'random',
     // 渠道额外设置的默认值
@@ -3462,6 +3464,39 @@ const EditChannelModal = (props) => {
                           onNumberChange={(value) =>
                             handleInputChange('weight', value)
                           }
+                          style={{ width: '100%' }}
+                        />
+                      </Col>
+                    </Row>
+
+                    <Row gutter={12}>
+                      <Col span={12}>
+                        <Form.InputNumber
+                          field='max_request_count'
+                          label={t('最大请求次数')}
+                          placeholder={t('0 表示不限')}
+                          min={0}
+                          onNumberChange={(value) =>
+                            handleInputChange('max_request_count', value ?? 0)
+                          }
+                          extraText={t(
+                            '达到后将自动跳过当前渠道，切换到同模型下一个可用渠道',
+                          )}
+                          style={{ width: '100%' }}
+                        />
+                      </Col>
+                      <Col span={12}>
+                        <Form.InputNumber
+                          field='max_request_quota'
+                          label={t('最大请求额度')}
+                          placeholder={t('0 表示不限')}
+                          min={0}
+                          onNumberChange={(value) =>
+                            handleInputChange('max_request_quota', value ?? 0)
+                          }
+                          extraText={t(
+                            '基于渠道累计已用额度 used_quota 判断，达到后自动切换',
+                          )}
                           style={{ width: '100%' }}
                         />
                       </Col>
