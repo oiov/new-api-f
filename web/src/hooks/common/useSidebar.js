@@ -34,6 +34,7 @@ export const DEFAULT_ADMIN_CONFIG = {
   console: {
     enabled: true,
     detail: true,
+    package: true,
     token: true,
     log: true,
     midjourney: true,
@@ -42,6 +43,7 @@ export const DEFAULT_ADMIN_CONFIG = {
   personal: {
     enabled: true,
     topup: true,
+    invite: true,
     personal: true,
   },
   public: {
@@ -58,6 +60,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     user: true,
     subscription: true,
     setting: true,
+    riskControl: true,
   },
 };
 

@@ -420,17 +420,18 @@ func GetUserTopUps(c *gin.Context) {
 func GetAllTopUps(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
+	userId, _ := strconv.Atoi(c.Query("user_id"))
+	status := c.Query("status")
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 
-	var (
-		topups []*model.TopUp
-		total  int64
-		err    error
-	)
-	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
-	} else {
-		topups, total, err = model.GetAllTopUps(pageInfo)
-	}
+	topups, total, err := model.GetAllTopUpsWithFilters(pageInfo, model.TopUpAdminFilters{
+		UserID:         userId,
+		Keyword:        keyword,
+		Status:         status,
+		StartTimestamp: startTimestamp,
+		EndTimestamp:   endTimestamp,
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return

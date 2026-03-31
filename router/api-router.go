@@ -31,6 +31,7 @@ func SetApiRouter(router *gin.Engine) {
 		//apiRouter.GET("/midjourney", controller.GetMidjourney)
 		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
 		apiRouter.GET("/pricing", middleware.TryUserAuth(), controller.GetPricing)
+		apiRouter.GET("/anti_distribution/public", controller.GetAntiDistributionPublicConfig)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), controller.ResetPassword)
@@ -82,8 +83,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/passkey/verify/finish", controller.PasskeyVerifyFinish)
 				selfRoute.DELETE("/passkey", controller.PasskeyDelete)
 				selfRoute.GET("/aff", controller.GetAffCode)
+				selfRoute.GET("/aff/details", controller.GetAffDetails)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
+				selfRoute.GET("/redemption/history/self", controller.GetUserRedemptionHistory)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
 				selfRoute.POST("/amount", controller.RequestAmount)
@@ -115,6 +118,7 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
+				adminRoute.GET("/redemption/history", controller.GetAllRedemptionHistory)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
@@ -139,6 +143,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			subscriptionRoute.GET("/plans", controller.GetSubscriptionPlans)
 			subscriptionRoute.GET("/self", controller.GetSubscriptionSelf)
+			subscriptionRoute.GET("/self/consume_logs", controller.GetSubscriptionSelfConsumeLogs)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
@@ -154,8 +159,13 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
 
 			// User subscription management (admin)
+			subscriptionAdminRoute.GET("/user_subscriptions", controller.AdminListAllUserSubscriptions)
+			subscriptionAdminRoute.GET("/consume_logs", controller.AdminListSubscriptionConsumeLogs)
 			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)
 			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
+			subscriptionAdminRoute.POST("/migrations/preview", controller.AdminPreviewSubscriptionMigration)
+			subscriptionAdminRoute.POST("/migrations/execute", controller.AdminExecuteSubscriptionMigration)
+			subscriptionAdminRoute.POST("/user_subscriptions/:id/action", controller.AdminOperateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
 		}
@@ -174,6 +184,14 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
 			optionRoute.POST("/rest_model_ratio", controller.ResetModelRatio)
 			optionRoute.POST("/migrate_console_setting", controller.MigrateConsoleSetting) // 用于迁移检测的旧键，下个版本会删除
+		}
+		antiDistributionRoute := apiRouter.Group("/anti_distribution")
+		antiDistributionRoute.Use(middleware.AdminAuth())
+		{
+			antiDistributionRoute.GET("/options", controller.GetAntiDistributionOptions)
+			antiDistributionRoute.PUT("/options", controller.UpdateAntiDistributionOptions)
+			antiDistributionRoute.GET("/logs", controller.GetAntiDistributionLogs)
+			antiDistributionRoute.POST("/reset_defaults", controller.ResetAntiDistributionDefaults)
 		}
 
 		// Custom OAuth provider management (root only)
@@ -253,6 +271,7 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
+			tokenRoute.POST("/batch/invalid", controller.DeleteInvalidTokenBatch)
 			tokenRoute.POST("/", controller.AddToken)
 			tokenRoute.PUT("/", controller.UpdateToken)
 			tokenRoute.DELETE("/:id", controller.DeleteToken)

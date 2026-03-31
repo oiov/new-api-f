@@ -50,13 +50,20 @@ const SystemSetting = () => {
     PasswordLoginEnabled: '',
     PasswordRegisterEnabled: '',
     EmailVerificationEnabled: '',
+    GoogleOAuthEnabled: '',
+    GoogleOAuthRegisterEnabled: '',
+    GoogleClientId: '',
+    GoogleClientSecret: '',
     GitHubOAuthEnabled: '',
+    GitHubOAuthRegisterEnabled: '',
     GitHubClientId: '',
     GitHubClientSecret: '',
     'discord.enabled': '',
+    'discord.register_enabled': '',
     'discord.client_id': '',
     'discord.client_secret': '',
     'oidc.enabled': '',
+    'oidc.register_enabled': '',
     'oidc.client_id': '',
     'oidc.client_secret': '',
     'oidc.well_known': '',
@@ -74,6 +81,7 @@ const SystemSetting = () => {
     WorkerAllowHttpImageRequestEnabled: '',
     Footer: '',
     WeChatAuthEnabled: '',
+    WeChatRegisterEnabled: '',
     WeChatServerAddress: '',
     WeChatServerToken: '',
     WeChatAccountQRCodeImageURL: '',
@@ -81,6 +89,7 @@ const SystemSetting = () => {
     TurnstileSiteKey: '',
     TurnstileSecretKey: '',
     RegisterEnabled: '',
+    InviteRegisterEnabled: '',
     'passkey.enabled': '',
     'passkey.rp_display_name': '',
     'passkey.rp_id': '',
@@ -93,9 +102,11 @@ const SystemSetting = () => {
     SMTPSSLEnabled: '',
     EmailDomainWhitelist: [],
     TelegramOAuthEnabled: '',
+    TelegramOAuthRegisterEnabled: '',
     TelegramBotToken: '',
     TelegramBotName: '',
     LinuxDOOAuthEnabled: '',
+    LinuxDOOAuthRegisterEnabled: '',
     LinuxDOClientId: '',
     LinuxDOClientSecret: '',
     LinuxDOMinimumTrustLevel: '',
@@ -174,17 +185,26 @@ const SystemSetting = () => {
           case 'PasswordLoginEnabled':
           case 'PasswordRegisterEnabled':
           case 'EmailVerificationEnabled':
+          case 'GoogleOAuthEnabled':
+          case 'GoogleOAuthRegisterEnabled':
           case 'GitHubOAuthEnabled':
+          case 'GitHubOAuthRegisterEnabled':
           case 'WeChatAuthEnabled':
+          case 'WeChatRegisterEnabled':
           case 'TelegramOAuthEnabled':
+          case 'TelegramOAuthRegisterEnabled':
           case 'RegisterEnabled':
+          case 'InviteRegisterEnabled':
           case 'TurnstileCheckEnabled':
           case 'EmailDomainRestrictionEnabled':
           case 'EmailAliasRestrictionEnabled':
           case 'SMTPSSLEnabled':
           case 'LinuxDOOAuthEnabled':
+          case 'LinuxDOOAuthRegisterEnabled':
           case 'discord.enabled':
+          case 'discord.register_enabled':
           case 'oidc.enabled':
+          case 'oidc.register_enabled':
           case 'passkey.enabled':
           case 'passkey.allow_insecure_origin':
           case 'WorkerAllowHttpImageRequestEnabled':
@@ -213,6 +233,28 @@ const SystemSetting = () => {
         }
         newInputs[item.key] = item.value;
       });
+      if (typeof newInputs.GitHubOAuthRegisterEnabled === 'undefined') {
+        newInputs.GitHubOAuthRegisterEnabled = !!newInputs.GitHubOAuthEnabled;
+      }
+      if (typeof newInputs.GoogleOAuthRegisterEnabled === 'undefined') {
+        newInputs.GoogleOAuthRegisterEnabled = !!newInputs.GoogleOAuthEnabled;
+      }
+      if (typeof newInputs['discord.register_enabled'] === 'undefined') {
+        newInputs['discord.register_enabled'] = !!newInputs['discord.enabled'];
+      }
+      if (typeof newInputs['oidc.register_enabled'] === 'undefined') {
+        newInputs['oidc.register_enabled'] = !!newInputs['oidc.enabled'];
+      }
+      if (typeof newInputs.LinuxDOOAuthRegisterEnabled === 'undefined') {
+        newInputs.LinuxDOOAuthRegisterEnabled = !!newInputs.LinuxDOOAuthEnabled;
+      }
+      if (typeof newInputs.WeChatRegisterEnabled === 'undefined') {
+        newInputs.WeChatRegisterEnabled = !!newInputs.WeChatAuthEnabled;
+      }
+      if (typeof newInputs.TelegramOAuthRegisterEnabled === 'undefined') {
+        newInputs.TelegramOAuthRegisterEnabled =
+          !!newInputs.TelegramOAuthEnabled;
+      }
       setInputs(newInputs);
       setOriginInputs(newInputs);
       // 同步模式布尔到本地状态
@@ -478,6 +520,27 @@ const SystemSetting = () => {
     }
   };
 
+  const submitGoogleOAuth = async () => {
+    const options = [];
+
+    if (originInputs['GoogleClientId'] !== inputs.GoogleClientId) {
+      options.push({ key: 'GoogleClientId', value: inputs.GoogleClientId });
+    }
+    if (
+      originInputs['GoogleClientSecret'] !== inputs.GoogleClientSecret &&
+      inputs.GoogleClientSecret !== ''
+    ) {
+      options.push({
+        key: 'GoogleClientSecret',
+        value: inputs.GoogleClientSecret,
+      });
+    }
+
+    if (options.length > 0) {
+      await updateOptions(options);
+    }
+  };
+
   const submitDiscordOAuth = async () => {
     const options = [];
 
@@ -727,9 +790,17 @@ const SystemSetting = () => {
                       />
                     </Col>
                   </Row>
-                  <Button onClick={submitServerAddress}>
-                    {t('更新服务器地址')}
-                  </Button>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 12,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <Button onClick={submitServerAddress}>
+                      {t('更新服务器地址')}
+                    </Button>
+                  </div>
                 </Form.Section>
               </Card>
 
@@ -1025,6 +1096,15 @@ const SystemSetting = () => {
                         {t('允许新用户注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
+                        field='InviteRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('InviteRegisterEnabled', e)
+                        }
+                      >
+                        {t('启用邀请制注册（需邀请码或邀请链接）')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
                         field='TurnstileCheckEnabled'
                         noLabel
                         onChange={(e) =>
@@ -1036,13 +1116,40 @@ const SystemSetting = () => {
                     </Col>
                     <Col xs={24} sm={24} md={12} lg={12} xl={12}>
                       <Form.Checkbox
+                        field='GoogleOAuthEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('GoogleOAuthEnabled', e)
+                        }
+                      >
+                        {t('允许通过 Google 账户登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='GoogleOAuthRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('GoogleOAuthRegisterEnabled', e)
+                        }
+                      >
+                        {t('允许通过 Google 账户注册')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
                         field='GitHubOAuthEnabled'
                         noLabel
                         onChange={(e) =>
                           handleCheckboxChange('GitHubOAuthEnabled', e)
                         }
                       >
-                        {t('允许通过 GitHub 账户登录 & 注册')}
+                        {t('允许通过 GitHub 账户登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='GitHubOAuthRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('GitHubOAuthRegisterEnabled', e)
+                        }
+                      >
+                        {t('允许通过 GitHub 账户注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
                         field='discord.enabled'
@@ -1051,7 +1158,16 @@ const SystemSetting = () => {
                           handleCheckboxChange('discord.enabled', e)
                         }
                       >
-                        {t('允许通过 Discord 账户登录 & 注册')}
+                        {t('允许通过 Discord 账户登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='discord.register_enabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('discord.register_enabled', e)
+                        }
+                      >
+                        {t('允许通过 Discord 账户注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
                         field='LinuxDOOAuthEnabled'
@@ -1060,7 +1176,19 @@ const SystemSetting = () => {
                           handleCheckboxChange('LinuxDOOAuthEnabled', e)
                         }
                       >
-                        {t('允许通过 Linux DO 账户登录 & 注册')}
+                        {t('允许通过 Linux DO 账户登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='LinuxDOOAuthRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'LinuxDOOAuthRegisterEnabled',
+                            e,
+                          )
+                        }
+                      >
+                        {t('允许通过 Linux DO 账户注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
                         field='WeChatAuthEnabled'
@@ -1069,7 +1197,16 @@ const SystemSetting = () => {
                           handleCheckboxChange('WeChatAuthEnabled', e)
                         }
                       >
-                        {t('允许通过微信登录 & 注册')}
+                        {t('允许通过微信登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='WeChatRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('WeChatRegisterEnabled', e)
+                        }
+                      >
+                        {t('允许通过微信注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
                         field='TelegramOAuthEnabled'
@@ -1081,6 +1218,18 @@ const SystemSetting = () => {
                         {t('允许通过 Telegram 进行登录')}
                       </Form.Checkbox>
                       <Form.Checkbox
+                        field='TelegramOAuthRegisterEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'TelegramOAuthRegisterEnabled',
+                            e,
+                          )
+                        }
+                      >
+                        {t('允许通过 Telegram 进行注册')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
                         field="['oidc.enabled']"
                         noLabel
                         onChange={(e) =>
@@ -1088,6 +1237,15 @@ const SystemSetting = () => {
                         }
                       >
                         {t('允许通过 OIDC 进行登录')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field="['oidc.register_enabled']"
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('oidc.register_enabled', e)
+                        }
+                      >
+                        {t('允许通过 OIDC 进行注册')}
                       </Form.Checkbox>
                     </Col>
                   </Row>
@@ -1418,6 +1576,37 @@ const SystemSetting = () => {
                 </Form.Section>
               </Card>
 
+              <Card>
+                <Form.Section text={t('配置 Google OAuth')}>
+                  <Text>{t('用以支持通过 Google 进行登录注册')}</Text>
+                  <Banner
+                    type='info'
+                    description={`${t('Authorized redirect URI 填')} ${inputs.ServerAddress ? inputs.ServerAddress : t('网站地址')}/oauth/google`}
+                    style={{ marginBottom: 20, marginTop: 16 }}
+                  />
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='GoogleClientId'
+                        label={t('Google Client ID')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='GoogleClientSecret'
+                        label={t('Google Client Secret')}
+                        type='password'
+                        placeholder={t('敏感信息不会发送到前端显示')}
+                      />
+                    </Col>
+                  </Row>
+                  <Button onClick={submitGoogleOAuth}>
+                    {t('保存 Google OAuth 设置')}
+                  </Button>
+                </Form.Section>
+              </Card>
               <Card>
                 <Form.Section text={t('配置 GitHub OAuth App')}>
                   <Text>{t('用以支持通过 GitHub 进行登录注册')}</Text>

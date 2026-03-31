@@ -83,6 +83,14 @@ func (p *GenericOAuthProvider) IsEnabled() bool {
 	return p.config.Enabled
 }
 
+func (p *GenericOAuthProvider) IsLoginEnabled() bool {
+	return p.config.Enabled
+}
+
+func (p *GenericOAuthProvider) IsRegistrationEnabled() bool {
+	return p.config.Enabled
+}
+
 func (p *GenericOAuthProvider) GetConfig() *model.CustomOAuthProvider {
 	return p.config
 }

@@ -35,6 +35,9 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 	if relayInfo.Billing != nil {
 		preConsumed := relayInfo.Billing.GetPreConsumedQuota()
 		delta := actualQuota - preConsumed
+		if session, ok := relayInfo.Billing.(*BillingSession); ok {
+			delta = session.funding.SettleDelta(actualQuota, preConsumed)
+		}
 
 		if delta > 0 {
 			logger.LogInfo(ctx, fmt.Sprintf("预扣费后补扣费：%s（实际消耗：%s，预扣费：%s）",
@@ -49,9 +52,13 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 				logger.FormatQuota(preConsumed),
 			))
 		} else {
-			logger.LogInfo(ctx, fmt.Sprintf("预扣费与实际消耗一致，无需调整：%s（按次计费）",
-				logger.FormatQuota(actualQuota),
-			))
+			if session, ok := relayInfo.Billing.(*BillingSession); ok && !session.funding.UseTokenQuota() {
+				logger.LogInfo(ctx, fmt.Sprintf("按成功次数订阅计费，本次保留预占次数：%s", logger.FormatQuota(preConsumed)))
+			} else {
+				logger.LogInfo(ctx, fmt.Sprintf("预扣费与实际消耗一致，无需调整：%s（按次计费）",
+					logger.FormatQuota(actualQuota),
+				))
+			}
 		}
 
 		if err := relayInfo.Billing.Settle(actualQuota); err != nil {

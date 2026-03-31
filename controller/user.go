@@ -168,7 +168,11 @@ func Register(c *gin.Context) {
 		return
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	inviterId, inviteErrorKey := resolveInviteRegistration(c, affCode)
+	if inviteErrorKey != "" {
+		common.ApiErrorI18n(c, inviteErrorKey)
+		return
+	}
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
@@ -179,7 +183,7 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := cleanUser.Insert(inviterId, c.ClientIP()); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -228,7 +232,9 @@ func Register(c *gin.Context) {
 
 func GetAllUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.GetAllUsers(pageInfo)
+	sortBy := c.Query("sort_by")
+	sortOrder := c.Query("sort_order")
+	users, total, err := model.GetAllUsers(pageInfo, sortBy, sortOrder)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -244,8 +250,10 @@ func GetAllUsers(c *gin.Context) {
 func SearchUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
 	group := c.Query("group")
+	sortBy := c.Query("sort_by")
+	sortOrder := c.Query("sort_order")
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	users, total, err := model.SearchUsers(keyword, group, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortBy, sortOrder)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -365,6 +373,31 @@ func GetAffCode(c *gin.Context) {
 	return
 }
 
+func GetAffDetails(c *gin.Context) {
+	id := c.GetInt("id")
+	invitedPageInfo := common.GetPageQuery(c)
+	rewardPage := 1
+	rewardPageSize := common.ItemsPerPage
+	if value, err := strconv.Atoi(c.Query("reward_p")); err == nil && value > 0 {
+		rewardPage = value
+	}
+	if value, err := strconv.Atoi(c.Query("reward_page_size")); err == nil && value > 0 {
+		rewardPageSize = value
+	}
+	data, err := model.GetInviteRewardDetails(
+		id,
+		invitedPageInfo.GetPage(),
+		invitedPageInfo.GetPageSize(),
+		rewardPage,
+		rewardPageSize,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, data)
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
@@ -390,6 +423,7 @@ func GetSelf(c *gin.Context) {
 		"role":              user.Role,
 		"status":            user.Status,
 		"email":             user.Email,
+		"google_id":         user.GoogleId,
 		"github_id":         user.GitHubId,
 		"discord_id":        user.DiscordId,
 		"oidc_id":           user.OidcId,
@@ -479,22 +513,28 @@ func generateDefaultSidebarConfig(userRole int) string {
 	if userRole == common.RoleAdminUser {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    false, // 管理员不能访问系统设置
+			"enabled":      true,
+			"channel":      true,
+			"models":       true,
+			"deployment":   true,
+			"subscription": true,
+			"redemption":   true,
+			"user":         true,
+			"setting":      false, // 管理员不能访问系统设置
+			"riskControl":  true,
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    true,
+			"enabled":      true,
+			"channel":      true,
+			"models":       true,
+			"deployment":   true,
+			"subscription": true,
+			"redemption":   true,
+			"user":         true,
+			"setting":      true,
+			"riskControl":  true,
 		}
 	}
 	// 普通用户不包含admin区域
@@ -826,7 +866,7 @@ func CreateUser(c *gin.Context) {
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
 	}
-	if err := cleanUser.Insert(0); err != nil {
+	if err := cleanUser.Insert(0, ""); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -841,6 +881,7 @@ func CreateUser(c *gin.Context) {
 type ManageRequest struct {
 	Id     int    `json:"id"`
 	Action string `json:"action"`
+	Count  int    `json:"count"`
 }
 
 // ManageUser Only admin user can do this
@@ -852,6 +893,31 @@ func ManageUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	myRole := c.GetInt("role")
+	if req.Action == "reset_all_aff_count" {
+		if myRole != common.RoleRootUser {
+			common.ApiError(c, errors.New("仅超级管理员可执行该操作"))
+			return
+		}
+		if err := model.ResetAllInviteRewardGrants(); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		affected, err := model.ResetAllUsersAffCount()
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ResetAllInviteRewardLimiters()
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data": gin.H{
+				"affected": affected,
+			},
+		})
+		return
+	}
 	user := model.User{
 		Id: req.Id,
 	}
@@ -861,7 +927,6 @@ func ManageUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
 		return
 	}
-	myRole := c.GetInt("role")
 	if myRole <= user.Role && myRole != common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
@@ -907,6 +972,48 @@ func ManageUser(c *gin.Context) {
 			return
 		}
 		user.Role = common.RoleCommonUser
+	case "reset_aff_count":
+		if err := model.ResetInviteRewardGrantsByInviterId(user.Id); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.ResetUserAffCountById(user.Id); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ResetInviteRewardLimiter(user.Id)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data": gin.H{
+				"aff_count": 0,
+			},
+		})
+		return
+	case "set_aff_count":
+		if req.Count < 0 {
+			common.ApiError(c, errors.New("邀请次数不能小于 0"))
+			return
+		}
+		if req.Count == 0 {
+			if err := model.ResetInviteRewardGrantsByInviterId(user.Id); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			common.ResetInviteRewardLimiter(user.Id)
+		}
+		if err := model.SetUserAffCountById(user.Id, req.Count); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data": gin.H{
+				"aff_count": req.Count,
+			},
+		})
+		return
 	}
 
 	if err := user.Update(false); err != nil {
@@ -1015,7 +1122,7 @@ func TopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	quota, err := model.Redeem(req.Key, id)
+	redeemResult, err := model.Redeem(req.Key, id)
 	if err != nil {
 		if errors.Is(err, model.ErrRedeemFailed) {
 			common.ApiErrorI18n(c, i18n.MsgRedeemFailed)
@@ -1024,16 +1131,22 @@ func TopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	responseData := any(redeemResult)
+	if redeemResult != nil && redeemResult.RedemptionType == model.RedemptionTypeQuota {
+		responseData = redeemResult.Quota
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    quota,
+		"data":    responseData,
 	})
 }
 
 type UpdateUserSettingRequest struct {
 	QuotaWarningType                 string  `json:"notify_type"`
 	QuotaWarningThreshold            float64 `json:"quota_warning_threshold"`
+	SubscriptionQuotaNotifyEnabled   *bool   `json:"subscription_quota_notify_enabled,omitempty"`
+	NotifySubscriptionId             int     `json:"notify_subscription_id,omitempty"`
 	WebhookUrl                       string  `json:"webhook_url,omitempty"`
 	WebhookSecret                    string  `json:"webhook_secret,omitempty"`
 	NotificationEmail                string  `json:"notification_email,omitempty"`
@@ -1133,16 +1246,33 @@ func UpdateUserSetting(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if req.NotifySubscriptionId < 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if req.NotifySubscriptionId > 0 {
+		sub, err := model.GetUserSubscriptionById(req.NotifySubscriptionId)
+		if err != nil || sub == nil || sub.UserId != userId {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	}
 	existingSettings := user.GetSetting()
 	upstreamModelUpdateNotifyEnabled := existingSettings.UpstreamModelUpdateNotifyEnabled
 	if user.Role >= common.RoleAdminUser && req.UpstreamModelUpdateNotifyEnabled != nil {
 		upstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
+	}
+	subscriptionQuotaNotifyEnabled := existingSettings.IsSubscriptionQuotaNotifyEnabled()
+	if req.SubscriptionQuotaNotifyEnabled != nil {
+		subscriptionQuotaNotifyEnabled = *req.SubscriptionQuotaNotifyEnabled
 	}
 
 	// 构建设置
 	settings := dto.UserSetting{
 		NotifyType:                       req.QuotaWarningType,
 		QuotaWarningThreshold:            req.QuotaWarningThreshold,
+		SubscriptionQuotaNotifyEnabled:   &subscriptionQuotaNotifyEnabled,
+		NotifySubscriptionId:             req.NotifySubscriptionId,
 		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
 		RecordIpLog:                      req.RecordIpLog,

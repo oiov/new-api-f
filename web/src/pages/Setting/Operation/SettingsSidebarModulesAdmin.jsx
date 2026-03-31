@@ -66,6 +66,7 @@ const createDefaultSidebarModulesAdmin = () => ({
     user: true,
     subscription: true,
     setting: true,
+    riskControl: true,
   },
 });
 
@@ -214,6 +215,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       description: t('数据管理和日志查看'),
       modules: [
         { key: 'detail', title: t('数据看板'), description: t('系统数据统计') },
+        { key: 'package', title: t('套餐管理'), description: t('订阅套餐查看与购买') },
         { key: 'token', title: t('令牌管理'), description: t('API令牌管理') },
         { key: 'log', title: t('使用日志'), description: t('API使用记录') },
         {
@@ -229,7 +231,8 @@ export default function SettingsSidebarModulesAdmin(props) {
       title: t('个人中心区域'),
       description: t('用户个人功能'),
       modules: [
-        { key: 'topup', title: t('钱包管理'), description: t('余额充值管理') },
+        { key: 'topup', title: t('充值兑换'), description: t('在线充值与兑换码管理') },
+        { key: 'invite', title: t('邀请拉新'), description: t('邀请链接与奖励管理') },
         {
           key: 'personal',
           title: t('个人设置'),
@@ -277,6 +280,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'setting',
           title: t('系统设置'),
           description: t('系统参数配置'),
+        },
+        {
+          key: 'riskControl',
+          title: t('风险封控'),
+          description: t('防分发策略与命中记录'),
         },
       ],
     },

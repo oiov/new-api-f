@@ -29,11 +29,13 @@ const TokensActions = ({
   setShowEdit,
   batchCopyTokens,
   batchDeleteTokens,
+  batchDeleteInvalidTokens,
   t,
 }) => {
   // Modal states
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteMode, setDeleteMode] = useState('selected');
 
   // Handle copy selected tokens with options
   const handleCopySelectedTokens = () => {
@@ -50,12 +52,22 @@ const TokensActions = ({
       showError(t('请至少选择一个令牌！'));
       return;
     }
+    setDeleteMode('selected');
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteInvalidTokens = () => {
+    setDeleteMode('invalid');
     setShowDeleteModal(true);
   };
 
   // Handle delete confirmation
   const handleConfirmDelete = () => {
-    batchDeleteTokens();
+    if (deleteMode === 'invalid') {
+      batchDeleteInvalidTokens();
+    } else {
+      batchDeleteTokens();
+    }
     setShowDeleteModal(false);
   };
 
@@ -93,6 +105,16 @@ const TokensActions = ({
         >
           {t('删除所选令牌')}
         </Button>
+
+        <Button
+          type='danger'
+          theme='borderless'
+          className='w-full md:w-auto'
+          onClick={handleDeleteInvalidTokens}
+          size='small'
+        >
+          {t('删除无效令牌')}
+        </Button>
       </div>
 
       <CopyTokensModal
@@ -106,7 +128,8 @@ const TokensActions = ({
         visible={showDeleteModal}
         onCancel={() => setShowDeleteModal(false)}
         onConfirm={handleConfirmDelete}
-        selectedKeys={selectedKeys}
+        count={selectedKeys.length}
+        mode={deleteMode}
         t={t}
       />
     </>

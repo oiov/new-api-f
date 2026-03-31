@@ -39,7 +39,15 @@ func (p *LinuxDOProvider) GetName() string {
 }
 
 func (p *LinuxDOProvider) IsEnabled() bool {
+	return common.IsLinuxDOOAuthFlowEnabled()
+}
+
+func (p *LinuxDOProvider) IsLoginEnabled() bool {
 	return common.LinuxDOOAuthEnabled
+}
+
+func (p *LinuxDOProvider) IsRegistrationEnabled() bool {
+	return common.IsLinuxDOOAuthRegisterEnabled()
 }
 
 func (p *LinuxDOProvider) ExchangeToken(ctx context.Context, code string, c *gin.Context) (*OAuthToken, error) {

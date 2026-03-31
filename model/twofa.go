@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var ErrTwoFANotEnabled = errors.New("用户未启用2FA")
@@ -44,7 +45,9 @@ func GetTwoFAByUserId(userId int) (*TwoFA, error) {
 	}
 
 	var twoFA TwoFA
-	err := DB.Where("user_id = ?", userId).First(&twoFA).Error
+	err := DB.Session(&gorm.Session{
+		Logger: logger.Default.LogMode(logger.Silent),
+	}).Where("user_id = ?", userId).First(&twoFA).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil // 返回nil表示未设置2FA

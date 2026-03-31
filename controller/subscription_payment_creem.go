@@ -44,6 +44,10 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
+	if plan.HasActiveDiscount(common.GetTimestamp()) {
+		common.ApiErrorMsg(c, "限时优惠套餐当前仅支持易支付购买")
+		return
+	}
 	if plan.CreemProductId == "" {
 		common.ApiErrorMsg(c, "该套餐未配置 CreemProductId")
 		return
@@ -64,16 +68,9 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 
-	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
-		if err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		if count >= int64(plan.MaxPurchasePerUser) {
-			common.ApiErrorMsg(c, "已达到该套餐购买上限")
-			return
-		}
+	if err := validateSubscriptionPlanPurchaseAvailability(userId, plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
 	}
 
 	reference := "sub-creem-ref-" + randstr.String(6)
@@ -83,7 +80,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	order := &model.SubscriptionOrder{
 		UserId:        userId,
 		PlanId:        plan.Id,
-		Money:         plan.PriceAmount,
+		Money:         plan.GetEffectivePriceAmount(common.GetTimestamp()),
 		TradeNo:       referenceId,
 		PaymentMethod: PaymentMethodCreem,
 		CreateTime:    time.Now().Unix(),
@@ -107,7 +104,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	product := &CreemProduct{
 		ProductId: plan.CreemProductId,
 		Name:      plan.Title,
-		Price:     plan.PriceAmount,
+		Price:     plan.GetEffectivePriceAmount(common.GetTimestamp()),
 		Currency:  currency,
 		Quota:     0,
 	}

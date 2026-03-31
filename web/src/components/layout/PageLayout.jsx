@@ -66,6 +66,9 @@ const PageLayout = () => {
     location.pathname !== '/console/playground' &&
     location.pathname !== '/console/models';
 
+  const enablePageScrollRoutes = ['/console/topup', '/console/package'];
+  const shouldEnablePageScroll = enablePageScrollRoutes.includes(location.pathname);
+
   const isConsoleRoute = location.pathname.startsWith('/console');
   const showSider = isConsoleRoute && (!isMobile || drawerOpen);
 
@@ -172,7 +175,7 @@ const PageLayout = () => {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        overflow: isMobile ? 'visible' : 'hidden',
+        overflow: isMobile || shouldEnablePageScroll ? 'visible' : 'hidden',
       }}
     >
       <Header
@@ -195,7 +198,7 @@ const PageLayout = () => {
       </Header>
       <Layout
         style={{
-          overflow: isMobile ? 'visible' : 'auto',
+          overflow: isMobile || shouldEnablePageScroll ? 'visible' : 'auto',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -237,7 +240,11 @@ const PageLayout = () => {
           <Content
             style={{
               flex: '1 0 auto',
-              overflowY: isMobile ? 'visible' : 'hidden',
+              overflowY: isMobile
+                ? 'visible'
+                : shouldEnablePageScroll
+                  ? 'auto'
+                  : 'hidden',
               WebkitOverflowScrolling: 'touch',
               padding: shouldInnerPadding ? (isMobile ? '5px' : '24px') : '0',
               position: 'relative',

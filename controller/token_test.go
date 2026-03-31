@@ -69,14 +69,14 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string) *model.Token {
+func seedTokenWithStatus(t *testing.T, db *gorm.DB, userID int, name string, rawKey string, status int) *model.Token {
 	t.Helper()
 
 	token := &model.Token{
 		UserId:         userID,
 		Name:           name,
 		Key:            rawKey,
-		Status:         common.TokenStatusEnabled,
+		Status:         status,
 		CreatedTime:    1,
 		AccessedTime:   1,
 		ExpiredTime:    -1,
@@ -88,6 +88,11 @@ func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string
 		t.Fatalf("failed to create token: %v", err)
 	}
 	return token
+}
+
+func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string) *model.Token {
+	t.Helper()
+	return seedTokenWithStatus(t, db, userID, name, rawKey, common.TokenStatusEnabled)
 }
 
 func newAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (*gin.Context, *httptest.ResponseRecorder) {
@@ -271,5 +276,58 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	}
 	if strings.Contains(unauthorizedRecorder.Body.String(), token.Key) {
 		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
+	}
+}
+
+func TestDeleteInvalidTokenBatchDeletesAllFilteredInvalidTokens(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedTokenWithStatus(t, db, 1, "expired-a", "expired-a-key", common.TokenStatusExpired)
+	seedTokenWithStatus(t, db, 1, "expired-b", "expired-b-key", common.TokenStatusExhausted)
+	lazyExpired := seedToken(t, db, 1, "expired-c", "expired-c-key")
+	lazyExpired.ExpiredTime = common.GetTimestamp() - 60
+	if err := db.Save(lazyExpired).Error; err != nil {
+		t.Fatalf("failed to update lazy expired token: %v", err)
+	}
+	lazyExhausted := seedToken(t, db, 1, "expired-d", "expired-d-key")
+	lazyExhausted.UnlimitedQuota = false
+	lazyExhausted.RemainQuota = 0
+	if err := db.Save(lazyExhausted).Error; err != nil {
+		t.Fatalf("failed to update lazy exhausted token: %v", err)
+	}
+	seedToken(t, db, 1, "enabled-a", "enabled-a-key")
+	seedTokenWithStatus(t, db, 1, "other-name", "other-name-key", common.TokenStatusDisabled)
+	seedTokenWithStatus(t, db, 2, "expired-a", "other-user-expired-key", common.TokenStatusExpired)
+
+	body := map[string]any{
+		"keyword": "expired%",
+		"token":   "",
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/batch/invalid", body, 1)
+	DeleteInvalidTokenBatch(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var deletedCount int
+	if err := common.Unmarshal(response.Data, &deletedCount); err != nil {
+		t.Fatalf("failed to decode delete count: %v", err)
+	}
+	if deletedCount != 4 {
+		t.Fatalf("expected 4 deleted tokens, got %d", deletedCount)
+	}
+
+	var remaining []model.Token
+	if err := db.Order("id asc").Find(&remaining).Error; err != nil {
+		t.Fatalf("failed to query remaining tokens: %v", err)
+	}
+	if len(remaining) != 3 {
+		t.Fatalf("expected 3 remaining tokens, got %d", len(remaining))
+	}
+	for _, token := range remaining {
+		if token.UserId == 1 && strings.HasPrefix(token.Name, "expired") {
+			t.Fatalf("filtered invalid token should have been deleted: %+v", token)
+		}
 	}
 }

@@ -213,10 +213,26 @@ function renderFirstUseTime(type, t) {
 function renderBillingTag(record, t) {
   const other = getLogOther(record.other);
   if (other?.billing_source === 'subscription') {
+    const planTitle = String(other?.subscription_plan_title || '').trim();
+    const planId = Number(other?.subscription_plan_id || 0);
+    const subscriptionId = Number(other?.subscription_id || 0);
+    const planText = planTitle || (planId > 0 ? `#${planId}` : '');
     return (
-      <Tag color='green' shape='circle'>
-        {t('订阅抵扣')}
-      </Tag>
+      <Space spacing={4} wrap>
+        <Tag color='green' shape='circle'>
+          {t('订阅抵扣')}
+        </Tag>
+        {planText ? (
+          <Tag color='blue' shape='circle'>
+            {t('套餐')}：{planText}
+          </Tag>
+        ) : null}
+        {subscriptionId > 0 ? (
+          <Tag color='cyan' shape='circle'>
+            {t('订阅实例')}：#{subscriptionId}
+          </Tag>
+        ) : null}
+      </Space>
     );
   }
   return null;

@@ -79,6 +79,8 @@ const PersonalSetting = () => {
   const [notificationSettings, setNotificationSettings] = useState({
     warningType: 'email',
     warningThreshold: 100000,
+    subscriptionQuotaNotifyEnabled: true,
+    notifySubscriptionId: '',
     webhookUrl: '',
     webhookSecret: '',
     notificationEmail: '',
@@ -151,6 +153,11 @@ const PersonalSetting = () => {
       setNotificationSettings({
         warningType: settings.notify_type || 'email',
         warningThreshold: settings.quota_warning_threshold || 500000,
+        subscriptionQuotaNotifyEnabled:
+          settings.subscription_quota_notify_enabled !== false,
+        notifySubscriptionId: settings.notify_subscription_id
+          ? String(settings.notify_subscription_id)
+          : '',
         webhookUrl: settings.webhook_url || '',
         webhookSecret: settings.webhook_secret || '',
         notificationEmail: settings.notification_email || '',
@@ -419,6 +426,12 @@ const PersonalSetting = () => {
         quota_warning_threshold: parseFloat(
           notificationSettings.warningThreshold,
         ),
+        subscription_quota_notify_enabled:
+          notificationSettings.subscriptionQuotaNotifyEnabled === true,
+        notify_subscription_id: (() => {
+          const parsed = parseInt(notificationSettings.notifySubscriptionId, 10);
+          return Number.isNaN(parsed) ? 0 : parsed;
+        })(),
         webhook_url: notificationSettings.webhookUrl,
         webhook_secret: notificationSettings.webhookSecret,
         notification_email: notificationSettings.notificationEmail,

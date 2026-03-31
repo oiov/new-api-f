@@ -68,9 +68,44 @@ func clearChannelInfo(channel *model.Channel) {
 	}
 }
 
+func eastEightRequestCountResetStart(now time.Time) int64 {
+	loc := time.FixedZone("UTC+8", 8*3600)
+	localNow := now.In(loc)
+	resetAt := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 8, 0, 0, 0, loc)
+	if localNow.Before(resetAt) {
+		resetAt = resetAt.AddDate(0, 0, -1)
+	}
+	return resetAt.Unix()
+}
+
+func fillChannelRequestCountToday(channels []*model.Channel, since int64) {
+	if len(channels) == 0 {
+		return
+	}
+	channelIds := make([]int, 0, len(channels))
+	for _, channel := range channels {
+		if channel == nil || channel.Id <= 0 {
+			continue
+		}
+		channelIds = append(channelIds, channel.Id)
+	}
+	countMap, err := model.GetChannelSuccessRequestCountMapSince(channelIds, since)
+	if err != nil {
+		common.SysError("failed to get channel request counts: " + err.Error())
+		return
+	}
+	for _, channel := range channels {
+		if channel == nil {
+			continue
+		}
+		channel.RequestCountToday = countMap[channel.Id]
+	}
+}
+
 func GetAllChannels(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	channelData := make([]*model.Channel, 0)
+	requestCountSince := eastEightRequestCountResetStart(time.Now())
 	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
 	enableTagMode, _ := strconv.ParseBool(c.Query("tag_mode"))
 	statusParam := c.Query("status")
@@ -143,6 +178,8 @@ func GetAllChannels(c *gin.Context) {
 			return
 		}
 	}
+
+	fillChannelRequestCountToday(channelData, requestCountSince)
 
 	for _, datum := range channelData {
 		clearChannelInfo(datum)
@@ -254,6 +291,7 @@ func SearchChannels(c *gin.Context) {
 	idSort, _ := strconv.ParseBool(c.Query("id_sort"))
 	enableTagMode, _ := strconv.ParseBool(c.Query("tag_mode"))
 	channelData := make([]*model.Channel, 0)
+	requestCountSince := eastEightRequestCountResetStart(time.Now())
 	if enableTagMode {
 		tags, err := model.SearchTags(keyword, group, modelKeyword, idSort)
 		if err != nil {
@@ -282,6 +320,8 @@ func SearchChannels(c *gin.Context) {
 		}
 		channelData = channels
 	}
+
+	fillChannelRequestCountToday(channelData, requestCountSince)
 
 	if statusFilter == common.ChannelStatusEnabled || statusFilter == 0 {
 		filtered := make([]*model.Channel, 0, len(channelData))

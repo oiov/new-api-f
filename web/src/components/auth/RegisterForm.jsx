@@ -28,10 +28,9 @@ import {
   updateAPI,
   getSystemName,
   setUserData,
+  onGoogleOAuthClicked,
   onDiscordOAuthClicked,
-  onCustomOAuthClicked,
 } from '../../helpers';
-import { getOAuthProviderIcon } from '../../helpers/providerIcons';
 import Turnstile from 'react-turnstile';
 import {
   Button,
@@ -39,6 +38,7 @@ import {
   Checkbox,
   Divider,
   Form,
+  Input,
   Icon,
   Modal,
 } from '@douyinfe/semi-ui';
@@ -64,22 +64,23 @@ import TelegramLoginButton from 'react-telegram-login/src';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
-import { SiDiscord } from 'react-icons/si';
+import { SiDiscord, SiGoogle } from 'react-icons/si';
 import { getAuthSeo } from '../../helpers/seo';
 
 const RegisterForm = () => {
   let navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const githubButtonTextKeyByState = {
-    idle: '使用 GitHub 继续',
+    idle: '使用 GitHub 注册',
     redirecting: '正在跳转 GitHub...',
-    timeout: '请求超时，请刷新页面后重新发起 GitHub 登录',
+    timeout: '请求超时，请刷新页面后重新发起 GitHub 注册',
   };
   const [inputs, setInputs] = useState({
     username: '',
     password: '',
     password2: '',
     email: '',
+    aff_code: '',
     verification_code: '',
     wechat_verification_code: '',
   });
@@ -92,6 +93,7 @@ const RegisterForm = () => {
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
   const [showEmailRegister, setShowEmailRegister] = useState(false);
   const [wechatLoading, setWechatLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [discordLoading, setDiscordLoading] = useState(false);
   const [oidcLoading, setOidcLoading] = useState(false);
@@ -102,7 +104,6 @@ const RegisterForm = () => {
   const [otherRegisterOptionsLoading, setOtherRegisterOptionsLoading] =
     useState(false);
   const [wechatCodeSubmitLoading, setWechatCodeSubmitLoading] = useState(false);
-  const [customOAuthLoading, setCustomOAuthLoading] = useState({});
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -132,19 +133,43 @@ const RegisterForm = () => {
       return {};
     }
   }, [statusState?.status]);
-  const hasCustomOAuthProviders =
-    (status.custom_oauth_providers || []).length > 0;
   const hasOAuthRegisterOptions = Boolean(
-    status.github_oauth ||
-      status.discord_oauth ||
-      status.oidc_enabled ||
-      status.wechat_login ||
-      status.linuxdo_oauth ||
-      status.telegram_oauth ||
-      hasCustomOAuthProviders,
+    status.github_oauth_register ||
+    status.google_oauth_register ||
+    status.discord_oauth_register ||
+    status.oidc_register_enabled ||
+    status.wechat_register ||
+    status.linuxdo_oauth_register ||
+    status.telegram_oauth_register,
   );
 
   const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const inviteRegisterEnabled = !!status?.invite_register_enabled;
+
+  const syncInviteCode = (value) => {
+    const trimmedValue = (value || '').trim();
+    if (trimmedValue) {
+      localStorage.setItem('aff', trimmedValue);
+    } else {
+      localStorage.removeItem('aff');
+    }
+  };
+
+  const resolveInviteCode = () =>
+    (inputs.aff_code || affCode || localStorage.getItem('aff') || '').trim();
+
+  const ensureInviteCodeReady = () => {
+    if (!inviteRegisterEnabled) {
+      return true;
+    }
+    const inviteCode = resolveInviteCode();
+    if (!inviteCode) {
+      showInfo('当前为邀请制注册，请输入邀请码或通过邀请链接注册');
+      return false;
+    }
+    syncInviteCode(inviteCode);
+    return true;
+  };
 
   useEffect(() => {
     setShowEmailVerification(!!status?.email_verification);
@@ -157,6 +182,23 @@ const RegisterForm = () => {
     setHasUserAgreement(status?.user_agreement_enabled || false);
     setHasPrivacyPolicy(status?.privacy_policy_enabled || false);
   }, [status]);
+
+  useEffect(() => {
+    const initialInviteCode = (
+      affCode ||
+      localStorage.getItem('aff') ||
+      ''
+    ).trim();
+    if (!initialInviteCode) {
+      return;
+    }
+    syncInviteCode(initialInviteCode);
+    setInputs((prev) =>
+      prev.aff_code === initialInviteCode
+        ? prev
+        : { ...prev, aff_code: initialInviteCode },
+    );
+  }, []);
 
   useEffect(() => {
     let countdownInterval = null;
@@ -179,21 +221,28 @@ const RegisterForm = () => {
     };
   }, []);
 
-  const onWeChatLoginClicked = () => {
+  const onWeChatRegisterClicked = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     setWechatLoading(true);
     setShowWeChatLoginModal(true);
     setWechatLoading(false);
   };
 
   const onSubmitWeChatVerificationCode = async () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     if (turnstileEnabled && turnstileToken === '') {
       showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
       return;
     }
     setWechatCodeSubmitLoading(true);
     try {
+      const inviteCode = resolveInviteCode();
       const res = await API.get(
-        `/api/oauth/wechat?code=${inputs.wechat_verification_code}`,
+        `/api/oauth/wechat?code=${inputs.wechat_verification_code}${inviteCode ? `&aff=${encodeURIComponent(inviteCode)}` : ''}`,
       );
       const { success, message, data } = res.data;
       if (success) {
@@ -202,19 +251,22 @@ const RegisterForm = () => {
         setUserData(data);
         updateAPI();
         navigate('/');
-        showSuccess('登录成功！');
+        showSuccess('注册成功！');
         setShowWeChatLoginModal(false);
       } else {
         showError(message);
       }
     } catch (error) {
-      showError('登录失败，请重试');
+      showError('注册失败，请重试');
     } finally {
       setWechatCodeSubmitLoading(false);
     }
   };
 
   function handleChange(name, value) {
+    if (name === 'aff_code') {
+      syncInviteCode(value);
+    }
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   }
 
@@ -228,19 +280,22 @@ const RegisterForm = () => {
       return;
     }
     if (username && password) {
+      if (!ensureInviteCodeReady()) {
+        return;
+      }
       if (turnstileEnabled && turnstileToken === '') {
         showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
         return;
       }
       setRegisterLoading(true);
       try {
-        if (!affCode) {
-          affCode = localStorage.getItem('aff');
-        }
-        inputs.aff_code = affCode;
+        const payload = {
+          ...inputs,
+          aff_code: resolveInviteCode(),
+        };
         const res = await API.post(
           `/api/user/register?turnstile=${turnstileToken}`,
-          inputs,
+          payload,
         );
         const { success, message } = res.data;
         if (success) {
@@ -283,6 +338,9 @@ const RegisterForm = () => {
   };
 
   const handleGitHubClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     if (githubButtonDisabled) {
       return;
     }
@@ -298,29 +356,56 @@ const RegisterForm = () => {
       setGithubButtonDisabled(true);
     }, 20000);
     try {
-      onGitHubOAuthClicked(status.github_client_id, { shouldLogout: true });
+      onGitHubOAuthClicked(status.github_client_id, {
+        shouldLogout: true,
+        authIntent: 'register',
+      });
     } finally {
       setTimeout(() => setGithubLoading(false), 3000);
     }
   };
 
+  const handleGoogleClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
+    setGoogleLoading(true);
+    try {
+      onGoogleOAuthClicked(status.google_client_id, {
+        shouldLogout: true,
+        authIntent: 'register',
+      });
+    } finally {
+      setTimeout(() => setGoogleLoading(false), 3000);
+    }
+  };
+
   const handleDiscordClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     setDiscordLoading(true);
     try {
-      onDiscordOAuthClicked(status.discord_client_id, { shouldLogout: true });
+      onDiscordOAuthClicked(status.discord_client_id, {
+        shouldLogout: true,
+        authIntent: 'register',
+      });
     } finally {
       setTimeout(() => setDiscordLoading(false), 3000);
     }
   };
 
   const handleOIDCClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     setOidcLoading(true);
     try {
       onOIDCClicked(
         status.oidc_authorization_endpoint,
         status.oidc_client_id,
         false,
-        { shouldLogout: true },
+        { shouldLogout: true, authIntent: 'register' },
       );
     } finally {
       setTimeout(() => setOidcLoading(false), 3000);
@@ -328,22 +413,17 @@ const RegisterForm = () => {
   };
 
   const handleLinuxDOClick = () => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     setLinuxdoLoading(true);
     try {
-      onLinuxDOOAuthClicked(status.linuxdo_client_id, { shouldLogout: true });
+      onLinuxDOOAuthClicked(status.linuxdo_client_id, {
+        shouldLogout: true,
+        authIntent: 'register',
+      });
     } finally {
       setTimeout(() => setLinuxdoLoading(false), 3000);
-    }
-  };
-
-  const handleCustomOAuthClick = (provider) => {
-    setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: true }));
-    try {
-      onCustomOAuthClicked(provider, { shouldLogout: true });
-    } finally {
-      setTimeout(() => {
-        setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: false }));
-      }, 3000);
     }
   };
 
@@ -359,7 +439,10 @@ const RegisterForm = () => {
     setOtherRegisterOptionsLoading(false);
   };
 
-  const onTelegramLoginClicked = async (response) => {
+  const onTelegramRegisterClicked = async (response) => {
+    if (!ensureInviteCodeReady()) {
+      return;
+    }
     const fields = [
       'id',
       'first_name',
@@ -376,13 +459,17 @@ const RegisterForm = () => {
         params[field] = response[field];
       }
     });
+    const inviteCode = resolveInviteCode();
+    if (inviteCode) {
+      params.aff = inviteCode;
+    }
     try {
       const res = await API.get(`/api/oauth/telegram/login`, { params });
       const { success, message, data } = res.data;
       if (success) {
         userDispatch({ type: 'login', payload: data });
         localStorage.setItem('user', JSON.stringify(data));
-        showSuccess('登录成功！');
+        showSuccess('注册成功！');
         setUserData(data);
         updateAPI();
         navigate('/');
@@ -390,7 +477,7 @@ const RegisterForm = () => {
         showError(message);
       }
     } catch (error) {
-      showError('登录失败，请重试');
+      showError('注册失败，请重试');
     }
   };
 
@@ -413,7 +500,19 @@ const RegisterForm = () => {
             </div>
             <div className='px-2 py-8'>
               <div className='space-y-3'>
-                {status.wechat_login && (
+                {inviteRegisterEnabled && (
+                  <div className='space-y-1'>
+                    <Text>{t('邀请码')}</Text>
+                    <Input
+                      placeholder={t('请输入邀请码')}
+                      value={inputs.aff_code}
+                      onChange={(value) => handleChange('aff_code', value)}
+                      prefix={<IconKey />}
+                    />
+                  </div>
+                )}
+
+                {status.wechat_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -421,14 +520,14 @@ const RegisterForm = () => {
                     icon={
                       <Icon svg={<WeChatIcon />} style={{ color: '#07C160' }} />
                     }
-                    onClick={onWeChatLoginClicked}
+                    onClick={onWeChatRegisterClicked}
                     loading={wechatLoading}
                   >
-                    <span className='ml-3'>{t('使用 微信 继续')}</span>
+                    <span className='ml-3'>{t('使用 微信 注册')}</span>
                   </Button>
                 )}
 
-                {status.github_oauth && (
+                {status.github_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -442,7 +541,28 @@ const RegisterForm = () => {
                   </Button>
                 )}
 
-                {status.discord_oauth && (
+                {status.google_oauth_register && (
+                  <Button
+                    theme='outline'
+                    className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
+                    type='tertiary'
+                    icon={
+                      <SiGoogle
+                        style={{
+                          color: '#DB4437',
+                          width: '20px',
+                          height: '20px',
+                        }}
+                      />
+                    }
+                    onClick={handleGoogleClick}
+                    loading={googleLoading}
+                  >
+                    <span className='ml-3'>{t('使用 Google 注册')}</span>
+                  </Button>
+                )}
+
+                {status.discord_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -459,11 +579,11 @@ const RegisterForm = () => {
                     onClick={handleDiscordClick}
                     loading={discordLoading}
                   >
-                    <span className='ml-3'>{t('使用 Discord 继续')}</span>
+                    <span className='ml-3'>{t('使用 Discord 注册')}</span>
                   </Button>
                 )}
 
-                {status.oidc_enabled && (
+                {status.oidc_register_enabled && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -472,11 +592,11 @@ const RegisterForm = () => {
                     onClick={handleOIDCClick}
                     loading={oidcLoading}
                   >
-                    <span className='ml-3'>{t('使用 OIDC 继续')}</span>
+                    <span className='ml-3'>{t('使用 OIDC 注册')}</span>
                   </Button>
                 )}
 
-                {status.linuxdo_oauth && (
+                {status.linuxdo_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -493,31 +613,14 @@ const RegisterForm = () => {
                     onClick={handleLinuxDOClick}
                     loading={linuxdoLoading}
                   >
-                    <span className='ml-3'>{t('使用 LinuxDO 继续')}</span>
+                    <span className='ml-3'>{t('使用 LinuxDO 注册')}</span>
                   </Button>
                 )}
 
-                {status.custom_oauth_providers &&
-                  status.custom_oauth_providers.map((provider) => (
-                    <Button
-                      key={provider.slug}
-                      theme='outline'
-                      className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
-                      type='tertiary'
-                      icon={getOAuthProviderIcon(provider.icon || '', 20)}
-                      onClick={() => handleCustomOAuthClick(provider)}
-                      loading={customOAuthLoading[provider.slug]}
-                    >
-                      <span className='ml-3'>
-                        {t('使用 {{name}} 继续', { name: provider.name })}
-                      </span>
-                    </Button>
-                  ))}
-
-                {status.telegram_oauth && (
+                {status.telegram_oauth_register && (
                   <div className='flex justify-center my-2'>
                     <TelegramLoginButton
-                      dataOnauth={onTelegramLoginClicked}
+                      dataOnauth={onTelegramRegisterClicked}
                       botName={status.telegram_bot_name}
                     />
                   </div>
@@ -576,6 +679,18 @@ const RegisterForm = () => {
             </div>
             <div className='px-2 py-8'>
               <Form className='space-y-3'>
+                {inviteRegisterEnabled && (
+                  <Form.Input
+                    field='aff_code'
+                    label={t('邀请码')}
+                    placeholder={t('请输入邀请码')}
+                    name='aff_code'
+                    value={inputs.aff_code}
+                    onChange={(value) => handleChange('aff_code', value)}
+                    prefix={<IconKey />}
+                  />
+                )}
+
                 <Form.Input
                   field='username'
                   label={t('用户名')}
@@ -786,7 +901,7 @@ const RegisterForm = () => {
       />
       <div className='w-full max-w-sm mt-[60px]'>
         {showEmailRegister ||
-        !hasOAuthRegisterOptions
+          !hasOAuthRegisterOptions
           ? renderEmailRegisterForm()
           : renderOAuthOptions()}
         {renderWeChatLoginModal()}

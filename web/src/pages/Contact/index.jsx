@@ -68,7 +68,7 @@ const CONTACT_CARDS = [
   {
     key: 'wechat-group',
     titleKey: '微信群',
-    subtitleKey: '适合快速获取公告、活动信息与群内答疑',
+    subtitleKey: '用于问题答疑解决，适合接收群内公告与通知',
     imageSrc: '/wechat_group.png',
     imageAltKey: '微信群二维码',
     icon: QrCode,
@@ -221,7 +221,7 @@ const Contact = () => {
                 </div>
                 <div className='contact-quick-card__title'>{t('加入QQ群')}</div>
                 <div className='contact-quick-card__desc'>
-                  {t('适合公开讨论、问题互助与接收更新通知')}
+                  {t('用于问题答疑解决，适合群内交流与经验分享')}
                 </div>
                 <div className='contact-quick-card__value'>373865837</div>
               </button> */}
@@ -239,7 +239,7 @@ const Contact = () => {
                   {t('添加微信号')}
                 </div>
                 <div className='contact-quick-card__desc'>
-                  {t('适合合作咨询、商务沟通与一对一协助')}
+                  {t('用于发票开具相关沟通，也可一对一联系')}
                 </div>
                 <div className='contact-quick-card__value'>oiovdev</div>
               </button>

@@ -14,10 +14,14 @@ import (
 type FundingSource interface {
 	// Source 返回资金来源标识："wallet" 或 "subscription"
 	Source() string
+	// UseTokenQuota 返回是否需要同步扣减令牌额度。
+	UseTokenQuota() bool
 	// PreConsume 从该资金来源预扣 amount 额度
 	PreConsume(amount int) error
 	// Settle 根据差额调整资金来源（正数补扣，负数退还）
 	Settle(delta int) error
+	// SettleDelta 返回在当前资金来源下应结算的差额。
+	SettleDelta(actualQuota int, preConsumedQuota int) int
 	// Refund 退还所有预扣费
 	Refund() error
 }
@@ -32,6 +36,8 @@ type WalletFunding struct {
 }
 
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
+
+func (w *WalletFunding) UseTokenQuota() bool { return true }
 
 func (w *WalletFunding) PreConsume(amount int) error {
 	if amount <= 0 {
@@ -54,6 +60,10 @@ func (w *WalletFunding) Settle(delta int) error {
 	return model.IncreaseUserQuota(w.userId, -delta, false)
 }
 
+func (w *WalletFunding) SettleDelta(actualQuota int, preConsumedQuota int) int {
+	return actualQuota - preConsumedQuota
+}
+
 func (w *WalletFunding) Refund() error {
 	if w.consumed <= 0 {
 		return nil
@@ -71,28 +81,41 @@ type SubscriptionFunding struct {
 	requestId      string
 	userId         int
 	modelName      string
+	usingGroup     string
 	amount         int64 // 预扣的订阅额度（subConsume）
 	subscriptionId int
 	preConsumed    int64
+	preConsumedCnt int64
+	ResourceType   string
 	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
-	AmountTotal     int64
-	AmountUsedAfter int64
-	PlanId          int
-	PlanTitle       string
+	AmountTotal           int64
+	AmountUsedAfter       int64
+	RequestCountTotal     int64
+	RequestCountUsedAfter int64
+	PlanId                int
+	PlanTitle             string
 }
 
 func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription }
 
+func (s *SubscriptionFunding) UseTokenQuota() bool {
+	return s.AmountTotal > 0
+}
+
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
+	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, s.usingGroup, 0, s.amount)
 	if err != nil {
 		return err
 	}
 	s.subscriptionId = res.UserSubscriptionId
-	s.preConsumed = res.PreConsumed
+	s.preConsumed = res.PreConsumedAmount
+	s.preConsumedCnt = res.PreConsumedCount
+	s.ResourceType = model.NormalizeSubscriptionResourceType(res.ResourceType)
 	s.AmountTotal = res.AmountTotal
 	s.AmountUsedAfter = res.AmountUsedAfter
+	s.RequestCountTotal = res.RequestCountTotal
+	s.RequestCountUsedAfter = res.RequestCountAfter
 	// 获取订阅计划信息
 	if planInfo, err := model.GetSubscriptionPlanInfoByUserSubscriptionId(res.UserSubscriptionId); err == nil && planInfo != nil {
 		s.PlanId = planInfo.PlanId
@@ -108,8 +131,15 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
 }
 
+func (s *SubscriptionFunding) SettleDelta(actualQuota int, preConsumedQuota int) int {
+	if s.AmountTotal <= 0 {
+		return 0
+	}
+	return actualQuota - preConsumedQuota
+}
+
 func (s *SubscriptionFunding) Refund() error {
-	if s.preConsumed <= 0 {
+	if s.preConsumed <= 0 && s.preConsumedCnt <= 0 {
 		return nil
 	}
 	return refundWithRetry(func() error {

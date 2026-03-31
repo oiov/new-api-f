@@ -45,7 +45,15 @@ func (p *OIDCProvider) GetName() string {
 }
 
 func (p *OIDCProvider) IsEnabled() bool {
-	return system_setting.GetOIDCSettings().Enabled
+	return system_setting.IsOIDCOAuthEnabled()
+}
+
+func (p *OIDCProvider) IsLoginEnabled() bool {
+	return system_setting.IsOIDCLoginEnabled()
+}
+
+func (p *OIDCProvider) IsRegistrationEnabled() bool {
+	return system_setting.IsOIDCRegisterEnabled()
 }
 
 func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c *gin.Context) (*OAuthToken, error) {

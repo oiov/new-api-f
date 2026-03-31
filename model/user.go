@@ -29,6 +29,7 @@ type User struct {
 	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
 	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
 	Email            string         `json:"email" gorm:"index" validate:"max=50"`
+	GoogleId         string         `json:"google_id" gorm:"column:google_id;index"`
 	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
 	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
 	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
@@ -50,6 +51,11 @@ type User struct {
 	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
 	Remark           string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	InviterUsername  string         `json:"inviter_username,omitempty" gorm:"-"`
+	InviteeUsernames []string       `json:"invitee_usernames,omitempty" gorm:"-"`
+	InviteeCount     int            `json:"invitee_count,omitempty" gorm:"-"`
+	RemainingQuota   int            `json:"remaining_quota,omitempty" gorm:"-"`
+	TotalQuota       int            `json:"total_quota,omitempty" gorm:"-"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -188,7 +194,95 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
-func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err error) {
+func normalizeUserListSort(sortBy string, sortOrder string) string {
+	order := "desc"
+	if strings.EqualFold(strings.TrimSpace(sortOrder), "asc") {
+		order = "asc"
+	}
+	switch strings.TrimSpace(sortBy) {
+	case "quota_remain":
+		return "quota " + order + ", id desc"
+	case "quota_total":
+		return "quota + used_quota " + order + ", id desc"
+	default:
+		return "id desc"
+	}
+}
+
+func enrichUsersInviteInfo(tx *gorm.DB, users []*User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	userIDs := make([]int, 0, len(users))
+	inviterIDs := make([]int, 0, len(users))
+	inviterIDSet := make(map[int]struct{}, len(users))
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		user.RemainingQuota = user.Quota
+		user.TotalQuota = user.Quota + user.UsedQuota
+		user.InviteeCount = user.AffCount
+		userIDs = append(userIDs, user.Id)
+		if user.InviterId > 0 {
+			if _, ok := inviterIDSet[user.InviterId]; !ok {
+				inviterIDSet[user.InviterId] = struct{}{}
+				inviterIDs = append(inviterIDs, user.InviterId)
+			}
+		}
+	}
+
+	if len(inviterIDs) > 0 {
+		var inviters []*User
+		if err := tx.Unscoped().
+			Select("id", "username").
+			Where("id IN ?", inviterIDs).
+			Find(&inviters).Error; err != nil {
+			return err
+		}
+		inviterNameMap := make(map[int]string, len(inviters))
+		for _, inviter := range inviters {
+			if inviter == nil {
+				continue
+			}
+			inviterNameMap[inviter.Id] = inviter.Username
+		}
+		for _, user := range users {
+			if user == nil || user.InviterId <= 0 {
+				continue
+			}
+			user.InviterUsername = inviterNameMap[user.InviterId]
+		}
+	}
+
+	var invitees []*User
+	if err := tx.Unscoped().
+		Select("id", "username", "inviter_id").
+		Where("inviter_id IN ?", userIDs).
+		Order("id asc").
+		Find(&invitees).Error; err != nil {
+		return err
+	}
+	inviteeNameMap := make(map[int][]string, len(users))
+	for _, invitee := range invitees {
+		if invitee == nil || invitee.InviterId <= 0 {
+			continue
+		}
+		if len(inviteeNameMap[invitee.InviterId]) < 5 {
+			inviteeNameMap[invitee.InviterId] = append(inviteeNameMap[invitee.InviterId], invitee.Username)
+		}
+	}
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		user.InviteeUsernames = inviteeNameMap[user.Id]
+	}
+	return nil
+}
+
+func GetAllUsers(pageInfo *common.PageInfo, sortBy string, sortOrder string) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -208,8 +302,17 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
+	err = tx.Unscoped().
+		Order(normalizeUserListSort(sortBy, sortOrder)).
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Omit("password").
+		Find(&users).Error
 	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+	if err = enrichUsersInviteInfo(tx, users); err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
@@ -222,7 +325,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, startIdx int, num int, sortBy string, sortOrder string) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -275,8 +378,16 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 	}
 
 	// 获取分页数据
-	err = query.Omit("password").Order("id desc").Limit(num).Offset(startIdx).Find(&users).Error
+	err = query.Omit("password").
+		Order(normalizeUserListSort(sortBy, sortOrder)).
+		Limit(num).
+		Offset(startIdx).
+		Find(&users).Error
 	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+	if err = enrichUsersInviteInfo(tx, users); err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
@@ -339,6 +450,44 @@ func inviteUser(inviterId int) (err error) {
 	return DB.Save(user).Error
 }
 
+func ResetUserAffCountById(id int) error {
+	if id == 0 {
+		return errors.New("id 为空！")
+	}
+	return DB.Unscoped().Model(&User{}).Where("id = ?", id).Update("aff_count", 0).Error
+}
+
+func SetUserAffCountById(id int, count int) error {
+	if id == 0 {
+		return errors.New("id 为空！")
+	}
+	if count < 0 {
+		return errors.New("邀请次数不能小于 0")
+	}
+	return DB.Unscoped().Model(&User{}).Where("id = ?", id).Update("aff_count", count).Error
+}
+
+func ResetAllUsersAffCount() (int64, error) {
+	result := DB.Unscoped().Model(&User{}).Where("aff_count <> ?", 0).Update("aff_count", 0)
+	return result.RowsAffected, result.Error
+}
+
+func bindSubscriptionReward(userId int, planId int, logPrefix string) (*UserSubscription, error) {
+	if planId <= 0 {
+		return nil, nil
+	}
+	if msg, sub, err := AdminBindSubscriptionWithResult(userId, planId, "invite_reward"); err != nil {
+		common.SysError(fmt.Sprintf("%s绑定订阅套餐失败: user=%d plan=%d err=%v", logPrefix, userId, planId, err))
+		return nil, err
+	} else if msg != "" {
+		RecordLog(userId, LogTypeSystem, fmt.Sprintf("%s赠送订阅套餐 #%d，%s", logPrefix, planId, msg))
+		return sub, nil
+	} else {
+		RecordLog(userId, LogTypeSystem, fmt.Sprintf("%s赠送订阅套餐 #%d", logPrefix, planId))
+		return sub, nil
+	}
+}
+
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {
@@ -376,7 +525,35 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	return tx.Commit().Error
 }
 
-func (user *User) Insert(inviterId int) error {
+func applyInviteRewards(userId int, inviterId int, clientIP string) {
+	if inviterId == 0 {
+		return
+	}
+	allowed, reason := common.CheckInviteRewardEligibility(inviterId, clientIP)
+	if !allowed {
+		common.SysLog(fmt.Sprintf("邀请奖励已拦截: inviter=%d invitee=%d ip=%s reason=%s", inviterId, userId, clientIP, reason))
+		recordInviteRewardBlocked(inviterId, userId, reason)
+		return
+	}
+	if common.QuotaForInvitee > 0 {
+		_ = IncreaseUserQuota(userId, common.QuotaForInvitee, true)
+		RecordLog(userId, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+		recordInviteQuotaGrant(inviterId, userId, userId, InviteRewardSideInvitee, common.QuotaForInvitee)
+	}
+	if sub, err := bindSubscriptionReward(userId, common.SubscriptionPlanForInvitee, "使用邀请码"); err == nil {
+		recordInvitePlanGrant(inviterId, userId, userId, InviteRewardSideInvitee, sub)
+	}
+	if common.QuotaForInviter > 0 {
+		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
+		_ = inviteUser(inviterId)
+		recordInviteQuotaGrant(inviterId, userId, inviterId, InviteRewardSideInviter, common.QuotaForInviter)
+	}
+	if sub, err := bindSubscriptionReward(inviterId, common.SubscriptionPlanForInviter, "邀请用户"); err == nil {
+		recordInvitePlanGrant(inviterId, userId, inviterId, InviteRewardSideInviter, sub)
+	}
+}
+
+func (user *User) Insert(inviterId int, clientIP string) error {
 	var err error
 	if user.Password != "" {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -418,17 +595,16 @@ func (user *User) Insert(inviterId int) error {
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
-	if inviterId != 0 {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
+	if common.SubscriptionPlanForNewUser > 0 {
+		if msg, err := AdminBindSubscription(user.Id, common.SubscriptionPlanForNewUser, "register"); err != nil {
+			common.SysError(fmt.Sprintf("为新用户 %d 绑定注册赠送套餐失败: %v", user.Id, err))
+		} else if msg != "" {
+			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送订阅套餐 #%d，%s", common.SubscriptionPlanForNewUser, msg))
+		} else {
+			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送订阅套餐 #%d", common.SubscriptionPlanForNewUser))
 		}
 	}
+	applyInviteRewards(user.Id, inviterId, clientIP)
 	return nil
 }
 
@@ -462,7 +638,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.
 // This should be called after the transaction commits successfully.
-func (user *User) FinalizeOAuthUserCreation(inviterId int) {
+func (user *User) FinalizeOAuthUserCreation(inviterId int, clientIP string) {
 	// 用户创建成功后，根据角色初始化边栏配置
 	var createdUser User
 	if err := DB.Where("id = ?", user.Id).First(&createdUser).Error; err == nil {
@@ -479,16 +655,16 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
-	if inviterId != 0 {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		if common.QuotaForInviter > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
+	if common.SubscriptionPlanForNewUser > 0 {
+		if msg, err := AdminBindSubscription(user.Id, common.SubscriptionPlanForNewUser, "register"); err != nil {
+			common.SysError(fmt.Sprintf("为 OAuth 新用户 %d 绑定注册赠送套餐失败: %v", user.Id, err))
+		} else if msg != "" {
+			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送订阅套餐 #%d，%s", common.SubscriptionPlanForNewUser, msg))
+		} else {
+			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送订阅套餐 #%d", common.SubscriptionPlanForNewUser))
 		}
 	}
+	applyInviteRewards(user.Id, inviterId, clientIP)
 }
 
 func (user *User) Update(updatePassword bool) error {
@@ -546,6 +722,7 @@ func (user *User) ClearBinding(bindingType string) error {
 
 	bindingColumnMap := map[string]string{
 		"email":    "email",
+		"google":   "google_id",
 		"github":   "github_id",
 		"discord":  "discord_id",
 		"oidc":     "oidc_id",
@@ -633,6 +810,14 @@ func (user *User) FillUserByGitHubId() error {
 	return nil
 }
 
+func (user *User) FillUserByGoogleId() error {
+	if user.GoogleId == "" {
+		return errors.New("Google id 为空！")
+	}
+	DB.Where(User{GoogleId: user.GoogleId}).First(user)
+	return nil
+}
+
 // UpdateGitHubId updates the user's GitHub ID (used for migration from login to numeric ID)
 func (user *User) UpdateGitHubId(newGitHubId string) error {
 	if user.Id == 0 {
@@ -686,6 +871,10 @@ func IsWeChatIdAlreadyTaken(wechatId string) bool {
 
 func IsGitHubIdAlreadyTaken(githubId string) bool {
 	return DB.Unscoped().Where("github_id = ?", githubId).Find(&User{}).RowsAffected == 1
+}
+
+func IsGoogleIdAlreadyTaken(googleId string) bool {
+	return DB.Unscoped().Where("google_id = ?", googleId).Find(&User{}).RowsAffected == 1
 }
 
 func IsDiscordIdAlreadyTaken(discordId string) bool {

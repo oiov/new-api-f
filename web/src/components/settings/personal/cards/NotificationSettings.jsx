@@ -36,10 +36,15 @@ import { IconMail, IconKey, IconBell, IconLink } from '@douyinfe/semi-icons';
 import { ShieldCheck, Bell, DollarSign, Settings } from 'lucide-react';
 import {
   renderQuotaWithPrompt,
+  renderQuota,
   API,
   showSuccess,
   showError,
 } from '../../../../helpers';
+import {
+  formatSubscriptionResourceLabel,
+  getSubscriptionUsageSummary,
+} from '../../../../helpers/subscriptionFormat';
 import CodeViewer from '../../../playground/CodeViewer';
 import { StatusContext } from '../../../../context/Status';
 import { UserContext } from '../../../../context/User';
@@ -62,6 +67,8 @@ const NotificationSettings = ({
 
   // 左侧边栏设置相关状态
   const [sidebarLoading, setSidebarLoading] = useState(false);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [subscriptionOptions, setSubscriptionOptions] = useState([]);
   const [activeTabKey, setActiveTabKey] = useState('notification');
   const [sidebarModulesUser, setSidebarModulesUser] = useState({
     chat: {
@@ -217,6 +224,51 @@ const NotificationSettings = ({
     loadSidebarConfigs();
   }, [statusState]);
 
+  useEffect(() => {
+    const loadActiveSubscriptions = async () => {
+      setSubscriptionLoading(true);
+      try {
+        const res = await API.get('/api/subscription/self');
+        if (!res.data?.success) {
+          setSubscriptionOptions([]);
+          return;
+        }
+        const activeSubscriptions = res.data?.data?.subscriptions || [];
+        const options = activeSubscriptions
+          .map((item) => {
+            const subscription = item?.subscription;
+            if (!subscription?.id) {
+              return null;
+            }
+            const usageSummary = getSubscriptionUsageSummary(subscription);
+            const resourceLabel = formatSubscriptionResourceLabel(
+              subscription,
+              t,
+            );
+            const remainingText = usageSummary.unlimited
+              ? t('不限')
+              : usageSummary.resourceType === 'request_count'
+                ? `${usageSummary.remain} ${t('次')}`
+                : renderQuota(usageSummary.remain);
+            return {
+              value: String(subscription.id),
+              label: `${t('订阅')} #${subscription.id} · ${resourceLabel}${t(
+                '剩余',
+              )}: ${remainingText}`,
+            };
+          })
+          .filter(Boolean);
+        setSubscriptionOptions(options);
+      } catch (error) {
+        setSubscriptionOptions([]);
+      } finally {
+        setSubscriptionLoading(false);
+      }
+    };
+
+    loadActiveSubscriptions();
+  }, [t]);
+
   // 初始化表单值
   useEffect(() => {
     if (formApiRef.current && notificationSettings) {
@@ -263,6 +315,7 @@ const NotificationSettings = ({
       description: t('数据管理和日志查看'),
       modules: [
         { key: 'detail', title: t('数据看板'), description: t('系统数据统计') },
+        { key: 'package', title: t('套餐管理'), description: t('订阅套餐查看与购买') },
         { key: 'token', title: t('令牌管理'), description: t('API令牌管理') },
         { key: 'log', title: t('使用日志'), description: t('API使用记录') },
         {
@@ -278,7 +331,8 @@ const NotificationSettings = ({
       title: t('个人中心区域'),
       description: t('用户个人功能'),
       modules: [
-        { key: 'topup', title: t('钱包管理'), description: t('余额充值管理') },
+        { key: 'topup', title: t('充值兑换'), description: t('在线充值与兑换码管理') },
+        { key: 'invite', title: t('邀请拉新'), description: t('邀请链接与奖励管理') },
         {
           key: 'personal',
           title: t('个人设置'),
@@ -470,6 +524,50 @@ const NotificationSettings = ({
                     },
                   ]}
                 />
+
+                <Form.Switch
+                  field='subscriptionQuotaNotifyEnabled'
+                  label={t('套餐额度提醒')}
+                  checkedText={t('开')}
+                  uncheckedText={t('关')}
+                  onChange={(value) =>
+                    handleFormChange('subscriptionQuotaNotifyEnabled', value)
+                  }
+                  extraText={t(
+                    '默认开启。关闭后将不再接收套餐剩余额度或剩余次数提醒，钱包额度提醒不受影响。',
+                  )}
+                />
+
+                <Form.Select
+                  field='notifySubscriptionId'
+                  label={t('提醒套餐')}
+                  placeholder={
+                    subscriptionOptions.length > 0
+                      ? t('默认跟随当前使用的套餐')
+                      : t('暂无生效中的套餐')
+                  }
+                  onChange={(value) =>
+                    handleFormChange('notifySubscriptionId', value || '')
+                  }
+                  loading={subscriptionLoading}
+                  disabled={
+                    !notificationSettings.subscriptionQuotaNotifyEnabled ||
+                    subscriptionOptions.length === 0
+                  }
+                  showClear
+                  extraText={t(
+                    '留空时会跟随当前实际扣费的套餐提醒；选择后仅对该套餐触发提醒。',
+                  )}
+                >
+                  {subscriptionOptions.map((option) => (
+                    <Form.Select.Option
+                      key={option.value}
+                      value={option.value}
+                    >
+                      {option.label}
+                    </Form.Select.Option>
+                  ))}
+                </Form.Select>
 
                 {isAdminOrRoot && (
                   <Form.Switch

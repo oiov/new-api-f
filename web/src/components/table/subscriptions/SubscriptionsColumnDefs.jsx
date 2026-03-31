@@ -31,8 +31,48 @@ import {
 } from '@douyinfe/semi-ui';
 import { renderQuota } from '../../../helpers';
 import { convertUSDToCurrency } from '../../../helpers/render';
+import {
+  formatSubscriptionResourceLabel,
+  getSubscriptionResourceType,
+  getSubscriptionSaleSummary,
+  getSubscriptionUsageSummary,
+  getSubscriptionEffectivePrice,
+  isSubscriptionDiscountActive,
+} from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
+
+function hasRequestCountLimit(plan) {
+  return Number(plan?.request_count_total || 0) > 0;
+}
+
+function hasAmountLimit(plan) {
+  return Number(plan?.total_amount || 0) > 0;
+}
+
+function renderPlanLimits(plan, t) {
+  const items = [];
+  if (hasRequestCountLimit(plan)) {
+    items.push(`${t('总次数')} ${Number(plan?.request_count_total || 0)}`);
+  }
+  if (hasAmountLimit(plan)) {
+    items.push(
+      `${t('总额度')} ${renderQuota(Number(plan?.total_amount || 0))}`,
+    );
+  }
+  if (items.length === 0) {
+    return t('不限');
+  }
+  return items.join(' / ');
+}
+
+function renderPlanSales(plan, t) {
+  const saleSummary = getSubscriptionSaleSummary(plan);
+  if (saleSummary.unlimited) {
+    return `${t('已售')} ${saleSummary.soldCount}`;
+  }
+  return `${t('已售')} ${saleSummary.soldCount} / ${t('剩余')} ${saleSummary.remainingSaleCount}`;
+}
 
 function formatDuration(plan, t) {
   if (!plan) return '';
@@ -43,6 +83,7 @@ function formatDuration(plan, t) {
   const unitMap = {
     year: t('年'),
     month: t('月'),
+    week: t('周'),
     day: t('日'),
     hour: t('小时'),
   };
@@ -79,16 +120,18 @@ const renderPlanTitle = (text, record, t) => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <Text type='tertiary'>{t('价格')}</Text>
         <Text strong style={{ color: 'var(--semi-color-success)' }}>
-          {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+          {convertUSDToCurrency(getSubscriptionEffectivePrice(plan), 2)}
         </Text>
-        <Text type='tertiary'>{t('总额度')}</Text>
-        {plan?.total_amount > 0 ? (
-          <Tooltip content={`${t('原生额度')}：${plan.total_amount}`}>
-            <Text>{renderQuota(plan.total_amount)}</Text>
-          </Tooltip>
-        ) : (
-          <Text>{t('不限')}</Text>
-        )}
+        {isSubscriptionDiscountActive(plan) ? (
+          <>
+            <Text type='tertiary'>{t('原价')}</Text>
+            <Text delete>{convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}</Text>
+            <Text type='tertiary'>{t('优惠截止')}</Text>
+            <Text>{new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()}</Text>
+          </>
+        ) : null}
+        <Text type='tertiary'>{t('套餐权益')}</Text>
+        <Text>{renderPlanLimits(plan, t)}</Text>
         <Text type='tertiary'>{t('升级分组')}</Text>
         <Text>{plan?.upgrade_group ? plan.upgrade_group : t('不升级')}</Text>
         <Text type='tertiary'>{t('购买上限')}</Text>
@@ -97,6 +140,8 @@ const renderPlanTitle = (text, record, t) => {
             ? plan.max_purchase_per_user
             : t('不限')}
         </Text>
+        <Text type='tertiary'>{t('营销库存')}</Text>
+        <Text>{renderPlanSales(plan, t)}</Text>
         <Text type='tertiary'>{t('有效期')}</Text>
         <Text>{formatDuration(plan, t)}</Text>
         <Text type='tertiary'>{t('重置')}</Text>
@@ -142,6 +187,27 @@ const renderPurchaseLimit = (text, record, t) => {
   );
 };
 
+const renderInventory = (text, record, t) => {
+  const saleSummary = getSubscriptionSaleSummary(record?.plan);
+  if (saleSummary.unlimited) {
+    return (
+      <Text type='secondary'>
+        {t('已售')} {saleSummary.soldCount}
+      </Text>
+    );
+  }
+  return (
+    <div>
+      <Text type={saleSummary.soldOut ? 'danger' : 'secondary'}>
+        {t('剩余')} {saleSummary.remainingSaleCount}
+      </Text>
+      <Text type='tertiary' size='small' style={{ display: 'block' }}>
+        {t('已售')} {saleSummary.soldCount}/{saleSummary.saleLimitCount}
+      </Text>
+    </div>
+  );
+};
+
 const renderDuration = (text, record, t) => {
   return <Text type='secondary'>{formatDuration(record?.plan, t)}</Text>;
 };
@@ -169,18 +235,8 @@ const renderEnabled = (text, record, t) => {
 };
 
 const renderTotalAmount = (text, record, t) => {
-  const total = Number(record?.plan?.total_amount || 0);
-  return (
-    <Text type={total > 0 ? 'secondary' : 'tertiary'}>
-      {total > 0 ? (
-        <Tooltip content={`${t('原生额度')}：${total}`}>
-          <span>{renderQuota(total)}</span>
-        </Tooltip>
-      ) : (
-        t('不限')
-      )}
-    </Text>
-  );
+  const plan = record?.plan;
+  return <Text type='secondary'>{renderPlanLimits(plan, t)}</Text>;
 };
 
 const renderUpgradeGroup = (text, record, t) => {
@@ -299,13 +355,32 @@ export const getSubscriptionsColumns = ({
     {
       title: t('价格'),
       dataIndex: ['plan', 'price_amount'],
-      width: 100,
-      render: (text) => renderPrice(text),
+      width: 140,
+      render: (text, record) => {
+        const plan = record?.plan || {};
+        const effective = getSubscriptionEffectivePrice(plan);
+        const activeDiscount = isSubscriptionDiscountActive(plan);
+        return (
+          <div>
+            {renderPrice(effective)}
+            {activeDiscount ? (
+              <Text type='tertiary' size='small' delete style={{ display: 'block' }}>
+                {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+              </Text>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       title: t('购买上限'),
       width: 90,
       render: (text, record) => renderPurchaseLimit(text, record, t),
+    },
+    {
+      title: t('库存'),
+      width: 120,
+      render: (text, record) => renderInventory(text, record, t),
     },
     {
       title: t('优先级'),
@@ -336,7 +411,7 @@ export const getSubscriptionsColumns = ({
         renderPaymentConfig(text, record, t, enableEpay),
     },
     {
-      title: t('总额度'),
+      title: t('套餐权益'),
       width: 100,
       render: (text, record) => renderTotalAmount(text, record, t),
     },

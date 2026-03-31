@@ -23,6 +23,7 @@ export function formatSubscriptionDuration(plan, t) {
   const unitLabels = {
     year: t('年'),
     month: t('个月'),
+    week: t('周'),
     day: t('天'),
     hour: t('小时'),
     custom: t('自定义'),
@@ -36,14 +37,100 @@ export function formatSubscriptionDuration(plan, t) {
   return `${value} ${unitLabels[unit] || unit}`;
 }
 
+export function getSubscriptionResourceType(plan) {
+  return plan?.resource_type === 'request_count' ? 'request_count' : 'quota';
+}
+
+export function isSubscriptionDiscountActive(plan, now = Date.now() / 1000) {
+  if (typeof plan?.has_active_discount === 'boolean') {
+    return plan.has_active_discount;
+  }
+  const original = Number(plan?.price_amount || 0);
+  const discount = Number(plan?.discount_price_amount || 0);
+  const deadline = Number(plan?.discount_deadline || 0);
+  return discount > 0 && original > 0 && discount < original && deadline > now;
+}
+
+export function getSubscriptionEffectivePrice(plan, now = Date.now() / 1000) {
+  if (plan?.effective_price_amount !== undefined && plan?.effective_price_amount !== null) {
+    return Number(plan.effective_price_amount || 0);
+  }
+  return isSubscriptionDiscountActive(plan, now)
+    ? Number(plan?.discount_price_amount || 0)
+    : Number(plan?.price_amount || 0);
+}
+
+export function formatSubscriptionResourceLabel(plan, t) {
+  return getSubscriptionResourceType(plan) === 'request_count'
+    ? t('总次数')
+    : t('总额度');
+}
+
+export function getSubscriptionUsageSummary(plan) {
+  const resourceType = getSubscriptionResourceType(plan);
+  if (resourceType === 'request_count') {
+    const total = Number(plan?.request_count_total || 0);
+    const used = Number(plan?.request_count_used || 0);
+    const remain = total > 0 ? Math.max(0, total - used) : 0;
+    return {
+      resourceType,
+      total,
+      used,
+      remain,
+      unlimited: total <= 0,
+    };
+  }
+  const total = Number(plan?.amount_total ?? plan?.total_amount ?? 0);
+  const used = Number(plan?.amount_used ?? 0);
+  const remain = total > 0 ? Math.max(0, total - used) : 0;
+  return {
+    resourceType,
+    total,
+    used,
+    remain,
+    unlimited: total <= 0,
+  };
+}
+
+export function getSubscriptionSaleSummary(plan) {
+  const saleLimitCount = Number(plan?.sale_limit_count || 0);
+  const soldCount = Number(plan?.sold_count || 0);
+  const remainingSaleCount =
+    saleLimitCount > 0
+      ? Math.max(
+          0,
+          Number(
+            plan?.remaining_sale_count !== undefined &&
+              plan?.remaining_sale_count !== null
+              ? plan.remaining_sale_count
+              : saleLimitCount - soldCount,
+          ),
+        )
+      : 0;
+  const soldOut =
+    typeof plan?.sold_out === 'boolean'
+      ? plan.sold_out
+      : saleLimitCount > 0 && soldCount >= saleLimitCount;
+
+  return {
+    saleLimitCount,
+    soldCount,
+    remainingSaleCount,
+    soldOut,
+    unlimited: saleLimitCount <= 0,
+  };
+}
+
 export function formatSubscriptionResetPeriod(plan, t) {
-  const period = plan?.quota_reset_period || 'never';
+  const period = plan?.reset_period || plan?.quota_reset_period || 'never';
   if (period === 'never') return t('不重置');
   if (period === 'daily') return t('每天');
   if (period === 'weekly') return t('每周');
   if (period === 'monthly') return t('每月');
   if (period === 'custom') {
-    const seconds = Number(plan?.quota_reset_custom_seconds || 0);
+    const seconds = Number(
+      plan?.reset_custom_seconds ?? plan?.quota_reset_custom_seconds ?? 0,
+    );
     if (seconds >= 86400) return `${Math.floor(seconds / 86400)} ${t('天')}`;
     if (seconds >= 3600) return `${Math.floor(seconds / 3600)} ${t('小时')}`;
     if (seconds >= 60) return `${Math.floor(seconds / 60)} ${t('分钟')}`;

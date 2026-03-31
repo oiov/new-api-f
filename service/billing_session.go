@@ -42,35 +42,34 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	if s.settled {
 		return nil
 	}
-	delta := actualQuota - s.preConsumedQuota
-	if delta == 0 {
-		s.settled = true
-		return nil
-	}
+	fundingDelta := s.funding.SettleDelta(actualQuota, s.preConsumedQuota)
+	tokenDelta := actualQuota - s.tokenConsumed
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	if !s.fundingSettled {
-		if err := s.funding.Settle(delta); err != nil {
-			return err
+		if fundingDelta != 0 {
+			if err := s.funding.Settle(fundingDelta); err != nil {
+				return err
+			}
 		}
 		s.fundingSettled = true
 	}
 	// 2) 调整令牌额度
 	var tokenErr error
-	if !s.relayInfo.IsPlayground {
-		if delta > 0 {
-			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
-		} else {
-			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta)
+	if s.funding.UseTokenQuota() && !s.relayInfo.IsPlayground {
+		if tokenDelta > 0 {
+			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, tokenDelta)
+		} else if tokenDelta < 0 {
+			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -tokenDelta)
 		}
 		if tokenErr != nil {
 			// 资金来源已提交，令牌调整失败只能记录日志；标记 settled 防止 Refund 误退资金
 			common.SysLog(fmt.Sprintf("error adjusting token quota after funding settled (userId=%d, tokenId=%d, delta=%d): %s",
-				s.relayInfo.UserId, s.relayInfo.TokenId, delta, tokenErr.Error()))
+				s.relayInfo.UserId, s.relayInfo.TokenId, tokenDelta, tokenErr.Error()))
 		}
 	}
 	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志）
 	if s.funding.Source() == BillingSourceSubscription {
-		s.relayInfo.SubscriptionPostDelta += int64(delta)
+		s.relayInfo.SubscriptionPostDelta += int64(fundingDelta)
 	}
 	s.settled = true
 	return tokenErr
@@ -157,24 +156,8 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		logger.LogInfo(c, fmt.Sprintf("用户 %d 需要预扣费 %s (funding=%s)", s.relayInfo.UserId, logger.FormatQuota(effectiveQuota), s.funding.Source()))
 	}
 
-	// ---- 1) 预扣令牌额度 ----
-	if effectiveQuota > 0 {
-		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
-			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
-		}
-		s.tokenConsumed = effectiveQuota
-	}
-
-	// ---- 2) 预扣资金来源 ----
+	// ---- 1) 预扣资金来源 ----
 	if err := s.funding.PreConsume(effectiveQuota); err != nil {
-		// 预扣费失败，回滚令牌额度
-		if s.tokenConsumed > 0 && !s.relayInfo.IsPlayground {
-			if rollbackErr := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed); rollbackErr != nil {
-				common.SysLog(fmt.Sprintf("error rolling back token quota (userId=%d, tokenId=%d, amount=%d, fundingErr=%s): %s",
-					s.relayInfo.UserId, s.relayInfo.TokenId, s.tokenConsumed, err.Error(), rollbackErr.Error()))
-			}
-			s.tokenConsumed = 0
-		}
 		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
@@ -182,8 +165,22 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		}
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
-
 	s.preConsumedQuota = effectiveQuota
+	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
+		s.preConsumedQuota = int(sub.preConsumed)
+	}
+
+	// ---- 2) 预扣令牌额度 ----
+	if s.funding.UseTokenQuota() && effectiveQuota > 0 {
+		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
+			if rollbackErr := s.funding.Refund(); rollbackErr != nil {
+				common.SysLog(fmt.Sprintf("error rolling back funding source after token pre-consume failure (userId=%d, tokenId=%d, amount=%d): %s",
+					s.relayInfo.UserId, s.relayInfo.TokenId, effectiveQuota, rollbackErr.Error()))
+			}
+			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+		s.tokenConsumed = effectiveQuota
+	}
 
 	// ---- 同步 RelayInfo 兼容字段 ----
 	s.syncRelayInfo()
@@ -236,14 +233,32 @@ func (s *BillingSession) syncRelayInfo() {
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
 		info.SubscriptionId = sub.subscriptionId
 		info.SubscriptionPreConsumed = sub.preConsumed
+		info.SubscriptionPreConsumedAmount = sub.preConsumed
+		info.SubscriptionPreConsumedCount = sub.preConsumedCnt
+		if sub.preConsumed <= 0 && sub.preConsumedCnt > 0 {
+			info.SubscriptionPreConsumed = sub.preConsumedCnt
+		}
+		info.SubscriptionResourceType = sub.ResourceType
 		info.SubscriptionPostDelta = 0
 		info.SubscriptionAmountTotal = sub.AmountTotal
 		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter
+		info.SubscriptionRequestCountTotal = sub.RequestCountTotal
+		info.SubscriptionRequestCountUsedAfterPreConsume = sub.RequestCountUsedAfter
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
 	} else {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
+		info.SubscriptionPreConsumedAmount = 0
+		info.SubscriptionPreConsumedCount = 0
+		info.SubscriptionResourceType = ""
+		info.SubscriptionPostDelta = 0
+		info.SubscriptionAmountTotal = 0
+		info.SubscriptionAmountUsedAfterPreConsume = 0
+		info.SubscriptionRequestCountTotal = 0
+		info.SubscriptionRequestCountUsedAfterPreConsume = 0
+		info.SubscriptionPlanId = 0
+		info.SubscriptionPlanTitle = ""
 	}
 }
 
@@ -297,10 +312,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId: relayInfo.RequestId,
-				userId:    relayInfo.UserId,
-				modelName: relayInfo.OriginModelName,
-				amount:    subConsume,
+				requestId:  relayInfo.RequestId,
+				userId:     relayInfo.UserId,
+				modelName:  relayInfo.OriginModelName,
+				usingGroup: relayInfo.UsingGroup,
+				amount:     subConsume,
 			},
 		}
 		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、

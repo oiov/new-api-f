@@ -29,7 +29,14 @@ import {
   Dropdown,
 } from '@douyinfe/semi-ui';
 import { IconMore } from '@douyinfe/semi-icons';
-import { renderGroup, renderNumber, renderQuota } from '../../../helpers';
+import {
+  copy,
+  renderGroup,
+  renderNumber,
+  renderQuota,
+  showError,
+  showSuccess,
+} from '../../../helpers';
 
 /**
  * Render user role
@@ -174,9 +181,49 @@ const renderQuotaUsage = (text, record, t) => {
  * Render invite information
  */
 const renderInviteInfo = (text, record, t) => {
+  const handleCopyAffCode = async () => {
+    if (!record.aff_code) {
+      showError(t('该用户暂无 aff'));
+      return;
+    }
+    if (await copy(record.aff_code)) {
+      showSuccess(t('已复制：') + record.aff_code);
+      return;
+    }
+    showError(t('复制失败'));
+  };
+
+  const inviterLabel = record.inviter_username
+    ? `${t('邀请人')}: ${record.inviter_username}`
+    : record.inviter_id === 0
+      ? t('无邀请人')
+      : `${t('邀请人')}: #${record.inviter_id}`;
+  const inviteeUsernames = Array.isArray(record.invitee_usernames)
+    ? record.invitee_usernames
+    : [];
+  const inviteePreview =
+    inviteeUsernames.length > 0
+      ? inviteeUsernames.slice(0, 3).join('、')
+      : t('暂无');
+  const inviteeCount = Number(record.invitee_count || inviteeUsernames.length || 0);
+  const remainingInviteeCount = Math.max(
+    0,
+    inviteeCount - Math.min(3, inviteeUsernames.length),
+  );
+
   return (
     <div>
       <Space spacing={1}>
+        <Tooltip content={t('点击复制 aff')} position='top'>
+          <Tag
+            color='cyan'
+            shape='circle'
+            className='!text-xs cursor-pointer'
+            onClick={handleCopyAffCode}
+          >
+            AFF: {record.aff_code || '-'}
+          </Tag>
+        </Tooltip>
         <Tag color='white' shape='circle' className='!text-xs'>
           {t('邀请')}: {renderNumber(record.aff_count)}
         </Tag>
@@ -184,9 +231,11 @@ const renderInviteInfo = (text, record, t) => {
           {t('收益')}: {renderQuota(record.aff_history_quota)}
         </Tag>
         <Tag color='white' shape='circle' className='!text-xs'>
-          {record.inviter_id === 0
-            ? t('无邀请人')
-            : `${t('邀请人')}: ${record.inviter_id}`}
+          {inviterLabel}
+        </Tag>
+        <Tag color='white' shape='circle' className='!text-xs'>
+          {t('邀请了')}: {inviteePreview}
+          {remainingInviteeCount > 0 ? ` +${remainingInviteeCount}` : ''}
         </Tag>
       </Space>
     </div>
@@ -209,6 +258,9 @@ const renderOperations = (
     showResetPasskeyModal,
     showResetTwoFAModal,
     showUserSubscriptionsModal,
+    showUserHistoryModal,
+    resetAffCount,
+    setAffCount,
     t,
   },
 ) => {
@@ -219,11 +271,41 @@ const renderOperations = (
   const moreMenu = [
     {
       node: 'item',
-      name: t('订阅管理'),
-      onClick: () => showUserSubscriptionsModal(record),
+      name: t('复制 aff'),
+      onClick: async () => {
+        if (!record.aff_code) {
+          showError(t('该用户暂无 aff'));
+          return;
+        }
+        if (await copy(record.aff_code)) {
+          showSuccess(t('已复制：') + record.aff_code);
+          return;
+        }
+        showError(t('复制失败'));
+      },
+    },
+    {
+      node: 'item',
+      name: t('重置邀请次数'),
+      onClick: () => resetAffCount(record),
+    },
+    {
+      node: 'item',
+      name: t('设置邀请次数'),
+      onClick: () => setAffCount(record),
     },
     {
       node: 'divider',
+    },
+    {
+      node: 'item',
+      name: t('历史记录'),
+      onClick: () => showUserHistoryModal(record),
+    },
+    {
+      node: 'item',
+      name: t('订阅管理'),
+      onClick: () => showUserSubscriptionsModal(record),
     },
     {
       node: 'item',
@@ -309,6 +391,9 @@ export const getUsersColumns = ({
   showResetPasskeyModal,
   showResetTwoFAModal,
   showUserSubscriptionsModal,
+  showUserHistoryModal,
+  resetAffCount,
+  setAffCount,
 }) => {
   return [
     {
@@ -366,6 +451,9 @@ export const getUsersColumns = ({
           showResetPasskeyModal,
           showResetTwoFAModal,
           showUserSubscriptionsModal,
+          showUserHistoryModal,
+          resetAffCount,
+          setAffCount,
           t,
         }),
     },

@@ -33,6 +33,8 @@ const SubscriptionsTable = (subscriptionsData) => {
     compactMode,
     openEdit,
     setPlanEnabled,
+    enableBatchMode,
+    setSelectedPlans,
     t,
     enableEpay,
   } = subscriptionsData;
@@ -67,6 +69,15 @@ const SubscriptionsTable = (subscriptionsData) => {
       hidePagination={true}
       loading={loading}
       rowKey={(row) => row?.plan?.id}
+      rowSelection={
+        enableBatchMode
+          ? {
+              onChange: (selectedRowKeys, selectedRows) => {
+                setSelectedPlans(selectedRows);
+              },
+            }
+          : null
+      }
       empty={
         <Empty
           image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}

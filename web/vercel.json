@@ -4,6 +4,15 @@
   },
   "headers": [
     {
+      "source": "/assets/(.*\\.(?:png|jpg|jpeg|gif|webp|ico|svg))",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, max-age=0"
+        }
+      ]
+    },
+    {
       "source": "/assets/(.*)",
       "headers": [
         {
@@ -13,7 +22,16 @@
       ]
     },
     {
-      "source": "/(.*\\.(?:png|jpg|jpeg|gif|webp|ico|svg|woff|woff2|ttf|txt))",
+      "source": "/(.*\\.(?:png|jpg|jpeg|gif|webp|ico|svg))",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/(.*\\.(?:woff|woff2|ttf|txt))",
       "headers": [
         {
           "key": "Cache-Control",

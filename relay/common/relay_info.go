@@ -133,6 +133,11 @@ type RelayInfo struct {
 	SubscriptionId int
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
 	SubscriptionPreConsumed int64
+	// SubscriptionPreConsumedAmount / SubscriptionPreConsumedCount expose dual-limit pre-consume details.
+	SubscriptionPreConsumedAmount int64
+	SubscriptionPreConsumedCount  int64
+	// SubscriptionResourceType is "quota" or "request_count".
+	SubscriptionResourceType string
 	// SubscriptionPostDelta is the post-consume delta applied to amount_used (quota units; can be negative).
 	SubscriptionPostDelta int64
 	// SubscriptionPlanId / SubscriptionPlanTitle are used for logging/UI display.
@@ -143,13 +148,16 @@ type RelayInfo struct {
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64
-	IsClaudeBetaQuery                     bool // /v1/messages?beta=true
-	IsChannelTest                         bool // channel test request
-	RetryIndex                            int
-	LastError                             *types.NewAPIError
-	RuntimeHeadersOverride                map[string]interface{}
-	UseRuntimeHeadersOverride             bool
-	ParamOverrideAudit                    []string
+	// SubscriptionRequestCountTotal / SubscriptionRequestCountUsedAfterPreConsume are used for request_count plans.
+	SubscriptionRequestCountTotal               int64
+	SubscriptionRequestCountUsedAfterPreConsume int64
+	IsClaudeBetaQuery                           bool // /v1/messages?beta=true
+	IsChannelTest                               bool // channel test request
+	RetryIndex                                  int
+	LastError                                   *types.NewAPIError
+	RuntimeHeadersOverride                      map[string]interface{}
+	UseRuntimeHeadersOverride                   bool
+	ParamOverrideAudit                          []string
 
 	PriceData types.PriceData
 

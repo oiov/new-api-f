@@ -29,27 +29,31 @@ import {
   copy,
   getQuotaPerUnit,
 } from '../../helpers';
-import { Modal, Toast, Tabs } from '@douyinfe/semi-ui';
+import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 
 import RechargeCard from './RechargeCard';
 import InvitationCard from './InvitationCard';
+import SubscriptionPlansCard from './SubscriptionPlansCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import {
+  formatSubscriptionDuration,
+  formatSubscriptionResourceLabel,
+  getSubscriptionUsageSummary,
+} from '../../helpers/subscriptionFormat';
 
-const MAIN_TAB_ACCOUNT = 'account';
-const MAIN_TAB_INVITE = 'invite';
+const VIEW_SUBSCRIPTION = 'subscription';
+const VIEW_TOPUP = 'topup';
+const VIEW_INVITE = 'invite';
+const VIEW_PACKAGE = 'package';
 
-const normalizeMainTab = (value) =>
-  value === MAIN_TAB_INVITE ? MAIN_TAB_INVITE : MAIN_TAB_ACCOUNT;
-
-const TopUp = () => {
+const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeMainTab, setActiveMainTab] = useState(MAIN_TAB_ACCOUNT);
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
 
@@ -97,6 +101,27 @@ const TopUp = () => {
   const [affLink, setAffLink] = useState('');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
+  const [inviteDetailsLoading, setInviteDetailsLoading] = useState(false);
+  const [invitedUsersPage, setInvitedUsersPage] = useState(1);
+  const [invitedUsersPageSize, setInvitedUsersPageSize] = useState(10);
+  const [inviterRewardPage, setInviterRewardPage] = useState(1);
+  const [inviterRewardPageSize, setInviterRewardPageSize] = useState(10);
+  const [inviteDetails, setInviteDetails] = useState({
+    config: {
+      inviter_quota: 0,
+      invitee_quota: 0,
+      inviter_plan: null,
+      invitee_plan: null,
+    },
+    inviter_reward_records: [],
+    inviter_reward_total: 0,
+    inviter_reward_page: 1,
+    inviter_reward_page_size: 10,
+    invited_users: [],
+    invited_users_total: 0,
+    invited_users_page: 1,
+    invited_users_page_size: 10,
+  });
 
   // 账单Modal状态
   const [openHistory, setOpenHistory] = useState(false);
@@ -118,6 +143,89 @@ const TopUp = () => {
     amount_options: [],
     discount: {},
   });
+  const isSubscriptionPage = mode === VIEW_SUBSCRIPTION;
+  const isTopupPage = mode === VIEW_TOPUP;
+  const isInvitePage = mode === VIEW_INVITE;
+  const isPackagePage = mode === VIEW_PACKAGE;
+  const shouldLoadTopupData = isTopupPage || isPackagePage;
+
+  const formatInvitePlanBenefit = (plan) => {
+    if (!plan) {
+      return '';
+    }
+    const summary = getSubscriptionUsageSummary(plan);
+    const label = formatSubscriptionResourceLabel(plan, t);
+    let usageText = '';
+    if (summary.unlimited) {
+      usageText = `${label}${t('不限')}`;
+    } else if (plan?.resource_type === 'request_count') {
+      usageText = `${label}${summary.total}${t('次')}`;
+    } else {
+      usageText = `${label}${renderQuota(summary.total)}`;
+    }
+
+    const parts = [
+      plan.title,
+      usageText,
+      formatSubscriptionDuration(plan, t),
+    ];
+    if (plan?.upgrade_group) {
+      parts.push(`${t('升级分组')} ${plan.upgrade_group}`);
+    }
+    return parts.filter(Boolean).join('，');
+  };
+
+  const buildInviteRewardText = () => {
+    const config = inviteDetails?.config || {};
+    const rewardParts = [];
+
+    if (Number(config.invitee_quota || 0) > 0) {
+      rewardParts.push(`${renderQuota(config.invitee_quota)} Token`);
+    }
+    if (config.invitee_plan) {
+      rewardParts.push(
+        t('套餐：{{plan}}', {
+          plan: formatInvitePlanBenefit(config.invitee_plan),
+        }),
+      );
+    }
+
+    if (rewardParts.length === 0) {
+      return t('注册资格');
+    }
+
+    return rewardParts.join(t('，另赠'));
+  };
+
+  const buildInviteCopyText = () => {
+    const config = inviteDetails?.config || {};
+    const systemName = statusState?.status?.system_name || t('本站');
+    const inviteCodeUsableCount = Number(config.invite_code_usable_count);
+    const lines = [
+      t('我在{{siteName}}的邀请链接为：{{link}}', {
+        siteName: systemName,
+        link: affLink,
+      }),
+      t('使用我的邀请注册，你将获得{{reward}}。', {
+        reward: buildInviteRewardText(),
+      }),
+    ];
+
+    if (config.invite_register_enabled) {
+      lines.push(
+        t('本站采用邀请制注册，当前邀请码可用{{count}}次。', {
+          count:
+            inviteCodeUsableCount < 0
+              ? t('不限')
+              : Number.isNaN(inviteCodeUsableCount)
+                ? 0
+                : inviteCodeUsableCount,
+        }),
+      );
+    }
+
+    return lines.join('\n');
+  };
 
   const topUp = async () => {
     if (redemptionCode === '') {
@@ -132,18 +240,33 @@ const TopUp = () => {
       const { success, message, data } = res.data;
       if (success) {
         showSuccess(t('兑换成功！'));
-        Modal.success({
-          title: t('兑换成功！'),
-          content: t('成功兑换额度：') + renderQuota(data),
-          centered: true,
-        });
-        if (userState.user) {
-          const updatedUser = {
-            ...userState.user,
-            quota: userState.user.quota + data,
-          };
-          userDispatch({ type: 'login', payload: updatedUser });
+        if (typeof data === 'number') {
+          Modal.success({
+            title: t('兑换成功！'),
+            content: t('成功兑换额度：') + renderQuota(data),
+            centered: true,
+          });
+          if (userState.user) {
+            const updatedUser = {
+              ...userState.user,
+              quota: userState.user.quota + data,
+            };
+            userDispatch({ type: 'login', payload: updatedUser });
+          }
+        } else {
+          const planLabel =
+            data?.subscription_plan_title ||
+            (data?.subscription_plan_id
+              ? `#${data.subscription_plan_id}`
+              : t('订阅套餐'));
+          Modal.success({
+            title: t('兑换成功！'),
+            content: t('已为你激活订阅套餐：{{plan}}', { plan: planLabel }),
+            centered: true,
+          });
+          getSubscriptionSelf().then();
         }
+        getUserQuota().then();
         setRedemptionCode('');
       } else {
         showError(message);
@@ -324,32 +447,32 @@ const TopUp = () => {
 
   const waffoTopUp = async (payMethodIndex) => {
     try {
-        if (topUpCount < waffoMinTopUp) {
-            showError(t('充值数量不能小于') + waffoMinTopUp);
-            return;
-        }
-        setPaymentLoading(true);
-        const requestBody = {
-            amount: parseInt(topUpCount),
-        };
-        if (payMethodIndex != null) {
-            requestBody.pay_method_index = payMethodIndex;
-        }
-        const res = await API.post('/api/user/waffo/pay', requestBody);
-        if (res !== undefined) {
-            const { message, data } = res.data;
-            if (message === 'success' && data?.payment_url) {
-                window.open(data.payment_url, '_blank');
-            } else {
-                showError(data || t('支付请求失败'));
-            }
+      if (topUpCount < waffoMinTopUp) {
+        showError(t('充值数量不能小于') + waffoMinTopUp);
+        return;
+      }
+      setPaymentLoading(true);
+      const requestBody = {
+        amount: parseInt(topUpCount),
+      };
+      if (payMethodIndex != null) {
+        requestBody.pay_method_index = payMethodIndex;
+      }
+      const res = await API.post('/api/user/waffo/pay', requestBody);
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success' && data?.payment_url) {
+          window.open(data.payment_url, '_blank');
         } else {
-            showError(res);
+          showError(data || t('支付请求失败'));
         }
+      } else {
+        showError(res);
+      }
     } catch (e) {
-        showError(t('支付请求失败'));
+      showError(t('支付请求失败'));
     } finally {
-        setPaymentLoading(false);
+      setPaymentLoading(false);
     }
   };
 
@@ -573,24 +696,61 @@ const TopUp = () => {
 
   // 复制邀请链接
   const handleAffLinkClick = async () => {
-    await copy(affLink);
+    await copy(buildInviteCopyText());
     showSuccess(t('邀请链接已复制到剪切板'));
   };
 
-  // URL 参数自动打开账单弹窗（支付回跳时触发）
+  const getInviteDetails = async () => {
+    setInviteDetailsLoading(true);
+    try {
+      const res = await API.get('/api/user/aff/details', {
+        params: {
+          p: invitedUsersPage,
+          page_size: invitedUsersPageSize,
+          reward_p: inviterRewardPage,
+          reward_page_size: inviterRewardPageSize,
+        },
+      });
+      const { success, message, data } = res.data;
+      if (success) {
+        setInviteDetails(
+          data || {
+            config: {
+              inviter_quota: 0,
+              invitee_quota: 0,
+              inviter_plan: null,
+              invitee_plan: null,
+            },
+            leaderboard: [],
+            inviter_reward_records: [],
+            inviter_reward_total: 0,
+            inviter_reward_page: 1,
+            inviter_reward_page_size: 10,
+            invited_users: [],
+            invited_users_total: 0,
+            invited_users_page: 1,
+            invited_users_page_size: 10,
+          },
+        );
+      } else {
+        showError(message || t('获取邀请明细失败'));
+      }
+    } catch (error) {
+      showError(t('获取邀请明细失败'));
+    } finally {
+      setInviteDetailsLoading(false);
+    }
+  };
+
   useEffect(() => {
+    if (!shouldLoadTopupData) return;
     if (searchParams.get('show_history') === 'true') {
       setOpenHistory(true);
       const nextSearchParams = new URLSearchParams(searchParams);
       nextSearchParams.delete('show_history');
       setSearchParams(nextSearchParams, { replace: true });
     }
-  }, []);
-
-  useEffect(() => {
-    const urlTab = normalizeMainTab(searchParams.get('tab'));
-    setActiveMainTab(urlTab);
-  }, [searchParams]);
+  }, [shouldLoadTopupData, searchParams, setSearchParams]);
 
   useEffect(() => {
     // 始终获取最新用户数据，确保余额等统计信息准确
@@ -599,17 +759,27 @@ const TopUp = () => {
   }, []);
 
   useEffect(() => {
-    if (affFetchedRef.current) return;
-    affFetchedRef.current = true;
-    getAffLink().then();
-  }, []);
+    if (!isInvitePage) return;
+    if (!affFetchedRef.current) {
+      affFetchedRef.current = true;
+      getAffLink().then();
+    }
+  }, [isInvitePage]);
 
-  // 在 statusState 可用时获取充值信息
   useEffect(() => {
-    getTopupInfo().then();
-    getSubscriptionPlans().then();
-    getSubscriptionSelf().then();
-  }, []);
+    if (!isInvitePage) return;
+    getInviteDetails().then();
+  }, [isInvitePage, invitedUsersPage, invitedUsersPageSize, inviterRewardPage, inviterRewardPageSize]);
+
+  useEffect(() => {
+    if (shouldLoadTopupData) {
+      getTopupInfo().then();
+    }
+    if (isSubscriptionPage || isPackagePage) {
+      getSubscriptionPlans().then();
+      getSubscriptionSelf().then();
+    }
+  }, [isSubscriptionPage, shouldLoadTopupData, isPackagePage]);
 
   useEffect(() => {
     if (statusState?.status) {
@@ -622,6 +792,7 @@ const TopUp = () => {
       setStatusLoading(false);
     }
   }, [statusState?.status]);
+
 
   const renderAmount = () => {
     return amount + ' ' + t('元');
@@ -699,19 +870,6 @@ const TopUp = () => {
   const handleCreemCancel = () => {
     setCreemOpen(false);
     setSelectedCreemProduct(null);
-  };
-
-  const handleMainTabChange = (tabKey) => {
-    const normalizedTab = normalizeMainTab(tabKey);
-    setActiveMainTab(normalizedTab);
-
-    const nextSearchParams = new URLSearchParams(searchParams);
-    if (normalizedTab === MAIN_TAB_INVITE) {
-      nextSearchParams.set('tab', MAIN_TAB_INVITE);
-    } else {
-      nextSearchParams.delete('tab');
-    }
-    setSearchParams(nextSearchParams, { replace: true });
   };
 
   // 选择预设充值额度
@@ -806,70 +964,108 @@ const TopUp = () => {
       </Modal>
 
       {/* 主布局区域 */}
-      <Tabs type='line' activeKey={activeMainTab} onChange={handleMainTabChange}>
-        <Tabs.TabPane tab={t('账户充值')} itemKey={MAIN_TAB_ACCOUNT}>
-          <div className='pt-4'>
-            <RechargeCard
+      <div className='pt-4 space-y-4'>
+        {isPackagePage && (
+          <div id='package-pricing' className='scroll-mt-24'>
+            <SubscriptionPlansCard
               t={t}
+              loading={subscriptionLoading}
+              plans={subscriptionPlans}
+              payMethods={payMethods}
               enableOnlineTopUp={enableOnlineTopUp}
               enableStripeTopUp={enableStripeTopUp}
               enableCreemTopUp={enableCreemTopUp}
-              creemProducts={creemProducts}
-              creemPreTopUp={creemPreTopUp}
-              enableWaffoTopUp={enableWaffoTopUp}
-              waffoTopUp={waffoTopUp}
-              waffoPayMethods={waffoPayMethods}
-              presetAmounts={presetAmounts}
-              selectedPreset={selectedPreset}
-              selectPresetAmount={selectPresetAmount}
-              formatLargeNumber={formatLargeNumber}
-              priceRatio={priceRatio}
-              topUpCount={topUpCount}
-              minTopUp={minTopUp}
-              renderQuotaWithAmount={renderQuotaWithAmount}
-              getAmount={getAmount}
-              setTopUpCount={setTopUpCount}
-              setSelectedPreset={setSelectedPreset}
-              renderAmount={renderAmount}
-              amountLoading={amountLoading}
-              payMethods={payMethods}
-              preTopUp={preTopUp}
-              paymentLoading={paymentLoading}
-              payWay={payWay}
-              redemptionCode={redemptionCode}
-              setRedemptionCode={setRedemptionCode}
-              topUp={topUp}
-              isSubmitting={isSubmitting}
-              topUpLink={topUpLink}
-              openTopUpLink={openTopUpLink}
-              userState={userState}
-              renderQuota={renderQuota}
-              statusLoading={statusLoading}
-              topupInfo={topupInfo}
-              onOpenHistory={handleOpenHistory}
-              subscriptionLoading={subscriptionLoading}
-              subscriptionPlans={subscriptionPlans}
               billingPreference={billingPreference}
               onChangeBillingPreference={updateBillingPreference}
               activeSubscriptions={activeSubscriptions}
               allSubscriptions={allSubscriptions}
               reloadSubscriptionSelf={getSubscriptionSelf}
+              initialMainTab='plan_list'
+              uiVariant='package'
             />
           </div>
-        </Tabs.TabPane>
-        <Tabs.TabPane tab={t('邀请奖励')} itemKey={MAIN_TAB_INVITE}>
-          <div className='pt-4'>
-            <InvitationCard
-              t={t}
-              userState={userState}
-              renderQuota={renderQuota}
-              setOpenTransfer={setOpenTransfer}
-              affLink={affLink}
-              handleAffLinkClick={handleAffLinkClick}
-            />
-          </div>
-        </Tabs.TabPane>
-      </Tabs>
+        )}
+
+        {isSubscriptionPage && (
+          <SubscriptionPlansCard
+            t={t}
+            loading={subscriptionLoading}
+            plans={subscriptionPlans}
+            payMethods={payMethods}
+            enableOnlineTopUp={enableOnlineTopUp}
+            enableStripeTopUp={enableStripeTopUp}
+            enableCreemTopUp={enableCreemTopUp}
+            billingPreference={billingPreference}
+            onChangeBillingPreference={updateBillingPreference}
+            activeSubscriptions={activeSubscriptions}
+            allSubscriptions={allSubscriptions}
+            reloadSubscriptionSelf={getSubscriptionSelf}
+            initialMainTab='my_subscriptions'
+            uiVariant='subscription'
+          />
+        )}
+        {isTopupPage && (
+          <RechargeCard
+            t={t}
+            enableOnlineTopUp={enableOnlineTopUp}
+            enableStripeTopUp={enableStripeTopUp}
+            enableCreemTopUp={enableCreemTopUp}
+            creemProducts={creemProducts}
+            creemPreTopUp={creemPreTopUp}
+            enableWaffoTopUp={enableWaffoTopUp}
+            waffoTopUp={waffoTopUp}
+            waffoPayMethods={waffoPayMethods}
+            presetAmounts={presetAmounts}
+            selectedPreset={selectedPreset}
+            selectPresetAmount={selectPresetAmount}
+            formatLargeNumber={formatLargeNumber}
+            priceRatio={priceRatio}
+            topUpCount={topUpCount}
+            minTopUp={minTopUp}
+            renderQuotaWithAmount={renderQuotaWithAmount}
+            getAmount={getAmount}
+            setTopUpCount={setTopUpCount}
+            setSelectedPreset={setSelectedPreset}
+            renderAmount={renderAmount}
+            amountLoading={amountLoading}
+            payMethods={payMethods}
+            preTopUp={preTopUp}
+            paymentLoading={paymentLoading}
+            payWay={payWay}
+            redemptionCode={redemptionCode}
+            setRedemptionCode={setRedemptionCode}
+            topUp={topUp}
+            isSubmitting={isSubmitting}
+            topUpLink={topUpLink}
+            openTopUpLink={openTopUpLink}
+            userState={userState}
+            renderQuota={renderQuota}
+            statusLoading={statusLoading}
+            topupInfo={topupInfo}
+            onOpenHistory={handleOpenHistory}
+          />
+        )}
+        {isInvitePage && (
+          <InvitationCard
+            t={t}
+            userState={userState}
+            renderQuota={renderQuota}
+            setOpenTransfer={setOpenTransfer}
+            affLink={affLink}
+            handleAffLinkClick={handleAffLinkClick}
+            inviteDetailsLoading={inviteDetailsLoading}
+            inviteDetails={inviteDetails}
+            invitedUsersPage={invitedUsersPage}
+            invitedUsersPageSize={invitedUsersPageSize}
+            setInvitedUsersPage={setInvitedUsersPage}
+            setInvitedUsersPageSize={setInvitedUsersPageSize}
+            inviterRewardPage={inviterRewardPage}
+            inviterRewardPageSize={inviterRewardPageSize}
+            setInviterRewardPage={setInviterRewardPage}
+            setInviterRewardPageSize={setInviterRewardPageSize}
+          />
+        )}
+      </div>
     </div>
   );
 };

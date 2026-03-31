@@ -80,20 +80,79 @@ func taskIsSubscription(task *model.Task) bool {
 	return task.PrivateData.BillingSource == BillingSourceSubscription && task.PrivateData.SubscriptionId > 0
 }
 
+func taskSubscriptionResourceType(task *model.Task) string {
+	if task == nil {
+		return model.SubscriptionResourceQuota
+	}
+	resourceType := model.NormalizeSubscriptionResourceType(task.PrivateData.SubscriptionResourceType)
+	if resourceType == "" {
+		return model.SubscriptionResourceQuota
+	}
+	return resourceType
+}
+
+func taskUsesTokenQuota(task *model.Task) bool {
+	if !taskIsSubscription(task) {
+		return true
+	}
+	return task.PrivateData.SubscriptionAmountTotal > 0 ||
+		taskSubscriptionResourceType(task) != model.SubscriptionResourceRequestCount
+}
+
+func taskUsesSubscriptionRequestCount(task *model.Task) bool {
+	return task != nil && (task.PrivateData.SubscriptionRequestCountTotal > 0 ||
+		taskSubscriptionResourceType(task) == model.SubscriptionResourceRequestCount)
+}
+
+func taskSubscriptionPreConsumedAmount(task *model.Task) int {
+	if task == nil {
+		return 0
+	}
+	if task.PrivateData.SubscriptionPreConsumedAmount > 0 {
+		return int(task.PrivateData.SubscriptionPreConsumedAmount)
+	}
+	if taskSubscriptionResourceType(task) != model.SubscriptionResourceRequestCount {
+		return task.Quota
+	}
+	if task.PrivateData.SubscriptionAmountTotal > 0 {
+		return task.Quota
+	}
+	return 0
+}
+
+func taskSubscriptionPreConsumedCount(task *model.Task) int {
+	if task == nil {
+		return 0
+	}
+	if task.PrivateData.SubscriptionPreConsumedCount > 0 {
+		return int(task.PrivateData.SubscriptionPreConsumedCount)
+	}
+	if taskSubscriptionResourceType(task) == model.SubscriptionResourceRequestCount && task.PrivateData.SubscriptionPreConsumed > 0 {
+		return int(task.PrivateData.SubscriptionPreConsumed)
+	}
+	if taskUsesSubscriptionRequestCount(task) || taskSubscriptionResourceType(task) == model.SubscriptionResourceRequestCount {
+		return 1
+	}
+	return 0
+}
+
 // taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
-func taskAdjustFunding(task *model.Task, delta int) error {
+func taskAdjustFunding(task *model.Task, amountDelta int, countDelta int) error {
 	if taskIsSubscription(task) {
-		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
+		return model.PostConsumeUserSubscriptionUsage(task.PrivateData.SubscriptionId, int64(amountDelta), int64(countDelta))
 	}
-	if delta > 0 {
-		return model.DecreaseUserQuota(task.UserId, delta)
+	if amountDelta > 0 {
+		return model.DecreaseUserQuota(task.UserId, amountDelta)
 	}
-	return model.IncreaseUserQuota(task.UserId, -delta, false)
+	return model.IncreaseUserQuota(task.UserId, -amountDelta, false)
 }
 
 // taskAdjustTokenQuota 调整任务的令牌额度，delta > 0 表示扣费，delta < 0 表示退还。
 // 需要通过 resolveTokenKey 运行时获取 key（不从 PrivateData 中读取）。
 func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
+	if !taskUsesTokenQuota(task) {
+		return
+	}
 	if task.PrivateData.TokenId <= 0 || delta == 0 {
 		return
 	}
@@ -124,6 +183,25 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			}
 		}
 	}
+	if taskIsSubscription(task) {
+		other["subscription_id"] = task.PrivateData.SubscriptionId
+		other["subscription_resource_type"] = taskSubscriptionResourceType(task)
+		if task.PrivateData.SubscriptionPreConsumed > 0 {
+			other["subscription_pre_consumed"] = task.PrivateData.SubscriptionPreConsumed
+		}
+		if task.PrivateData.SubscriptionPreConsumedAmount > 0 {
+			other["subscription_pre_consumed_amount"] = task.PrivateData.SubscriptionPreConsumedAmount
+		}
+		if task.PrivateData.SubscriptionPreConsumedCount > 0 {
+			other["subscription_pre_consumed_count"] = task.PrivateData.SubscriptionPreConsumedCount
+		}
+		if task.PrivateData.SubscriptionAmountTotal > 0 {
+			other["subscription_amount_total"] = task.PrivateData.SubscriptionAmountTotal
+		}
+		if task.PrivateData.SubscriptionRequestCountTotal > 0 {
+			other["subscription_request_count_total"] = task.PrivateData.SubscriptionRequestCountTotal
+		}
+	}
 	props := task.Properties
 	if props.UpstreamModelName != "" && props.UpstreamModelName != props.OriginModelName {
 		other["is_model_mapped"] = true
@@ -143,19 +221,40 @@ func taskModelName(task *model.Task) string {
 // RefundTaskQuota 统一的任务失败退款逻辑。
 // 当异步任务失败时，将预扣的 quota 退还给用户（支持钱包和订阅），并退还令牌额度。
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
-	quota := task.Quota
-	if quota == 0 {
+	fundingRefund := task.Quota
+	amountRefund := 0
+	countRefund := 0
+	if taskIsSubscription(task) {
+		amountRefund = taskSubscriptionPreConsumedAmount(task)
+		countRefund = taskSubscriptionPreConsumedCount(task)
+		if amountRefund > 0 {
+			fundingRefund = amountRefund
+		} else if countRefund > 0 {
+			fundingRefund = countRefund
+		} else {
+			fundingRefund = 0
+		}
+	}
+	if fundingRefund == 0 {
 		return
 	}
 
 	// 1. 退还资金来源（钱包或订阅）
-	if err := taskAdjustFunding(task, -quota); err != nil {
+	amountDelta := -fundingRefund
+	countDelta := 0
+	if taskIsSubscription(task) {
+		amountDelta = -amountRefund
+		countDelta = -countRefund
+	}
+	if err := taskAdjustFunding(task, amountDelta, countDelta); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("退还资金来源失败 task %s: %s", task.TaskID, err.Error()))
 		return
 	}
 
 	// 2. 退还令牌额度
-	taskAdjustTokenQuota(ctx, task, -quota)
+	if taskUsesTokenQuota(task) {
+		taskAdjustTokenQuota(ctx, task, -task.Quota)
+	}
 
 	// 3. 记录日志
 	other := taskBillingOther(task)
@@ -167,7 +266,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 		Content:   "",
 		ChannelId: task.ChannelId,
 		ModelName: taskModelName(task),
-		Quota:     quota,
+		Quota:     fundingRefund,
 		TokenId:   task.PrivateData.TokenId,
 		Group:     task.Group,
 		Other:     other,
@@ -179,6 +278,16 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) {
 	if actualQuota <= 0 {
+		return
+	}
+	if taskIsSubscription(task) && !taskUsesTokenQuota(task) && taskUsesSubscriptionRequestCount(task) {
+		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 使用按成功次数订阅计费，跳过额度差额结算（实际：%s，预扣次数：%d，%s）",
+			task.TaskID,
+			logger.LogQuota(actualQuota),
+			taskSubscriptionPreConsumedCount(task),
+			reason,
+		))
+		task.Quota = actualQuota
 		return
 	}
 	preConsumedQuota := task.Quota
@@ -199,7 +308,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	))
 
 	// 调整资金来源
-	if err := taskAdjustFunding(task, quotaDelta); err != nil {
+	if err := taskAdjustFunding(task, quotaDelta, 0); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
 		return
 	}

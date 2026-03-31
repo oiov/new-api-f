@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useRef } from 'react';
 import { Form, Button } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
+import { REDEMPTION_KEY_PREFIX } from '../../../constants/redemption.constants';
 
 const RedemptionsFilters = ({
   formInitValues,
@@ -38,6 +39,14 @@ const RedemptionsFilters = ({
     setTimeout(() => {
       searchRedemptions();
     }, 100);
+  };
+
+  const applyPrefixFilter = (keyword) => {
+    if (!formApiRef.current) return;
+    formApiRef.current.setValue('searchKeyword', keyword);
+    setTimeout(() => {
+      searchRedemptions();
+    }, 0);
   };
 
   return (
@@ -60,13 +69,29 @@ const RedemptionsFilters = ({
           <Form.Input
             field='searchKeyword'
             prefix={<IconSearch />}
-            placeholder={t('关键字(id或者名称)')}
+            placeholder={t('关键字(id/名称/前缀，如 fishxredemptionP)')}
             showClear
             pure
             size='small'
           />
         </div>
         <div className='flex gap-2 w-full md:w-auto'>
+          <Button
+            type='tertiary'
+            onClick={() => applyPrefixFilter(REDEMPTION_KEY_PREFIX.SUBSCRIPTION)}
+            className='flex-1 md:flex-initial md:w-auto'
+            size='small'
+          >
+            {t('套餐码')}
+          </Button>
+          <Button
+            type='tertiary'
+            onClick={() => applyPrefixFilter(REDEMPTION_KEY_PREFIX.QUOTA)}
+            className='flex-1 md:flex-initial md:w-auto'
+            size='small'
+          >
+            {t('额度码')}
+          </Button>
           <Button
             type='tertiary'
             htmlType='submit'

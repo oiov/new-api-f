@@ -38,7 +38,8 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
-	if plan.PriceAmount < 0.01 {
+	effectivePrice := plan.GetEffectivePriceAmount(common.GetTimestamp())
+	if effectivePrice < 0.01 {
 		common.ApiErrorMsg(c, "套餐金额过低")
 		return
 	}
@@ -48,16 +49,9 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
-	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
-		if err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		if count >= int64(plan.MaxPurchasePerUser) {
-			common.ApiErrorMsg(c, "已达到该套餐购买上限")
-			return
-		}
+	if err := validateSubscriptionPlanPurchaseAvailability(userId, plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
 	}
 
 	callBackAddress := service.GetCallbackAddress()
@@ -84,7 +78,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	order := &model.SubscriptionOrder{
 		UserId:        userId,
 		PlanId:        plan.Id,
-		Money:         plan.PriceAmount,
+		Money:         effectivePrice,
 		TradeNo:       tradeNo,
 		PaymentMethod: req.PaymentMethod,
 		CreateTime:    time.Now().Unix(),
@@ -98,7 +92,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Money:          strconv.FormatFloat(effectivePrice, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,

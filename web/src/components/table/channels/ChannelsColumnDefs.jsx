@@ -523,6 +523,12 @@ export const getChannelsColumns = ({
       render: (text, record, index) => <div>{renderResponseTime(text, t)}</div>,
     },
     {
+      key: COLUMN_KEYS.REQUEST_COUNT_TODAY,
+      title: t('当日成功请求'),
+      dataIndex: 'request_count_today',
+      render: (text) => <div>{Number(text || 0).toLocaleString()}</div>,
+    },
+    {
       key: COLUMN_KEYS.BALANCE,
       title: t('已用/剩余'),
       dataIndex: 'expired_time',

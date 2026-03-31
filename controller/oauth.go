@@ -109,6 +109,8 @@ func HandleOAuth(c *gin.Context) {
 		switch err.(type) {
 		case *OAuthUserDeletedError:
 			common.ApiErrorI18n(c, i18n.MsgOAuthUserDeleted)
+		case *OAuthLoginDisabledError:
+			common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams(provider.GetName()))
 		case *OAuthRegistrationDisabledError:
 			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
 		default:
@@ -209,6 +211,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		if user.Id == 0 {
 			return nil, &OAuthUserDeletedError{}
 		}
+		if !provider.IsLoginEnabled() {
+			return nil, &OAuthLoginDisabledError{}
+		}
 		return user, nil
 	}
 
@@ -227,13 +232,16 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 					common.SysError(fmt.Sprintf("[OAuth] Failed to migrate user %d: %s", user.Id, err.Error()))
 					// Continue with login even if migration fails
 				}
+				if !provider.IsLoginEnabled() {
+					return nil, &OAuthLoginDisabledError{}
+				}
 				return user, nil
 			}
 		}
 	}
 
 	// User doesn't exist, create new user if registration is enabled
-	if !common.RegisterEnabled {
+	if !common.RegisterEnabled || !provider.IsRegistrationEnabled() {
 		return nil, &OAuthRegistrationDisabledError{}
 	}
 
@@ -266,7 +274,13 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	affCode := session.Get("aff")
 	inviterId := 0
 	if affCode != nil {
-		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
+		var inviteErrorKey string
+		inviterId, inviteErrorKey = resolveInviteRegistration(c, affCode.(string))
+		if inviteErrorKey != "" {
+			return nil, &oauth.OAuthError{MsgKey: inviteErrorKey}
+		}
+	} else if common.InviteRegisterEnabled {
+		return nil, &oauth.OAuthError{MsgKey: i18n.MsgUserInviteCodeRequired}
 	}
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
@@ -295,7 +309,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		}
 
 		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
-		user.FinalizeOAuthUserCreation(inviterId)
+		user.FinalizeOAuthUserCreation(inviterId, c.ClientIP())
 	} else {
 		// Built-in provider: create user and update provider ID in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -307,6 +321,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 			// Set the provider user ID on the user model and update
 			provider.SetProviderUserID(user, oauthUser.ProviderUserID)
 			if err := tx.Model(user).Updates(map[string]interface{}{
+				"google_id":   user.GoogleId,
 				"github_id":   user.GitHubId,
 				"discord_id":  user.DiscordId,
 				"oidc_id":     user.OidcId,
@@ -324,7 +339,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		}
 
 		// Perform post-transaction tasks
-		user.FinalizeOAuthUserCreation(inviterId)
+		user.FinalizeOAuthUserCreation(inviterId, c.ClientIP())
 	}
 
 	return user, nil
@@ -341,6 +356,12 @@ type OAuthRegistrationDisabledError struct{}
 
 func (e *OAuthRegistrationDisabledError) Error() string {
 	return "registration is disabled"
+}
+
+type OAuthLoginDisabledError struct{}
+
+func (e *OAuthLoginDisabledError) Error() string {
+	return "login is disabled"
 }
 
 // handleOAuthError handles OAuth errors and returns translated message

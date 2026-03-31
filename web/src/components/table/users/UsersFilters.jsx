@@ -88,6 +88,41 @@ const UsersFilters = ({
             size='small'
           />
         </div>
+        <div className='w-full md:w-44'>
+          <Form.Select
+            field='sortBy'
+            optionList={[
+              { label: t('默认排序'), value: 'id' },
+              { label: t('按剩余额度'), value: 'quota_remain' },
+              { label: t('按总额度'), value: 'quota_total' },
+            ]}
+            onChange={() => {
+              setTimeout(() => {
+                searchUsers(1, pageSize);
+              }, 100);
+            }}
+            className='w-full'
+            pure
+            size='small'
+          />
+        </div>
+        <div className='w-full md:w-36'>
+          <Form.Select
+            field='sortOrder'
+            optionList={[
+              { label: t('降序'), value: 'desc' },
+              { label: t('升序'), value: 'asc' },
+            ]}
+            onChange={() => {
+              setTimeout(() => {
+                searchUsers(1, pageSize);
+              }, 100);
+            }}
+            className='w-full'
+            pure
+            size='small'
+          />
+        </div>
         <div className='flex gap-2 w-full md:w-auto'>
           <Button
             type='tertiary'

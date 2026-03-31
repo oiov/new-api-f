@@ -101,8 +101,19 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		if relayInfo.SubscriptionId != 0 {
 			other["subscription_id"] = relayInfo.SubscriptionId
 		}
+		resourceType := relayInfo.SubscriptionResourceType
+		if resourceType == "" {
+			resourceType = "quota"
+		}
+		other["subscription_resource_type"] = resourceType
 		if relayInfo.SubscriptionPreConsumed > 0 {
 			other["subscription_pre_consumed"] = relayInfo.SubscriptionPreConsumed
+		}
+		if relayInfo.SubscriptionPreConsumedAmount > 0 {
+			other["subscription_pre_consumed_amount"] = relayInfo.SubscriptionPreConsumedAmount
+		}
+		if relayInfo.SubscriptionPreConsumedCount > 0 {
+			other["subscription_pre_consumed_count"] = relayInfo.SubscriptionPreConsumedCount
 		}
 		// post_delta: settlement delta applied after actual usage is known (can be negative for refund)
 		if relayInfo.SubscriptionPostDelta != 0 {
@@ -114,26 +125,64 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		if relayInfo.SubscriptionPlanTitle != "" {
 			other["subscription_plan_title"] = relayInfo.SubscriptionPlanTitle
 		}
-		// Compute "this request" subscription consumed + remaining
-		consumed := relayInfo.SubscriptionPreConsumed + relayInfo.SubscriptionPostDelta
-		usedFinal := relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
-		if consumed < 0 {
-			consumed = 0
-		}
-		if usedFinal < 0 {
-			usedFinal = 0
-		}
 		if relayInfo.SubscriptionAmountTotal > 0 {
+			usedFinal := relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
+			if usedFinal < 0 {
+				usedFinal = 0
+			}
 			remain := relayInfo.SubscriptionAmountTotal - usedFinal
 			if remain < 0 {
 				remain = 0
 			}
-			other["subscription_total"] = relayInfo.SubscriptionAmountTotal
-			other["subscription_used"] = usedFinal
-			other["subscription_remain"] = remain
+			other["subscription_amount_total"] = relayInfo.SubscriptionAmountTotal
+			other["subscription_amount_used"] = usedFinal
+			other["subscription_amount_remain"] = remain
+			consumed := relayInfo.SubscriptionPreConsumedAmount + relayInfo.SubscriptionPostDelta
+			if consumed < 0 {
+				consumed = 0
+			}
+			other["subscription_amount_consumed"] = consumed
 		}
-		if consumed > 0 {
-			other["subscription_consumed"] = consumed
+		if relayInfo.SubscriptionRequestCountTotal > 0 {
+			usedFinal := relayInfo.SubscriptionRequestCountUsedAfterPreConsume
+			if usedFinal < 0 {
+				usedFinal = 0
+			}
+			remain := relayInfo.SubscriptionRequestCountTotal - usedFinal
+			if remain < 0 {
+				remain = 0
+			}
+			other["subscription_request_count_total"] = relayInfo.SubscriptionRequestCountTotal
+			other["subscription_request_count_used"] = usedFinal
+			other["subscription_request_count_remain"] = remain
+			consumedCount := relayInfo.SubscriptionPreConsumedCount
+			if consumedCount <= 0 && resourceType == "request_count" && relayInfo.SubscriptionPreConsumed > 0 {
+				consumedCount = relayInfo.SubscriptionPreConsumed
+			}
+			other["subscription_request_count_consumed"] = consumedCount
+		}
+		if resourceType == "request_count" && relayInfo.SubscriptionRequestCountTotal > 0 {
+			other["subscription_total"] = relayInfo.SubscriptionRequestCountTotal
+			other["subscription_used"] = relayInfo.SubscriptionRequestCountUsedAfterPreConsume
+			other["subscription_remain"] = other["subscription_request_count_remain"]
+			consumedCount := relayInfo.SubscriptionPreConsumedCount
+			if consumedCount <= 0 && relayInfo.SubscriptionPreConsumed > 0 {
+				consumedCount = relayInfo.SubscriptionPreConsumed
+			}
+			if consumedCount > 0 {
+				other["subscription_consumed"] = consumedCount
+			}
+		} else if relayInfo.SubscriptionAmountTotal > 0 {
+			other["subscription_total"] = relayInfo.SubscriptionAmountTotal
+			other["subscription_used"] = relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
+			other["subscription_remain"] = other["subscription_amount_remain"]
+			if relayInfo.SubscriptionPreConsumedAmount > 0 || relayInfo.SubscriptionPostDelta != 0 {
+				consumed := relayInfo.SubscriptionPreConsumedAmount + relayInfo.SubscriptionPostDelta
+				if consumed < 0 {
+					consumed = 0
+				}
+				other["subscription_consumed"] = consumed
+			}
 		}
 		// Wallet quota is not deducted when billed from subscription.
 		other["wallet_quota_deducted"] = 0

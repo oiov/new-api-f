@@ -43,7 +43,15 @@ func (p *DiscordProvider) GetName() string {
 }
 
 func (p *DiscordProvider) IsEnabled() bool {
-	return system_setting.GetDiscordSettings().Enabled
+	return system_setting.IsDiscordOAuthEnabled()
+}
+
+func (p *DiscordProvider) IsLoginEnabled() bool {
+	return system_setting.IsDiscordLoginEnabled()
+}
+
+func (p *DiscordProvider) IsRegistrationEnabled() bool {
+	return system_setting.IsDiscordRegisterEnabled()
 }
 
 func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c *gin.Context) (*OAuthToken, error) {

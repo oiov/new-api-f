@@ -1,0 +1,19 @@
+{
+  "web": {
+    "client_id": "533628944902-389k09bs39sn16jop27qj997rj5vfod4.apps.googleusercontent.com",
+    "project_id": "aicentos",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_secret": "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",
+    "redirect_uris": [
+      "https://www.aicentos.com/oauth/google"
+    ],
+    "javascript_origins": [
+      "https://www.aicentos.com",
+      "https://aicentos.com",
+      "https://api-zeabur.aicentos.com",
+      "https://claud.aicentos.com"
+    ]
+  }
+}

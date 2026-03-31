@@ -27,6 +27,7 @@ import {
   loadChannelModels,
   copy,
   toBoolean,
+  verifyJSON,
 } from '../../helpers';
 import {
   CHANNEL_OPTIONS,
@@ -64,7 +65,12 @@ export const useChannelsData = () => {
   const [enableTagMode, setEnableTagMode] = useState(false);
   const [showBatchSetTag, setShowBatchSetTag] = useState(false);
   const [batchSetTagValue, setBatchSetTagValue] = useState('');
+  const [showBatchModelMapping, setShowBatchModelMapping] = useState(false);
+  const [batchModelMappingValue, setBatchModelMappingValue] = useState('');
+  const [batchUpdatingModelMapping, setBatchUpdatingModelMapping] =
+    useState(false);
   const [compactMode, setCompactMode] = useTableCompactMode('channels');
+  const [batchTestingChannels, setBatchTestingChannels] = useState(false);
 
   // Column visibility states
   const [visibleColumns, setVisibleColumns] = useState({});
@@ -139,8 +145,9 @@ export const useChannelsData = () => {
     RESPONSE_TIME: 'response_time',
     BALANCE: 'balance',
     PRIORITY: 'priority',
-    WEIGHT: 'weight',
-    OPERATE: 'operate',
+      WEIGHT: 'weight',
+      REQUEST_COUNT_TODAY: 'request_count_today',
+      OPERATE: 'operate',
   };
 
   // Initialize from localStorage
@@ -180,6 +187,7 @@ export const useChannelsData = () => {
       [COLUMN_KEYS.BALANCE]: true,
       [COLUMN_KEYS.PRIORITY]: true,
       [COLUMN_KEYS.WEIGHT]: true,
+      [COLUMN_KEYS.REQUEST_COUNT_TODAY]: true,
       [COLUMN_KEYS.OPERATE]: true,
     };
   };
@@ -260,6 +268,7 @@ export const useChannelsData = () => {
             response_time: 0,
             priority: -1,
             weight: -1,
+            request_count_today: 0,
           };
           tagChannelDates.children = [];
           channelDates.push(tagChannelDates);
@@ -301,6 +310,9 @@ export const useChannelsData = () => {
         tagChannelDates.used_quota += channels[i].used_quota;
         tagChannelDates.response_time += channels[i].response_time;
         tagChannelDates.response_time = tagChannelDates.response_time / 2;
+        tagChannelDates.request_count_today += Number(
+          channels[i].request_count_today || 0,
+        );
       }
     }
     setChannels(channelDates);
@@ -719,6 +731,127 @@ export const useChannelsData = () => {
     setLoading(false);
   };
 
+  const batchSetChannelModelMapping = async () => {
+    if (enableTagMode) {
+      showError(t('标签聚合模式下不支持批量修改模型映射，请先关闭标签聚合模式。'));
+      return;
+    }
+    if (selectedChannels.length === 0) {
+      showError(t('请先选择要修改模型映射的通道！'));
+      return;
+    }
+
+    const trimmedModelMapping = String(batchModelMappingValue || '').trim();
+    if (trimmedModelMapping === '') {
+      showError(t('模型映射不能为空！'));
+      return;
+    }
+    if (!verifyJSON(trimmedModelMapping)) {
+      showError(t('模型映射必须是合法的 JSON 格式！'));
+      return;
+    }
+
+    let normalizedModelMapping = trimmedModelMapping;
+    try {
+      normalizedModelMapping = JSON.stringify(
+        JSON.parse(trimmedModelMapping),
+        null,
+        2,
+      );
+    } catch (error) {
+      showError(t('模型映射必须是合法的 JSON 格式！'));
+      return;
+    }
+
+    setBatchUpdatingModelMapping(true);
+    const channelsToUpdate = [...selectedChannels];
+    let successCount = 0;
+    const failedChannels = [];
+
+    try {
+      showInfo(
+        t('开始批量更新 ${count} 个通道的模型映射，请稍候...').replace(
+          '${count}',
+          channelsToUpdate.length,
+        ),
+      );
+
+      const concurrencyLimit = 5;
+      for (let i = 0; i < channelsToUpdate.length; i += concurrencyLimit) {
+        const batch = channelsToUpdate.slice(i, i + concurrencyLimit);
+        const batchResults = await Promise.all(
+          batch.map(async (channel) => {
+            try {
+              const res = await API.put('/api/channel/', {
+                id: channel.id,
+                model_mapping: normalizedModelMapping,
+              });
+              if (res?.data?.success) {
+                return { success: true };
+              }
+              return {
+                success: false,
+                id: channel.id,
+                name: channel.name,
+                message: res?.data?.message || t('更新失败'),
+              };
+            } catch (error) {
+              return {
+                success: false,
+                id: channel.id,
+                name: channel.name,
+                message: error?.message || t('网络错误'),
+              };
+            }
+          }),
+        );
+
+        batchResults.forEach((result) => {
+          if (result?.success) {
+            successCount++;
+          } else if (result) {
+            failedChannels.push(result);
+          }
+        });
+
+        if (i + concurrencyLimit < channelsToUpdate.length) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+
+      if (failedChannels.length === 0) {
+        showSuccess(
+          t('批量更新完成，已成功修改 ${count} 个通道的模型映射。').replace(
+            '${count}',
+            successCount,
+          ),
+        );
+      } else {
+        const failedSummary = failedChannels
+          .slice(0, 5)
+          .map(
+            (item) =>
+              `#${item.id}${item.name ? ` (${item.name})` : ''}: ${item.message}`,
+          )
+          .join('\n');
+        showError(
+          t('批量更新完成，成功 ${success} 个，失败 ${failed} 个。')
+            .replace('${success}', successCount)
+            .replace('${failed}', failedChannels.length) +
+            (failedSummary ? `\n${failedSummary}` : ''),
+        );
+        await refresh();
+        return;
+      }
+
+      await refresh();
+      setBatchModelMappingValue('');
+      setShowBatchModelMapping(false);
+    } finally {
+      setBatchUpdatingModelMapping(false);
+    }
+  };
+
   // Channel operations
   const testAllChannels = async () => {
     const res = await API.get(`/api/channel/test`);
@@ -864,7 +997,9 @@ export const useChannelsData = () => {
     model,
     endpointType = '',
     stream = false,
+    options = {},
   ) => {
+    const { silent = false } = options;
     const testKey = `${record.id}-${model}`;
 
     // 检查是否应该停止批量测试
@@ -910,6 +1045,10 @@ export const useChannelsData = () => {
           channel.test_time = Date.now() / 1000;
         });
 
+        if (silent) {
+          return { success: true, message, time: time || 0 };
+        }
+
         if (!model || model === '') {
           showInfo(
             t('通道 ${name} 测试成功，耗时 ${time.toFixed(2)} 秒。')
@@ -927,7 +1066,10 @@ export const useChannelsData = () => {
           );
         }
       } else {
-        showError(`${t('模型')} ${model}: ${message}`);
+        if (!silent) {
+          showError(`${t('模型')} ${model}: ${message}`);
+        }
+        return { success: false, message, time: time || 0 };
       }
     } catch (error) {
       // 处理网络错误
@@ -941,7 +1083,14 @@ export const useChannelsData = () => {
           timestamp: Date.now(),
         },
       }));
-      showError(`${t('模型')} ${model}: ${error.message || t('测试失败')}`);
+      if (!silent) {
+        showError(`${t('模型')} ${model}: ${error.message || t('测试失败')}`);
+      }
+      return {
+        success: false,
+        message: error.message || t('测试失败'),
+        time: 0,
+      };
     } finally {
       // 从正在测试的模型集合中移除
       setTestingModels((prev) => {
@@ -949,6 +1098,62 @@ export const useChannelsData = () => {
         newSet.delete(model);
         return newSet;
       });
+    }
+  };
+
+  const batchTestSelectedChannels = async () => {
+    if (selectedChannels.length === 0) {
+      showError(t('请先选择要测试的通道！'));
+      return;
+    }
+
+    setBatchTestingChannels(true);
+    const channelsToTest = [...selectedChannels];
+    let successCount = 0;
+    let failedCount = 0;
+
+    try {
+      showInfo(
+        t('开始批量测试 ${count} 个通道，请稍候...').replace(
+          '${count}',
+          channelsToTest.length,
+        ),
+      );
+
+      const concurrencyLimit = 5;
+      for (let i = 0; i < channelsToTest.length; i += concurrencyLimit) {
+        const batch = channelsToTest.slice(i, i + concurrencyLimit);
+        const batchResults = await Promise.all(
+          batch.map((channel) => testChannel(channel, '', '', false, { silent: true })),
+        );
+        batchResults.forEach((result) => {
+          if (result?.success) {
+            successCount++;
+          } else {
+            failedCount++;
+          }
+        });
+        if (i + concurrencyLimit < channelsToTest.length) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+
+      if (failedCount > 0) {
+        showInfo(
+          t('批量测试完成，成功 ${success} 个，失败 ${failed} 个。')
+            .replace('${success}', successCount)
+            .replace('${failed}', failedCount),
+        );
+      } else {
+        showSuccess(
+          t('批量测试完成，${success} 个通道全部成功。').replace(
+            '${success}',
+            successCount,
+          ),
+        );
+      }
+    } finally {
+      setBatchTestingChannels(false);
     }
   };
 
@@ -1162,6 +1367,11 @@ export const useChannelsData = () => {
     setShowBatchSetTag,
     batchSetTagValue,
     setBatchSetTagValue,
+    showBatchModelMapping,
+    setShowBatchModelMapping,
+    batchModelMappingValue,
+    setBatchModelMappingValue,
+    batchUpdatingModelMapping,
 
     // Column states
     visibleColumns,
@@ -1226,7 +1436,10 @@ export const useChannelsData = () => {
     closeEdit,
     handleRow,
     batchSetChannelTag,
+    batchSetChannelModelMapping,
     batchDeleteChannels,
+    batchTestSelectedChannels,
+    batchTestingChannels,
     testAllChannels,
     deleteAllDisabledChannels,
     updateAllChannelsBalance,

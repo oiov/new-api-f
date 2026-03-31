@@ -33,13 +33,32 @@ export default function SettingsCreditLimit(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     QuotaForNewUser: '',
+    SubscriptionPlanForNewUser: '0',
     PreConsumedQuota: '',
     QuotaForInviter: '',
+    SubscriptionPlanForInviter: '0',
     QuotaForInvitee: '',
+    SubscriptionPlanForInvitee: '0',
+    InviteRewardLimitWindowMinutes: '1440',
+    InviteRewardMaxCountPerInviter: '10',
+    InviteRewardMaxCountPerIP: '3',
+    InviteRewardMaxCountPerInviterIP: '1',
     'quota_setting.enable_free_model_pre_consume': true,
   });
+  const [subscriptionPlans, setSubscriptionPlans] = useState([]);
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
+
+  const loadSubscriptionPlans = async () => {
+    try {
+      const res = await API.get('/api/subscription/admin/plans');
+      if (res.data?.success) {
+        setSubscriptionPlans(res.data.data || []);
+      }
+    } catch (error) {
+      showError(t('订阅套餐加载失败'));
+    }
+  };
 
   function onSubmit() {
     const updateArray = compareObjects(inputs, inputsRow);
@@ -77,7 +96,19 @@ export default function SettingsCreditLimit(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
+    loadSubscriptionPlans();
+  }, []);
+
+  useEffect(() => {
+    const currentInputs = {
+      SubscriptionPlanForNewUser: '0',
+      SubscriptionPlanForInviter: '0',
+      SubscriptionPlanForInvitee: '0',
+      InviteRewardLimitWindowMinutes: '1440',
+      InviteRewardMaxCountPerInviter: '10',
+      InviteRewardMaxCountPerIP: '3',
+      InviteRewardMaxCountPerInviterIP: '1',
+    };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
         currentInputs[key] = props.options[key];
@@ -147,6 +178,46 @@ export default function SettingsCreditLimit(props) {
                   }
                 />
               </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  label={t('邀请人赠送订阅套餐')}
+                  field={'SubscriptionPlanForInviter'}
+                  placeholder={t('不赠送套餐')}
+                  optionList={[
+                    { label: t('不赠送套餐'), value: '0' },
+                    ...(subscriptionPlans || []).map((item) => ({
+                      label: `${item?.plan?.title || `#${item?.plan?.id}`} (#${item?.plan?.id})`,
+                      value: String(item?.plan?.id || 0),
+                    })),
+                  ]}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      SubscriptionPlanForInviter: String(value || '0'),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  label={t('新用户注册赠送订阅套餐')}
+                  field={'SubscriptionPlanForNewUser'}
+                  placeholder={t('不赠送套餐')}
+                  optionList={[
+                    { label: t('不赠送套餐'), value: '0' },
+                    ...(subscriptionPlans || []).map((item) => ({
+                      label: `${item?.plan?.title || `#${item?.plan?.id}`} (#${item?.plan?.id})`,
+                      value: String(item?.plan?.id || 0),
+                    })),
+                  ]}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      SubscriptionPlanForNewUser: String(value || '0'),
+                    })
+                  }
+                />
+              </Col>
             </Row>
             <Row>
               <Col xs={24} sm={12} md={8} lg={8} xl={6}>
@@ -162,6 +233,88 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       QuotaForInvitee: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  label={t('被邀请人赠送订阅套餐')}
+                  field={'SubscriptionPlanForInvitee'}
+                  placeholder={t('不赠送套餐')}
+                  optionList={[
+                    { label: t('不赠送套餐'), value: '0' },
+                    ...(subscriptionPlans || []).map((item) => ({
+                      label: `${item?.plan?.title || `#${item?.plan?.id}`} (#${item?.plan?.id})`,
+                      value: String(item?.plan?.id || 0),
+                    })),
+                  ]}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      SubscriptionPlanForInvitee: String(value || '0'),
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('邀请奖励统计窗口')}
+                  field={'InviteRewardLimitWindowMinutes'}
+                  step={1}
+                  min={0}
+                  suffix={t('分钟')}
+                  extraText={t('0 表示不限制，默认 1440 分钟')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviteRewardLimitWindowMinutes: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('单邀请人窗口内最大奖励次数')}
+                  field={'InviteRewardMaxCountPerInviter'}
+                  step={1}
+                  min={0}
+                  extraText={t('超过后继续允许注册，但不再发放邀请奖励')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviteRewardMaxCountPerInviter: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('单 IP 窗口内最大奖励次数')}
+                  field={'InviteRewardMaxCountPerIP'}
+                  step={1}
+                  min={0}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviteRewardMaxCountPerIP: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('单邀请人同 IP 最大奖励次数')}
+                  field={'InviteRewardMaxCountPerInviterIP'}
+                  step={1}
+                  min={0}
+                  extraText={t('建议保持 1，能明显抑制同一网络环境批量刷邀请')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviteRewardMaxCountPerInviterIP: String(value),
                     })
                   }
                 />

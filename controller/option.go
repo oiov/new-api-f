@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -123,7 +124,15 @@ func UpdateOption(c *gin.Context) {
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
 	switch option.Key {
-	case "GitHubOAuthEnabled":
+	case "GoogleOAuthEnabled", "GoogleOAuthRegisterEnabled":
+		if option.Value == "true" && (common.GoogleClientId == "" || common.GoogleClientSecret == "") {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无法启用 Google OAuth，请先填入 Google Client Id 以及 Google Client Secret！",
+			})
+			return
+		}
+	case "GitHubOAuthEnabled", "GitHubOAuthRegisterEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -131,7 +140,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "discord.enabled":
+	case "discord.enabled", "discord.register_enabled":
 		if option.Value == "true" && system_setting.GetDiscordSettings().ClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -139,7 +148,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "oidc.enabled":
+	case "oidc.enabled", "oidc.register_enabled":
 		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -147,7 +156,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "LinuxDOOAuthEnabled":
+	case "LinuxDOOAuthEnabled", "LinuxDOOAuthRegisterEnabled":
 		if option.Value == "true" && common.LinuxDOClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -163,7 +172,7 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "WeChatAuthEnabled":
+	case "WeChatAuthEnabled", "WeChatRegisterEnabled":
 		if option.Value == "true" && common.WeChatServerAddress == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -180,7 +189,7 @@ func UpdateOption(c *gin.Context) {
 
 			return
 		}
-	case "TelegramOAuthEnabled":
+	case "TelegramOAuthEnabled", "TelegramOAuthRegisterEnabled":
 		if option.Value == "true" && common.TelegramBotToken == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -293,6 +302,43 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": err.Error(),
+			})
+			return
+		}
+	case "SubscriptionPlanForNewUser", "SubscriptionPlanForInviter", "SubscriptionPlanForInvitee":
+		planId, parseErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
+		if parseErr != nil || planId < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "注册送订阅套餐必须是大于等于 0 的整数",
+			})
+			return
+		}
+		if planId > 0 {
+			_, err = model.GetSubscriptionPlanById(planId)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "订阅套餐不存在",
+				})
+				return
+			}
+		}
+	case "InviteRewardLimitWindowMinutes", "InviteRewardMaxCountPerInviter", "InviteRewardMaxCountPerIP", "InviteRewardMaxCountPerInviterIP":
+		count, parseErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
+		if parseErr != nil || count < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "邀请奖励防刷配置必须是大于等于 0 的整数",
+			})
+			return
+		}
+	case "error_setting.restrict_proxy_distribution_allowed_hosts", "error_setting.restrict_proxy_distribution_allowed_sources":
+		var hosts []string
+		if err = common.UnmarshalJsonStr(option.Value.(string), &hosts); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "防分发白名单必须是字符串数组 JSON",
 			})
 			return
 		}

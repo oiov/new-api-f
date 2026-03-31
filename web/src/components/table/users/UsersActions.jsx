@@ -18,12 +18,22 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Button } from '@douyinfe/semi-ui';
+import { Button, Modal } from '@douyinfe/semi-ui';
+import { isRoot } from '../../../helpers';
 
-const UsersActions = ({ setShowAddUser, t }) => {
+const UsersActions = ({ setShowAddUser, manageUser, t }) => {
   // Add new user
   const handleAddUser = () => {
     setShowAddUser(true);
+  };
+
+  const handleResetAllAffCount = () => {
+    Modal.confirm({
+      title: t('确定是否要重置所有用户的邀请次数？'),
+      content: t('该操作会将所有用户的邀请次数清零，但不会修改 aff、邀请收益和邀请关系。'),
+      type: 'warning',
+      onOk: () => manageUser(0, 'reset_all_aff_count'),
+    });
   };
 
   return (
@@ -31,6 +41,16 @@ const UsersActions = ({ setShowAddUser, t }) => {
       <Button className='w-full md:w-auto' onClick={handleAddUser} size='small'>
         {t('添加用户')}
       </Button>
+      {isRoot() && (
+        <Button
+          className='w-full md:w-auto'
+          onClick={handleResetAllAffCount}
+          size='small'
+          type='warning'
+        >
+          {t('重置所有邀请次数')}
+        </Button>
+      )}
     </div>
   );
 };

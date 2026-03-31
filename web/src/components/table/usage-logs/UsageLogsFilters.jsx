@@ -102,12 +102,38 @@ const LogsFilters = ({
             size='small'
           />
 
+          <Form.Input
+            field='subscription_id'
+            prefix={<IconSearch />}
+            placeholder={`${t('订阅实例')} ${t('ID')}`}
+            showClear
+            pure
+            size='small'
+          />
+
+          <Form.Input
+            field='subscription_plan_id'
+            prefix={<IconSearch />}
+            placeholder={`${t('套餐')} ${t('ID')}`}
+            showClear
+            pure
+            size='small'
+          />
+
           {isAdminUser && (
             <>
               <Form.Input
                 field='channel'
                 prefix={<IconSearch />}
                 placeholder={t('渠道 ID')}
+                showClear
+                pure
+                size='small'
+              />
+              <Form.Input
+                field='user_id'
+                prefix={<IconSearch />}
+                placeholder={t('用户 ID')}
                 showClear
                 pure
                 size='small'

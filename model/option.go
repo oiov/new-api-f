@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"gorm.io/gorm"
 )
 
 type Option struct {
@@ -38,12 +39,15 @@ func InitOptionMap() {
 	common.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(common.PasswordLoginEnabled)
 	common.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(common.PasswordRegisterEnabled)
 	common.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(common.EmailVerificationEnabled)
+	common.OptionMap["GoogleOAuthEnabled"] = strconv.FormatBool(common.GoogleOAuthEnabled)
+	common.OptionMap["GoogleOAuthRegisterEnabled"] = strconv.FormatBool(common.GoogleOAuthRegisterEnabled)
 	common.OptionMap["GitHubOAuthEnabled"] = strconv.FormatBool(common.GitHubOAuthEnabled)
 	common.OptionMap["LinuxDOOAuthEnabled"] = strconv.FormatBool(common.LinuxDOOAuthEnabled)
 	common.OptionMap["TelegramOAuthEnabled"] = strconv.FormatBool(common.TelegramOAuthEnabled)
 	common.OptionMap["WeChatAuthEnabled"] = strconv.FormatBool(common.WeChatAuthEnabled)
 	common.OptionMap["TurnstileCheckEnabled"] = strconv.FormatBool(common.TurnstileCheckEnabled)
 	common.OptionMap["RegisterEnabled"] = strconv.FormatBool(common.RegisterEnabled)
+	common.OptionMap["InviteRegisterEnabled"] = strconv.FormatBool(common.InviteRegisterEnabled)
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
@@ -110,6 +114,8 @@ func InitOptionMap() {
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
+	common.OptionMap["GoogleClientId"] = ""
+	common.OptionMap["GoogleClientSecret"] = ""
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
 	common.OptionMap["TelegramBotToken"] = ""
@@ -120,8 +126,15 @@ func InitOptionMap() {
 	common.OptionMap["TurnstileSiteKey"] = ""
 	common.OptionMap["TurnstileSecretKey"] = ""
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
+	common.OptionMap["SubscriptionPlanForNewUser"] = strconv.Itoa(common.SubscriptionPlanForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
+	common.OptionMap["SubscriptionPlanForInviter"] = strconv.Itoa(common.SubscriptionPlanForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	common.OptionMap["SubscriptionPlanForInvitee"] = strconv.Itoa(common.SubscriptionPlanForInvitee)
+	common.OptionMap["InviteRewardLimitWindowMinutes"] = strconv.Itoa(common.InviteRewardLimitWindowMinutes)
+	common.OptionMap["InviteRewardMaxCountPerInviter"] = strconv.Itoa(common.InviteRewardMaxCountPerInviter)
+	common.OptionMap["InviteRewardMaxCountPerIP"] = strconv.Itoa(common.InviteRewardMaxCountPerIP)
+	common.OptionMap["InviteRewardMaxCountPerInviterIP"] = strconv.Itoa(common.InviteRewardMaxCountPerInviterIP)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -209,6 +222,36 @@ func UpdateOption(key string, value string) error {
 	return updateOptionMap(key, value)
 }
 
+func BatchUpdateOptions(optionValues map[string]string) error {
+	if len(optionValues) == 0 {
+		return nil
+	}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		for key, value := range optionValues {
+			option := Option{Key: key}
+			if err := tx.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+				return err
+			}
+			option.Value = value
+			if err := tx.Save(&option).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for key, value := range optionValues {
+		if err := updateOptionMap(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
@@ -242,18 +285,32 @@ func updateOptionMap(key string, value string) (err error) {
 			common.PasswordLoginEnabled = boolValue
 		case "EmailVerificationEnabled":
 			common.EmailVerificationEnabled = boolValue
+		case "GoogleOAuthEnabled":
+			common.GoogleOAuthEnabled = boolValue
+		case "GoogleOAuthRegisterEnabled":
+			common.GoogleOAuthRegisterEnabled = boolValue
 		case "GitHubOAuthEnabled":
 			common.GitHubOAuthEnabled = boolValue
+		case "GitHubOAuthRegisterEnabled":
+			common.GitHubOAuthRegisterEnabled = boolValue
 		case "LinuxDOOAuthEnabled":
 			common.LinuxDOOAuthEnabled = boolValue
+		case "LinuxDOOAuthRegisterEnabled":
+			common.LinuxDOOAuthRegisterEnabled = boolValue
 		case "WeChatAuthEnabled":
 			common.WeChatAuthEnabled = boolValue
+		case "WeChatRegisterEnabled":
+			common.WeChatRegisterEnabled = boolValue
 		case "TelegramOAuthEnabled":
 			common.TelegramOAuthEnabled = boolValue
+		case "TelegramOAuthRegisterEnabled":
+			common.TelegramOAuthRegisterEnabled = boolValue
 		case "TurnstileCheckEnabled":
 			common.TurnstileCheckEnabled = boolValue
 		case "RegisterEnabled":
 			common.RegisterEnabled = boolValue
+		case "InviteRegisterEnabled":
+			common.InviteRegisterEnabled = boolValue
 		case "EmailDomainRestrictionEnabled":
 			common.EmailDomainRestrictionEnabled = boolValue
 		case "EmailAliasRestrictionEnabled":
@@ -406,6 +463,10 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoMinTopUp, _ = strconv.Atoi(value)
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
+	case "GoogleClientId":
+		common.GoogleClientId = value
+	case "GoogleClientSecret":
+		common.GoogleClientSecret = value
 	case "GitHubClientId":
 		common.GitHubClientId = value
 	case "GitHubClientSecret":
@@ -438,10 +499,24 @@ func updateOptionMap(key string, value string) (err error) {
 		common.TurnstileSecretKey = value
 	case "QuotaForNewUser":
 		common.QuotaForNewUser, _ = strconv.Atoi(value)
+	case "SubscriptionPlanForNewUser":
+		common.SubscriptionPlanForNewUser, _ = strconv.Atoi(value)
 	case "QuotaForInviter":
 		common.QuotaForInviter, _ = strconv.Atoi(value)
+	case "SubscriptionPlanForInviter":
+		common.SubscriptionPlanForInviter, _ = strconv.Atoi(value)
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
+	case "SubscriptionPlanForInvitee":
+		common.SubscriptionPlanForInvitee, _ = strconv.Atoi(value)
+	case "InviteRewardLimitWindowMinutes":
+		common.InviteRewardLimitWindowMinutes, _ = strconv.Atoi(value)
+	case "InviteRewardMaxCountPerInviter":
+		common.InviteRewardMaxCountPerInviter, _ = strconv.Atoi(value)
+	case "InviteRewardMaxCountPerIP":
+		common.InviteRewardMaxCountPerIP, _ = strconv.Atoi(value)
+	case "InviteRewardMaxCountPerInviterIP":
+		common.InviteRewardMaxCountPerInviterIP, _ = strconv.Atoi(value)
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":

@@ -36,6 +36,10 @@ const OperationSetting = () => {
     PreConsumedQuota: 0,
     QuotaForInviter: 0,
     QuotaForInvitee: 0,
+    InviteRewardLimitWindowMinutes: 1440,
+    InviteRewardMaxCountPerInviter: 10,
+    InviteRewardMaxCountPerIP: 3,
+    InviteRewardMaxCountPerInviterIP: 1,
     'quota_setting.enable_free_model_pre_consume': true,
 
     /* 通用设置 */
