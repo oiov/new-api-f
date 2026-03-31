@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -29,7 +28,7 @@ func resolveInviteRegistration(c *gin.Context, affCode string) (int, string) {
 		return 0, ""
 	}
 
-	trimmedCode := strings.TrimSpace(affCode)
+	trimmedCode := common.NormalizeInviteCode(affCode)
 	if trimmedCode == "" {
 		return 0, i18n.MsgUserInviteCodeRequired
 	}

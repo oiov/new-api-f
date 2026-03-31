@@ -36,6 +36,7 @@ import {
   onOIDCClicked,
   onLinuxDOOAuthClicked,
   onCustomOAuthClicked,
+  normalizeInviteCode,
   prepareCredentialRequestOptions,
   buildAssertionResult,
   isPasskeySupported,
@@ -121,7 +122,9 @@ const LoginForm = () => {
   const systemName = getSystemName();
   const seo = getAuthSeo(i18n.language, 'login');
 
-  let affCode = new URLSearchParams(window.location.search).get('aff');
+  let affCode = normalizeInviteCode(
+    new URLSearchParams(window.location.search).get('aff'),
+  );
   if (affCode) {
     localStorage.setItem('aff', affCode);
   }

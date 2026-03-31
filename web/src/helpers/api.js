@@ -170,6 +170,16 @@ export function updateAPI() {
   API = createAPIClient();
 }
 
+export function normalizeInviteCode(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+  const base = raw.split(/[?#&]/, 1)[0].trim();
+  const matched = base.match(/^[A-Za-z0-9]+/);
+  return matched ? matched[0] : '';
+}
+
 // playground
 
 // 构建API请求负载
@@ -295,9 +305,14 @@ export const processGroupsData = (data, userGroup) => {
 
 export async function getOAuthState() {
   let path = '/api/oauth/state';
-  let affCode = localStorage.getItem('aff');
+  let affCode = normalizeInviteCode(localStorage.getItem('aff'));
+  if (affCode) {
+    localStorage.setItem('aff', affCode);
+  } else {
+    localStorage.removeItem('aff');
+  }
   if (affCode && affCode.length > 0) {
-    path += `?aff=${affCode}`;
+    path += `?aff=${encodeURIComponent(affCode)}`;
   }
   const res = await API.get(path);
   const { success, message, data } = res.data;

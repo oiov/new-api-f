@@ -30,6 +30,7 @@ import {
   setUserData,
   onGoogleOAuthClicked,
   onDiscordOAuthClicked,
+  normalizeInviteCode,
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
 import {
@@ -66,6 +67,8 @@ import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord, SiGoogle } from 'react-icons/si';
 import { getAuthSeo } from '../../helpers/seo';
+
+const USERNAME_MAX_LENGTH = 20;
 
 const RegisterForm = () => {
   let navigate = useNavigate();
@@ -118,7 +121,9 @@ const RegisterForm = () => {
   const systemName = getSystemName();
   const seo = getAuthSeo(i18n.language, 'register');
 
-  let affCode = new URLSearchParams(window.location.search).get('aff');
+  let affCode = normalizeInviteCode(
+    new URLSearchParams(window.location.search).get('aff'),
+  );
   if (affCode) {
     localStorage.setItem('aff', affCode);
   }
@@ -147,7 +152,7 @@ const RegisterForm = () => {
   const inviteRegisterEnabled = !!status?.invite_register_enabled;
 
   const syncInviteCode = (value) => {
-    const trimmedValue = (value || '').trim();
+    const trimmedValue = normalizeInviteCode(value);
     if (trimmedValue) {
       localStorage.setItem('aff', trimmedValue);
     } else {
@@ -156,7 +161,7 @@ const RegisterForm = () => {
   };
 
   const resolveInviteCode = () =>
-    (inputs.aff_code || affCode || localStorage.getItem('aff') || '').trim();
+    normalizeInviteCode(inputs.aff_code || affCode || localStorage.getItem('aff'));
 
   const ensureInviteCodeReady = () => {
     if (!inviteRegisterEnabled) {
@@ -184,11 +189,9 @@ const RegisterForm = () => {
   }, [status]);
 
   useEffect(() => {
-    const initialInviteCode = (
-      affCode ||
-      localStorage.getItem('aff') ||
-      ''
-    ).trim();
+    const initialInviteCode = normalizeInviteCode(
+      affCode || localStorage.getItem('aff') || '',
+    );
     if (!initialInviteCode) {
       return;
     }
@@ -271,6 +274,17 @@ const RegisterForm = () => {
   }
 
   async function handleSubmit(e) {
+    const normalizedUsername = (username || '').trim();
+    if (normalizedUsername.length === 0) {
+      showInfo('请输入用户名');
+      return;
+    }
+    if (normalizedUsername.length > USERNAME_MAX_LENGTH) {
+      showInfo(
+        `用户名最长 ${USERNAME_MAX_LENGTH} 个字符，请不要直接填写完整邮箱地址`,
+      );
+      return;
+    }
     if (password.length < 8) {
       showInfo('密码长度不得小于 8 位！');
       return;
@@ -291,6 +305,7 @@ const RegisterForm = () => {
       try {
         const payload = {
           ...inputs,
+          username: normalizedUsername,
           aff_code: resolveInviteCode(),
         };
         const res = await API.post(
@@ -694,8 +709,9 @@ const RegisterForm = () => {
                 <Form.Input
                   field='username'
                   label={t('用户名')}
-                  placeholder={t('请输入用户名')}
+                  placeholder={t('请输入用户名，最长 20 个字符')}
                   name='username'
+                  maxLength={USERNAME_MAX_LENGTH}
                   onChange={(value) => handleChange('username', value)}
                   prefix={<IconUser />}
                 />
