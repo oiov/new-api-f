@@ -200,17 +200,37 @@ func AppendDisplaySite(c *gin.Context, message string) string {
 	return fmt.Sprintf("%s (site: %s)", message, host)
 }
 
+func BuildPublicErrorMessage(statusCode int, original string) string {
+	if ErrorDetailsEnabled {
+		return strings.TrimSpace(original)
+	}
+	switch statusCode {
+	case http.StatusTooManyRequests:
+		return "当前请求较多，请稍后再试"
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return "请求失败，请检查权限或稍后再试"
+	case http.StatusInternalServerError:
+		return "系统内部错误，请稍后再试"
+	default:
+		return "请求失败，请稍后再试"
+	}
+}
+
+func BuildDisplayedErrorMessage(c *gin.Context, statusCode int, original string) string {
+	return AppendDisplaySite(c, BuildPublicErrorMessage(statusCode, original))
+}
+
 func ApiError(c *gin.Context, err error) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"message": AppendDisplaySite(c, err.Error()),
+		"message": BuildDisplayedErrorMessage(c, http.StatusInternalServerError, err.Error()),
 	})
 }
 
 func ApiErrorMsg(c *gin.Context, msg string) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"message": AppendDisplaySite(c, msg),
+		"message": BuildDisplayedErrorMessage(c, http.StatusInternalServerError, msg),
 	})
 }
 
@@ -228,7 +248,7 @@ func ApiErrorI18n(c *gin.Context, key string, args ...map[string]any) {
 	msg := TranslateMessage(c, key, args...)
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"message": AppendDisplaySite(c, msg),
+		"message": BuildDisplayedErrorMessage(c, http.StatusInternalServerError, msg),
 	})
 }
 

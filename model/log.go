@@ -86,7 +86,9 @@ func formatUserLogs(logs []*Log, startIdx int) {
 }
 
 func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
+	tx := LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId)
+	tx = applyErrorLogVisibilityFilter(tx, LogTypeUnknown, !common.ErrorDetailsEnabled || !common.ErrorLogDisplayEnabled)
+	err = tx.Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	return logs, err
 }
@@ -293,6 +295,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId in
 	} else {
 		tx = LOG_DB.Where("logs.type = ?", logType)
 	}
+	tx = applyErrorLogVisibilityFilter(tx, logType, !common.ErrorLogDisplayEnabled)
 
 	if modelName != "" {
 		tx = tx.Where("logs.model_name like ?", modelName)
@@ -388,6 +391,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
+	tx = applyErrorLogVisibilityFilter(tx, logType, !common.ErrorDetailsEnabled || !common.ErrorLogDisplayEnabled)
 
 	if modelName != "" {
 		modelNamePattern, err := sanitizeLikePattern(modelName)
@@ -430,6 +434,16 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 
 	formatUserLogs(logs, startIdx)
 	return logs, total, err
+}
+
+func applyErrorLogVisibilityFilter(tx *gorm.DB, logType int, hideErrorLogs bool) *gorm.DB {
+	if !hideErrorLogs {
+		return tx
+	}
+	if logType == LogTypeError {
+		return tx.Where("1 = 0")
+	}
+	return tx.Where("logs.type <> ?", LogTypeError)
 }
 
 func GetSubscriptionConsumeLogs(userId int, subscriptionId int, planId int, filterUserId int, startTimestamp int64, endTimestamp int64, startIdx int, num int) (logs []*Log, total int64, summary *SubscriptionConsumeSummary, err error) {
