@@ -52,43 +52,43 @@
   "routes": [
     {
       "src": "^/api/?$",
-      "dest": "https://api-zeabur.aicentos.com/api"
+      "dest": "https://api.aicentos.com/api"
     },
     {
       "src": "^/api/(.*)$",
-      "dest": "https://api-zeabur.aicentos.com/api/$1"
+      "dest": "https://api.aicentos.com/api/$1"
     },
     {
       "src": "^/v1/?$",
-      "dest": "https://api-zeabur.aicentos.com/v1"
+      "dest": "https://api.aicentos.com/v1"
     },
     {
       "src": "^/v1/(.*)$",
-      "dest": "https://api-zeabur.aicentos.com/v1/$1"
+      "dest": "https://api.aicentos.com/v1/$1"
     },
     {
       "src": "^/v1beta/?$",
-      "dest": "https://api-zeabur.aicentos.com/v1beta"
+      "dest": "https://api.aicentos.com/v1beta"
     },
     {
       "src": "^/v1beta/(.*)$",
-      "dest": "https://api-zeabur.aicentos.com/v1beta/$1"
+      "dest": "https://api.aicentos.com/v1beta/$1"
     },
     {
       "src": "^/mj/?$",
-      "dest": "https://api-zeabur.aicentos.com/mj"
+      "dest": "https://api.aicentos.com/mj"
     },
     {
       "src": "^/mj/(.*)$",
-      "dest": "https://api-zeabur.aicentos.com/mj/$1"
+      "dest": "https://api.aicentos.com/mj/$1"
     },
     {
       "src": "^/pg/?$",
-      "dest": "https://api-zeabur.aicentos.com/pg"
+      "dest": "https://api.aicentos.com/pg"
     },
     {
       "src": "^/pg/(.*)$",
-      "dest": "https://api-zeabur.aicentos.com/pg/$1"
+      "dest": "https://api.aicentos.com/pg/$1"
     },
     {
       "handle": "filesystem"
