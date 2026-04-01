@@ -23,7 +23,7 @@ func providerParams(name string) map[string]any {
 func GenerateOAuthCode(c *gin.Context) {
 	session := sessions.Default(c)
 	state := common.GetRandomString(12)
-	affCode := c.Query("aff")
+	affCode := common.NormalizeInviteCode(c.Query("aff"))
 	if affCode != "" {
 		session.Set("aff", affCode)
 	}

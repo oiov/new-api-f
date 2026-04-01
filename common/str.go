@@ -18,6 +18,7 @@ var (
 	maskIPPattern     = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 	// maskApiKeyPattern matches patterns like 'api_key:xxx' or "api_key:xxx" to mask the API key value
 	maskApiKeyPattern = regexp.MustCompile(`(['"]?)api_key:([^\s'"]+)(['"]?)`)
+	inviteCodePattern = regexp.MustCompile(`^[A-Za-z0-9]+`)
 )
 
 func GetStringIfEmpty(str string, defaultValue string) string {
@@ -25,6 +26,17 @@ func GetStringIfEmpty(str string, defaultValue string) string {
 		return defaultValue
 	}
 	return str
+}
+
+func NormalizeInviteCode(str string) string {
+	raw := strings.TrimSpace(str)
+	if raw == "" {
+		return ""
+	}
+	base := strings.TrimSpace(strings.SplitN(raw, "?", 2)[0])
+	base = strings.TrimSpace(strings.SplitN(base, "#", 2)[0])
+	base = strings.TrimSpace(strings.SplitN(base, "&", 2)[0])
+	return inviteCodePattern.FindString(base)
 }
 
 func GetRandomString(length int) string {
