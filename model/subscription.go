@@ -16,6 +16,27 @@ import (
 	"gorm.io/gorm"
 )
 
+var subscriptionResetLocation = loadSubscriptionResetLocation()
+
+func loadSubscriptionResetLocation() *time.Location {
+	tz := strings.TrimSpace(common.GetEnvOrDefaultString("SUBSCRIPTION_RESET_TIMEZONE", "Asia/Shanghai"))
+	if tz == "" {
+		tz = "Asia/Shanghai"
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.FixedZone("UTC+8", 8*3600)
+	}
+	return loc
+}
+
+func subscriptionResetTime(t time.Time) time.Time {
+	if subscriptionResetLocation == nil {
+		return t
+	}
+	return t.In(subscriptionResetLocation)
+}
+
 // Subscription duration units
 const (
 	SubscriptionDurationYear   = "year"
@@ -292,6 +313,17 @@ type SubscriptionOrder struct {
 	PlanId int     `json:"plan_id" gorm:"index"`
 	Money  float64 `json:"money"`
 
+	PlanTitle               string `json:"plan_title" gorm:"type:varchar(255);default:''"`
+	PlanDurationUnit        string `json:"plan_duration_unit" gorm:"type:varchar(16);default:''"`
+	PlanDurationValue       int    `json:"plan_duration_value" gorm:"type:int;not null;default:0"`
+	PlanCustomSeconds       int64  `json:"plan_custom_seconds" gorm:"type:bigint;not null;default:0"`
+	PlanUpgradeGroup        string `json:"plan_upgrade_group" gorm:"type:varchar(64);default:''"`
+	PlanTotalAmount         int64  `json:"plan_total_amount" gorm:"type:bigint;not null;default:0"`
+	PlanResourceType        string `json:"plan_resource_type" gorm:"type:varchar(32);default:''"`
+	PlanRequestCountTotal   int64  `json:"plan_request_count_total" gorm:"type:bigint;not null;default:0"`
+	PlanQuotaResetPeriod    string `json:"plan_quota_reset_period" gorm:"type:varchar(16);default:''"`
+	PlanQuotaResetCustomSec int64  `json:"plan_quota_reset_custom_sec" gorm:"type:bigint;not null;default:0"`
+
 	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
 	Status        string `json:"status"`
@@ -321,6 +353,60 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 		return nil
 	}
 	return &order
+}
+
+func (o *SubscriptionOrder) ApplyPlanSnapshot(plan *SubscriptionPlan) {
+	if o == nil || plan == nil {
+		return
+	}
+	o.PlanTitle = strings.TrimSpace(plan.Title)
+	o.PlanDurationUnit = strings.TrimSpace(plan.DurationUnit)
+	o.PlanDurationValue = plan.DurationValue
+	o.PlanCustomSeconds = plan.CustomSeconds
+	o.PlanUpgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+	o.PlanTotalAmount = plan.TotalAmount
+	o.PlanResourceType = NormalizeSubscriptionResourceType(plan.ResourceType)
+	o.PlanRequestCountTotal = plan.RequestCountTotal
+	o.PlanQuotaResetPeriod = NormalizeResetPeriod(plan.QuotaResetPeriod)
+	o.PlanQuotaResetCustomSec = plan.QuotaResetCustomSeconds
+}
+
+func (o *SubscriptionOrder) SnapshotPlan() *SubscriptionPlan {
+	if o == nil || strings.TrimSpace(o.PlanDurationUnit) == "" {
+		return nil
+	}
+	return &SubscriptionPlan{
+		Id:                      o.PlanId,
+		Title:                   strings.TrimSpace(o.PlanTitle),
+		DurationUnit:            strings.TrimSpace(o.PlanDurationUnit),
+		DurationValue:           o.PlanDurationValue,
+		CustomSeconds:           o.PlanCustomSeconds,
+		UpgradeGroup:            strings.TrimSpace(o.PlanUpgradeGroup),
+		TotalAmount:             o.PlanTotalAmount,
+		ResourceType:            NormalizeSubscriptionResourceType(o.PlanResourceType),
+		RequestCountTotal:       o.PlanRequestCountTotal,
+		QuotaResetPeriod:        NormalizeResetPeriod(o.PlanQuotaResetPeriod),
+		QuotaResetCustomSeconds: o.PlanQuotaResetCustomSec,
+	}
+}
+
+func buildSubscriptionPlanSnapshot(plan *SubscriptionPlan, planId int) *SubscriptionPlan {
+	if plan == nil || planId <= 0 || strings.TrimSpace(plan.DurationUnit) == "" {
+		return nil
+	}
+	return &SubscriptionPlan{
+		Id:                      planId,
+		Title:                   strings.TrimSpace(plan.Title),
+		DurationUnit:            strings.TrimSpace(plan.DurationUnit),
+		DurationValue:           plan.DurationValue,
+		CustomSeconds:           plan.CustomSeconds,
+		UpgradeGroup:            strings.TrimSpace(plan.UpgradeGroup),
+		TotalAmount:             plan.TotalAmount,
+		ResourceType:            NormalizeSubscriptionResourceType(plan.ResourceType),
+		RequestCountTotal:       plan.RequestCountTotal,
+		QuotaResetPeriod:        NormalizeResetPeriod(plan.QuotaResetPeriod),
+		QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
+	}
 }
 
 // User subscription instance
@@ -482,6 +568,7 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 	if period == SubscriptionResetNever {
 		return 0
 	}
+	base = subscriptionResetTime(base)
 	var next time.Time
 	switch period {
 	case SubscriptionResetDaily:
@@ -513,6 +600,68 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 		return 0
 	}
 	return next.Unix()
+}
+
+func syncSubscriptionPlanSnapshotFields(sub *UserSubscription, plan *SubscriptionPlan, now int64) bool {
+	if sub == nil || plan == nil {
+		return false
+	}
+	changed := false
+	resourceType := NormalizeSubscriptionResourceType(plan.ResourceType)
+	resetPeriod := NormalizeResetPeriod(plan.QuotaResetPeriod)
+
+	if sub.ResourceType != resourceType {
+		sub.ResourceType = resourceType
+		changed = true
+	}
+	if sub.RequestCountTotal != plan.RequestCountTotal {
+		sub.RequestCountTotal = plan.RequestCountTotal
+		changed = true
+	}
+	if sub.ResetPeriod != resetPeriod {
+		sub.ResetPeriod = resetPeriod
+		changed = true
+	}
+	if sub.ResetCustomSeconds != plan.QuotaResetCustomSeconds {
+		sub.ResetCustomSeconds = plan.QuotaResetCustomSeconds
+		changed = true
+	}
+
+	if recalculateSubscriptionResetWindow(sub, now) {
+		changed = true
+	}
+	return changed
+}
+
+func recalculateSubscriptionResetWindow(sub *UserSubscription, now int64) bool {
+	if sub == nil {
+		return false
+	}
+	oldLastResetTime := sub.LastResetTime
+	oldNextResetTime := sub.NextResetTime
+	resetPeriod := NormalizeResetPeriod(sub.ResetPeriod)
+	if resetPeriod == SubscriptionResetNever {
+		sub.LastResetTime = 0
+		sub.NextResetTime = 0
+		return sub.LastResetTime != oldLastResetTime || sub.NextResetTime != oldNextResetTime
+	}
+	baseUnix := sub.LastResetTime
+	if baseUnix <= 0 {
+		baseUnix = sub.StartTime
+	}
+	base := time.Unix(baseUnix, 0)
+	snapshotPlan := &SubscriptionPlan{
+		QuotaResetPeriod:        resetPeriod,
+		QuotaResetCustomSeconds: sub.ResetCustomSeconds,
+	}
+	next := calcNextResetTime(base, snapshotPlan, sub.EndTime)
+	for next > 0 && next <= now {
+		base = time.Unix(next, 0)
+		next = calcNextResetTime(base, snapshotPlan, sub.EndTime)
+	}
+	sub.LastResetTime = base.Unix()
+	sub.NextResetTime = next
+	return sub.LastResetTime != oldLastResetTime || sub.NextResetTime != oldNextResetTime
 }
 
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {
@@ -658,7 +807,15 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if err != nil {
 		return nil, err
 	}
-	if lockedPlan.MaxPurchasePerUser > 0 {
+	effectivePlan := lockedPlan
+	skipPlanGuard := false
+	if source == "order" {
+		if snapshotPlan := buildSubscriptionPlanSnapshot(plan, lockedPlan.Id); snapshotPlan != nil {
+			effectivePlan = snapshotPlan
+			skipPlanGuard = true
+		}
+	}
+	if !skipPlanGuard && lockedPlan.MaxPurchasePerUser > 0 {
 		var count int64
 		if err := tx.Model(&UserSubscription{}).
 			Where("user_id = ? AND plan_id = ?", userId, lockedPlan.Id).
@@ -671,22 +828,22 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	}
 	// Redemption codes represent an entitlement that has already been issued.
 	// They should remain redeemable even if the plan is later marked sold out.
-	if source != "redemption" && lockedPlan.IsSoldOut() {
+	if !skipPlanGuard && source != "redemption" && lockedPlan.IsSoldOut() {
 		return nil, errors.New("该套餐已售罄")
 	}
 	nowUnix := GetDBTimestampWithTx(tx)
 	now := time.Unix(nowUnix, 0)
-	endUnix, err := calcPlanEndTime(now, lockedPlan)
+	endUnix, err := calcPlanEndTime(now, effectivePlan)
 	if err != nil {
 		return nil, err
 	}
 	resetBase := now
-	nextReset := calcNextResetTime(resetBase, lockedPlan, endUnix)
+	nextReset := calcNextResetTime(resetBase, effectivePlan, endUnix)
 	lastReset := int64(0)
 	if nextReset > 0 {
 		lastReset = now.Unix()
 	}
-	upgradeGroup := strings.TrimSpace(lockedPlan.UpgradeGroup)
+	upgradeGroup := strings.TrimSpace(effectivePlan.UpgradeGroup)
 	prevGroup := ""
 	if upgradeGroup != "" {
 		currentGroup, err := getUserGroupByIdTx(tx, userId)
@@ -704,16 +861,16 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	sub := &UserSubscription{
 		UserId:             userId,
 		PlanId:             lockedPlan.Id,
-		AmountTotal:        lockedPlan.TotalAmount,
+		AmountTotal:        effectivePlan.TotalAmount,
 		AmountUsed:         0,
-		ResourceType:       NormalizeSubscriptionResourceType(lockedPlan.ResourceType),
-		RequestCountTotal:  lockedPlan.RequestCountTotal,
+		ResourceType:       NormalizeSubscriptionResourceType(effectivePlan.ResourceType),
+		RequestCountTotal:  effectivePlan.RequestCountTotal,
 		RequestCountUsed:   0,
-		ResetPeriod:        NormalizeResetPeriod(lockedPlan.QuotaResetPeriod),
-		ResetCustomSeconds: lockedPlan.QuotaResetCustomSeconds,
-		DurationUnit:       lockedPlan.DurationUnit,
-		DurationValue:      lockedPlan.DurationValue,
-		CustomSeconds:      lockedPlan.CustomSeconds,
+		ResetPeriod:        NormalizeResetPeriod(effectivePlan.QuotaResetPeriod),
+		ResetCustomSeconds: effectivePlan.QuotaResetCustomSeconds,
+		DurationUnit:       effectivePlan.DurationUnit,
+		DurationValue:      effectivePlan.DurationValue,
+		CustomSeconds:      effectivePlan.CustomSeconds,
 		StartTime:          now.Unix(),
 		EndTime:            endUnix,
 		Status:             "active",
@@ -763,17 +920,20 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		plan, err := GetSubscriptionPlanById(order.PlanId)
-		if err != nil {
-			return err
-		}
-		if !plan.Enabled {
-			// still allow completion for already purchased orders
+		plan := order.SnapshotPlan()
+		var planErr error
+		if plan == nil {
+			plan, planErr = GetSubscriptionPlanById(order.PlanId)
+			if planErr != nil {
+				return planErr
+			}
+			if !plan.Enabled {
+				// still allow completion for already purchased orders
+			}
 		}
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
-		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
-		if err != nil {
-			return err
+		if _, planErr = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order"); planErr != nil {
+			return planErr
 		}
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
@@ -803,6 +963,74 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		RecordLog(logUserId, LogTypeTopup, msg)
 	}
 	return nil
+}
+
+func SyncActiveSubscriptionsForPlanTx(tx *gorm.DB, planId int) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if planId <= 0 {
+		return errors.New("invalid planId")
+	}
+	plan, err := getSubscriptionPlanByIdForUpdateTx(tx, planId)
+	if err != nil {
+		return err
+	}
+	now := GetDBTimestampWithTx(tx)
+	var subs []UserSubscription
+	if err := tx.Where("plan_id = ? AND status = ? AND end_time > ?", planId, "active", now).
+		Find(&subs).Error; err != nil {
+		return err
+	}
+	for i := range subs {
+		sub := subs[i]
+		if !syncSubscriptionPlanSnapshotFields(&sub, plan, now) {
+			continue
+		}
+		if err := tx.Save(&sub).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RefreshActiveSubscriptionResetWindows(batchSize int) (int, error) {
+	if batchSize <= 0 {
+		batchSize = 500
+	}
+	now := GetDBTimestamp()
+	totalUpdated := 0
+	lastID := 0
+	for {
+		var subs []UserSubscription
+		if err := DB.Where("id > ? AND status = ? AND end_time > ?", lastID, "active", now).
+			Order("id asc").
+			Limit(batchSize).
+			Find(&subs).Error; err != nil {
+			return totalUpdated, err
+		}
+		if len(subs) == 0 {
+			return totalUpdated, nil
+		}
+		for i := range subs {
+			sub := subs[i]
+			lastID = sub.Id
+			if !recalculateSubscriptionResetWindow(&sub, now) {
+				continue
+			}
+			if err := DB.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]interface{}{
+				"last_reset_time": sub.LastResetTime,
+				"next_reset_time": sub.NextResetTime,
+				"updated_at":      common.GetTimestamp(),
+			}).Error; err != nil {
+				return totalUpdated, err
+			}
+			totalUpdated++
+		}
+		if len(subs) < batchSize {
+			return totalUpdated, nil
+		}
+	}
 }
 
 func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
@@ -1913,37 +2141,25 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, _ 
 	if sub.NextResetTime > 0 && sub.NextResetTime > now {
 		return nil
 	}
-	snapshotPlan := &SubscriptionPlan{
-		QuotaResetPeriod:        NormalizeResetPeriod(sub.ResetPeriod),
-		QuotaResetCustomSeconds: sub.ResetCustomSeconds,
-	}
-	if snapshotPlan.QuotaResetPeriod == SubscriptionResetNever {
+	if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever {
 		return nil
 	}
 	baseUnix := sub.LastResetTime
 	if baseUnix <= 0 {
 		baseUnix = sub.StartTime
 	}
-	base := time.Unix(baseUnix, 0)
-	next := calcNextResetTime(base, snapshotPlan, sub.EndTime)
-	advanced := false
-	for next > 0 && next <= now {
-		advanced = true
-		base = time.Unix(next, 0)
-		next = calcNextResetTime(base, snapshotPlan, sub.EndTime)
-	}
+	oldLastResetTime := sub.LastResetTime
+	oldNextResetTime := sub.NextResetTime
+	recalculateSubscriptionResetWindow(sub, now)
+	advanced := sub.LastResetTime > baseUnix && sub.LastResetTime <= now
 	if !advanced {
-		if sub.NextResetTime == 0 && next > 0 {
-			sub.NextResetTime = next
-			sub.LastResetTime = base.Unix()
+		if sub.NextResetTime == 0 && (sub.LastResetTime != oldLastResetTime || sub.NextResetTime != oldNextResetTime) {
 			return tx.Save(sub).Error
 		}
 		return nil
 	}
 	sub.AmountUsed = 0
 	sub.RequestCountUsed = 0
-	sub.LastResetTime = base.Unix()
-	sub.NextResetTime = next
 	return tx.Save(sub).Error
 }
 

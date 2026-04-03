@@ -260,6 +260,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		req.Plan.Currency = "USD"
 	}
 	req.Plan.Currency = "USD"
+	req.Plan.SoldCount = 0
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -320,6 +321,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		req.Plan.Currency = "USD"
 	}
 	req.Plan.Currency = "USD"
+	req.Plan.SoldCount = 0
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -365,7 +367,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"creem_product_id":           req.Plan.CreemProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"sale_limit_count":           req.Plan.SaleLimitCount,
-			"sold_count":                 req.Plan.SoldCount,
 			"total_amount":               req.Plan.TotalAmount,
 			"resource_type":              req.Plan.ResourceType,
 			"request_count_total":        req.Plan.RequestCountTotal,
@@ -375,6 +376,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
+			return err
+		}
+		if err := model.SyncActiveSubscriptionsForPlanTx(tx, id); err != nil {
 			return err
 		}
 		return nil

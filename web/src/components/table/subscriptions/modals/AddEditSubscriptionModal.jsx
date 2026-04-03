@@ -104,7 +104,6 @@ const AddEditSubscriptionModal = ({
     sort_order: 0,
     max_purchase_per_user: 0,
     sale_limit_count: 0,
-    sold_count: 0,
     resource_type: 'quota',
     total_amount: 0,
     request_count_total: 0,
@@ -136,7 +135,6 @@ const AddEditSubscriptionModal = ({
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
       sale_limit_count: Number(p.sale_limit_count || 0),
-      sold_count: Number(p.sold_count || 0),
       resource_type: getSubscriptionResourceType(p),
       total_amount: Number(
         quotaToDisplayAmount(p.total_amount || 0).toFixed(2),
@@ -196,7 +194,6 @@ const AddEditSubscriptionModal = ({
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
           sale_limit_count: Number(values.sale_limit_count || 0),
-          sold_count: Number(values.sold_count || 0),
           resource_type: values.resource_type || 'quota',
           total_amount: displayAmountToQuota(values.total_amount),
           request_count_total: Number(values.request_count_total || 0),
@@ -464,17 +461,6 @@ const AddEditSubscriptionModal = ({
                         min={0}
                         precision={0}
                         extraText={t('0 表示不限')}
-                        style={{ width: '100%' }}
-                      />
-                    </Col>
-
-                    <Col span={12}>
-                      <Form.InputNumber
-                        field='sold_count'
-                        label={t('已售数量')}
-                        min={0}
-                        precision={0}
-                        extraText={t('可手动调整；若设置了可购买总数，则不能超过该值')}
                         style={{ width: '100%' }}
                       />
                     </Col>
