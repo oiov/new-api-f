@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -737,6 +739,98 @@ func TestAppendBillingInfo_RequestCountSubscriptionUsesRequestCountTotals(t *tes
 	assert.Equal(t, int64(8), other["subscription_used"])
 	assert.Equal(t, int64(92), other["subscription_remain"])
 	assert.Equal(t, int64(1), other["subscription_consumed"])
+}
+
+func TestBillingSessionSettle_RequestCountZeroUsageRefundsPreConsumedCount(t *testing.T) {
+	truncate(t)
+
+	const userID = 61
+	const subID = 61
+	const requestID = "req-request-count-zero-usage"
+
+	seedUser(t, userID, 0)
+	seedRequestCountSubscription(t, subID, userID, 100, 0)
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       requestID,
+		UserId:          userID,
+		OriginModelName: "test-model",
+		UsingGroup:      "",
+	}
+	session := &BillingSession{
+		relayInfo: relayInfo,
+		funding: &SubscriptionFunding{
+			requestId:  requestID,
+			userId:     userID,
+			modelName:  "test-model",
+			usingGroup: "",
+			amount:     6000,
+		},
+	}
+
+	require.Nil(t, session.preConsume(ctx, 6000))
+	assert.Equal(t, int64(1), getSubscriptionRequestCountUsed(t, subID))
+	require.NoError(t, session.Settle(0))
+
+	assert.Equal(t, int64(0), getSubscriptionRequestCountUsed(t, subID))
+	assert.Equal(t, 0, session.GetPreConsumedQuota())
+	assert.Equal(t, int64(0), relayInfo.SubscriptionPreConsumedCount)
+	assert.Equal(t, int64(0), relayInfo.SubscriptionRequestCountUsedAfterPreConsume)
+}
+
+func TestBillingSessionSettle_DualLimitRequestCountZeroUsageRefundsAmountAndCount(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID, subID = 62, 62, 62
+	const tokenRemain = 10000
+	const requestID = "req-dual-request-count-zero-usage"
+
+	seedUser(t, userID, 0)
+	seedToken(t, tokenID, userID, "sk-dual-zero-usage", tokenRemain)
+	seedDualLimitSubscription(t, subID, userID, 10000, 0, 100, 0, model.SubscriptionResourceRequestCount)
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       requestID,
+		UserId:          userID,
+		TokenId:         tokenID,
+		TokenKey:        "sk-dual-zero-usage",
+		OriginModelName: "test-model",
+		UsingGroup:      "",
+	}
+	session := &BillingSession{
+		relayInfo: relayInfo,
+		funding: &SubscriptionFunding{
+			requestId:  requestID,
+			userId:     userID,
+			modelName:  "test-model",
+			usingGroup: "",
+			amount:     5000,
+		},
+	}
+
+	require.Nil(t, session.preConsume(ctx, 5000))
+
+	var pre model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", subID).First(&pre).Error)
+	assert.Equal(t, int64(5000), pre.AmountUsed)
+	assert.Equal(t, int64(1), pre.RequestCountUsed)
+	assert.Equal(t, tokenRemain-5000, getTokenRemainQuota(t, tokenID))
+
+	require.NoError(t, session.Settle(0))
+
+	var post model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", subID).First(&post).Error)
+	assert.Equal(t, int64(0), post.AmountUsed)
+	assert.Equal(t, int64(0), post.RequestCountUsed)
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, int64(0), relayInfo.SubscriptionPreConsumedAmount)
+	assert.Equal(t, int64(0), relayInfo.SubscriptionPreConsumedCount)
+	assert.Equal(t, int64(0), relayInfo.SubscriptionAmountUsedAfterPreConsume)
+	assert.Equal(t, int64(0), relayInfo.SubscriptionRequestCountUsedAfterPreConsume)
 }
 
 func TestRefundTaskQuota_DualLimitRequestCountSubscriptionAlsoRefundsTokenQuota(t *testing.T) {

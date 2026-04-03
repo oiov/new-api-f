@@ -25,7 +25,6 @@ import {
   Collapse,
   Divider,
   Empty,
-  Pagination,
   Progress,
   Select,
   Skeleton,
@@ -43,7 +42,6 @@ import {
   BookOpen,
   CalendarClock,
   ChevronRight,
-  Check,
   Clock,
   Crown,
   History,
@@ -51,7 +49,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
-  TrendingUp,
   Zap,
 } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
@@ -135,20 +132,30 @@ function getPlanValueScore(plan) {
   return Number(summary.total || 0);
 }
 
-const StatChip = ({ icon: Icon, label, value }) => (
-  <div className='inline-flex items-center gap-2 rounded-full bg-white/60 px-4 py-2 text-xs text-semi-color-text-0 backdrop-blur-sm dark:bg-white/10'>
-    <Icon size={14} className='text-semi-color-primary' />
-    <span className='text-semi-color-text-2'>{label}</span>
-    <span className='font-semibold'>{value}</span>
-  </div>
-);
+function getPlanResourceAmountText(plan, t) {
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const resourceType = getSubscriptionResourceType(plan);
+  if (usageSummary.unlimited) return t('不限');
+  return resourceType === 'request_count'
+    ? `${usageSummary.total} ${t('次')}`
+    : renderQuota(usageSummary.total);
+}
 
-const BenefitItem = ({ text }) => (
-  <div className='flex items-start gap-2 text-sm text-semi-color-text-1'>
-    <Check size={14} className='mt-0.5 flex-shrink-0 text-green-500' />
-    <span>{text}</span>
-  </div>
-);
+function getPlanBenefitDescription(plan, t) {
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const resetPeriod = formatSubscriptionResetPeriod(plan, t);
+  const amountText = getPlanResourceAmountText(plan, t);
+
+  if (usageSummary.unlimited) {
+    return t('有效期内不限使用');
+  }
+
+  if (resetPeriod === t('不重置')) {
+    return `${t('有效期内共可用')} ${amountText}`;
+  }
+
+  return `${t('每个重置周期可用')} ${amountText} · ${t('重置')} ${resetPeriod}`;
+}
 
 const SubscriptionPlansCard = ({
   t,
@@ -683,7 +690,7 @@ const SubscriptionPlansCard = ({
               {t('问：为什么有“总量”和“重置周期”同时存在？')}
             </div>
             <div className='text-semi-color-text-2'>
-              {t('答：总量表示该订阅实例的可用上限；重置周期表示当前周期已用值何时清零。具体以套餐配置说明和实际展示为准。')}
+              {t('答：如果页面显示“每个重置周期可用 X，重置 Y”，其中 X 表示单个重置周期内可用的权益，Y 可以是每天、每周、每月或其他自定义周期；“有效期”只表示套餐会在何时到期，不表示整个有效期内的总权益。')}
             </div>
           </div>
         ),
@@ -912,11 +919,9 @@ const SubscriptionPlansCard = ({
   const renderPlanExpandedContent = (record) => {
     const plan = record?.plan || {};
     const usageSummary = getSubscriptionUsageSummary(plan);
-    const resourceType = getSubscriptionResourceType(plan);
     const count = getPlanPurchaseCount(plan?.id);
     const limit = Number(plan?.max_purchase_per_user || 0);
     const saleSummary = getSubscriptionSaleSummary(plan);
-    const resetPeriod = formatSubscriptionResetPeriod(plan, t);
 
     return (
       <div className='grid grid-cols-1 gap-3 lg:grid-cols-4'>
@@ -948,9 +953,7 @@ const SubscriptionPlansCard = ({
           <div className='mt-1 text-sm text-semi-color-text-0 break-all'>
             {usageSummary.unlimited
               ? `${formatSubscriptionResourceLabel(plan, t)}: ${t('不限')}`
-              : resourceType === 'request_count'
-                ? `${formatSubscriptionResourceLabel(plan, t)}: ${usageSummary.total} · ${t('重置')} ${resetPeriod}`
-                : `${formatSubscriptionResourceLabel(plan, t)}: ${renderQuota(usageSummary.total)} · ${t('重置')} ${resetPeriod}`}
+              : `${getPlanBenefitDescription(plan, t)} · ${t('有效期')} ${formatSubscriptionDuration(plan, t)}`}
           </div>
         </div>
       </div>
@@ -1055,21 +1058,11 @@ const SubscriptionPlansCard = ({
         key: 'benefit',
         render: (text, record) => {
           const plan = record?.plan || {};
-          const usageSummary = getSubscriptionUsageSummary(plan);
-          const resourceType = getSubscriptionResourceType(plan);
-          const resetPeriod = formatSubscriptionResetPeriod(plan, t);
-          const benefitText = usageSummary.unlimited
-            ? `${formatSubscriptionResourceLabel(plan, t)}: ${t('不限')}`
-            : resourceType === 'request_count'
-              ? `${formatSubscriptionResourceLabel(plan, t)}: ${usageSummary.total}`
-              : `${formatSubscriptionResourceLabel(plan, t)}: ${renderQuota(usageSummary.total)}`;
-
           return (
             <div className='space-y-1'>
-              <div>{benefitText}</div>
+              <div>{getPlanBenefitDescription(plan, t)}</div>
               <Text type='tertiary' size='small'>
-                {resourceType === 'request_count' ? t('次数重置') : t('额度重置')}
-                ：{resetPeriod}
+                {t('有效期')}：{formatSubscriptionDuration(plan, t)}
               </Text>
             </div>
           );
@@ -1232,6 +1225,36 @@ const SubscriptionPlansCard = ({
             className={isPackageVariant ? 'package-usage-card !rounded-2xl w-full overflow-hidden border-0 shadow-sm' : '!rounded-xl w-full overflow-hidden border-0 shadow-sm'}
             bodyStyle={{ padding: 0 }}
           >
+            <div className={isPackageVariant ? 'px-6 pt-6' : 'px-5 pt-5'}>
+              <div className='flex flex-col gap-2'>
+                <div className='flex items-center gap-2'>
+                  <div className='rounded-lg bg-amber-500/15 p-1.5'>
+                    <BookOpen size={14} className='text-amber-600 dark:text-amber-400' />
+                  </div>
+                  <Text strong>{t('使用说明与计费规则')}</Text>
+                </div>
+                <Text type='tertiary' size='small'>
+                  {t('下单前建议先阅读这里，了解套餐如何生效、如何扣费，以及多套餐并存时的处理方式。')}
+                </Text>
+              </div>
+
+              <Divider margin={12} />
+
+              <Collapse>
+                {packageGuideItems.map((item) => (
+                  <Collapse.Panel
+                    key={item.key}
+                    itemKey={item.key}
+                    header={item.title}
+                  >
+                    {item.content}
+                  </Collapse.Panel>
+                ))}
+              </Collapse>
+            </div>
+
+            <Divider margin={0} />
+
             <div className={isPackageVariant ? 'package-usage-card-header px-6 py-5' : 'bg-gradient-to-r from-blue-500/10 via-indigo-500/8 to-purple-500/10 px-5 py-4 dark:from-blue-500/15 dark:via-indigo-500/10 dark:to-purple-500/15'}>
               <div className='flex items-center gap-2.5'>
                 <div className={isPackageVariant ? 'rounded-lg bg-white/75 p-2 text-blue-600 shadow-sm dark:bg-white/10 dark:text-blue-400' : 'rounded-lg bg-blue-500/15 p-1.5'}>
@@ -1532,36 +1555,6 @@ const SubscriptionPlansCard = ({
             </Tabs>
           </Card>
 
-          <Card
-            className={isPackageVariant ? '!rounded-2xl w-full border-0 shadow-sm' : '!rounded-xl w-full border-0 shadow-sm'}
-            bodyStyle={{ padding: isPackageVariant ? '22px' : '20px' }}
-          >
-            <div className='flex flex-col gap-2'>
-              <div className='flex items-center gap-2'>
-                <div className='rounded-lg bg-amber-500/15 p-1.5'>
-                  <BookOpen size={14} className='text-amber-600 dark:text-amber-400' />
-                </div>
-                <Text strong>{t('使用说明与计费规则')}</Text>
-              </div>
-              <Text type='tertiary' size='small'>
-                {t('下单前建议先阅读这里，了解套餐如何生效、如何扣费，以及多套餐并存时的处理方式。')}
-              </Text>
-            </div>
-
-            <Divider margin={12} />
-
-            <Collapse>
-              {packageGuideItems.map((item) => (
-                <Collapse.Panel
-                  key={item.key}
-                  itemKey={item.key}
-                  header={item.title}
-                >
-                  {item.content}
-                </Collapse.Panel>
-              ))}
-            </Collapse>
-          </Card>
         </Space>
       )}
     </>

@@ -42,6 +42,41 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	if s.settled {
 		return nil
 	}
+	if sub, ok := s.funding.(*SubscriptionFunding); ok &&
+		sub.ResourceType == model.SubscriptionResourceRequestCount &&
+		actualQuota <= 0 {
+		if err := sub.Refund(); err != nil {
+			return err
+		}
+		if s.funding.UseTokenQuota() && !s.relayInfo.IsPlayground && s.tokenConsumed > 0 {
+			if err := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed); err != nil {
+				common.SysLog(fmt.Sprintf("error refunding token quota during zero-usage request_count settle (userId=%d, tokenId=%d, amount=%d): %s",
+					s.relayInfo.UserId, s.relayInfo.TokenId, s.tokenConsumed, err.Error()))
+				return err
+			}
+		}
+		if sub.preConsumed > 0 {
+			s.relayInfo.SubscriptionAmountUsedAfterPreConsume -= sub.preConsumed
+			if s.relayInfo.SubscriptionAmountUsedAfterPreConsume < 0 {
+				s.relayInfo.SubscriptionAmountUsedAfterPreConsume = 0
+			}
+		}
+		if sub.preConsumedCnt > 0 {
+			s.relayInfo.SubscriptionRequestCountUsedAfterPreConsume -= sub.preConsumedCnt
+			if s.relayInfo.SubscriptionRequestCountUsedAfterPreConsume < 0 {
+				s.relayInfo.SubscriptionRequestCountUsedAfterPreConsume = 0
+			}
+		}
+		s.preConsumedQuota = 0
+		s.tokenConsumed = 0
+		s.fundingSettled = true
+		s.relayInfo.FinalPreConsumedQuota = 0
+		s.relayInfo.SubscriptionPreConsumed = 0
+		s.relayInfo.SubscriptionPreConsumedAmount = 0
+		s.relayInfo.SubscriptionPreConsumedCount = 0
+		s.settled = true
+		return nil
+	}
 	fundingDelta := s.funding.SettleDelta(actualQuota, s.preConsumedQuota)
 	tokenDelta := actualQuota - s.tokenConsumed
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）

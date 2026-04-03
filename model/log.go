@@ -531,6 +531,9 @@ func summarizeSubscriptionConsumeLogs(userId int, subscriptionId int, planId int
 		if resourceType == "" {
 			resourceType = SubscriptionResourceQuota
 		}
+		if consumed <= 0 {
+			continue
+		}
 
 		summary.TotalSuccessCount++
 		if resourceType == SubscriptionResourceRequestCount {

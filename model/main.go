@@ -295,6 +295,11 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if updated, err := RefreshActiveSubscriptionResetWindows(500); err != nil {
+		return err
+	} else if updated > 0 {
+		common.SysLog(fmt.Sprintf("subscription reset windows refreshed: updated=%d", updated))
+	}
 	return nil
 }
 
@@ -364,6 +369,11 @@ func migrateDBFast() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if updated, err := RefreshActiveSubscriptionResetWindows(500); err != nil {
+		return err
+	} else if updated > 0 {
+		common.SysLog(fmt.Sprintf("subscription reset windows refreshed: updated=%d", updated))
 	}
 	common.SysLog("database migrated")
 	return nil
