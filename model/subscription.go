@@ -1015,14 +1015,24 @@ func RefreshActiveSubscriptionResetWindows(batchSize int) (int, error) {
 		for i := range subs {
 			sub := subs[i]
 			lastID = sub.Id
+			baseUnix := sub.LastResetTime
+			if baseUnix <= 0 {
+				baseUnix = sub.StartTime
+			}
 			if !recalculateSubscriptionResetWindow(&sub, now) {
 				continue
 			}
-			if err := DB.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]interface{}{
+			updates := map[string]interface{}{
 				"last_reset_time": sub.LastResetTime,
 				"next_reset_time": sub.NextResetTime,
 				"updated_at":      common.GetTimestamp(),
-			}).Error; err != nil {
+			}
+			advanced := sub.LastResetTime > baseUnix && sub.LastResetTime <= now
+			if advanced {
+				updates["amount_used"] = 0
+				updates["request_count_used"] = 0
+			}
+			if err := DB.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(updates).Error; err != nil {
 				return totalUpdated, err
 			}
 			totalUpdated++

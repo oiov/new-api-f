@@ -224,7 +224,7 @@ func TestRefreshActiveSubscriptionResetWindows_RecalculatesLegacyWindow(t *testi
 		require.NoError(t, DB.Where("id = ?", 601).First(&activeSub).Error)
 		require.EqualValues(t, expectedSub.NextResetTime, activeSub.NextResetTime)
 		require.EqualValues(t, expectedSub.LastResetTime, activeSub.LastResetTime)
-		require.EqualValues(t, 3, activeSub.RequestCountUsed)
+		require.EqualValues(t, 0, activeSub.RequestCountUsed)
 
 		var cancelledSub UserSubscription
 		require.NoError(t, DB.Where("id = ?", 602).First(&cancelledSub).Error)
