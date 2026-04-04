@@ -41,6 +41,14 @@ export function getSubscriptionResourceType(plan) {
   return plan?.resource_type === 'request_count' ? 'request_count' : 'quota';
 }
 
+export function getSubscriptionResetPeriodValue(plan) {
+  return plan?.reset_period || plan?.quota_reset_period || 'never';
+}
+
+export function isSubscriptionResourcePeriodic(plan) {
+  return getSubscriptionResetPeriodValue(plan) !== 'never';
+}
+
 export function isSubscriptionDiscountActive(plan, now = Date.now() / 1000) {
   if (typeof plan?.has_active_discount === 'boolean') {
     return plan.has_active_discount;
@@ -61,9 +69,12 @@ export function getSubscriptionEffectivePrice(plan, now = Date.now() / 1000) {
 }
 
 export function formatSubscriptionResourceLabel(plan, t) {
-  return getSubscriptionResourceType(plan) === 'request_count'
-    ? t('总次数')
-    : t('总额度');
+  const isRequestCount = getSubscriptionResourceType(plan) === 'request_count';
+  const isPeriodic = isSubscriptionResourcePeriodic(plan);
+  if (isRequestCount) {
+    return isPeriodic ? t('每周期次数') : t('总次数');
+  }
+  return isPeriodic ? t('每周期额度') : t('总额度');
 }
 
 export function getSubscriptionUsageSummary(plan) {
@@ -122,7 +133,7 @@ export function getSubscriptionSaleSummary(plan) {
 }
 
 export function formatSubscriptionResetPeriod(plan, t) {
-  const period = plan?.reset_period || plan?.quota_reset_period || 'never';
+  const period = getSubscriptionResetPeriodValue(plan);
   if (period === 'never') return t('不重置');
   if (period === 'daily') return t('每天');
   if (period === 'weekly') return t('每周');

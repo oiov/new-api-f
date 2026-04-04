@@ -45,7 +45,10 @@ import {
   quotaToDisplayAmount,
   displayAmountToQuota,
 } from '../../../../helpers/quota';
-import { getSubscriptionResourceType } from '../../../../helpers/subscriptionFormat';
+import {
+  formatSubscriptionResourceLabel,
+  getSubscriptionResourceType,
+} from '../../../../helpers/subscriptionFormat';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const { Text, Title } = Typography;
@@ -284,8 +287,24 @@ const AddEditSubscriptionModal = ({
             getFormApi={(api) => (formApiRef.current = api)}
             onSubmit={submit}
           >
-            {({ values }) => (
-              <div className='p-2'>
+            {({ values }) => {
+              const requestCountFieldLabel = formatSubscriptionResourceLabel(
+                {
+                  resource_type: 'request_count',
+                  quota_reset_period: values.quota_reset_period,
+                },
+                t,
+              );
+              const amountFieldLabel = formatSubscriptionResourceLabel(
+                {
+                  resource_type: 'quota',
+                  quota_reset_period: values.quota_reset_period,
+                },
+                t,
+              );
+
+              return (
+                <div className='p-2'>
                 {/* 基本信息 */}
                 <Card className='!rounded-2xl shadow-sm border-0 mb-4'>
                   <div className='flex items-center mb-2'>
@@ -384,10 +403,16 @@ const AddEditSubscriptionModal = ({
                     <Col span={12}>
                       <Form.InputNumber
                         field='request_count_total'
-                        label={t('总次数')}
+                        label={requestCountFieldLabel}
                         min={0}
                         precision={0}
-                        extraText={t('0 表示不限制，可与总额度同时生效')}
+                        extraText={
+                          values.quota_reset_period === 'never'
+                            ? t('0 表示不限制，可与总额度同时生效')
+                            : t(
+                                '设置了重置周期后，这里表示每个重置周期内可用的次数；0 表示不限制。',
+                              )
+                        }
                         style={{ width: '100%' }}
                       />
                     </Col>
@@ -395,12 +420,16 @@ const AddEditSubscriptionModal = ({
                     <Col span={12}>
                       <Form.InputNumber
                         field='total_amount'
-                        label={t('总额度')}
+                        label={amountFieldLabel}
                         min={0}
                         precision={2}
-                        extraText={`${t('0 表示不限制，可与总次数同时生效')} · ${t('原生额度')}：${displayAmountToQuota(
-                          values.total_amount,
-                        )}`}
+                        extraText={`${
+                          values.quota_reset_period === 'never'
+                            ? t('0 表示不限制，可与总次数同时生效')
+                            : t(
+                                '设置了重置周期后，这里表示每个重置周期内可用的额度；0 表示不限制。',
+                              )
+                        } · ${t('原生额度')}：${displayAmountToQuota(values.total_amount)}`}
                         style={{ width: '100%' }}
                       />
                     </Col>
@@ -566,6 +595,9 @@ const AddEditSubscriptionModal = ({
                       <Form.Select
                         field='quota_reset_period'
                         label={t('重置周期')}
+                        extraText={t(
+                          '设置日/周/月/自定义重置后，上面的次数/额度表示单个重置周期内可用值，不是整个有效期总量。',
+                        )}
                       >
                         {resetPeriodOptions.map((o) => (
                           <Select.Option key={o.value} value={o.value}>
@@ -639,8 +671,9 @@ const AddEditSubscriptionModal = ({
                     </Col>
                   </Row>
                 </Card>
-              </div>
-            )}
+                </div>
+              );
+            }}
           </Form>
         </Spin>
       </SideSheet>

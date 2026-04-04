@@ -27,15 +27,13 @@ import {
   Popover,
   Divider,
   Badge,
-  Tooltip,
 } from '@douyinfe/semi-ui';
 import { renderQuota } from '../../../helpers';
 import { convertUSDToCurrency } from '../../../helpers/render';
 import {
   formatSubscriptionResourceLabel,
-  getSubscriptionResourceType,
+  formatSubscriptionResetPeriod,
   getSubscriptionSaleSummary,
-  getSubscriptionUsageSummary,
   getSubscriptionEffectivePrice,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
@@ -53,11 +51,19 @@ function hasAmountLimit(plan) {
 function renderPlanLimits(plan, t) {
   const items = [];
   if (hasRequestCountLimit(plan)) {
-    items.push(`${t('总次数')} ${Number(plan?.request_count_total || 0)}`);
+    items.push(
+      `${formatSubscriptionResourceLabel(
+        { resource_type: 'request_count', quota_reset_period: plan?.quota_reset_period },
+        t,
+      )} ${Number(plan?.request_count_total || 0)}`,
+    );
   }
   if (hasAmountLimit(plan)) {
     items.push(
-      `${t('总额度')} ${renderQuota(Number(plan?.total_amount || 0))}`,
+      `${formatSubscriptionResourceLabel(
+        { resource_type: 'quota', quota_reset_period: plan?.quota_reset_period },
+        t,
+      )} ${renderQuota(Number(plan?.total_amount || 0))}`,
     );
   }
   if (items.length === 0) {
@@ -88,21 +94,6 @@ function formatDuration(plan, t) {
     hour: t('小时'),
   };
   return `${plan.duration_value || 0}${unitMap[u] || u}`;
-}
-
-function formatResetPeriod(plan, t) {
-  const period = plan?.quota_reset_period || 'never';
-  if (period === 'daily') return t('每天');
-  if (period === 'weekly') return t('每周');
-  if (period === 'monthly') return t('每月');
-  if (period === 'custom') {
-    const seconds = Number(plan?.quota_reset_custom_seconds || 0);
-    if (seconds >= 86400) return `${Math.floor(seconds / 86400)} ${t('天')}`;
-    if (seconds >= 3600) return `${Math.floor(seconds / 3600)} ${t('小时')}`;
-    if (seconds >= 60) return `${Math.floor(seconds / 60)} ${t('分钟')}`;
-    return `${seconds} ${t('秒')}`;
-  }
-  return t('不重置');
 }
 
 const renderPlanTitle = (text, record, t) => {
@@ -145,7 +136,7 @@ const renderPlanTitle = (text, record, t) => {
         <Text type='tertiary'>{t('有效期')}</Text>
         <Text>{formatDuration(plan, t)}</Text>
         <Text type='tertiary'>{t('重置')}</Text>
-        <Text>{formatResetPeriod(plan, t)}</Text>
+        <Text>{formatSubscriptionResetPeriod(plan, t)}</Text>
       </div>
     </div>
   );
@@ -253,7 +244,7 @@ const renderResetPeriod = (text, record, t) => {
   const isNever = period === 'never';
   return (
     <Text type={isNever ? 'tertiary' : 'secondary'}>
-      {formatResetPeriod(record?.plan, t)}
+      {formatSubscriptionResetPeriod(record?.plan, t)}
     </Text>
   );
 };

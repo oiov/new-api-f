@@ -25,6 +25,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { renderQuota } from '../../../helpers';
 import {
+  formatSubscriptionResourceLabel,
   formatSubscriptionResetPeriod,
   getSubscriptionUsageSummary,
 } from '../../../helpers/subscriptionFormat';
@@ -39,7 +40,11 @@ function renderUsageBlock(sub, t) {
   if (requestTotal > 0) {
     blocks.push(
       <div key='count'>
-        {t('总次数')} {requestUsed}/{requestTotal} · {t('剩余')}{' '}
+        {formatSubscriptionResourceLabel(
+          { resource_type: 'request_count', reset_period: sub?.reset_period },
+          t,
+        )}{' '}
+        {requestUsed}/{requestTotal} · {t('剩余')}{' '}
         {Math.max(0, requestTotal - requestUsed)}
       </div>,
     );
@@ -49,7 +54,11 @@ function renderUsageBlock(sub, t) {
   if (amountTotal > 0) {
     blocks.push(
       <div key='amount'>
-        {t('总额度')} {renderQuota(amountUsed)}/{renderQuota(amountTotal)} ·{' '}
+        {formatSubscriptionResourceLabel(
+          { resource_type: 'quota', reset_period: sub?.reset_period },
+          t,
+        )}{' '}
+        {renderQuota(amountUsed)}/{renderQuota(amountTotal)} ·{' '}
         {t('剩余')} {renderQuota(Math.max(0, amountTotal - amountUsed))}
       </div>,
     );
