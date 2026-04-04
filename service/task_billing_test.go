@@ -833,6 +833,50 @@ func TestBillingSessionSettle_DualLimitRequestCountZeroUsageRefundsAmountAndCoun
 	assert.Equal(t, int64(0), relayInfo.SubscriptionRequestCountUsedAfterPreConsume)
 }
 
+func TestBillingSessionRefund_RequestCountSubscriptionRefundsPreConsumedCount(t *testing.T) {
+	truncate(t)
+
+	const userID = 63
+	const subID = 63
+	const requestID = "req-request-count-refund"
+
+	seedUser(t, userID, 0)
+	seedRequestCountSubscription(t, subID, userID, 100, 0)
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       requestID,
+		UserId:          userID,
+		OriginModelName: "test-model",
+		UsingGroup:      "",
+	}
+	session := &BillingSession{
+		relayInfo: relayInfo,
+		funding: &SubscriptionFunding{
+			requestId:  requestID,
+			userId:     userID,
+			modelName:  "test-model",
+			usingGroup: "",
+			amount:     6000,
+		},
+	}
+
+	require.Nil(t, session.preConsume(ctx, 6000))
+	assert.True(t, session.NeedsRefund())
+	assert.Equal(t, int64(1), getSubscriptionRequestCountUsed(t, subID))
+
+	session.Refund(ctx)
+
+	require.Eventually(t, func() bool {
+		return getSubscriptionRequestCountUsed(t, subID) == 0
+	}, 2*time.Second, 20*time.Millisecond)
+
+	var record model.SubscriptionPreConsumeRecord
+	require.NoError(t, model.DB.Where("request_id = ?", requestID).First(&record).Error)
+	assert.Equal(t, "refunded", record.Status)
+}
+
 func TestRefundTaskQuota_DualLimitRequestCountSubscriptionAlsoRefundsTokenQuota(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

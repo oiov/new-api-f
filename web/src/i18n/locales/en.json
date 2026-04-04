@@ -3397,6 +3397,8 @@
     "仅展示前10位": "Showing top 10 only",
     "暂无排行榜数据": "No leaderboard data yet",
     "当站内出现邀请数据后，将展示前10名用户": "The top 10 users will appear here once invite data is available",
-    "匿名用户": "Anonymous user"
+    "匿名用户": "Anonymous user",
+    "上次重置": "Last Reset",
+    "到期前不再重置": "No more resets before expiration"
   }
 }

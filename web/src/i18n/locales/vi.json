@@ -3888,6 +3888,8 @@
     "仅展示前10位": "Chỉ hiển thị top 10",
     "暂无排行榜数据": "Chưa có dữ liệu bảng xếp hạng",
     "当站内出现邀请数据后，将展示前10名用户": "Top 10 người dùng sẽ hiển thị tại đây khi có dữ liệu mời",
-    "匿名用户": "Người dùng ẩn danh"
+    "匿名用户": "Người dùng ẩn danh",
+    "上次重置": "Lần đặt lại gần nhất",
+    "到期前不再重置": "Sẽ không đặt lại nữa trước khi hết hạn"
   }
 }

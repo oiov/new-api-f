@@ -109,7 +109,7 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 		return err
 	}
 	s.subscriptionId = res.UserSubscriptionId
-	s.preConsumed = res.PreConsumedAmount
+	s.preConsumed = res.PreConsumed
 	s.preConsumedCnt = res.PreConsumedCount
 	s.ResourceType = model.NormalizeSubscriptionResourceType(res.ResourceType)
 	s.AmountTotal = res.AmountTotal

@@ -163,8 +163,10 @@ func (s *BillingSession) needsRefundLocked() bool {
 		return true
 	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
-	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
-		return true
+	if sub, ok := s.funding.(*SubscriptionFunding); ok {
+		if sub.preConsumed > 0 || sub.preConsumedCnt > 0 {
+			return true
+		}
 	}
 	return false
 }

@@ -232,6 +232,50 @@ func TestRefreshActiveSubscriptionResetWindows_RecalculatesLegacyWindow(t *testi
 	})
 }
 
+func TestResetDueSubscriptions_ResetsFinalCycleUsage(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		lastResetTime := now - 24*3600
+
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:                701,
+			Title:             "final-cycle-daily",
+			DurationUnit:      SubscriptionDurationDay,
+			DurationValue:     7,
+			Enabled:           true,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 400,
+			QuotaResetPeriod:  SubscriptionResetDaily,
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                702,
+			UserId:            88,
+			PlanId:            701,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 400,
+			RequestCountUsed:  123,
+			ResetPeriod:       SubscriptionResetDaily,
+			Status:            "active",
+			StartTime:         now - 6*24*3600,
+			EndTime:           now + 3600,
+			LastResetTime:     lastResetTime,
+			NextResetTime:     now - 60,
+		}).Error)
+
+		resetCount, err := ResetDueSubscriptions(10)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, resetCount)
+
+		var sub UserSubscription
+		require.NoError(t, DB.Where("id = ?", 702).First(&sub).Error)
+		require.EqualValues(t, 0, sub.RequestCountUsed)
+		require.EqualValues(t, 0, sub.AmountUsed)
+		require.Greater(t, sub.LastResetTime, lastResetTime)
+		require.EqualValues(t, 0, sub.NextResetTime)
+	})
+}
+
 func TestSummarizeSubscriptionConsumeLogs_IgnoresZeroConsumedRecords(t *testing.T) {
 	withSubscriptionQueryTestDB(t, func() {
 		now := common.GetTimestamp()

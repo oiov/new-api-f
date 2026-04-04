@@ -3337,6 +3337,8 @@
     "仅展示前10位": "Affichage des 10 premiers uniquement",
     "暂无排行榜数据": "Aucune donnée de classement pour le moment",
     "当站内出现邀请数据后，将展示前10名用户": "Les 10 meilleurs utilisateurs apparaîtront ici dès que des données d'invitation seront disponibles",
-    "匿名用户": "Utilisateur anonyme"
+    "匿名用户": "Utilisateur anonyme",
+    "上次重置": "Dernière réinitialisation",
+    "到期前不再重置": "Plus de réinitialisation avant l'expiration"
   }
 }

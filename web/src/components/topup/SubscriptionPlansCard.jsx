@@ -110,6 +110,26 @@ function formatDateTime(timestamp) {
   return new Date(timestamp * 1000).toLocaleString();
 }
 
+function formatNextResetDisplay(subscription, t) {
+  const nextResetTime = Number(subscription?.next_reset_time || 0);
+  if (nextResetTime > 0) {
+    return formatDateTime(nextResetTime);
+  }
+
+  const period = subscription?.reset_period || 'never';
+  if (period === 'never') {
+    return t('不重置');
+  }
+
+  const now = Date.now() / 1000;
+  const isActive = subscription?.status === 'active' && Number(subscription?.end_time || 0) > now;
+  if (isActive && Number(subscription?.last_reset_time || 0) > 0) {
+    return t('到期前不再重置');
+  }
+
+  return '--';
+}
+
 function getUsageDisplayText(summary, resourceType, t) {
   if (summary.unlimited) return t('不限');
   if (resourceType === 'request_count') {
@@ -855,7 +875,11 @@ const SubscriptionPlansCard = ({
       },
       {
         label: t('下次重置'),
-        value: formatDateTime(item.subscription?.next_reset_time),
+        value: formatNextResetDisplay(item.subscription, t),
+      },
+      {
+        label: t('上次重置'),
+        value: formatDateTime(item.subscription?.last_reset_time),
       },
       {
         label: t('来源'),
