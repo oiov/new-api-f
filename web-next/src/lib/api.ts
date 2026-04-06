@@ -2,42 +2,11 @@ import axios, { type AxiosInstance } from 'axios';
 import { getUserIdFromLocalStorage } from './utils';
 import { toast } from 'sonner';
 
-const DIRECT_RELAY_PREFIXES = ['/v1', '/v1beta', '/pg', '/mj'];
-
-function trimTrailingSlash(url = ''): string {
-  return url.replace(/\/+$/, '');
-}
-
-function getFullDirectOrigin(): string {
-  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  return trimTrailingSlash(envUrl || '');
-}
-
-function normalizeRequestPath(url: string): string {
-  if (!url || typeof url !== 'string') return '';
-  if (/^https?:\/\//i.test(url)) {
-    try {
-      return new URL(url).pathname;
-    } catch {
-      return url;
-    }
-  }
-  return url.startsWith('/') ? url : `/${url}`;
-}
-
-function shouldUseDirectRelay(url: string): boolean {
-  const path = normalizeRequestPath(url);
-  return DIRECT_RELAY_PREFIXES.some(
-    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
-  );
-}
-
-function getRequestBaseURL(url: string): string {
-  // Relay paths (/v1, /pg, /mj …) must go directly to the backend for SSE streaming.
-  // All other paths (/api/…) use the Next.js proxy (same-origin) to avoid CORS.
-  if (shouldUseDirectRelay(url)) {
-    return getFullDirectOrigin();
-  }
+// All requests use relative paths — the client never knows the backend origin.
+// /api/*      → caught by App Router src/app/api/[[...path]]/route.ts (server proxy)
+// /v1/* etc.  → caught by next.config.ts rewrites (server rewrite)
+// Both run server-side, so no CORS and no backend URL leakage.
+function getRequestBaseURL(_url: string): string {
   return '';
 }
 

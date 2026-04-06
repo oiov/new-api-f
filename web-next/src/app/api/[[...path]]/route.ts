@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.fishxcode.com';
+// Server-only env — NOT prefixed with NEXT_PUBLIC_, never sent to the browser.
+const BACKEND = process.env.API_BASE_URL || 'https://api.fishxcode.com';
 
 const HOP_BY_HOP = new Set([
   'connection',
@@ -13,11 +14,24 @@ const HOP_BY_HOP = new Set([
   'upgrade',
 ]);
 
-// Strip from upstream response: body already decompressed by fetch()
+// Headers stripped from upstream responses to hide backend identity.
 const STRIP_RES_HEADERS = new Set([
   ...HOP_BY_HOP,
-  'content-encoding',
-  'content-length',
+  'content-encoding',   // body already decompressed by Node fetch
+  'content-length',     // will be recalculated
+  'server',             // hide backend server software
+  'x-powered-by',      // hide framework info
+  'via',                // hide proxy chain
+  'x-request-id',      // avoid leaking internal request IDs
+  'x-trace-id',
+  'x-runtime',
+  'x-served-by',
+  'x-cache',
+  'x-cache-hits',
+  'x-backend',
+  'x-origin',
+  'cf-ray',             // Cloudflare ray ID reveals infrastructure
+  'cf-cache-status',
 ]);
 
 /**

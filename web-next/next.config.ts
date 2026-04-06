@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next';
 
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.fishxcode.com';
+// Server-only — never exposed to the browser bundle.
+const apiBaseUrl = process.env.API_BASE_URL || 'https://api.fishxcode.com';
 
 // Security + cache headers applied at the Node.js server layer (works for both Docker and Vercel)
 const securityHeaders = [
