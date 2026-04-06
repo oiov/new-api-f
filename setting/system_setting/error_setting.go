@@ -15,9 +15,9 @@ var defaultErrorSetting = ErrorSetting{
 	ShowSiteDomainInError:                   true,
 	RestrictProxyDistribution:               false,
 	RestrictProxyDistributionLogOnly:        false,
-	RestrictProxyDistributionAllowedHosts:   []string{"aicentos.com", "*.aicentos.com", "localhost", "127.0.0.1", "::1"},
-	RestrictProxyDistributionAllowedSources: []string{"aicentos.com", "*.aicentos.com", "localhost", "127.0.0.1", "::1"},
-	RestrictProxyDistributionBlockedMessage: "请勿使用反代等程序，请使用 https://www.aicentos.com 中转站，如需外接请联系。",
+	RestrictProxyDistributionAllowedHosts:   []string{"nbility.dev", "*.nbility.dev", "localhost", "127.0.0.1", "::1"},
+	RestrictProxyDistributionAllowedSources: []string{"nbility.dev", "*.nbility.dev", "localhost", "127.0.0.1", "::1"},
+	RestrictProxyDistributionBlockedMessage: "请勿使用反代等程序，请使用 https://nbility.dev 中转站，如需外接请联系。",
 }
 
 func init() {
@@ -33,8 +33,8 @@ func GetDefaultErrorSetting() ErrorSetting {
 		ShowSiteDomainInError:                   true,
 		RestrictProxyDistribution:               false,
 		RestrictProxyDistributionLogOnly:        false,
-		RestrictProxyDistributionAllowedHosts:   []string{"aicentos.com", "*.aicentos.com", "localhost", "127.0.0.1", "::1"},
-		RestrictProxyDistributionAllowedSources: []string{"aicentos.com", "*.aicentos.com", "localhost", "127.0.0.1", "::1"},
-		RestrictProxyDistributionBlockedMessage: "请勿使用反代等程序，请使用 https://www.aicentos.com 中转站，如需外接请联系。",
+		RestrictProxyDistributionAllowedHosts:   []string{"nbility.dev", "*.nbility.dev", "localhost", "127.0.0.1", "::1"},
+		RestrictProxyDistributionAllowedSources: []string{"nbility.dev", "*.nbility.dev", "localhost", "127.0.0.1", "::1"},
+		RestrictProxyDistributionBlockedMessage: "请勿使用反代等程序，请使用 https://nbility.dev 中转站，如需外接请联系。",
 	}
 }

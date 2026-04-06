@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 LISTEN_HOST = os.getenv("PROXY_LISTEN_HOST", "localhost")
 LISTEN_PORT = int(os.getenv("PROXY_LISTEN_PORT", "8787"))
-UPSTREAM_BASE_URL = os.getenv("UPSTREAM_BASE_URL", "https://www.aicentos.com").rstrip("/")
+UPSTREAM_BASE_URL = os.getenv("UPSTREAM_BASE_URL", "https://nbility.dev").rstrip("/")
 FORCE_API_KEY = os.getenv("FORCE_API_KEY", "")
 CHUNK_SIZE = 8192
 

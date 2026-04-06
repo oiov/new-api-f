@@ -26,7 +26,7 @@ import {
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
-const DEFAULT_RELAY_ORIGIN = 'https://www.aicentos.com';
+const DEFAULT_RELAY_ORIGIN = 'https://nbility.dev';
 const DIRECT_RELAY_PREFIXES = ['/v1', '/v1beta', '/pg', '/mj'];
 
 function trimTrailingSlash(url = '') {
@@ -374,7 +374,10 @@ export async function onGoogleOAuthClicked(google_client_id, options = {}) {
   if (!state) return;
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', google_client_id);
-  url.searchParams.set('redirect_uri', `${window.location.origin}/oauth/google`);
+  url.searchParams.set(
+    'redirect_uri',
+    `${window.location.origin}/oauth/google`,
+  );
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'openid profile email');
   url.searchParams.set('state', state);

@@ -146,7 +146,7 @@ func abortProxyDistributionRequest(c *gin.Context, decision ProxyDistributionDec
 func buildProxyDistributionMessage(base string, reasonDetail string) string {
 	base = strings.TrimSpace(base)
 	if base == "" {
-		base = "请勿使用反代等程序，请使用 https://www.aicentos.com 中转站，如需外接请联系。"
+		base = "请勿使用反代等程序，请使用 https://nbility.dev 中转站，如需外接请联系。"
 	}
 	reasonDetail = strings.TrimSpace(reasonDetail)
 	if reasonDetail == "" {

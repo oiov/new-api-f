@@ -251,29 +251,29 @@ func BatchDeleteInvalidTokensByFilter(userId int, keyword string, token string) 
 
 func ValidateUserToken(key string) (token *Token, err error) {
 	if key == "" {
-		return nil, errors.New("https://www.aicentos.com/ 提示 未提供令牌")
+		return nil, errors.New("https://nbility.dev/ 提示 未提供令牌")
 	}
 	token, err = GetTokenByKey(key, false)
 	if err == nil {
 		if token.Status == common.TokenStatusExhausted {
 			keyPrefix := key[:3]
 			keySuffix := key[len(key)-3:]
-			return token, errors.New("https://www.aicentos.com/ 提示 该令牌额度已用尽 TokenStatusExhausted[sk-" + keyPrefix + "***" + keySuffix + "]")
+			return token, errors.New("https://nbility.dev/ 提示 该令牌额度已用尽 TokenStatusExhausted[sk-" + keyPrefix + "***" + keySuffix + "]")
 		} else if token.Status == common.TokenStatusExpired {
-			return token, errors.New("https://www.aicentos.com/ 提示 该令牌已过期")
+			return token, errors.New("https://nbility.dev/ 提示 该令牌已过期")
 		}
 		if token.Status != common.TokenStatusEnabled {
-			return token, errors.New("https://www.aicentos.com/ 提示 该令牌状态不可用")
+			return token, errors.New("https://nbility.dev/ 提示 该令牌状态不可用")
 		}
 		if token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
 			if !common.RedisEnabled {
 				token.Status = common.TokenStatusExpired
 				err := token.SelectUpdate()
 				if err != nil {
-					common.SysLog("https://www.aicentos.com/ 提示 failed to update token status" + err.Error())
+					common.SysLog("https://nbility.dev/ 提示 failed to update token status" + err.Error())
 				}
 			}
-			return token, errors.New("https://www.aicentos.com/ 提示 该令牌已过期")
+			return token, errors.New("https://nbility.dev/ 提示 该令牌已过期")
 		}
 		if !token.UnlimitedQuota && token.RemainQuota <= 0 {
 			if !common.RedisEnabled {
@@ -286,15 +286,15 @@ func ValidateUserToken(key string) (token *Token, err error) {
 			}
 			keyPrefix := key[:3]
 			keySuffix := key[len(key)-3:]
-			return token, fmt.Errorf("[sk-%s***%s] https://www.aicentos.com/ 提示 该令牌额度已用尽 !token.UnlimitedQuota && token.RemainQuota = %d", keyPrefix, keySuffix, token.RemainQuota)
+			return token, fmt.Errorf("[sk-%s***%s] https://nbility.dev/ 提示 该令牌额度已用尽 !token.UnlimitedQuota && token.RemainQuota = %d", keyPrefix, keySuffix, token.RemainQuota)
 		}
 		return token, nil
 	}
 	common.SysLog("ValidateUserToken: failed to get token: " + err.Error())
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errors.New("https://www.aicentos.com/ 提示 无效的令牌")
+		return nil, errors.New("https://nbility.dev/ 提示 无效的令牌")
 	} else {
-		return nil, errors.New("https://www.aicentos.com/ 提示 无效的令牌，数据库查询出错，请联系管理员")
+		return nil, errors.New("https://nbility.dev/ 提示 无效的令牌，数据库查询出错，请联系管理员")
 	}
 }
 

@@ -19,7 +19,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-const DEFAULT_BACKEND_ORIGIN = 'https://www.aicentos.com';
+const DEFAULT_BACKEND_ORIGIN = 'https://nbility.dev';
 
 const ALLOWED_BASES = new Set(['api', 'v1', 'v1beta', 'mj', 'pg']);
 

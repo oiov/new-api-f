@@ -52,43 +52,43 @@
   "routes": [
     {
       "src": "^/api/?$",
-      "dest": "https://api.aicentos.com/api"
+      "dest": "https://api.nbility.dev/api"
     },
     {
       "src": "^/api/(.*)$",
-      "dest": "https://api.aicentos.com/api/$1"
+      "dest": "https://api.nbility.dev/api/$1"
     },
     {
       "src": "^/v1/?$",
-      "dest": "https://api.aicentos.com/v1"
+      "dest": "https://api.nbility.dev/v1"
     },
     {
       "src": "^/v1/(.*)$",
-      "dest": "https://api.aicentos.com/v1/$1"
+      "dest": "https://api.nbility.dev/v1/$1"
     },
     {
       "src": "^/v1beta/?$",
-      "dest": "https://api.aicentos.com/v1beta"
+      "dest": "https://api.nbility.dev/v1beta"
     },
     {
       "src": "^/v1beta/(.*)$",
-      "dest": "https://api.aicentos.com/v1beta/$1"
+      "dest": "https://api.nbility.dev/v1beta/$1"
     },
     {
       "src": "^/mj/?$",
-      "dest": "https://api.aicentos.com/mj"
+      "dest": "https://api.nbility.dev/mj"
     },
     {
       "src": "^/mj/(.*)$",
-      "dest": "https://api.aicentos.com/mj/$1"
+      "dest": "https://api.nbility.dev/mj/$1"
     },
     {
       "src": "^/pg/?$",
-      "dest": "https://api.aicentos.com/pg"
+      "dest": "https://api.nbility.dev/pg"
     },
     {
       "src": "^/pg/(.*)$",
-      "dest": "https://api.aicentos.com/pg/$1"
+      "dest": "https://api.nbility.dev/pg/$1"
     },
     {
       "handle": "filesystem"

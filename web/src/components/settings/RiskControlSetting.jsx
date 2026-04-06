@@ -60,9 +60,7 @@ const RiskControlSetting = () => {
     }
     return Array.from(
       new Set(
-        items
-          .map((item) => `${item}`.trim())
-          .filter((item) => item !== ''),
+        items.map((item) => `${item}`.trim()).filter((item) => item !== ''),
       ),
     );
   };
@@ -89,7 +87,9 @@ const RiskControlSetting = () => {
       nextInputs['error_setting.restrict_proxy_distribution_blocked_message'] =
         data['error_setting.restrict_proxy_distribution_blocked_message'] || '';
       setAntiDistributionAllowedHosts(
-        Array.isArray(data['error_setting.restrict_proxy_distribution_allowed_hosts'])
+        Array.isArray(
+          data['error_setting.restrict_proxy_distribution_allowed_hosts'],
+        )
           ? data['error_setting.restrict_proxy_distribution_allowed_hosts']
           : [],
       );
@@ -258,7 +258,7 @@ const RiskControlSetting = () => {
                         )
                       }
                     >
-                      {t('限制非 aicentos.com 系列域名访问')}
+                      {t('限制非 nbility.dev 系列域名访问')}
                     </Form.Checkbox>
                     <Text type='secondary'>
                       {t(
@@ -296,13 +296,13 @@ const RiskControlSetting = () => {
                       style={{ display: 'block', marginBottom: 8 }}
                     >
                       {t(
-                        '支持精确域名或 *.aicentos.com 这种通配符；未命中的请求 Host 会被视为疑似分发',
+                        '支持精确域名或 *.nbility.dev 这种通配符；未命中的请求 Host 会被视为疑似分发',
                       )}
                     </Text>
                     <TagInput
                       value={antiDistributionAllowedHosts}
                       onChange={setAntiDistributionAllowedHosts}
-                      placeholder={t('例如：aicentos.com, *.aicentos.com')}
+                      placeholder={t('例如：nbility.dev, *.nbility.dev')}
                     />
                   </Col>
                   <Col xs={24} sm={24} md={12} lg={12} xl={12}>
@@ -318,7 +318,7 @@ const RiskControlSetting = () => {
                     <TagInput
                       value={antiDistributionAllowedSources}
                       onChange={setAntiDistributionAllowedSources}
-                      placeholder={t('例如：aicentos.com, *.aicentos.com')}
+                      placeholder={t('例如：nbility.dev, *.nbility.dev')}
                     />
                   </Col>
                 </Row>
@@ -331,7 +331,7 @@ const RiskControlSetting = () => {
                       field='error_setting.restrict_proxy_distribution_blocked_message'
                       label={t('拦截提示文案')}
                       placeholder={t(
-                        '请勿使用反代等程序，请使用 https://www.aicentos.com 中转站，如需外接请联系。',
+                        '请勿使用反代等程序，请使用 https://nbility.dev 中转站，如需外接请联系。',
                       )}
                     />
                   </Col>
@@ -367,7 +367,10 @@ const RiskControlSetting = () => {
                     flexWrap: 'wrap',
                   }}
                 >
-                  <Button type='primary' onClick={submitAntiDistributionSettings}>
+                  <Button
+                    type='primary'
+                    onClick={submitAntiDistributionSettings}
+                  >
                     {t('保存风险封控设置')}
                   </Button>
                   <Button theme='light' onClick={fetchAntiDistributionLogs}>

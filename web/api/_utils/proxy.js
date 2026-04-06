@@ -1,6 +1,6 @@
 import { rewriteRateLimitResponse } from './rate-limit-response';
 
-const DEFAULT_BACKEND_ORIGIN = 'https://www.aicentos.com';
+const DEFAULT_BACKEND_ORIGIN = 'https://nbility.dev';
 
 const HOP_BY_HOP_HEADERS = [
   'connection',
@@ -136,11 +136,14 @@ async function getAntiDistributionConfig(backendOrigin) {
   }
 
   try {
-    const response = await fetch(`${backendOrigin}/api/anti_distribution/public`, {
-      headers: {
-        accept: 'application/json',
+    const response = await fetch(
+      `${backendOrigin}/api/anti_distribution/public`,
+      {
+        headers: {
+          accept: 'application/json',
+        },
       },
-    });
+    );
     if (!response.ok) {
       return null;
     }
@@ -193,7 +196,7 @@ function evaluateAntiDistribution(request, config) {
 }
 
 function buildBlockedResponse(request, config, decision) {
-  const message = `${(config?.blocked_message || '请勿使用反代等程序，请使用 https://www.aicentos.com 中转站，如需外接请联系。').trim()} 原因：${decision.detail}`;
+  const message = `${(config?.blocked_message || '请勿使用反代等程序，请使用 https://nbility.dev 中转站，如需外接请联系。').trim()} 原因：${decision.detail}`;
   const pathname = new URL(request.url).pathname;
   const headers = {
     'cache-control': 'no-store',

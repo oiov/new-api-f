@@ -2,4 +2,4 @@
 User-agent: *
 Allow: /
 Disallow:
-Sitemap: https://aicentos.com/sitemap.xml
+Sitemap: https://nbility.dev/sitemap.xml

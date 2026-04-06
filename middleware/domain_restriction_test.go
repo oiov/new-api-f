@@ -13,8 +13,8 @@ import (
 
 func TestIsAllowedFishxcodeHost(t *testing.T) {
 	t.Run("allow configured host family", func(t *testing.T) {
-		require.True(t, isAllowedFishxcodeHost("www.aicentos.com"))
-		require.True(t, isAllowedFishxcodeHost("api.www.aicentos.com"))
+		require.True(t, isAllowedFishxcodeHost("nbility.dev"))
+		require.True(t, isAllowedFishxcodeHost("api.nbility.dev"))
 		require.True(t, isAllowedFishxcodeHost("API.FISHXCODE.COM:443"))
 	})
 
@@ -26,19 +26,19 @@ func TestIsAllowedFishxcodeHost(t *testing.T) {
 
 	t.Run("block non allowed hosts", func(t *testing.T) {
 		require.False(t, isAllowedFishxcodeHost("example.com"))
-		require.False(t, isAllowedFishxcodeHost("www.aicentos.com.evil.com"))
+		require.False(t, isAllowedFishxcodeHost("nbility.dev.evil.com"))
 	})
 }
 
 func TestEvaluateProxyDistributionRequest(t *testing.T) {
-	allowedHosts := []string{"www.aicentos.com", "*.www.aicentos.com", "localhost"}
-	allowedSources := []string{"www.aicentos.com", "*.www.aicentos.com", "localhost"}
+	allowedHosts := []string{"nbility.dev", "*.nbility.dev", "localhost"}
+	allowedSources := []string{"nbility.dev", "*.nbility.dev", "localhost"}
 
 	t.Run("allow configured host and origin", func(t *testing.T) {
 		decision := EvaluateProxyDistributionRequest(
-			"www.aicentos.com",
-			"https://console.www.aicentos.com",
-			"https://console.www.aicentos.com/path",
+			"nbility.dev",
+			"https://console.nbility.dev",
+			"https://console.nbility.dev/path",
 			allowedHosts,
 			allowedSources,
 			false,
@@ -63,7 +63,7 @@ func TestEvaluateProxyDistributionRequest(t *testing.T) {
 
 	t.Run("block invalid origin host", func(t *testing.T) {
 		decision := EvaluateProxyDistributionRequest(
-			"www.aicentos.com",
+			"nbility.dev",
 			"https://evil.example.com",
 			"",
 			allowedHosts,
@@ -76,7 +76,7 @@ func TestEvaluateProxyDistributionRequest(t *testing.T) {
 
 	t.Run("observe only when log only enabled", func(t *testing.T) {
 		decision := EvaluateProxyDistributionRequest(
-			"www.aicentos.com",
+			"nbility.dev",
 			"https://evil.example.com",
 			"",
 			allowedHosts,
@@ -103,8 +103,8 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		setting.RestrictProxyDistributionBlockedMessage = origMessage
 	})
 
-	setting.RestrictProxyDistributionAllowedHosts = []string{"www.aicentos.com", "*.www.aicentos.com", "localhost"}
-	setting.RestrictProxyDistributionAllowedSources = []string{"www.aicentos.com", "*.www.aicentos.com", "localhost"}
+	setting.RestrictProxyDistributionAllowedHosts = []string{"nbility.dev", "*.nbility.dev", "localhost"}
+	setting.RestrictProxyDistributionAllowedSources = []string{"nbility.dev", "*.nbility.dev", "localhost"}
 
 	gin.SetMode(gin.TestMode)
 
@@ -173,7 +173,7 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		})
 
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-		req.Host = "www.aicentos.com"
+		req.Host = "nbility.dev"
 		req.Header.Set("Origin", "https://evil.example.com")
 		engine.ServeHTTP(recorder, req)
 
@@ -193,14 +193,14 @@ func TestDisallowProxyDistribution(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 		req.Host = "example.com"
-		req.Header.Set("X-Forwarded-Host", "www.aicentos.com")
+		req.Header.Set("X-Forwarded-Host", "nbility.dev")
 		engine.ServeHTTP(recorder, req)
 
 		require.Equal(t, http.StatusForbidden, recorder.Code)
 		require.Contains(t, recorder.Body.String(), "请求 Host 不在白名单")
 	})
 
-	t.Run("allow aicentos subdomain when enabled", func(t *testing.T) {
+	t.Run("allow nbility subdomain when enabled", func(t *testing.T) {
 		setting.RestrictProxyDistribution = true
 		setting.RestrictProxyDistributionLogOnly = false
 		recorder := httptest.NewRecorder()
@@ -211,8 +211,8 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		})
 
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-		req.Host = "console.www.aicentos.com"
-		req.Header.Set("Origin", "https://www.www.aicentos.com")
+		req.Host = "console.nbility.dev"
+		req.Header.Set("Origin", "https://www.nbility.dev")
 		engine.ServeHTTP(recorder, req)
 
 		require.Equal(t, http.StatusOK, recorder.Code)

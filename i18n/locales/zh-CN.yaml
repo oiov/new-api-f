@@ -29,14 +29,14 @@ token.quota_negative: "额度值不能为负数"
 token.quota_exceed_max: "额度值超出有效范围，最大值为 {{.Max}}"
 token.generate_failed: "生成令牌失败"
 token.get_info_failed: "获取令牌信息失败，请稍后重试"
-token.expired_cannot_enable: "https://www.aicentos.com/ 中转站提示 令牌已过期，无法启用，请先修改令牌过期时间，或者设置为永不过期"
-token.exhausted_cannot_enable: "https://www.aicentos.com/ 中转站提示 令牌可用额度已用尽，无法启用，请先修改令牌剩余额度，或者设置为无限额度"
+token.expired_cannot_enable: "https://nbility.dev/ 中转站提示 令牌已过期，无法启用，请先修改令牌过期时间，或者设置为永不过期"
+token.exhausted_cannot_enable: "https://nbility.dev/ 中转站提示 令牌可用额度已用尽，无法启用，请先修改令牌剩余额度，或者设置为无限额度"
 token.invalid: "无效的令牌"
 token.not_provided: "未提供令牌"
-token.expired: "https://www.aicentos.com/ 中转站提示 该令牌已过期"
-token.exhausted: "https://www.aicentos.com/ 中转站提示 该令牌额度已用尽 TokenStatusExhausted[sk-{{.Prefix}}***{{.Suffix}}]"
-token.status_unavailable: "https://www.aicentos.com/ 中转站提示 该令牌状态不可用"
-token.db_error: "https://www.aicentos.com/ 中转站提示 无效的令牌，数据库查询出错，请联系管理员"
+token.expired: "https://nbility.dev/ 中转站提示 该令牌已过期"
+token.exhausted: "https://nbility.dev/ 中转站提示 该令牌额度已用尽 TokenStatusExhausted[sk-{{.Prefix}}***{{.Suffix}}]"
+token.status_unavailable: "https://nbility.dev/ 中转站提示 该令牌状态不可用"
+token.db_error: "https://nbility.dev/ 中转站提示 无效的令牌，数据库查询出错，请联系管理员"
 
 # Redemption messages
 redemption.name_length: "兑换码名称长度必须在1-20之间"
@@ -187,7 +187,7 @@ twofa.code_invalid: "验证码或备用码不正确"
 
 # Rate limit messages
 rate_limit.reached: "您已达到请求数限制：{{.Minutes}}分钟内最多请求{{.Max}}次"
-rate_limit.total_reached: "https://www.aicentos.com/ 订阅制中转站 您已达到总请求数限制：{{.Minutes}}分钟内最多请求{{.Max}}次，包括失败次数"
+rate_limit.total_reached: "https://nbility.dev/ 订阅制中转站 您已达到总请求数限制：{{.Minutes}}分钟内最多请求{{.Max}}次，包括失败次数"
 
 # Setting messages
 setting.invalid_type: "无效的预警类型"

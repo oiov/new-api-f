@@ -28,14 +28,14 @@ token.quota_negative: "Quota value cannot be negative"
 token.quota_exceed_max: "Quota value exceeds valid range, maximum is {{.Max}}"
 token.generate_failed: "Failed to generate token"
 token.get_info_failed: "Failed to get token info, please try again later"
-token.expired_cannot_enable: "https://www.aicentos.com/ 中转站提示 Token has expired and cannot be enabled. Please modify the expiration time or set it to never expire"
-token.exhausted_cannot_enable: "https://www.aicentos.com/ 中转站提示 Token quota is exhausted and cannot be enabled. Please modify the remaining quota or set it to unlimited"
+token.expired_cannot_enable: "https://nbility.dev/ 中转站提示 Token has expired and cannot be enabled. Please modify the expiration time or set it to never expire"
+token.exhausted_cannot_enable: "https://nbility.dev/ 中转站提示 Token quota is exhausted and cannot be enabled. Please modify the remaining quota or set it to unlimited"
 token.invalid: "Invalid token"
 token.not_provided: "Token not provided"
-token.expired: "https://www.aicentos.com/ 中转站提示 This token has expired"
-token.exhausted: "https://www.aicentos.com/ 中转站提示 This token quota is exhausted TokenStatusExhausted[sk-{{.Prefix}}***{{.Suffix}}]"
-token.status_unavailable: "https://www.aicentos.com/ 中转站提示 This token status is unavailable"
-token.db_error: "https://www.aicentos.com/ 中转站提示 Invalid token, database query error, please contact administrator"
+token.expired: "https://nbility.dev/ 中转站提示 This token has expired"
+token.exhausted: "https://nbility.dev/ 中转站提示 This token quota is exhausted TokenStatusExhausted[sk-{{.Prefix}}***{{.Suffix}}]"
+token.status_unavailable: "https://nbility.dev/ 中转站提示 This token status is unavailable"
+token.db_error: "https://nbility.dev/ 中转站提示 Invalid token, database query error, please contact administrator"
 
 # Redemption messages
 redemption.name_length: "Redemption code name length must be between 1-20"
@@ -186,7 +186,7 @@ twofa.code_invalid: "Verification code or backup code is incorrect"
 
 # Rate limit messages
 rate_limit.reached: "You have reached the request limit: maximum {{.Max}} requests in {{.Minutes}} minutes"
-rate_limit.total_reached: "https://www.aicentos.com/ "You have reached the total request limit: maximum {{.Max}} requests in {{.Minutes}} minutes, including failed attempts"
+rate_limit.total_reached: "https://nbility.dev/ "You have reached the total request limit: maximum {{.Max}} requests in {{.Minutes}} minutes, including failed attempts"
 
 # Setting messages
 setting.invalid_type: "Invalid warning type"
