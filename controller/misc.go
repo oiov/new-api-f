@@ -50,6 +50,9 @@ func GetStatus(c *gin.Context) {
 	data := gin.H{
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
+		"password_login_enabled":      common.PasswordLoginEnabled,
+		"password_register_enabled":   common.PasswordRegisterEnabled,
+		"register_enabled":            common.RegisterEnabled,
 		"email_verification":          common.EmailVerificationEnabled,
 		"google_oauth":                common.GoogleOAuthEnabled,
 		"google_oauth_register":       common.IsGoogleOAuthRegisterEnabled(),

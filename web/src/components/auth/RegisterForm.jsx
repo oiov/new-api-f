@@ -62,6 +62,8 @@ import LinuxDoIcon from '../common/logo/LinuxDoIcon';
 import WeChatIcon from '../common/logo/WeChatIcon';
 import SeoMeta from '../common/seo/SeoMeta';
 import TelegramLoginButton from 'react-telegram-login/src';
+import AuthConfigNotice from './AuthConfigNotice';
+import { getFriendlyRegisterError, getRegisterConfigItems } from './authHelpers';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
@@ -138,14 +140,21 @@ const RegisterForm = () => {
       return {};
     }
   }, [statusState?.status]);
+  const registerEnabled = status.register_enabled !== false;
+  const passwordRegisterEnabled = status.password_register_enabled !== false;
+  const registerConfigItems = useMemo(
+    () => getRegisterConfigItems(status, t),
+    [status, t],
+  );
   const hasOAuthRegisterOptions = Boolean(
-    status.github_oauth_register ||
-    status.google_oauth_register ||
-    status.discord_oauth_register ||
-    status.oidc_register_enabled ||
-    status.wechat_register ||
-    status.linuxdo_oauth_register ||
-    status.telegram_oauth_register,
+    registerEnabled &&
+      (status.github_oauth_register ||
+        status.google_oauth_register ||
+        status.discord_oauth_register ||
+        status.oidc_register_enabled ||
+        status.wechat_register ||
+        status.linuxdo_oauth_register ||
+        status.telegram_oauth_register),
   );
 
   const [showEmailVerification, setShowEmailVerification] = useState(false);
@@ -274,6 +283,14 @@ const RegisterForm = () => {
   }
 
   async function handleSubmit(e) {
+    if (!registerEnabled) {
+      showInfo(t('当前站点已关闭注册，请联系管理员'));
+      return;
+    }
+    if (!passwordRegisterEnabled) {
+      showInfo(t('当前站点未开放账号密码注册，请使用页面上其他可用的注册方式'));
+      return;
+    }
     const normalizedUsername = (username || '').trim();
     if (normalizedUsername.length === 0) {
       showInfo('请输入用户名');
@@ -317,7 +334,7 @@ const RegisterForm = () => {
           navigate('/login');
           showSuccess('注册成功！');
         } else {
-          showError(message);
+          showError(getFriendlyRegisterError(message, status, t));
         }
       } catch (error) {
         showError('注册失败，请重试');
@@ -514,6 +531,17 @@ const RegisterForm = () => {
               </Title>
             </div>
             <div className='px-2 py-8'>
+              <AuthConfigNotice
+                title={t('当前注册配置')}
+                description={t(
+                  '注册前先确认当前站点是否开放注册，以及是否要求邮箱验证码、邀请码或人机验证',
+                )}
+                items={registerConfigItems}
+                tip={t(
+                  '这里的可用注册方式与后台登录注册设置同步，不需要靠报错再判断',
+                )}
+                tone={registerEnabled && passwordRegisterEnabled ? 'default' : 'warning'}
+              />
               <div className='space-y-3'>
                 {inviteRegisterEnabled && (
                   <div className='space-y-1'>
@@ -527,7 +555,7 @@ const RegisterForm = () => {
                   </div>
                 )}
 
-                {status.wechat_register && (
+                {registerEnabled && status.wechat_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -542,7 +570,7 @@ const RegisterForm = () => {
                   </Button>
                 )}
 
-                {status.github_oauth_register && (
+                {registerEnabled && status.github_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -556,7 +584,7 @@ const RegisterForm = () => {
                   </Button>
                 )}
 
-                {status.google_oauth_register && (
+                {registerEnabled && status.google_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -577,7 +605,7 @@ const RegisterForm = () => {
                   </Button>
                 )}
 
-                {status.discord_oauth_register && (
+                {registerEnabled && status.discord_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -598,7 +626,7 @@ const RegisterForm = () => {
                   </Button>
                 )}
 
-                {status.oidc_register_enabled && (
+                {registerEnabled && status.oidc_register_enabled && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -611,7 +639,7 @@ const RegisterForm = () => {
                   </Button>
                 )}
 
-                {status.linuxdo_oauth_register && (
+                {registerEnabled && status.linuxdo_oauth_register && (
                   <Button
                     theme='outline'
                     className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
@@ -632,7 +660,7 @@ const RegisterForm = () => {
                   </Button>
                 )}
 
-                {status.telegram_oauth_register && (
+                {registerEnabled && status.telegram_oauth_register && (
                   <div className='flex justify-center my-2'>
                     <TelegramLoginButton
                       dataOnauth={onTelegramRegisterClicked}
@@ -645,16 +673,18 @@ const RegisterForm = () => {
                   {t('或')}
                 </Divider>
 
-                <Button
-                  theme='solid'
-                  type='primary'
-                  className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
-                  icon={<IconMail size='large' />}
-                  onClick={handleEmailRegisterClick}
-                  loading={emailRegisterLoading}
-                >
-                  <span className='ml-3'>{t('使用 用户名 注册')}</span>
-                </Button>
+                {registerEnabled && passwordRegisterEnabled && (
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
+                    icon={<IconMail size='large' />}
+                    onClick={handleEmailRegisterClick}
+                    loading={emailRegisterLoading}
+                  >
+                    <span className='ml-3'>{t('使用 用户名 注册')}</span>
+                  </Button>
+                )}
               </div>
 
               <div className='mt-6 text-center text-sm'>
@@ -693,6 +723,17 @@ const RegisterForm = () => {
               </Title>
             </div>
             <div className='px-2 py-8'>
+              <AuthConfigNotice
+                title={t('当前注册配置')}
+                description={t(
+                  '为了减少试错，这里会直接展示当前注册策略和附加要求',
+                )}
+                items={registerConfigItems}
+                tip={t(
+                  '如果密码注册已关闭，可以返回上一页选择其他仍然可用的注册方式',
+                )}
+                tone={registerEnabled && passwordRegisterEnabled ? 'default' : 'warning'}
+              />
               <Form className='space-y-3'>
                 {inviteRegisterEnabled && (
                   <Form.Input
@@ -818,7 +859,9 @@ const RegisterForm = () => {
                     onClick={handleSubmit}
                     loading={registerLoading}
                     disabled={
-                      (hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms
+                      !registerEnabled ||
+                      !passwordRegisterEnabled ||
+                      ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms)
                     }
                   >
                     {t('注册')}

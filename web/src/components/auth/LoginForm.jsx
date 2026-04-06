@@ -67,6 +67,8 @@ import WeChatIcon from '../common/logo/WeChatIcon';
 import LinuxDoIcon from '../common/logo/LinuxDoIcon';
 import SeoMeta from '../common/seo/SeoMeta';
 import TwoFAVerification from './TwoFAVerification';
+import AuthConfigNotice from './AuthConfigNotice';
+import { getFriendlyLoginError, getLoginConfigItems } from './authHelpers';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord, SiGoogle } from 'react-icons/si';
 import { getAuthSeo } from '../../helpers/seo';
@@ -139,6 +141,12 @@ const LoginForm = () => {
       return {};
     }
   }, [statusState?.status]);
+  const passwordLoginEnabled = status.password_login_enabled !== false;
+  const registerEnabled = status.register_enabled !== false;
+  const loginConfigItems = useMemo(
+    () => getLoginConfigItems(status, passkeySupported, t),
+    [status, passkeySupported, t],
+  );
   const hasCustomOAuthProviders =
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthLoginOptions = Boolean(
@@ -225,6 +233,10 @@ const LoginForm = () => {
   }
 
   async function handleSubmit(e) {
+    if (!passwordLoginEnabled) {
+      showInfo(t('当前站点已关闭账号密码登录，请使用页面上其他可用的登录方式'));
+      return;
+    }
     if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
       showInfo(t('请先阅读并同意用户协议和隐私政策'));
       return;
@@ -266,7 +278,7 @@ const LoginForm = () => {
           }
           navigate('/console');
         } else {
-          showError(message);
+          showError(getFriendlyLoginError(message, status, t));
         }
       } else {
         showError('请输入用户名和密码！');
@@ -555,6 +567,17 @@ const LoginForm = () => {
               </Title>
             </div>
             <div className='px-2 py-8'>
+              <AuthConfigNotice
+                title={t('当前登录配置')}
+                description={t(
+                  '这里展示的是站点当前实际生效的登录与注册开关，和系统设置中的配置保持一致',
+                )}
+                items={loginConfigItems}
+                tip={t(
+                  '如果某种登录方式没有出现，通常是因为管理员尚未开启对应配置',
+                )}
+                tone={passwordLoginEnabled ? 'default' : 'warning'}
+              />
               <div className='space-y-3'>
                 {status.wechat_login && (
                   <Button
@@ -704,16 +727,18 @@ const LoginForm = () => {
                   {t('或')}
                 </Divider>
 
-                <Button
-                  theme='solid'
-                  type='primary'
-                  className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
-                  icon={<IconMail size='large' />}
-                  onClick={handleEmailLoginClick}
-                  loading={emailLoginLoading}
-                >
-                  <span className='ml-3'>{t('使用 邮箱或用户名 登录')}</span>
-                </Button>
+                {passwordLoginEnabled && (
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
+                    icon={<IconMail size='large' />}
+                    onClick={handleEmailLoginClick}
+                    loading={emailLoginLoading}
+                  >
+                    <span className='ml-3'>{t('使用 邮箱或用户名 登录')}</span>
+                  </Button>
+                )}
               </div>
 
               {(hasUserAgreement || hasPrivacyPolicy) && (
@@ -754,7 +779,7 @@ const LoginForm = () => {
                 </div>
               )}
 
-              {!status.self_use_mode_enabled && (
+              {!status.self_use_mode_enabled && registerEnabled && (
                 <div className='mt-6 text-center text-sm'>
                   <Text>
                     {t('没有账户？')}{' '}
@@ -790,6 +815,17 @@ const LoginForm = () => {
               </Title>
             </div>
             <div className='px-2 py-8'>
+              <AuthConfigNotice
+                title={t('当前登录配置')}
+                description={t(
+                  '提交前可以先看这里，确认密码登录、注册入口和额外验证要求是否已开启',
+                )}
+                items={loginConfigItems}
+                tip={t(
+                  '这些状态会实时影响当前表单是否可用，避免提交后才看到英文或系统级报错',
+                )}
+                tone={passwordLoginEnabled ? 'default' : 'warning'}
+              />
               {status.passkey_login && passkeySupported && (
                 <Button
                   theme='outline'
@@ -869,7 +905,8 @@ const LoginForm = () => {
                     onClick={handleSubmit}
                     loading={loginLoading}
                     disabled={
-                      (hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms
+                      !passwordLoginEnabled ||
+                      ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms)
                     }
                   >
                     {t('继续')}
@@ -907,7 +944,7 @@ const LoginForm = () => {
                 </>
               )}
 
-              {!status.self_use_mode_enabled && (
+              {!status.self_use_mode_enabled && registerEnabled && (
                 <div className='mt-6 text-center text-sm'>
                   <Text>
                     {t('没有账户？')}{' '}
