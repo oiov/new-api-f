@@ -49,7 +49,7 @@ export default function OAuthCallbackPage() {
           if (state) payload.state = state;
         }
 
-        const res = await API.post(endpoint, payload);
+        const res = await API.get(endpoint, { params: payload });
         const data = res.data as { success: boolean; message?: string; data: User };
 
         if (data.success) {
