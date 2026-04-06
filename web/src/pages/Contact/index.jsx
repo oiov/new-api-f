@@ -156,17 +156,17 @@ const Contact = () => {
             </Text>
 
             <div className='contact-hero__actions'>
-              {/* <Button
+              <Button
                 theme='solid'
                 type='primary'
                 size='large'
                 className='contact-hero__primary-btn'
                 onClick={() =>
-                  window.open('https://qm.qq.com/q/Ce2PaYrbmo', '_blank')
+                  window.open('https://qm.qq.com/q/3Lv0vNEAuW', '_blank')
                 }
               >
                 {t('加入QQ群')}
-              </Button> */}
+              </Button>
               <Button
                 theme='light'
                 type='primary'
@@ -208,11 +208,11 @@ const Contact = () => {
             </div>
 
             <div className='contact-quick-list'>
-              {/* <button
+              <button
                 type='button'
                 className='contact-quick-card'
                 onClick={() =>
-                  window.open('https://qm.qq.com/q/Ce2PaYrbmo', '_blank')
+                  window.open('https://qm.qq.com/q/3Lv0vNEAuW', '_blank')
                 }
               >
                 <div className='contact-quick-card__meta'>
@@ -223,8 +223,8 @@ const Contact = () => {
                 <div className='contact-quick-card__desc'>
                   {t('用于问题答疑解决，适合群内交流与经验分享')}
                 </div>
-                <div className='contact-quick-card__value'>373865837</div>
-              </button> */}
+                <div className='contact-quick-card__value'>634323049</div>
+              </button>
 
               <button
                 type='button'
