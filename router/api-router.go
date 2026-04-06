@@ -123,12 +123,6 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
-
-				// Invoice routes (admin)
-				adminRoute.GET("/invoice", controller.GetAllInvoices)
-				adminRoute.PUT("/invoice/:id/issue", controller.IssueInvoice)
-				adminRoute.PUT("/invoice/:id/reject", controller.RejectInvoice)
-				adminRoute.POST("/invoice/:id/send", controller.SendInvoiceEmail)
 				adminRoute.GET("/redemption/history", controller.GetAllRedemptionHistory)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
@@ -186,6 +180,15 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", controller.SubscriptionEpayReturn)
+		// Invoice admin routes
+		invoiceAdminRoute := apiRouter.Group("/invoice/admin")
+		invoiceAdminRoute.Use(middleware.AdminAuth())
+		{
+			invoiceAdminRoute.GET("", controller.GetAllInvoices)
+			invoiceAdminRoute.PUT("/:id/issue", controller.IssueInvoice)
+			invoiceAdminRoute.PUT("/:id/reject", controller.RejectInvoice)
+			invoiceAdminRoute.POST("/:id/send", controller.SendInvoiceEmail)
+		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{

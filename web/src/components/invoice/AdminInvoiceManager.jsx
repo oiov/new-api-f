@@ -60,7 +60,7 @@ const AdminInvoiceManager = () => {
   const fetchInvoices = useCallback(async (p = 1) => {
     setLoading(true);
     try {
-      const res = await API.get('/api/user/invoice', {
+      const res = await API.get('/api/invoice/admin', {
         params: { page: p, page_size: pageSize, keyword, status: statusFilter },
       });
       if (res.data.message === 'success') {
@@ -89,7 +89,7 @@ const AdminInvoiceManager = () => {
     setIssueSubmitting(true);
     try {
       const res = await API.put(
-        `/api/user/invoice/${issueModal.record.id}/issue`,
+        `/api/invoice/admin/${issueModal.record.id}/issue`,
         { file_url: values.file_url, remark: values.remark || '' },
       );
       if (res.data.message === 'success') {
@@ -117,7 +117,7 @@ const AdminInvoiceManager = () => {
     setRejectSubmitting(true);
     try {
       const res = await API.put(
-        `/api/user/invoice/${rejectModal.record.id}/reject`,
+        `/api/invoice/admin/${rejectModal.record.id}/reject`,
         { remark: values.remark },
       );
       if (res.data.message === 'success') {
@@ -145,7 +145,7 @@ const AdminInvoiceManager = () => {
     setSendSubmitting(true);
     try {
       const res = await API.post(
-        `/api/user/invoice/${sendModal.record.id}/send`,
+        `/api/invoice/admin/${sendModal.record.id}/send`,
         { email: values.email || '' },
       );
       if (res.data.message === 'success') {

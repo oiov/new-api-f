@@ -117,7 +117,7 @@ export function formatQuota(
 }
 
 export function getSystemName(status?: SystemStatus): string {
-  return status?.system_name || 'New API';
+  return status?.system_name || 'FishXCode';
 }
 
 export function getLogo(status?: SystemStatus): string {
