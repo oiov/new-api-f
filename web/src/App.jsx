@@ -45,6 +45,7 @@ const Channel = lazy(() => import('./pages/Channel'));
 const Token = lazy(() => import('./pages/Token'));
 const Redemption = lazy(() => import('./pages/Redemption'));
 const TopUp = lazy(() => import('./pages/TopUp'));
+const InvoicePage = lazy(() => import('./pages/Invoice'));
 const PackagePage = lazy(() => import('./pages/Package'));
 const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
@@ -330,6 +331,16 @@ function App() {
               <PrivateRoute>
                 <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                   <TopUp />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/invoice'
+            element={
+              <PrivateRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <InvoicePage />
                 </Suspense>
               </PrivateRoute>
             }

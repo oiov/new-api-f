@@ -33,9 +33,11 @@ function shouldUseDirectRelay(url: string): boolean {
 }
 
 function getRequestBaseURL(url: string): string {
-  const fullDirectOrigin = getFullDirectOrigin();
-  if (fullDirectOrigin) return fullDirectOrigin;
-  if (shouldUseDirectRelay(url)) return '';
+  // Relay paths (/v1, /pg, /mj …) must go directly to the backend for SSE streaming.
+  // All other paths (/api/…) use the Next.js proxy (same-origin) to avoid CORS.
+  if (shouldUseDirectRelay(url)) {
+    return getFullDirectOrigin();
+  }
   return '';
 }
 

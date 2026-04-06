@@ -111,6 +111,11 @@ func SetApiRouter(router *gin.Engine) {
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
+
+				// Invoice routes (user)
+				selfRoute.GET("/invoice/invoiceable", controller.GetInvoiceableTopUps)
+				selfRoute.GET("/invoice", controller.GetUserInvoices)
+				selfRoute.POST("/invoice", controller.CreateInvoice)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -118,6 +123,12 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
+
+				// Invoice routes (admin)
+				adminRoute.GET("/invoice", controller.GetAllInvoices)
+				adminRoute.PUT("/invoice/:id/issue", controller.IssueInvoice)
+				adminRoute.PUT("/invoice/:id/reject", controller.RejectInvoice)
+				adminRoute.POST("/invoice/:id/send", controller.SendInvoiceEmail)
 				adminRoute.GET("/redemption/history", controller.GetAllRedemptionHistory)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)

@@ -230,6 +230,11 @@ export function Sidebar({ collapsed, onToggleCollapsed, onNavigate }: SidebarPro
             icon: <CreditCard className="size-full" />,
           },
           {
+            label: t('发票管理'),
+            href: '/console/invoice',
+            icon: <FileText className="size-full" />,
+          },
+          {
             label: t('邀请拉新'),
             href: '/console/invite',
             icon: <Gift className="size-full" />,

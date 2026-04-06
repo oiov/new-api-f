@@ -34,6 +34,7 @@ import {
   CreditCard,
   Server,
   Activity,
+  FileText,
 } from 'lucide-react';
 
 import SystemSetting from '../../components/settings/SystemSetting';
@@ -49,6 +50,7 @@ import DrawingSetting from '../../components/settings/DrawingSetting';
 import PaymentSetting from '../../components/settings/PaymentSetting';
 import ModelDeploymentSetting from '../../components/settings/ModelDeploymentSetting';
 import PerformanceSetting from '../../components/settings/PerformanceSetting';
+import AdminInvoiceManager from '../../components/invoice/AdminInvoiceManager';
 
 const Setting = () => {
   const { t } = useTranslation();
@@ -177,6 +179,16 @@ const Setting = () => {
       ),
       content: <OtherSetting />,
       itemKey: 'other',
+    });
+    panes.push({
+      tab: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <FileText size={18} />
+          {t('发票管理')}
+        </span>
+      ),
+      content: <AdminInvoiceManager />,
+      itemKey: 'invoice',
     });
   }
   const onChangeTab = (key) => {
