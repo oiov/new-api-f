@@ -154,7 +154,7 @@ func ListModels(c *gin.Context, modelType int) {
 		}
 	} else {
 		userId := c.GetInt("id")
-		userGroup, err := model.GetUserGroup(userId, false)
+		userCache, err := model.GetUserCache(userId)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -162,6 +162,7 @@ func ListModels(c *gin.Context, modelType int) {
 			})
 			return
 		}
+		userGroup := userCache.Group
 		group := userGroup
 		tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 		if tokenGroup != "" {
@@ -169,7 +170,7 @@ func ListModels(c *gin.Context, modelType int) {
 		}
 		var models []string
 		if tokenGroup == "auto" {
-			for _, autoGroup := range service.GetUserAutoGroup(userGroup) {
+			for _, autoGroup := range service.GetUserAutoGroupForUser(userId, userGroup, userCache.Quota > 0) {
 				groupModels := model.GetGroupEnabledModels(autoGroup)
 				for _, g := range groupModels {
 					if !common.StringsContains(models, g) {

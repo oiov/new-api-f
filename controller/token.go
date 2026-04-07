@@ -19,17 +19,15 @@ import (
 // resolveUserGroupAccess 返回用户当前可用分组列表。
 // 同时考虑订阅状态和余额：两者独立，有哪个能力就开哪类分组。
 func resolveUserGroupAccess(userId int) map[string]string {
-	userGroup, _ := model.GetUserGroup(userId, false)
-	isSubscriptionUser := false
-	hasQuotaBalance := true // filter 未开启时不限制，默认放行
-	if setting.EnableGroupBillingFilter {
-		has, _ := model.HasActiveUserSubscription(userId)
-		isSubscriptionUser = has
-		if u, err := model.GetUserById(userId, false); err == nil {
-			hasQuotaBalance = u.Quota > 0
-		}
+	userCache, err := model.GetUserCache(userId)
+	if err != nil {
+		return service.GetUserUsableGroups("")
 	}
-	return service.GetUserUsableGroupsWithBillingFilter(userGroup, isSubscriptionUser, hasQuotaBalance)
+	hasQuotaBalance := true
+	if setting.EnableGroupBillingFilter {
+		hasQuotaBalance = userCache.Quota > 0
+	}
+	return service.GetUserUsableGroupsForUser(userId, userCache.Group, hasQuotaBalance)
 }
 
 func buildMaskedTokenResponse(token *model.Token) *model.Token {

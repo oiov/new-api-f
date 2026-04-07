@@ -26,33 +26,35 @@ func GetGroups(c *gin.Context) {
 func GetUserGroups(c *gin.Context) {
 	usableGroups := make(map[string]map[string]interface{})
 	userId := c.GetInt("id")
-	userGroup, _ := model.GetUserGroup(userId, false)
-
-	// 按计费能力过滤分组：订阅状态 + 余额状态独立判断，两者不互斥
-	isSubscriptionUser := false
-	hasQuotaBalance := true // 默认允许按量（无 filter 时兜底）
-	if setting.EnableGroupBillingFilter {
-		has, _ := model.HasActiveUserSubscription(userId)
-		isSubscriptionUser = has
-		// 读取用户余额，大于 0 才算有按量能力
-		if u, err := model.GetUserById(userId, false); err == nil {
-			hasQuotaBalance = u.Quota > 0
-		}
+	userCache, err := model.GetUserCache(userId)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
 	}
-
-	userUsableGroups := service.GetUserUsableGroupsWithBillingFilter(userGroup, isSubscriptionUser, hasQuotaBalance)
+	hasQuotaBalance := true
+	if setting.EnableGroupBillingFilter {
+		hasQuotaBalance = userCache.Quota > 0
+	}
+	userUsableGroups := service.GetUserUsableGroupsForUser(userId, userCache.Group, hasQuotaBalance)
 	for groupName := range ratio_setting.GetGroupRatioCopy() {
 		if desc, ok := userUsableGroups[groupName]; ok {
 			usableGroups[groupName] = map[string]interface{}{
-				"ratio": service.GetUserGroupRatio(userGroup, groupName),
-				"desc":  desc,
+				"ratio":         service.GetUserGroupRatio(userCache.Group, groupName),
+				"desc":          desc,
+				"billing_type":  service.GetGroupBillingType(groupName),
+				"billing_label": service.GetGroupBillingLabel(groupName),
 			}
 		}
 	}
 	if _, ok := userUsableGroups["auto"]; ok {
 		usableGroups["auto"] = map[string]interface{}{
-			"ratio": "自动",
-			"desc":  setting.GetUsableGroupDescription("auto"),
+			"ratio":         "自动",
+			"desc":          setting.GetUsableGroupDescription("auto"),
+			"billing_type":  service.GetGroupBillingType("auto"),
+			"billing_label": service.GetGroupBillingLabel("auto"),
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -61,4 +63,3 @@ func GetUserGroups(c *gin.Context) {
 		"data":    usableGroups,
 	})
 }
-

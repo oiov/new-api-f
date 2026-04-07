@@ -390,9 +390,28 @@ export const renderGroupOption = (item) => {
       onMouseEnter={handleMouseEnter}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <Typography.Text strong type={disabled ? 'tertiary' : undefined}>
-          {value}
-        </Typography.Text>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Typography.Text strong type={disabled ? 'tertiary' : undefined}>
+            {value}
+          </Typography.Text>
+          {item.billingLabel && (
+            <Tag
+              size='small'
+              color={
+                item.billingType === 'subscription'
+                  ? 'orange'
+                  : item.billingType === 'quota'
+                    ? 'blue'
+                    : item.billingType === 'hybrid'
+                      ? 'green'
+                      : 'grey'
+              }
+              shape='circle'
+            >
+              {item.billingLabel}
+            </Tag>
+          )}
+        </div>
         <Typography.Text type='secondary' size='small'>
           {label}
         </Typography.Text>

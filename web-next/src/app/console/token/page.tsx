@@ -249,7 +249,13 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
   const { t } = useTranslation();
   const [form, setForm] = useState<TokenFormData>(emptyForm());
   const [loading, setLoading] = useState(false);
-  const [groups, setGroups] = useState<Array<{ value: string; label: string; ratio?: number | string }>>([]);
+  const [groups, setGroups] = useState<Array<{
+    value: string;
+    label: string;
+    ratio?: number | string;
+    billingType?: string;
+    billingLabel?: string;
+  }>>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const isEdit = !!editToken;
 
@@ -259,13 +265,23 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
     if (!open) return;
     setGroupsLoading(true);
     API.get('/api/user/self/groups').then((res) => {
-      const d = res.data as { success: boolean; data?: Record<string, { desc: string; ratio?: number | string }> };
+      const d = res.data as {
+        success: boolean;
+        data?: Record<string, {
+          desc: string;
+          ratio?: number | string;
+          billing_type?: string;
+          billing_label?: string;
+        }>;
+      };
       if (d.success && d.data) {
         setGroups(
           Object.entries(d.data).map(([value, info]) => ({
             value,
             label: info.desc || value,
             ratio: info.ratio,
+            billingType: info.billing_type,
+            billingLabel: info.billing_label,
           }))
         );
       }
@@ -330,6 +346,19 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
                   <SelectItem key={g.value} value={g.value}>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{g.value}</span>
+                      {g.billingLabel && (
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            'text-[10px] px-1.5 py-0 h-5',
+                            g.billingType === 'subscription' && 'bg-orange-100 text-orange-700 border-orange-200',
+                            g.billingType === 'quota' && 'bg-blue-100 text-blue-700 border-blue-200',
+                            g.billingType === 'hybrid' && 'bg-green-100 text-green-700 border-green-200'
+                          )}
+                        >
+                          {g.billingLabel}
+                        </Badge>
+                      )}
                       {g.label !== g.value && (
                         <span className="text-xs text-muted-foreground">{g.label}</span>
                       )}
@@ -343,7 +372,7 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">{t('不选则使用账户默认分组')}</p>
+            <p className="text-xs text-muted-foreground">{t('不选则使用账户默认分组；已标明订阅、按量或通用计费类型')}</p>
           </div>
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
             <div>

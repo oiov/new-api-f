@@ -3,8 +3,16 @@ package service
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+)
+
+const (
+	GroupBillingTypePublic       = "public"
+	GroupBillingTypeSubscription = "subscription"
+	GroupBillingTypeQuota        = "quota"
+	GroupBillingTypeHybrid       = "hybrid"
 )
 
 // GetUserUsableGroupsWithBillingFilter 在 GetUserUsableGroups 基础上，
@@ -64,6 +72,22 @@ func GetUserUsableGroupsWithBillingFilter(userGroup string, isSubscriptionUser b
 	return filtered
 }
 
+func resolveUserBillingCapabilities(userId int, hasQuotaBalance bool) (bool, bool) {
+	if !setting.EnableGroupBillingFilter {
+		return false, hasQuotaBalance
+	}
+	isSubscriptionUser := false
+	if has, err := model.HasActiveUserSubscription(userId); err == nil {
+		isSubscriptionUser = has
+	}
+	return isSubscriptionUser, hasQuotaBalance
+}
+
+func GetUserUsableGroupsForUser(userId int, userGroup string, hasQuotaBalance bool) map[string]string {
+	isSubscriptionUser, canUseQuota := resolveUserBillingCapabilities(userId, hasQuotaBalance)
+	return GetUserUsableGroupsWithBillingFilter(userGroup, isSubscriptionUser, canUseQuota)
+}
+
 func GetUserUsableGroups(userGroup string) map[string]string {
 	groupsCopy := setting.GetUserUsableGroupsCopy()
 	if userGroup != "" {
@@ -98,16 +122,85 @@ func GroupInUserUsableGroups(userGroup, groupName string) bool {
 	return ok
 }
 
-// GetUserAutoGroup 根据用户分组获取自动分组设置
-func GetUserAutoGroup(userGroup string) []string {
-	groups := GetUserUsableGroups(userGroup)
+func GroupInUserUsableGroupsForUser(userId int, userGroup string, hasQuotaBalance bool, groupName string) bool {
+	_, ok := GetUserUsableGroupsForUser(userId, userGroup, hasQuotaBalance)[groupName]
+	return ok
+}
+
+func GetAutoGroupsFromUsableGroups(usableGroups map[string]string) []string {
 	autoGroups := make([]string, 0)
 	for _, group := range setting.GetAutoGroups() {
-		if _, ok := groups[group]; ok {
+		if _, ok := usableGroups[group]; ok {
 			autoGroups = append(autoGroups, group)
 		}
 	}
 	return autoGroups
+}
+
+// GetUserAutoGroup 根据用户分组获取自动分组设置
+func GetUserAutoGroup(userGroup string) []string {
+	return GetAutoGroupsFromUsableGroups(GetUserUsableGroups(userGroup))
+}
+
+func GetUserAutoGroupForUser(userId int, userGroup string, hasQuotaBalance bool) []string {
+	return GetAutoGroupsFromUsableGroups(GetUserUsableGroupsForUser(userId, userGroup, hasQuotaBalance))
+}
+
+func GetGroupBillingType(groupName string) string {
+	if groupName == "" || groupName == "auto" {
+		return GroupBillingTypePublic
+	}
+	inSubscription := false
+	for _, group := range setting.GetSubscriptionGroups() {
+		if group == groupName {
+			inSubscription = true
+			break
+		}
+	}
+	inQuota := false
+	for _, group := range setting.GetQuotaGroups() {
+		if group == groupName {
+			inQuota = true
+			break
+		}
+	}
+	switch {
+	case inSubscription && inQuota:
+		return GroupBillingTypeHybrid
+	case inSubscription:
+		return GroupBillingTypeSubscription
+	case inQuota:
+		return GroupBillingTypeQuota
+	default:
+		return GroupBillingTypePublic
+	}
+}
+
+func GetGroupBillingLabel(groupName string) string {
+	switch GetGroupBillingType(groupName) {
+	case GroupBillingTypeSubscription:
+		return "订阅"
+	case GroupBillingTypeQuota:
+		return "按量"
+	case GroupBillingTypeHybrid:
+		return "订阅/按量"
+	default:
+		return "通用"
+	}
+}
+
+func ResolveBillingPreferenceByGroup(groupName, fallback string) string {
+	if !setting.EnableGroupBillingFilter {
+		return fallback
+	}
+	switch GetGroupBillingType(groupName) {
+	case GroupBillingTypeSubscription:
+		return "subscription_only"
+	case GroupBillingTypeQuota:
+		return "wallet_only"
+	default:
+		return fallback
+	}
 }
 
 // GetUserGroupRatio 获取用户使用某个分组的倍率

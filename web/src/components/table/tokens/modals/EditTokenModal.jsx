@@ -128,17 +128,19 @@ const EditTokenModal = (props) => {
 
   const loadGroups = async () => {
     let res = await API.get(`/api/user/self/groups`);
-    const { success, message, data } = res.data;
-    if (success) {
-      let localGroupOptions = Object.entries(data).map(([group, info]) => ({
-        label: info.desc,
-        value: group,
-        ratio: info.ratio,
-      }));
-      if (statusState?.status?.default_use_auto_group) {
-        if (localGroupOptions.some((group) => group.value === 'auto')) {
-          localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
-        }
+      const { success, message, data } = res.data;
+      if (success) {
+        let localGroupOptions = Object.entries(data).map(([group, info]) => ({
+          label: info.desc,
+          value: group,
+          ratio: info.ratio,
+          billingType: info.billing_type,
+          billingLabel: info.billing_label,
+        }));
+        if (statusState?.status?.default_use_auto_group) {
+          if (localGroupOptions.some((group) => group.value === 'auto')) {
+            localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
+          }
       }
       setGroups(localGroupOptions);
       // if (statusState?.status?.default_use_auto_group && formApiRef.current) {
@@ -366,6 +368,7 @@ const EditTokenModal = (props) => {
                         placeholder={t('令牌分组，默认为用户的分组')}
                         optionList={groups}
                         renderOptionItem={renderGroupOption}
+                        extraText={t('分组标签会标明订阅、按量或通用计费类型')}
                         showClear
                         style={{ width: '100%' }}
                       />
