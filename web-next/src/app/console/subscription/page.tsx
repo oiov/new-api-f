@@ -89,6 +89,7 @@ interface UserSubscription {
   last_reset_time?: number;
   reset_period?: string;
   quota_reset_period?: string;
+  reset_custom_seconds?: number;
   resource_type?: string;
   amount_total?: number;
   total_amount?: number;

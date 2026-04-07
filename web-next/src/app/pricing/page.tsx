@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { BarChart3, Package, RefreshCw } from 'lucide-react';
@@ -17,7 +17,7 @@ import { StatCard } from './components/stat-card';
 import { ModelPricingTab } from './components/model-pricing-tab';
 import { PlansTab } from './components/plans-tab';
 
-export default function PricingPage() {
+function PricingPageContent() {
   const { t } = useTranslation();
   const status = useSystemStatus();
   const { get, set } = useUrlState();
@@ -158,5 +158,13 @@ export default function PricingPage() {
         </Tabs>
       </motion.div>
     </div>
+  );
+}
+
+export default function PricingPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-[1400px] px-4 py-8 md:px-6 lg:px-8 lg:py-10" />}>
+      <PricingPageContent />
+    </Suspense>
   );
 }
