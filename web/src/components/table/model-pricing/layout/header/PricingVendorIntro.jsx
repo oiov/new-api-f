@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useState, useMemo, useCallback, memo } from 'react';
 import { Tag, Avatar, Button, Modal, Typography, Tooltip } from '@douyinfe/semi-ui';
-import { IconInfoCircle, IconRefresh } from '@douyinfe/semi-icons';
+import { IconInfoCircle, IconRefresh, IconClose } from '@douyinfe/semi-icons';
 import { getLobeHubIcon } from '../../../../../helpers/providerIcons';
 import SearchActions from './SearchActions';
 
@@ -161,11 +161,143 @@ const VendorIconRow = ({ vendorInfo, maxShow = 6, accentColor, t }) => {
   );
 };
 
+// ---------- group info bar ----------
+
+/** 分组信息横幅：选中某一分组时在页面头部显示分组描述与倍率 */
+const GroupInfoBar = ({ filterGroup, usableGroup, groupRatio, modelCount, handleGroupClick, t }) => {
+  const description = usableGroup?.[filterGroup];
+  const ratio = groupRatio?.[filterGroup] ?? 1;
+
+  // 从分组名生成确定性色调（与卡片图标逻辑一致）
+  const hue =
+    [...filterGroup].reduce((s, c) => s + c.charCodeAt(0), 0) % 360;
+  const accentColor = `hsl(${hue}, 60%, 45%)`;
+  const accentBg = `hsl(${hue}, 65%, 50%)`;
+
+  return (
+    <div
+      className='pricing-group-info-bar'
+      style={{
+        background: `linear-gradient(135deg, hsl(${hue},65%,50%)14 0%, hsl(${hue},65%,50%)07 60%, transparent 100%)`,
+        border: `1px solid hsl(${hue},60%,50%)22`,
+      }}
+    >
+      {/* 分组图标 */}
+      <div
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          backgroundColor: accentBg,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <span
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: '#fff',
+            letterSpacing: '-0.03em',
+            lineHeight: 1,
+          }}
+        >
+          {filterGroup.slice(0, 2).toUpperCase()}
+        </span>
+      </div>
+
+      {/* 内容区 */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* 标题行：分组名 + 倍率 + 数量 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            flexWrap: 'wrap',
+            marginBottom: description ? 4 : 0,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: 'var(--semi-color-text-0)',
+              letterSpacing: '-0.2px',
+            }}
+          >
+            {filterGroup}
+          </span>
+          <Tag
+            shape='circle'
+            size='small'
+            style={{
+              backgroundColor: accentColor + '18',
+              color: accentColor,
+              border: `1px solid ${accentColor}35`,
+              fontWeight: 700,
+              fontSize: 11,
+            }}
+          >
+            {t('倍率')} {ratio}×
+          </Tag>
+          <Tag
+            shape='circle'
+            size='small'
+            style={{
+              backgroundColor: 'var(--semi-color-bg-2)',
+              color: 'var(--semi-color-text-2)',
+              border: '1px solid var(--semi-color-border)',
+              fontWeight: 500,
+              fontSize: 11,
+            }}
+          >
+            {t('共 {{count}} 个模型', { count: modelCount })}
+          </Tag>
+        </div>
+
+        {/* 分组描述 */}
+        {description && (
+          <span
+            style={{
+              fontSize: 12,
+              color: 'var(--semi-color-text-2)',
+              lineHeight: '1.55',
+              display: 'block',
+            }}
+          >
+            {description}
+          </span>
+        )}
+      </div>
+
+      {/* 取消筛选按钮 */}
+      <Tooltip content={t('取消分组筛选')}>
+        <Button
+          size='small'
+          theme='borderless'
+          type='tertiary'
+          icon={<IconClose />}
+          onClick={() => handleGroupClick?.('all')}
+          style={{ flexShrink: 0 }}
+        />
+      </Tooltip>
+    </div>
+  );
+};
+
 // ---------- main component ----------
 
 const PricingVendorIntro = memo(
   ({
     filterVendor,
+    filterGroup,
+    usableGroup,
+    groupRatio,
+    handleGroupClick,
     models = [],
     allModels = [],
     t,
@@ -245,8 +377,14 @@ const PricingVendorIntro = memo(
 
     return (
       <>
-        {/* ── 企业级标题区域 ── */}
-        <div className='pricing-vendor-header'>
+        {/* ── 企业级标题区域（动态渐变背景）── */}
+        <div
+          className='pricing-vendor-header'
+          style={{
+            background: `linear-gradient(135deg, ${accentColor}18 0%, ${accentColor}08 55%, transparent 100%)`,
+            border: `1px solid ${accentColor}22`,
+          }}
+        >
           {/* 左侧：图标 + 标题 + 描述 */}
           <div className='pricing-vendor-header-left'>
             {/* 图标区域 */}
@@ -277,11 +415,12 @@ const PricingVendorIntro = memo(
                   shape='circle'
                   size='small'
                   style={{
-                    backgroundColor: accentColor + '15',
+                    backgroundColor: accentColor + '20',
                     color: accentColor,
-                    border: `1px solid ${accentColor}30`,
-                    fontWeight: 600,
+                    border: `1px solid ${accentColor}38`,
+                    fontWeight: 700,
                     fontSize: 11,
+                    letterSpacing: '-0.1px',
                   }}
                 >
                   {t('共 {{count}} 个模型', { count: modelCount })}
@@ -293,9 +432,9 @@ const PricingVendorIntro = memo(
                     size='small'
                     style={{
                       backgroundColor: 'var(--semi-color-bg-2)',
-                      color: 'var(--semi-color-text-2)',
+                      color: 'var(--semi-color-text-1)',
                       border: '1px solid var(--semi-color-border)',
-                      fontWeight: 500,
+                      fontWeight: 600,
                       fontSize: 11,
                     }}
                   >
@@ -336,6 +475,18 @@ const PricingVendorIntro = memo(
 
           {/* 右侧预留区 — 将来可加入操作按钮 */}
         </div>
+
+        {/* ── 分组信息条（选中特定分组时显示）── */}
+        {filterGroup && filterGroup !== 'all' && (
+          <GroupInfoBar
+            filterGroup={filterGroup}
+            usableGroup={usableGroup}
+            groupRatio={groupRatio}
+            modelCount={models.length}
+            handleGroupClick={handleGroupClick}
+            t={t}
+          />
+        )}
 
         {/* ── 搜索 + 操作栏 ── */}
         <div className='pricing-search-actions'>

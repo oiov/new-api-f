@@ -91,14 +91,39 @@ const PricingSidebar = ({
     });
 
   return (
-    <div className='p-2'>
-      <div className='flex items-center justify-between mb-4'>
-        <span
-          className='text-base font-semibold'
-          style={{ color: 'var(--semi-color-text-0)' }}
-        >
-          {t('筛选')}
-        </span>
+    <div className='p-3'>
+      {/* 筛选头部：左侧色块 + 标题 + 重置按钮 */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 16,
+          paddingBottom: 12,
+          borderBottom: '1px solid var(--semi-color-border)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{
+              width: 3,
+              height: 16,
+              background: 'var(--semi-color-primary)',
+              borderRadius: 2,
+              flexShrink: 0,
+            }}
+          />
+          <span
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              color: 'var(--semi-color-text-0)',
+              letterSpacing: '-0.2px',
+            }}
+          >
+            {t('筛选')}
+          </span>
+        </div>
         <Button
           theme='borderless'
           type='tertiary'

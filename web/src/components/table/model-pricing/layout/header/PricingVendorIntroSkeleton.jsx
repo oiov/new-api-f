@@ -70,7 +70,7 @@ const PricingVendorIntroSkeleton = memo(({ isAllVendors = false, isMobile = fals
       {/* 搜索栏骨架 */}
       <div className='pricing-search-actions'>
         <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-          <Skeleton.Input
+          <Skeleton.Title
             style={{ flex: 1, height: 32, borderRadius: 6 }}
           />
           <Skeleton.Button style={{ width: 72, height: 32, borderRadius: 6 }} />

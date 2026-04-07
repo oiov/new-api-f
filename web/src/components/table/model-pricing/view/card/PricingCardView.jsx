@@ -26,7 +26,6 @@ import {
   Empty,
   Pagination,
   Button,
-  Avatar,
 } from '@douyinfe/semi-ui';
 import { IconHelpCircle } from '@douyinfe/semi-icons';
 import { Copy } from 'lucide-react';
@@ -37,7 +36,7 @@ import {
 import {
   stringToColor,
   calculateModelPrice,
-  formatPriceInfo,
+  getModelPriceItems,
 } from '../../../../../helpers';
 import { getLobeHubIcon } from '../../../../../helpers/providerIcons';
 import PricingCardSkeleton from './PricingCardSkeleton';
@@ -47,13 +46,32 @@ import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
 
 const getModelKey = (model) => model.key ?? model.model_name ?? model.id;
 
+/** 价格类型对应的颜色（输入/输出/缓存分色展示） */
+const PRICE_COLORS = {
+  input: '#10b981',
+  completion: '#f59e0b',
+  cache: '#6366f1',
+  'create-cache': '#8b5cf6',
+  image: '#06b6d4',
+  'audio-input': '#ec4899',
+  'audio-output': '#f97316',
+  'input-ratio': '#10b981',
+  'completion-ratio': '#f59e0b',
+  'cache-ratio': '#6366f1',
+  'create-cache-ratio': '#8b5cf6',
+  'image-ratio': '#06b6d4',
+  'audio-input-ratio': '#ec4899',
+  'audio-output-ratio': '#f97316',
+  fixed: 'var(--semi-color-primary)',
+};
+
 /** 模型图标容器 */
 const ModelIconBox = ({ model }) => {
-  const size = 40;
+  const size = 44;
 
   const inner = (() => {
-    if (model?.icon) return getLobeHubIcon(model.icon, 24);
-    if (model?.vendor_icon) return getLobeHubIcon(model.vendor_icon, 24);
+    if (model?.icon) return getLobeHubIcon(model.icon, 26);
+    if (model?.vendor_icon) return getLobeHubIcon(model.vendor_icon, 26);
     return null;
   })();
 
@@ -61,35 +79,42 @@ const ModelIconBox = ({ model }) => {
     ? model.model_name.slice(0, 2).toUpperCase()
     : '?';
 
+  // 从模型名生成确定性色调
+  const hue = model?.model_name
+    ? [...model.model_name].reduce((s, c) => s + c.charCodeAt(0), 0) % 360
+    : 220;
+
   return (
     <div
       style={{
         width: size,
         height: size,
-        borderRadius: 10,
-        backgroundColor: 'var(--semi-color-bg-2)',
-        border: '1px solid var(--semi-color-border)',
+        borderRadius: 12,
+        backgroundColor: inner
+          ? 'var(--semi-color-bg-2)'
+          : `hsl(${hue}, 65%, 50%)`,
+        border: inner
+          ? '1px solid var(--semi-color-border)'
+          : 'none',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
+        overflow: 'hidden',
       }}
     >
       {inner || (
-        <Avatar
-          size='extra-small'
+        <span
           style={{
-            width: size - 8,
-            height: size - 8,
-            borderRadius: 8,
-            backgroundColor: 'var(--semi-color-primary-light-default)',
-            color: 'var(--semi-color-primary)',
-            fontSize: 11,
+            fontSize: 14,
             fontWeight: 700,
+            color: '#fff',
+            letterSpacing: '-0.03em',
+            lineHeight: 1,
           }}
         >
           {initials}
-        </Avatar>
+        </span>
       )}
     </div>
   );
@@ -155,19 +180,30 @@ const ModelTags = ({ record, t }) => {
 
 /** 价格信息区块 */
 const PriceBlock = ({ priceData, siteDisplayType, t }) => {
-  const items = formatPriceInfo(priceData, t, siteDisplayType);
+  const items = getModelPriceItems(priceData, t, siteDisplayType);
   if (!items || items.length === 0) return null;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2,
-        marginTop: 4,
-      }}
-    >
-      {items}
+    <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {items.map((item) => (
+        <div
+          key={item.key}
+          style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}
+        >
+          <span className='pricing-price-label'>{item.label}:</span>
+          <span
+            style={{
+              color: PRICE_COLORS[item.key] || 'var(--semi-color-text-2)',
+              fontWeight: 600,
+              fontSize: 11,
+              letterSpacing: '-0.01em',
+            }}
+          >
+            {item.value}
+            <span className='pricing-price-suffix'>{item.suffix}</span>
+          </span>
+        </div>
+      ))}
     </div>
   );
 };
@@ -241,7 +277,7 @@ const PricingCardView = ({
   }
 
   return (
-    <div style={{ padding: '8px 8px 0' }}>
+    <div style={{ padding: '10px 10px 0' }}>
       {/* 模型卡片网格 */}
       <div className='pricing-card-grid'>
         {paginatedModels.map((model, index) => {
@@ -270,7 +306,7 @@ const PricingCardView = ({
                   ? 'var(--semi-color-primary-light-default)'
                   : 'var(--semi-color-bg-1)',
               }}
-              bodyStyle={{ padding: 12 }}
+              bodyStyle={{ padding: 14 }}
               onClick={() => openModelDetail && openModelDetail(model)}
             >
               <div
@@ -295,19 +331,20 @@ const PricingCardView = ({
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div
                       style={{
-                        fontWeight: 600,
+                        fontWeight: 700,
                         fontSize: 13,
                         color: 'var(--semi-color-text-0)',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                         lineHeight: '1.4',
+                        letterSpacing: '-0.2px',
                       }}
                       title={model.model_name}
                     >
                       {model.model_name}
                     </div>
-                    {/* 价格信息（紧凑显示） */}
+                    {/* 价格信息（颜色编码显示） */}
                     <PriceBlock
                       priceData={priceData}
                       siteDisplayType={siteDisplayType}
@@ -373,8 +410,9 @@ const PricingCardView = ({
                 {showRatio && (
                   <div
                     style={{
-                      paddingTop: 8,
+                      paddingTop: 10,
                       borderTop: '1px solid var(--semi-color-border)',
+                      marginTop: 2,
                     }}
                   >
                     <div
@@ -382,14 +420,15 @@ const PricingCardView = ({
                         display: 'flex',
                         alignItems: 'center',
                         gap: 4,
-                        marginBottom: 6,
+                        marginBottom: 8,
                       }}
                     >
                       <span
                         style={{
                           fontSize: 11,
-                          fontWeight: 600,
+                          fontWeight: 700,
                           color: 'var(--semi-color-text-1)',
+                          letterSpacing: '0.2px',
                         }}
                       >
                         {t('倍率信息')}
@@ -415,21 +454,27 @@ const PricingCardView = ({
                         gridTemplateColumns: 'repeat(3, 1fr)',
                         gap: 4,
                         fontSize: 11,
-                        color: 'var(--semi-color-text-1)',
                       }}
                     >
-                      <span>
+                      <span style={{ color: '#10b981', fontWeight: 500 }}>
                         {t('模型')}:{' '}
-                        {model.quota_type === 0 ? model.model_ratio : t('无')}
+                        <span style={{ color: 'var(--semi-color-text-1)' }}>
+                          {model.quota_type === 0 ? model.model_ratio : t('无')}
+                        </span>
                       </span>
-                      <span>
+                      <span style={{ color: '#f59e0b', fontWeight: 500 }}>
                         {t('补全')}:{' '}
-                        {model.quota_type === 0
-                          ? parseFloat(model.completion_ratio.toFixed(3))
-                          : t('无')}
+                        <span style={{ color: 'var(--semi-color-text-1)' }}>
+                          {model.quota_type === 0
+                            ? parseFloat(model.completion_ratio.toFixed(3))
+                            : t('无')}
+                        </span>
                       </span>
-                      <span>
-                        {t('分组')}: {priceData?.usedGroupRatio ?? '-'}
+                      <span style={{ color: '#6366f1', fontWeight: 500 }}>
+                        {t('分组')}:{' '}
+                        <span style={{ color: 'var(--semi-color-text-1)' }}>
+                          {priceData?.usedGroupRatio ?? '-'}
+                        </span>
                       </span>
                     </div>
                   </div>
@@ -447,8 +492,8 @@ const PricingCardView = ({
             display: 'flex',
             justifyContent: 'center',
             marginTop: 24,
-            paddingTop: 16,
-            paddingBottom: 16,
+            paddingTop: 18,
+            paddingBottom: 20,
             borderTop: '1px solid var(--semi-color-border)',
           }}
         >

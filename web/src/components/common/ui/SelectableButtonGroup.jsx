@@ -21,7 +21,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useMinimumLoadingTime } from '../../../hooks/common/useMinimumLoadingTime';
 import { useContainerWidth } from '../../../hooks/common/useContainerWidth';
 import {
-  Divider,
   Button,
   Row,
   Col,
@@ -154,10 +153,10 @@ const SelectableButtonGroup = ({
               }}
             >
               {withCheckbox && (
-                <Skeleton.Title active style={{ width: 14, height: 14 }} />
+                <div className='animate-pulse bg-semi-color-fill-1 rounded' style={{ width: 14, height: 14, flexShrink: 0 }} />
               )}
-              <Skeleton.Title
-                active
+              <div
+                className='animate-pulse bg-semi-color-fill-1 rounded'
                 style={{
                   width: `${60 + (index % 3) * 20}px`,
                   height: 14,
@@ -170,7 +169,7 @@ const SelectableButtonGroup = ({
     );
 
     return (
-      <Skeleton loading={true} active placeholder={placeholder}></Skeleton>
+      <Skeleton loading={true} placeholder={placeholder}></Skeleton>
     );
   };
 
@@ -247,13 +246,16 @@ const SelectableButtonGroup = ({
       ref={containerRef}
     >
       {title && (
-        <Divider margin='12px' align='left'>
-          {showSkeleton ? (
-            <Skeleton.Title active style={{ width: 80, height: 14 }} />
-          ) : (
-            title
-          )}
-        </Divider>
+        <div className='flex items-center gap-2 mb-2' style={{ marginTop: 12, marginBottom: 4 }}>
+          <span className='text-xs font-medium whitespace-nowrap' style={{ color: 'var(--semi-color-text-2)' }}>
+            {showSkeleton ? (
+              <div className='animate-pulse bg-semi-color-fill-1 rounded inline-block' style={{ width: 80, height: 14 }} />
+            ) : (
+              title
+            )}
+          </span>
+          <div style={{ flex: 1, height: 1, background: 'var(--semi-color-border)' }} />
+        </div>
       )}
       {needCollapse && !showSkeleton ? (
         <div style={{ position: 'relative' }}>

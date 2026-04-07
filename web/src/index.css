@@ -1013,13 +1013,14 @@ html.dark .with-pastel-balls::before {
 
 /* 顶部标题+搜索 sticky 区域 */
 .pricing-search-header {
-  padding: 10px 10px 0;
+  padding: 12px 14px 0;
   background-color: var(--semi-color-bg-0);
   flex-shrink: 0;
   position: sticky;
   top: 0;
   z-index: 5;
   border-bottom: 1px solid var(--semi-color-border);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
 .pricing-view-container {
@@ -1038,8 +1039,11 @@ html.dark .with-pastel-balls::before {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 2px 10px;
+  padding: 14px 14px 12px;
   gap: 12px;
+  border-radius: 14px;
+  margin: 2px 2px 4px;
+  transition: background 0.2s ease;
 }
 
 .pricing-vendor-header-left {
@@ -1067,11 +1071,12 @@ html.dark .with-pastel-balls::before {
 }
 
 .pricing-vendor-header-title {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 800;
   color: var(--semi-color-text-0);
   line-height: 1.3;
   white-space: nowrap;
+  letter-spacing: -0.3px;
 }
 
 .pricing-vendor-header-desc {
@@ -1084,49 +1089,90 @@ html.dark .with-pastel-balls::before {
 
 /* 搜索 + 操作栏 */
 .pricing-search-actions {
-  padding: 8px 2px 10px;
+  padding: 10px 2px 12px;
+}
+
+/* ── 分组信息条 ── */
+.pricing-group-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 0 2px 8px;
+  border-radius: 12px;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  animation: pricing-group-bar-in 0.22s ease;
+}
+
+@keyframes pricing-group-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ── 卡片网格 ── */
 .pricing-card-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
 @media (min-width: 768px) {
   .pricing-card-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
   }
 }
 
 @media (min-width: 1280px) {
   .pricing-card-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
   }
 }
 
 @media (min-width: 1536px) {
   .pricing-card-grid {
     grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
   }
 }
 
 /* 单张模型卡片 */
 .pricing-model-card {
-  border-radius: 12px !important;
+  border-radius: 16px !important;
   border: 1px solid var(--semi-color-border) !important;
   cursor: pointer;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.18s ease;
+  overflow: hidden;
 }
 
 .pricing-model-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1) !important;
   border-color: var(--semi-color-primary-light-hover) !important;
+  transform: translateY(-2px);
 }
 
 html.dark .pricing-model-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.42) !important;
+}
+
+/* 价格行 */
+.pricing-price-label {
+  color: var(--semi-color-text-3);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.pricing-price-suffix {
+  font-weight: 400;
+  color: var(--semi-color-text-3);
+  font-size: 10px;
 }
 
 /* ==================== semi-ui 组件自定义样式 ==================== */
