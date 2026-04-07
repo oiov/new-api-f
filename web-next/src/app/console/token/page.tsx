@@ -734,7 +734,12 @@ function TokensContent() {
   const selectedInView = filteredTokens.filter(tk => selected.has(tk.id));
 
   const toggleSelect = (id: number) =>
-    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+    setSelected(prev => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
+      return s;
+    });
 
   const toggleAll = (v: boolean) =>
     setSelected(prev => {

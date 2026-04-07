@@ -136,7 +136,7 @@ function formatResetPeriod(plan: SubscriptionPlan | UserSubscription, t: (k: str
   if (period === 'custom') {
     const s = Number(
       (plan as UserSubscription).reset_period === 'custom'
-        ? (plan as any).reset_custom_seconds
+        ? (plan as UserSubscription).reset_custom_seconds
         : (plan as SubscriptionPlan).quota_reset_custom_seconds ?? 0,
     );
     if (s >= 86400) return `${Math.floor(s / 86400)} ${t('天')}`;
@@ -152,12 +152,12 @@ function getResourceType(plan: SubscriptionPlan | UserSubscription): 'quota' | '
 
 function getUsageSummary(plan: SubscriptionPlan | UserSubscription) {
   if (getResourceType(plan) === 'request_count') {
-    const total = Number((plan as any).request_count_total || 0);
-    const used = Number((plan as any).request_count_used || 0);
+    const total = Number(plan.request_count_total || 0);
+    const used = Number(plan.request_count_used || 0);
     return { total, used, remain: total > 0 ? Math.max(0, total - used) : 0, unlimited: total <= 0 };
   }
-  const total = Number((plan as any).amount_total ?? (plan as any).total_amount ?? 0);
-  const used = Number((plan as any).amount_used ?? 0);
+  const total = Number(plan.amount_total ?? plan.total_amount ?? 0);
+  const used = Number(plan.amount_used ?? 0);
   return { total, used, remain: total > 0 ? Math.max(0, total - used) : 0, unlimited: total <= 0 };
 }
 

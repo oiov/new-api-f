@@ -1098,7 +1098,7 @@ function SubscriptionPlansContent() {
                 onEdit={openEdit}
                 onToggle={handleToggle}
                 onViewLogs={openLogs}
-                toggling={toggling.has(pw.plan?.id!)}
+                toggling={pw.plan?.id !== undefined && toggling.has(pw.plan.id)}
               />
             ))}
           </div>
