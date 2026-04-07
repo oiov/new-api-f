@@ -92,12 +92,12 @@ export function ModelCard({
               <div className="mt-1.5 space-y-0.5">
                 <div className="flex items-center gap-1.5 text-xs">
                   <span className="text-muted-foreground/60 min-w-[24px]">{t('输入')}:</span>
-                  <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{inputPrice}</span>
+                  <span className="font-mono font-semibold text-success">{inputPrice}</span>
                   <span className="text-muted-foreground/40 text-[10px]">/ 1K</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs">
                   <span className="text-muted-foreground/60 min-w-[24px]">{t('输出')}:</span>
-                  <span className="font-mono font-semibold text-amber-600 dark:text-amber-400">{outputPrice}</span>
+                  <span className="font-mono font-semibold text-warning">{outputPrice}</span>
                   <span className="text-muted-foreground/40 text-[10px]">/ 1K</span>
                 </div>
               </div>

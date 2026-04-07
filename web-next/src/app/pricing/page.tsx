@@ -3,7 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { BarChart3, Package, RefreshCw } from 'lucide-react';
+import { BarChart3, Globe, Layers, Package, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { API } from '@/lib/api';
@@ -90,10 +90,10 @@ function PricingPageContent() {
   const activePlanCount = useMemo(() => plans.filter((p) => p.enabled && !p.sold_out).length, [plans]);
 
   const statCards = [
-    { label: t('全部模型'), value: loading ? '—' : String(prices.length), sub: t('已上线模型总数'), accent: undefined, onClick: () => handleTabChange('models') },
-    { label: t('供应商'), value: loading ? '—' : String(vendorCount), sub: t('覆盖 AI 供应商数'), accent: 'text-blue-500', onClick: () => handleTabChange('models') },
-    { label: t('可用分组'), value: loading ? '—' : String(usableGroupCount), sub: t('当前可用分组数'), accent: 'text-emerald-500', onClick: () => handleTabChange('models') },
-    { label: t('可购套餐'), value: plansLoading ? '—' : String(activePlanCount), sub: t('当前在售套餐'), accent: 'text-primary', onClick: () => handleTabChange('plans') },
+    { label: t('全部模型'), value: loading ? '—' : String(prices.length), sub: t('已上线模型总数'), icon: BarChart3, iconBg: 'bg-primary/10', iconColor: 'text-primary', onClick: () => handleTabChange('models') },
+    { label: t('供应商'), value: loading ? '—' : String(vendorCount), sub: t('覆盖 AI 供应商数'), icon: Globe, iconBg: 'bg-info/10', iconColor: 'text-info', onClick: () => handleTabChange('models') },
+    { label: t('可用分组'), value: loading ? '—' : String(usableGroupCount), sub: t('当前可用分组数'), icon: Layers, iconBg: 'bg-success/10', iconColor: 'text-success', onClick: () => handleTabChange('models') },
+    { label: t('可购套餐'), value: plansLoading ? '—' : String(activePlanCount), sub: t('当前在售套餐'), icon: Package, iconBg: 'bg-warning/10', iconColor: 'text-warning', onClick: () => handleTabChange('plans') },
   ];
 
   return (
@@ -123,7 +123,7 @@ function PricingPageContent() {
       >
         {statCards.map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 + 0.06 }}>
-            <StatCard {...s} />
+            <StatCard label={s.label} value={s.value} sub={s.sub} icon={s.icon} iconBg={s.iconBg} iconColor={s.iconColor} onClick={s.onClick} />
           </motion.div>
         ))}
       </motion.div>

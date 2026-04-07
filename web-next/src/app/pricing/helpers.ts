@@ -90,11 +90,11 @@ export function hueFromStr(s: string): number {
 export function getGroupBillingBadgeClass(billingType?: string) {
   switch (billingType) {
     case 'subscription':
-      return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800/50';
+      return 'bg-warning/10 text-warning border-warning/30';
     case 'quota':
-      return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/50';
+      return 'bg-info/10 text-info border-info/30';
     case 'hybrid':
-      return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800/50';
+      return 'bg-success/10 text-success border-success/30';
     default:
       return 'bg-muted/60 text-muted-foreground border-border';
   }

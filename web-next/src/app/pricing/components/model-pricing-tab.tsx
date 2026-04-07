@@ -263,7 +263,7 @@ export function ModelPricingTab({
           </div>
 
           {/* Hint */}
-          <div className="flex items-start gap-2.5 rounded-xl border border-blue-200/70 bg-blue-50/50 dark:border-blue-800/40 dark:bg-blue-950/20 px-4 py-2.5 text-sm text-blue-700 dark:text-blue-300">
+          <div className="flex items-start gap-2.5 rounded-xl border border-info/25 bg-info/8 px-4 py-2.5 text-sm text-info">
             <Info className="size-4 shrink-0 mt-0.5" />
             <span>{t('点击任意行可查看完整模型详情。价格基于系统倍率，实际费用以账户扣除为准。')}</span>
           </div>
@@ -362,8 +362,8 @@ export function ModelPricingTab({
                               {price.quota_type === 0 ? t('按量') : t('按次')}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right"><span className="font-mono text-sm tabular-nums text-emerald-700 dark:text-emerald-400 font-medium">{fmtRatio(price.model_ratio)}</span></td>
-                          <td className="px-4 py-3 text-right"><span className="font-mono text-sm tabular-nums text-amber-700 dark:text-amber-400 font-medium">{fmtRatio(price.model_ratio * price.completion_ratio)}</span></td>
+                          <td className="px-4 py-3 text-right"><span className="font-mono text-sm tabular-nums text-success font-medium">{fmtRatio(price.model_ratio)}</span></td>
+                          <td className="px-4 py-3 text-right"><span className="font-mono text-sm tabular-nums text-warning font-medium">{fmtRatio(price.model_ratio * price.completion_ratio)}</span></td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-1">
                               {(price.enable_groups || []).slice(0, 3).map((g) => (

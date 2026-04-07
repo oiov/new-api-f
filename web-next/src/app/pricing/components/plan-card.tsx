@@ -78,8 +78,8 @@ export function PlanCard({ plan, status, index }: PlanCardProps) {
 
         <div className="space-y-2.5">
           <div className="flex items-start gap-2.5 text-sm">
-            <div className="size-5 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0 mt-0.5">
-              <Check className="size-3 text-emerald-500" />
+            <div className="size-5 rounded-full bg-success/15 flex items-center justify-center shrink-0 mt-0.5">
+              <Check className="size-3 text-success" />
             </div>
             <span>
               <span className="font-semibold">{benefit}</span>

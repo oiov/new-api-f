@@ -8,7 +8,7 @@ import {
   MessageCircleMore,
   QrCode,
   Headphones,
-  Clock3,
+  Clock,
   ShieldCheck,
   ArrowUpRight,
   Copy,
@@ -102,7 +102,7 @@ const CONTACT_CARDS: ContactCard[] = [
 ];
 
 const HIGHLIGHTS = [
-  { key: 'response', icon: Clock3, titleKey: '通常 10 分钟内回复', descKey: '工作时段内优先处理账号、支付与接入相关问题' },
+  { key: 'response', icon: Clock, titleKey: '通常 10 分钟内回复', descKey: '工作时段内优先处理账号、支付与接入相关问题' },
   { key: 'community', icon: Users, titleKey: '社区答疑更高效', descKey: '常见问题建议优先进群，方便同步最新公告与经验' },
   { key: 'support', icon: ShieldCheck, titleKey: '官方渠道更可靠', descKey: '统一使用页面展示的联系方式，避免误加非官方账号' },
 ];
