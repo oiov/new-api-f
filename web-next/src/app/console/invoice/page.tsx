@@ -352,7 +352,7 @@ export default function InvoicePage() {
             </DialogHeader>
 
             <div className="space-y-4">
-              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-700 dark:text-amber-300">
+              <div className="rounded-lg bg-warning/10 dark:bg-warning/20 border border-warning/20 p-3 text-sm text-warning">
                 {t('请勾选需要开票的充值记录，合计金额须满 {{min}} 元', { min: MIN_INVOICE_AMOUNT })}
               </div>
 

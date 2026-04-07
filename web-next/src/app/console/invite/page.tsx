@@ -84,7 +84,7 @@ const itemVariants = {
 
 function RankIcon({ rank }: { rank: number }) {
   if (rank === 1) return <Crown className="size-4 text-yellow-500" />;
-  if (rank === 2) return <Medal className="size-4 text-slate-400" />;
+  if (rank === 2) return <Medal className="size-4 text-muted-foreground" />;
   if (rank === 3) return <Medal className="size-4 text-amber-700" />;
   return <span className="text-xs font-bold text-muted-foreground w-4 text-center">{rank}</span>;
 }
@@ -279,8 +279,8 @@ function InviteContent() {
           <div className="stat-card">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('已邀请人数')}</p>
-              <div className="size-8 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                <Users className="size-4 text-blue-600 dark:text-blue-400" />
+              <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Users className="size-4 text-primary" />
               </div>
             </div>
             {loading ? (
@@ -295,8 +295,8 @@ function InviteContent() {
           <div className="stat-card">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('待转余额')}</p>
-              <div className="size-8 rounded-lg bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-                <TrendingUp className="size-4 text-amber-600 dark:text-amber-400" />
+              <div className="size-8 rounded-lg bg-warning/10 flex items-center justify-center">
+                <TrendingUp className="size-4 text-warning" />
               </div>
             </div>
             {loading ? (
@@ -326,8 +326,8 @@ function InviteContent() {
           <div className="stat-card">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('累计已转')}</p>
-              <div className="size-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                <UserCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
+              <div className="size-8 rounded-lg bg-success/10 flex items-center justify-center">
+                <UserCheck className="size-4 text-success" />
               </div>
             </div>
             {loading ? (

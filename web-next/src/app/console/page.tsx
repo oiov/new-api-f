@@ -85,8 +85,8 @@ function StatCard({
           )}
           {trend && (
             <div className="flex items-center gap-1 mt-2">
-              <TrendingUp className="size-3 text-emerald-500" />
-              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+              <TrendingUp className="size-3 text-success" />
+              <span className="text-xs text-success font-medium">
                 {trend.value > 0 ? '+' : ''}
                 {trend.value}% {trend.label}
               </span>
@@ -304,24 +304,24 @@ function DashboardContent() {
         description: t('创建和管理 API 令牌'),
         href: '/console/token',
         icon: Key,
-        iconColor: 'text-amber-600 dark:text-amber-400',
-        iconBg: 'bg-amber-50 dark:bg-amber-900/20',
+        iconColor: 'text-warning',
+        iconBg: 'bg-warning/10',
       },
       {
         label: t('使用日志'),
         description: t('查看 API 调用记录'),
         href: '/console/log',
         icon: FileText,
-        iconColor: 'text-blue-600 dark:text-blue-400',
-        iconBg: 'bg-blue-50 dark:bg-blue-900/20',
+        iconColor: 'text-primary',
+        iconBg: 'bg-primary/10',
       },
       {
         label: t('充值额度'),
         description: t('购买或兑换使用额度'),
         href: '/console/topup',
         icon: Wallet,
-        iconColor: 'text-emerald-600 dark:text-emerald-400',
-        iconBg: 'bg-emerald-50 dark:bg-emerald-900/20',
+        iconColor: 'text-success',
+        iconBg: 'bg-success/10',
       },
       {
         label: t('邀请好友'),
@@ -344,8 +344,8 @@ function DashboardContent() {
         description: t('修改密码、绑定账号'),
         href: '/console/personal',
         icon: Settings,
-        iconColor: 'text-slate-600 dark:text-slate-400',
-        iconBg: 'bg-slate-100 dark:bg-slate-800',
+        iconColor: 'text-muted-foreground',
+        iconBg: 'bg-muted',
       },
     ];
 
@@ -432,8 +432,8 @@ function DashboardContent() {
           subValue={status?.quota_display_type !== 'TOKENS' ? `${formatTokensCompact(remainQuota)} tokens` : undefined}
           icon={Wallet}
           description={t('当前可用余额')}
-          iconColor="text-blue-600 dark:text-blue-400"
-          iconBg="bg-blue-50 dark:bg-blue-900/20"
+          iconColor="text-primary"
+          iconBg="bg-primary/10"
         />
         <StatCard
           title={t('累计消耗')}
@@ -441,8 +441,8 @@ function DashboardContent() {
           subValue={status?.quota_display_type !== 'TOKENS' ? `${formatTokensCompact(usedQuota)} tokens` : undefined}
           icon={TrendingUp}
           description={t('历史使用总量')}
-          iconColor="text-emerald-600 dark:text-emerald-400"
-          iconBg="bg-emerald-50 dark:bg-emerald-900/20"
+          iconColor="text-success"
+          iconBg="bg-success/10"
         />
         <StatCard
           title={t('请求次数')}
@@ -457,8 +457,8 @@ function DashboardContent() {
           value={user?.group || t('默认')}
           icon={Shield}
           description={t('当前账户权限等级')}
-          iconColor="text-amber-600 dark:text-amber-400"
-          iconBg="bg-amber-50 dark:bg-amber-900/20"
+          iconColor="text-warning"
+          iconBg="bg-warning/10"
         />
       </motion.div>
 

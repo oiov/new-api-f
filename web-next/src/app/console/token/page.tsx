@@ -146,7 +146,7 @@ function TokenStatusBadge({ status }: { status: number }) {
   const { t } = useTranslation();
   if (status === 1)
     return (
-      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10">
+      <Badge className="bg-success/10 text-success border-success/20 hover:bg-success/10">
         <CheckCircle className="size-3 mr-1" />{t('已启用')}
       </Badge>
     );
@@ -220,14 +220,15 @@ function TokenKeyDisplay({ tokenId, maskedKey }: { tokenId: number; maskedKey: s
 
 // ─── Create / Edit dialog ─────────────────────────────────────────────────────
 
-interface TokenFormData { name: string; unlimited: boolean; quota: string; expiredTime: string }
-const emptyForm = (): TokenFormData => ({ name: '', unlimited: true, quota: '', expiredTime: '' });
+interface TokenFormData { name: string; unlimited: boolean; quota: string; expiredTime: string; group: string }
+const emptyForm = (): TokenFormData => ({ name: '', unlimited: true, quota: '', expiredTime: '', group: '' });
 function tokenToForm(t: Token): TokenFormData {
   return {
     name: t.name,
     unlimited: t.unlimited_quota,
     quota: t.unlimited_quota ? '' : String(t.remain_quota),
     expiredTime: t.expired_time > 0 ? new Date(t.expired_time * 1000).toISOString().slice(0, 16) : '',
+    group: t.group ?? '',
   };
 }
 
@@ -237,9 +238,28 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
   const { t } = useTranslation();
   const [form, setForm] = useState<TokenFormData>(emptyForm());
   const [loading, setLoading] = useState(false);
+  const [groups, setGroups] = useState<Array<{ value: string; label: string; ratio?: number | string }>>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
   const isEdit = !!editToken;
 
   useEffect(() => { if (open) setForm(editToken ? tokenToForm(editToken) : emptyForm()); }, [open, editToken]);
+
+  useEffect(() => {
+    if (!open) return;
+    setGroupsLoading(true);
+    API.get('/api/user/self/groups').then((res) => {
+      const d = res.data as { success: boolean; data?: Record<string, { desc: string; ratio?: number | string }> };
+      if (d.success && d.data) {
+        setGroups(
+          Object.entries(d.data).map(([value, info]) => ({
+            value,
+            label: info.desc || value,
+            ratio: info.ratio,
+          }))
+        );
+      }
+    }).catch(() => {}).finally(() => setGroupsLoading(false));
+  }, [open]);
   const set = <K extends keyof TokenFormData>(k: K, v: TokenFormData[K]) => setForm(p => ({ ...p, [k]: v }));
 
   const handleSubmit = async () => {
@@ -251,6 +271,7 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
         unlimited_quota: form.unlimited,
         remain_quota: form.unlimited ? 0 : Number(form.quota),
         expired_time: form.expiredTime ? Math.floor(new Date(form.expiredTime).getTime() / 1000) : -1,
+        ...(form.group ? { group: form.group } : {}),
       };
       if (isEdit) body.id = editToken!.id;
       const res = isEdit ? await API.put('/api/token/', body) : await API.post('/api/token/', body);
@@ -279,6 +300,39 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
             <Label className="text-sm">{t('令牌名称')} <span className="text-destructive">*</span></Label>
             <Input value={form.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => set('name', e.target.value)}
               placeholder={t('例如：我的应用')} onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && handleSubmit()} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm">{t('令牌分组')}</Label>
+            <Select
+              value={form.group || '__default__'}
+              onValueChange={(v) => set('group', v === '__default__' ? '' : v)}
+              disabled={groupsLoading}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={t('默认（继承账户分组）')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__default__">
+                  <span className="text-muted-foreground">{t('默认（继承账户分组）')}</span>
+                </SelectItem>
+                {groups.map((g) => (
+                  <SelectItem key={g.value} value={g.value}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{g.value}</span>
+                      {g.label !== g.value && (
+                        <span className="text-xs text-muted-foreground">{g.label}</span>
+                      )}
+                      {g.ratio !== undefined && (
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {typeof g.ratio === 'string' ? g.ratio : `×${g.ratio}`}
+                        </span>
+                      )}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{t('不选则使用账户默认分组')}</p>
           </div>
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
             <div>
@@ -530,10 +584,10 @@ function TokensContent() {
           icon={Key} iconBg="bg-primary/10" iconColor="text-primary"
           active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
         <StatFilterCard label={t('已启用')} value={activeCount}
-          icon={CheckCircle} iconBg="bg-emerald-50 dark:bg-emerald-900/20" iconColor="text-emerald-600 dark:text-emerald-400"
+          icon={CheckCircle} iconBg="bg-success/10" iconColor="text-success"
           active={statusFilter === '1'} onClick={() => toggleCardFilter('1')} />
         <StatFilterCard label={t('已禁用')} value={disabledCount}
-          icon={Shield} iconBg="bg-red-50 dark:bg-red-900/20" iconColor="text-red-600 dark:text-red-400"
+          icon={Shield} iconBg="bg-destructive/8" iconColor="text-destructive"
           active={statusFilter === '2'} onClick={() => toggleCardFilter('2')} />
         <StatFilterCard label={t('无限额度')} value={unlimitedCount}
           icon={Infinity} iconBg="bg-violet-50 dark:bg-violet-900/20" iconColor="text-violet-600 dark:text-violet-400"
@@ -652,7 +706,7 @@ function TokensContent() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className={cn('size-2 rounded-full shrink-0',
-                              token.status === 1 ? 'bg-emerald-500' : token.status === 2 ? 'bg-destructive/60' : 'bg-muted-foreground/40')} />
+                              token.status === 1 ? 'bg-success' : token.status === 2 ? 'bg-destructive/60' : 'bg-muted-foreground/40')} />
                             <span className="font-medium text-sm">{token.name}</span>
                           </div>
                         </TableCell>
@@ -703,7 +757,7 @@ function TokensContent() {
                                 {token.status === 1 ? (
                                   <><XCircle className="size-4 mr-2 text-muted-foreground" />{t('禁用')}</>
                                 ) : (
-                                  <><Activity className="size-4 mr-2 text-emerald-500" />{t('启用')}</>
+                                  <><Activity className="size-4 mr-2 text-success" />{t('启用')}</>
                                 )}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />

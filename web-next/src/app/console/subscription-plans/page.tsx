@@ -444,20 +444,20 @@ function AdminConsumeLogsSheet({ open, onClose, planId, planTitle, plans }: Admi
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <p className="text-[11px] text-muted-foreground mb-1">{t('开始时间')}</p>
-                  <input
+                  <Input
                     type="datetime-local"
                     value={startDt}
                     onChange={(e) => setStartDt(e.target.value)}
-                    className="w-full h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="h-8 text-sm"
                   />
                 </div>
                 <div>
                   <p className="text-[11px] text-muted-foreground mb-1">{t('结束时间')}</p>
-                  <input
+                  <Input
                     type="datetime-local"
                     value={endDt}
                     onChange={(e) => setEndDt(e.target.value)}
-                    className="w-full h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="h-8 text-sm"
                   />
                 </div>
               </div>
@@ -550,7 +550,7 @@ function AdminConsumeLogsSheet({ open, onClose, planId, planTitle, plans }: Admi
                           </TableCell>
                           <TableCell className="text-xs">
                             <div className="space-y-0.5">
-                              <p className={cn('font-medium', consumed > 0 && 'text-amber-600 dark:text-amber-400')}>
+                              <p className={cn('font-medium', consumed > 0 && 'text-warning')}>
                                 -{fmtConsumed(consumed, rt)}
                               </p>
                               {remain >= 0 && tot > 0 && (
@@ -685,11 +685,11 @@ function PlanFormSheet({ open, onClose, initial, onSaved }: PlanFormSheetProps) 
               </FormRow>
               {Number(form.discount_price_amount || 0) > 0 && (
                 <FormRow label={t('折扣截止时间')}>
-                  <input
+                  <Input
                     type="datetime-local"
                     value={toDatetimeLocal(form.discount_deadline || 0)}
                     onChange={(e) => setForm((prev) => ({ ...prev, discount_deadline: fromDatetimeLocal(e.target.value) }))}
-                    className="w-full h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="h-8 text-sm"
                   />
                 </FormRow>
               )}
@@ -857,7 +857,7 @@ function PlanCard({
               variant={p.enabled ? 'default' : 'secondary'}
               className={cn(
                 'text-[10px] py-0 px-1.5 h-4',
-                p.enabled && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/25',
+                p.enabled && 'bg-success/15 text-success border-success/25',
               )}
             >
               {p.enabled ? t('上架') : t('下架')}
@@ -869,7 +869,7 @@ function PlanCard({
         <div className="text-right shrink-0">
           <p className="font-bold text-base">${Number(p.price_amount || 0).toFixed(2)}</p>
           {hasDisc && (
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+            <p className="text-[11px] text-success">
               {t('折')} ${Number(p.discount_price_amount).toFixed(2)}
             </p>
           )}
@@ -916,7 +916,7 @@ function PlanCard({
         <Button
           variant={p.enabled ? 'outline' : 'default'}
           size="sm"
-          className={cn('flex-1 h-7 text-xs', p.enabled && 'text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20')}
+          className={cn('flex-1 h-7 text-xs', p.enabled && 'text-warning border-warning/30 hover:bg-warning/10')}
           onClick={() => onToggle(p)}
           disabled={toggling}
         >
@@ -1004,8 +1004,8 @@ function SubscriptionPlansContent() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0">
-            <Package className="size-5 text-orange-600 dark:text-orange-400" />
+          <div className="size-10 rounded-xl bg-gold/10 flex items-center justify-center shrink-0">
+            <Package className="size-5 text-gold" />
           </div>
           <div>
             <h1 className="text-xl font-semibold">{t('套餐配置')}</h1>
@@ -1034,7 +1034,7 @@ function SubscriptionPlansContent() {
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span>{t('共')} <strong className="text-foreground">{total}</strong> {t('个套餐')}</span>
           <span>·</span>
-          <span className="text-emerald-600 dark:text-emerald-400">
+          <span className="text-success">
             <strong>{enabledCount}</strong> {t('上架中')}
           </span>
           <span>·</span>
@@ -1174,7 +1174,7 @@ function SubscriptionPlansContent() {
                             ${Number(p.price_amount || 0).toFixed(2)}
                           </p>
                           {hasDisc && (
-                            <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                            <p className="text-[11px] text-success">
                               {t('折')} ${Number(p.discount_price_amount).toFixed(2)}
                             </p>
                           )}
@@ -1220,7 +1220,7 @@ function SubscriptionPlansContent() {
                           variant={p.enabled ? 'default' : 'secondary'}
                           className={cn(
                             'text-[10px] py-0 px-1.5 h-4',
-                            p.enabled && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/25',
+                            p.enabled && 'bg-success/15 text-success border-success/25',
                           )}
                         >
                           {p.enabled ? t('上架') : t('下架')}
@@ -1247,8 +1247,8 @@ function SubscriptionPlansContent() {
                               onClick={() => handleToggle(p)}
                               disabled={isToggling}
                               className={p.enabled
-                                ? 'text-amber-600 focus:text-amber-600'
-                                : 'text-emerald-600 focus:text-emerald-600'}
+                                ? 'text-warning focus:text-warning'
+                                : 'text-success focus:text-success'}
                             >
                               <Power className="size-3.5 mr-2" />
                               {isToggling

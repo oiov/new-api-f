@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AuthGuard } from '@/components/common/auth-guard';
+import { CheckinCard } from '@/components/common/checkin-card';
 import { useUser, persistUser } from '@/context/user-context';
 import { API } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -278,6 +279,11 @@ function PersonalContent() {
         </Card>
       </motion.div>
 
+      {/* Check-in card */}
+      <motion.div variants={itemVariants} initial="hidden" animate="show" transition={{ delay: 0.08 }}>
+        <CheckinCard />
+      </motion.div>
+
       {/* Edit tabs */}
       <motion.div variants={itemVariants} initial="hidden" animate="show" transition={{ delay: 0.1 }}>
         <Tabs defaultValue="profile">
@@ -321,7 +327,7 @@ function PersonalContent() {
                   <Button
                     onClick={handleUpdateProfile}
                     disabled={loading}
-                    className={cn('h-9 gap-2 transition-all', profileSaved && 'bg-emerald-600 hover:bg-emerald-600')}
+                    className={cn('h-9 gap-2 transition-all', profileSaved && 'bg-success hover:bg-success')}
                   >
                     {loading ? (
                       <RefreshCw className="size-4 animate-spin" />
@@ -342,8 +348,8 @@ function PersonalContent() {
             <Card className="shadow-card">
               <CardHeader className="pb-4">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <div className="size-7 rounded-lg bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-                    <Lock className="size-3.5 text-amber-600 dark:text-amber-400" />
+                  <div className="size-7 rounded-lg bg-warning/10 flex items-center justify-center">
+                    <Lock className="size-3.5 text-warning" />
                   </div>
                   {t('修改密码')}
                 </CardTitle>
@@ -388,7 +394,7 @@ function PersonalContent() {
                 <Button
                   onClick={handleChangePassword}
                   disabled={loading}
-                  className={cn('h-9 gap-2 transition-all', passwordSaved && 'bg-emerald-600 hover:bg-emerald-600')}
+                  className={cn('h-9 gap-2 transition-all', passwordSaved && 'bg-success hover:bg-success')}
                 >
                   {loading ? (
                     <RefreshCw className="size-4 animate-spin" />
@@ -409,8 +415,8 @@ function PersonalContent() {
             <Card className="shadow-card">
               <CardHeader className="pb-4">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <div className="size-7 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                    <Bell className="size-3.5 text-blue-600 dark:text-blue-400" />
+                  <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Bell className="size-3.5 text-primary" />
                   </div>
                   {t('通知方式')}
                 </CardTitle>
@@ -514,8 +520,8 @@ function PersonalContent() {
               <Card className="shadow-card">
                 <CardHeader className="pb-4">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <div className="size-7 rounded-lg bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center">
-                      <Bell className="size-3.5 text-orange-600 dark:text-orange-400" />
+                    <div className="size-7 rounded-lg bg-gold/10 flex items-center justify-center">
+                      <Bell className="size-3.5 text-gold" />
                     </div>
                     {t('Bark 推送配置')}
                   </CardTitle>
@@ -574,8 +580,8 @@ function PersonalContent() {
               <Card className="shadow-card">
                 <CardHeader className="pb-4">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <div className="size-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                      <Bell className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <div className="size-7 rounded-lg bg-success/10 flex items-center justify-center">
+                      <Bell className="size-3.5 text-success" />
                     </div>
                     {t('Gotify 配置')}
                   </CardTitle>
@@ -619,7 +625,7 @@ function PersonalContent() {
               <Button
                 onClick={handleSaveNotifySettings}
                 disabled={notifyLoading}
-                className={cn('h-9 gap-2 transition-all', notifySaved && 'bg-emerald-600 hover:bg-emerald-600')}
+                className={cn('h-9 gap-2 transition-all', notifySaved && 'bg-success hover:bg-success')}
               >
                 {notifyLoading ? (
                   <RefreshCw className="size-4 animate-spin" />

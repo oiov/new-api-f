@@ -137,14 +137,14 @@ function SkeletonRows() {
 function LogTypeBadge({ type }: { type: number }) {
   if (type === 1) {
     return (
-      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10">
+      <Badge className="bg-success/10 text-success border-success/20 hover:bg-success/10">
         充值
       </Badge>
     );
   }
   if (type === 2) {
     return (
-      <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/10">
+      <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">
         消费
       </Badge>
     );
@@ -175,7 +175,7 @@ function CopyText({ text }: { text: string }) {
       className="ml-1.5 inline-flex items-center text-muted-foreground hover:text-primary transition-colors"
       title="复制"
     >
-      {copied ? <CheckCheck className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+      {copied ? <CheckCheck className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
     </button>
   );
 }
@@ -434,8 +434,8 @@ function LogContent() {
           label={t('消费')}
           value={loading ? '—' : consumeCount}
           icon={CreditCard}
-          iconBg="bg-blue-50 dark:bg-blue-900/20"
-          iconColor="text-blue-600 dark:text-blue-400"
+          iconBg="bg-primary/10"
+          iconColor="text-primary"
           active={typeFilter === '2'}
           onClick={() => toggleCardFilter('2')}
         />
@@ -443,8 +443,8 @@ function LogContent() {
           label={t('充值')}
           value={loading ? '—' : rechargeCount}
           icon={ArrowUpCircle}
-          iconBg="bg-emerald-50 dark:bg-emerald-900/20"
-          iconColor="text-emerald-600 dark:text-emerald-400"
+          iconBg="bg-success/10"
+          iconColor="text-success"
           active={typeFilter === '1'}
           onClick={() => toggleCardFilter('1')}
         />

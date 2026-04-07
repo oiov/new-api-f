@@ -48,6 +48,8 @@ interface NavItem {
   rootOnly?: boolean;
   hidden?: boolean;
   badge?: string;
+  /** 高亮项：用金/暖色调让入口更醒目 */
+  highlight?: boolean;
 }
 
 interface NavSection {
@@ -65,28 +67,28 @@ const SECTION_COLORS: Record<string, { text: string; bg: string; activeBg: strin
     dot: 'bg-violet-500',
   },
   console: {
-    text: 'text-blue-600 dark:text-blue-400',
-    bg: 'bg-blue-50 dark:bg-blue-900/20',
-    activeBg: 'bg-blue-100/60 dark:bg-blue-800/30',
-    dot: 'bg-blue-500',
+    text: 'text-primary',
+    bg: 'bg-primary/10',
+    activeBg: 'bg-primary/15',
+    dot: 'bg-primary',
   },
   personal: {
-    text: 'text-emerald-600 dark:text-emerald-400',
-    bg: 'bg-emerald-50 dark:bg-emerald-900/20',
-    activeBg: 'bg-emerald-100/60 dark:bg-emerald-800/30',
-    dot: 'bg-emerald-500',
+    text: 'text-success',
+    bg: 'bg-success/10',
+    activeBg: 'bg-success/15',
+    dot: 'bg-success',
   },
   public: {
-    text: 'text-slate-500 dark:text-slate-400',
-    bg: 'bg-slate-50 dark:bg-slate-800/30',
-    activeBg: 'bg-slate-100/60 dark:bg-slate-700/30',
-    dot: 'bg-slate-400',
+    text: 'text-muted-foreground',
+    bg: 'bg-muted',
+    activeBg: 'bg-muted',
+    dot: 'bg-muted-foreground',
   },
   admin: {
-    text: 'text-orange-600 dark:text-orange-400',
-    bg: 'bg-orange-50 dark:bg-orange-900/20',
-    activeBg: 'bg-orange-100/60 dark:bg-orange-800/30',
-    dot: 'bg-orange-500',
+    text: 'text-gold',
+    bg: 'bg-gold/10',
+    activeBg: 'bg-gold/15',
+    dot: 'bg-gold',
   },
 };
 
@@ -115,7 +117,9 @@ function NavItemLink({
         collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2',
         active
           ? cn('text-primary', colors.activeBg)
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent/60',
+          : item.highlight
+            ? 'text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-50/60 dark:hover:bg-amber-900/20'
+            : 'text-muted-foreground hover:text-foreground hover:bg-accent/60',
       )}
     >
       {/* 图标容器 */}
@@ -123,7 +127,11 @@ function NavItemLink({
         className={cn(
           'shrink-0 flex items-center justify-center rounded-md transition-colors',
           collapsed ? 'size-5' : 'size-[18px]',
-          active ? cn(colors.text, colors.bg) : 'text-current',
+          active
+            ? cn(colors.text, colors.bg)
+            : item.highlight
+              ? 'text-amber-500 dark:text-amber-400'
+              : 'text-current',
           active && !collapsed ? 'p-[3px]' : '',
         )}
       >
@@ -136,6 +144,12 @@ function NavItemLink({
           {item.badge && (
             <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
               {item.badge}
+            </span>
+          )}
+          {/* 高亮项角标：非激活状态显示醒目小标记 */}
+          {item.highlight && !active && (
+            <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 leading-none">
+              ★
             </span>
           )}
         </>
@@ -192,15 +206,17 @@ export function Sidebar({ collapsed, onToggleCollapsed, onNavigate }: SidebarPro
             hidden: false,
           },
           {
+            label: t('我的订阅'),
+            href: '/console/subscription',
+            icon: <Crown className="size-full" />,
+            highlight: true,
+          },
+          {
             label: t('套餐管理'),
             href: '/console/package',
             icon: <Package className="size-full" />,
             hidden: !status?.subscription_enabled,
-          },
-          {
-            label: t('我的订阅'),
-            href: '/console/subscription',
-            icon: <Crown className="size-full" />,
+            highlight: true,
           },
           {
             label: t('令牌管理'),

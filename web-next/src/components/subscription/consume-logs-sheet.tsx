@@ -336,20 +336,20 @@ export function ConsumeLogsSheet({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <p className="text-[11px] text-muted-foreground mb-1">{t('开始时间')}</p>
-                  <input
+                  <Input
                     type="datetime-local"
                     value={startDt}
                     onChange={(e) => setStartDt(e.target.value)}
-                    className="w-full h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="h-8 text-sm"
                   />
                 </div>
                 <div>
                   <p className="text-[11px] text-muted-foreground mb-1">{t('结束时间')}</p>
-                  <input
+                  <Input
                     type="datetime-local"
                     value={endDt}
                     onChange={(e) => setEndDt(e.target.value)}
-                    className="w-full h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="h-8 text-sm"
                   />
                 </div>
               </div>
@@ -431,7 +431,7 @@ export function ConsumeLogsSheet({
                           </TableCell>
                           <TableCell className="text-xs">
                             <div className="space-y-0.5">
-                              <p className={cn('font-medium', consumed > 0 && 'text-amber-600 dark:text-amber-400')}>
+                              <p className={cn('font-medium', consumed > 0 && 'text-warning')}>
                                 -{fmtConsumed(consumed, rt)}
                               </p>
                               {remain >= 0 && tot > 0 && (

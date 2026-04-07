@@ -48,9 +48,9 @@ function formatAbsTime(dateStr: string): string {
 
 const TYPE_STYLES: Record<string, string> = {
   default: 'bg-muted-foreground/25',
-  ongoing: 'bg-blue-500',
-  success: 'bg-emerald-500',
-  warning: 'bg-amber-500',
+  ongoing: 'bg-primary',
+  success: 'bg-success',
+  warning: 'bg-warning',
   error: 'bg-destructive',
 };
 

@@ -67,9 +67,9 @@ export default function ResetPasswordPage() {
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                  className="mx-auto size-16 rounded-full bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center"
+                  className="mx-auto size-16 rounded-full bg-success/10 flex items-center justify-center"
                 >
-                  <Mail className="size-8 text-emerald-600 dark:text-emerald-400" />
+                  <Mail className="size-8 text-success" />
                 </motion.div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">{t('邮件已发送！')}</p>

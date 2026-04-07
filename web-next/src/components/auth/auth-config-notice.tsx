@@ -87,18 +87,18 @@ function getRegisterConfigItems(status: ReturnType<typeof useSystemStatus>, t: (
 
 const TYPE_COLORS = {
   success: {
-    border: 'border-l-emerald-500',
-    text: 'text-emerald-600 dark:text-emerald-400',
+    border: 'border-l-success',
+    text: 'text-success',
     icon: CheckCircle2,
   },
   danger: {
-    border: 'border-l-red-500',
-    text: 'text-red-600 dark:text-red-400',
+    border: 'border-l-destructive',
+    text: 'text-destructive',
     icon: XCircle,
   },
   warning: {
-    border: 'border-l-amber-500',
-    text: 'text-amber-600 dark:text-amber-400',
+    border: 'border-l-warning',
+    text: 'text-warning',
     icon: AlertTriangle,
   },
   default: {
@@ -133,7 +133,7 @@ export function AuthConfigNotice({ mode }: AuthConfigNoticeProps) {
     <div className={cn(
       'rounded-xl border text-sm overflow-hidden transition-all',
       isWarning
-        ? 'border-amber-200/80 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-900/10'
+        ? 'border-warning/20 bg-warning/10 dark:bg-warning/20'
         : 'border-border/60 bg-muted/30',
     )}>
       {/* 头部 */}
@@ -146,7 +146,7 @@ export function AuthConfigNotice({ mode }: AuthConfigNoticeProps) {
           <span className={cn(
             'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide',
             isWarning
-              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+              ? 'bg-warning/15 text-warning'
               : 'bg-secondary text-muted-foreground',
           )}>
             {isWarning ? t('需注意') : t('已同步')}

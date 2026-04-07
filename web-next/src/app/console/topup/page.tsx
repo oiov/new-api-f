@@ -89,12 +89,12 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; cl
   pending: {
     label: '待支付',
     icon: Clock,
-    className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+    className: 'bg-warning/10 text-warning border-warning/20',
   },
   success: {
     label: '已完成',
     icon: CheckCircle,
-    className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+    className: 'bg-success/10 text-success border-success/20',
   },
   failed: {
     label: '已失败',
@@ -645,7 +645,7 @@ function TopUpContent() {
             <div className="relative flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
-                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
+                  <span className="size-1.5 rounded-full bg-success animate-pulse" aria-hidden="true" />
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('当前余额')}</p>
                 </div>
                 <p className="text-3xl font-bold tracking-tight text-foreground tabular-nums">
@@ -659,8 +659,8 @@ function TopUpContent() {
                 <p className="text-xs text-muted-foreground mt-1.5">{t('可用额度')}</p>
               </div>
               <div className="flex flex-col items-end gap-3">
-                <div className="size-14 rounded-2xl bg-gradient-to-br from-blue-500/15 to-blue-500/5 border border-blue-200/40 dark:border-blue-700/30 flex items-center justify-center">
-                  <Wallet className="size-6 text-blue-600 dark:text-blue-400" />
+                <div className="size-14 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 flex items-center justify-center">
+                  <Wallet className="size-6 text-primary" />
                 </div>
                 <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5"
                   onClick={() => refreshUser()} disabled={refreshingUser}>

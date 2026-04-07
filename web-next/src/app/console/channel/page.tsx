@@ -78,9 +78,9 @@ const TYPE_URL_HINT: Record<number, string> = {
 };
 
 const STATUS_MAP: Record<number, { labelKey: string; icon: React.ElementType; badge: string }> = {
-  1: { labelKey: '已启用', icon: CheckCircle, badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10' },
+  1: { labelKey: '已启用', icon: CheckCircle, badge: 'bg-success/10 text-success border-success/20 hover:bg-success/10' },
   2: { labelKey: '已禁用', icon: XCircle, badge: 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/10' },
-  3: { labelKey: '自动禁用', icon: Ban, badge: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/10' },
+  3: { labelKey: '自动禁用', icon: Ban, badge: 'bg-warning/10 text-warning border-warning/20 hover:bg-warning/10' },
 };
 
 const containerVariants = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
@@ -941,13 +941,13 @@ function ChannelContent() {
           active={statusFilter === 'all' && typeFilter === 'all' && groupFilter === 'all'}
           onClick={() => { setStatusFilter('all'); setTypeFilter('all'); setGroupFilter('all'); }} />
         <StatFilterCard label={t('已启用')} value={enabledCount}
-          icon={CheckCircle} iconBg="bg-emerald-50 dark:bg-emerald-900/20" iconColor="text-emerald-600 dark:text-emerald-400"
+          icon={CheckCircle} iconBg="bg-success/10" iconColor="text-success"
           active={statusFilter === '1'} onClick={() => toggleCardFilter('1')} />
         <StatFilterCard label={t('已禁用')} value={disabledCount}
-          icon={XCircle} iconBg="bg-red-50 dark:bg-red-900/20" iconColor="text-red-600 dark:text-red-400"
+          icon={XCircle} iconBg="bg-destructive/8" iconColor="text-destructive"
           active={statusFilter === '2'} onClick={() => toggleCardFilter('2')} />
         <StatFilterCard label={t('自动禁用')} value={autoDisabledCount}
-          icon={Ban} iconBg="bg-amber-50 dark:bg-amber-900/20" iconColor="text-amber-600 dark:text-amber-400"
+          icon={Ban} iconBg="bg-warning/10" iconColor="text-warning"
           active={statusFilter === '3'} onClick={() => toggleCardFilter('3')} />
       </motion.div>
 
@@ -1099,7 +1099,7 @@ function ChannelContent() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className={cn('size-2 rounded-full shrink-0',
-                              channel.status === 1 ? 'bg-emerald-500' : channel.status === 3 ? 'bg-amber-400' : 'bg-destructive/60')} />
+                              channel.status === 1 ? 'bg-success' : channel.status === 3 ? 'bg-warning' : 'bg-destructive/60')} />
                             <span className="font-medium text-sm">{channel.name}</span>
                           </div>
                         </TableCell>
@@ -1122,8 +1122,8 @@ function ChannelContent() {
                         <TableCell className="text-sm text-right">
                           {channel.response_time
                             ? <span className={cn(
-                                channel.response_time < 1000 ? 'text-emerald-600 dark:text-emerald-400' :
-                                channel.response_time < 3000 ? 'text-amber-600 dark:text-amber-400' : 'text-destructive')}>
+                                channel.response_time < 1000 ? 'text-success' :
+                                channel.response_time < 3000 ? 'text-warning' : 'text-destructive')}>
                                 {(channel.response_time / 1000).toFixed(2)}s
                               </span>
                             : <span className="text-muted-foreground/50">-</span>}
@@ -1150,7 +1150,7 @@ function ChannelContent() {
                               <DropdownMenuItem onClick={() => handleToggleStatus(channel)}>
                                 {channel.status === 1
                                   ? <><XCircle className="size-4 mr-2 text-muted-foreground" />{t('禁用')}</>
-                                  : <><Zap className="size-4 mr-2 text-emerald-500" />{t('启用')}</>}
+                                  : <><Zap className="size-4 mr-2 text-success" />{t('启用')}</>}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-destructive focus:text-destructive"

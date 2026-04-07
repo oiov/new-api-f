@@ -220,6 +220,7 @@ export function getStatusCacheAge(): number {
 const COLOR_THEME_KEY = 'color-theme';
 export type ColorTheme =
   | 'default'
+  | 'gold'
   | 'blue'
   | 'green'
   | 'orange'

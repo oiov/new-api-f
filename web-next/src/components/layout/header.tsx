@@ -21,6 +21,7 @@ import {
   CreditCard,
   Sparkles,
   Crown,
+  Palette,
 } from 'lucide-react';
 import { NotificationBell, NoticeModal } from '@/components/layout/notice-modal';
 import { Button } from '@/components/ui/button';
@@ -38,13 +39,25 @@ import { useUser, useIsAdmin, useIsLoggedIn } from '@/context/user-context';
 import { useSystemStatus } from '@/context/status-context';
 import { logoutUser } from '@/hooks/use-user-loader';
 import { SUPPORTED_LANGUAGES } from '@/i18n/config';
-import { getLogo, getSystemName, formatQuota, formatTokensCompact, cn } from '@/lib/utils';
+import { getLogo, getSystemName, formatQuota, formatTokensCompact, cn, type ColorTheme, getStoredColorTheme, setStoredColorTheme } from '@/lib/utils';
 import Image from 'next/image';
 
 interface HeaderProps {
   onMobileMenuToggle?: () => void;
   drawerOpen?: boolean;
 }
+
+const COLOR_THEMES: { value: ColorTheme; label: string; color: string }[] = [
+  { value: 'default', label: '默认',   color: 'oklch(0.60 0.24 292)' },
+  { value: 'gold',    label: '金色',   color: 'oklch(0.62 0.18 78)' },
+  { value: 'blue',    label: '蓝色',   color: 'oklch(0.52 0.22 260.5)' },
+  { value: 'green',   label: '绿色',   color: 'oklch(0.53 0.18 152)' },
+  { value: 'orange',  label: '橙色',   color: 'oklch(0.68 0.19 47)' },
+  { value: 'red',     label: '红色',   color: 'oklch(0.58 0.22 27)' },
+  { value: 'rose',    label: '玫红',   color: 'oklch(0.62 0.23 16)' },
+  { value: 'violet',  label: '紫色',   color: 'oklch(0.6 0.24 292)' },
+  { value: 'yellow',  label: '黄色',   color: 'oklch(0.78 0.18 86)' },
+];
 
 const NAV_LINKS = [
   { key: 'pricing', href: '/pricing', label: '价格方案' },
@@ -102,9 +115,19 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
 
   const [mounted, setMounted] = useState(false);
   const [noticeOpen, setNoticeOpen] = useState(false);
+  const [colorTheme, setColorTheme] = useState<ColorTheme>('default');
   const announcements = status?.announcements ?? [];
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    setColorTheme(getStoredColorTheme());
+  }, []);
+
+  const handleColorThemeChange = (theme: ColorTheme) => {
+    setStoredColorTheme(theme);
+    setColorTheme(theme);
+  };
 
   // Auto-open notice modal once per day if notice exists
   useEffect(() => {
@@ -276,6 +299,45 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* 配色方案切换 */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 text-muted-foreground hover:text-foreground"
+                title={t('配色方案')}
+              >
+                <Palette className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal pb-1">
+                {t('配色方案')}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {COLOR_THEMES.map(({ value, label, color }) => (
+                <DropdownMenuItem
+                  key={value}
+                  onClick={() => handleColorThemeChange(value)}
+                  className={cn(
+                    'text-sm gap-2.5',
+                    colorTheme === value && 'font-medium text-primary bg-primary/5',
+                  )}
+                >
+                  <span
+                    className="size-3.5 rounded-full border border-border/60 shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                  {t(label)}
+                  {colorTheme === value && (
+                    <span className="ml-auto size-1.5 rounded-full bg-primary" />
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           {/* 公告通知 */}
           <NotificationBell announcements={announcements} onClick={() => setNoticeOpen(true)} />
 
@@ -353,10 +415,10 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
                 {/* 导航菜单项 */}
                 <div className="p-1.5 space-y-0.5">
                   {[
-                    { href: '/console', icon: LayoutDashboard, label: '数据看板', iconBg: 'bg-blue-50 dark:bg-blue-950/40 border-blue-100 dark:border-blue-900/50', iconColor: 'text-blue-600 dark:text-blue-400' },
-                    { href: '/console/token', icon: Key, label: '令牌管理', iconBg: 'bg-amber-50 dark:bg-amber-950/40 border-amber-100 dark:border-amber-900/50', iconColor: 'text-amber-600 dark:text-amber-400' },
-                    { href: '/console/topup', icon: CreditCard, label: '充值兑换', iconBg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-900/50', iconColor: 'text-emerald-600 dark:text-emerald-400' },
-                    { href: '/console/subscription', icon: Crown, label: '我的订阅', iconBg: 'bg-orange-50 dark:bg-orange-950/40 border-orange-100 dark:border-orange-900/50', iconColor: 'text-orange-600 dark:text-orange-400' },
+                    { href: '/console', icon: LayoutDashboard, label: '数据看板', iconBg: 'bg-primary/10 dark:bg-primary/20 border-primary/20', iconColor: 'text-primary' },
+                    { href: '/console/token', icon: Key, label: '令牌管理', iconBg: 'bg-warning/10 dark:bg-warning/20 border-warning/20', iconColor: 'text-warning' },
+                    { href: '/console/topup', icon: CreditCard, label: '充值兑换', iconBg: 'bg-success/10 dark:bg-success/20 border-success/20', iconColor: 'text-success' },
+                    { href: '/console/subscription', icon: Crown, label: '我的订阅', iconBg: 'bg-gold/10 dark:bg-gold/20 border-gold/20', iconColor: 'text-gold' },
                     { href: '/console/personal', icon: Settings, label: '个人设置', iconBg: 'bg-violet-50 dark:bg-violet-950/40 border-violet-100 dark:border-violet-900/50', iconColor: 'text-violet-600 dark:text-violet-400' },
                   ].map(({ href, icon: Icon, label, iconBg, iconColor }) => (
                     <DropdownMenuItem key={href} asChild>
@@ -381,8 +443,8 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
                       </div>
                       <DropdownMenuItem asChild>
                         <Link href="/console/setting" className="flex items-center gap-3 px-2.5 py-2 rounded-lg cursor-pointer group/item hover:bg-accent/80 focus:bg-accent/80 transition-all duration-150">
-                          <div className="size-8 rounded-lg flex items-center justify-center shrink-0 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 group-hover/item:scale-105 group-hover/item:shadow-sm transition-all duration-150">
-                            <Sparkles className="size-4 text-slate-600 dark:text-slate-300" />
+                          <div className="size-8 rounded-lg flex items-center justify-center shrink-0 bg-muted border border-border group-hover/item:scale-105 group-hover/item:shadow-sm transition-all duration-150">
+                            <Sparkles className="size-4 text-muted-foreground" />
                           </div>
                           <span className="text-sm font-medium text-foreground/85 group-hover/item:text-foreground transition-colors truncate">{t('系统设置')}</span>
                           <Badge variant="secondary" className="ml-auto text-[10px] py-0 px-1.5 h-4 bg-primary/10 text-primary border border-primary/20 font-semibold tracking-wide">Admin</Badge>
@@ -398,8 +460,8 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
                     onClick={handleLogout}
                     className="flex items-center gap-3 px-2.5 py-2 rounded-lg cursor-pointer group/item text-destructive/80 hover:text-destructive focus:text-destructive focus:bg-destructive/8 hover:bg-destructive/6 transition-all duration-150"
                   >
-                    <div className="size-8 rounded-lg flex items-center justify-center shrink-0 bg-red-50 dark:bg-red-950/40 border border-red-100/80 dark:border-red-900/40 group-hover/item:scale-105 transition-all duration-150">
-                      <LogOut className="size-4 text-red-500" />
+                    <div className="size-8 rounded-lg flex items-center justify-center shrink-0 bg-destructive/8 dark:bg-destructive/15 border border-destructive/20 group-hover/item:scale-105 transition-all duration-150">
+                      <LogOut className="size-4 text-destructive" />
                     </div>
                     <span className="text-sm font-medium truncate">{t('退出登录')}</span>
                   </DropdownMenuItem>

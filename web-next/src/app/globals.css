@@ -45,75 +45,80 @@ html [data-no-transition] {
 }
 
 /* ============================================================
-   浅色模式 - 专业蓝主题（信任感）
+   浅色模式 - 深海军蓝 + 金色（权威、信任、活力）
    ============================================================ */
 :root {
-  /* 背景层次 */
-  --background: oklch(0.987 0.003 247.8);     /* 极浅蓝灰白 */
-  --foreground: oklch(0.17 0.025 258.7);       /* 深蓝黑 */
+  /* 背景层次 - 极浅冷白，营造干净感 */
+  --background: oklch(0.984 0.004 248);        /* 极浅冷白 */
+  --foreground: oklch(0.15 0.03 264);           /* 深海军黑 */
 
-  /* 卡片 - 纯白，与背景形成对比 */
+  /* 卡片 - 纯白，与背景形成层次对比 */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.17 0.025 258.7);
+  --card-foreground: oklch(0.15 0.03 264);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.17 0.025 258.7);
+  --popover-foreground: oklch(0.15 0.03 264);
 
-  /* 主色 - 专业蓝（信任、可靠） */
-  --primary: oklch(0.52 0.22 260.5);
-  --primary-foreground: oklch(0.98 0 0);
+  /* 主色 - 紫色（默认主题） */
+  --primary: oklch(0.60 0.24 292);
+  --primary-foreground: oklch(0.99 0 0);
 
-  /* 次要色 */
-  --secondary: oklch(0.94 0.015 250.5);
-  --secondary-foreground: oklch(0.3 0.05 260);
+  /* 金色 - 活力、价值感、高端感 */
+  --gold: oklch(0.68 0.18 78);
+  --gold-foreground: oklch(0.15 0.04 60);
+  --gold-muted: oklch(0.94 0.07 78);
+
+  /* 次要色 - 清爽蓝灰，与主色呼应 */
+  --secondary: oklch(0.93 0.022 258);
+  --secondary-foreground: oklch(0.32 0.07 262);
 
   /* 静音色 */
-  --muted: oklch(0.95 0.012 250);
-  --muted-foreground: oklch(0.52 0.04 255);
+  --muted: oklch(0.945 0.014 252);
+  --muted-foreground: oklch(0.50 0.04 258);
 
-  /* 强调色 */
+  /* 强调色 - 专业蓝调 */
   --accent: oklch(0.94 0.02 255);
-  --accent-foreground: oklch(0.3 0.08 260);
+  --accent-foreground: oklch(0.30 0.08 260);
 
   /* 危险色 */
-  --destructive: oklch(0.58 0.22 27);
+  --destructive: oklch(0.57 0.22 27);
   --destructive-foreground: oklch(0.98 0 0);
 
   /* 成功色 */
-  --success: oklch(0.56 0.18 152);
+  --success: oklch(0.55 0.18 152);
   --success-foreground: oklch(0.98 0 0);
 
   /* 警告色 */
-  --warning: oklch(0.7 0.18 65);
-  --warning-foreground: oklch(0.17 0 0);
+  --warning: oklch(0.70 0.17 65);
+  --warning-foreground: oklch(0.15 0 0);
 
   /* 信息色 */
-  --info: oklch(0.62 0.17 240);
+  --info: oklch(0.60 0.17 240);
   --info-foreground: oklch(0.98 0 0);
 
   /* 边框与输入 */
-  --border: oklch(0.88 0.018 250);
-  --input: oklch(0.93 0.012 250);
-  --ring: oklch(0.52 0.22 260.5);
+  --border: oklch(0.87 0.02 252);
+  --input: oklch(0.93 0.015 252);
+  --ring: oklch(0.60 0.24 292);
 
-  /* 图表 */
-  --chart-1: oklch(0.52 0.22 260.5);
-  --chart-2: oklch(0.56 0.18 152);
-  --chart-3: oklch(0.7 0.18 65);
-  --chart-4: oklch(0.63 0.2 310);
-  --chart-5: oklch(0.58 0.22 27);
+  /* 图表 - 紫色+金色为核心双主色 */
+  --chart-1: oklch(0.60 0.24 292);     /* 紫色 */
+  --chart-2: oklch(0.68 0.18 78);      /* 金色 */
+  --chart-3: oklch(0.55 0.18 152);     /* 翡翠绿 */
+  --chart-4: oklch(0.60 0.2 310);      /* 紫色 */
+  --chart-5: oklch(0.55 0.22 27);      /* 暖红 */
 
   /* 圆角 */
   --radius: 0.6rem;
 
-  /* 侧边栏 - 略深于背景，形成层次 */
-  --sidebar: oklch(0.975 0.008 250);
-  --sidebar-foreground: oklch(0.17 0.025 258.7);
-  --sidebar-primary: oklch(0.52 0.22 260.5);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.92 0.025 258);
-  --sidebar-accent-foreground: oklch(0.25 0.08 260);
-  --sidebar-border: oklch(0.88 0.018 250);
-  --sidebar-ring: oklch(0.52 0.22 260.5);
+  /* 侧边栏 - 浅紫调（比背景略深，形成层次感） */
+  --sidebar: oklch(0.968 0.010 290);
+  --sidebar-foreground: oklch(0.17 0.025 290);
+  --sidebar-primary: oklch(0.60 0.24 292);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.92 0.022 290);
+  --sidebar-accent-foreground: oklch(0.25 0.08 292);
+  --sidebar-border: oklch(0.87 0.018 288);
+  --sidebar-ring: oklch(0.60 0.24 292);
 
   /* 尺寸变量 */
   --header-height: 60px;
@@ -125,101 +130,153 @@ html [data-no-transition] {
    深色模式
    ============================================================ */
 .dark {
-  --background: oklch(0.115 0.018 258.7);      /* 深蓝黑 */
-  --foreground: oklch(0.93 0.012 255);
+  --background: oklch(0.10 0.022 265);          /* 深海军蓝黑 */
+  --foreground: oklch(0.92 0.012 255);
 
-  --card: oklch(0.155 0.02 260);
-  --card-foreground: oklch(0.93 0.012 255);
-  --popover: oklch(0.155 0.02 260);
-  --popover-foreground: oklch(0.93 0.012 255);
+  --card: oklch(0.14 0.026 263);
+  --card-foreground: oklch(0.92 0.012 255);
+  --popover: oklch(0.14 0.026 263);
+  --popover-foreground: oklch(0.92 0.012 255);
 
-  --primary: oklch(0.62 0.2 258);
+  --primary: oklch(0.65 0.22 292);               /* 紫色（深色背景上需更亮） */
   --primary-foreground: oklch(0.98 0 0);
 
-  --secondary: oklch(0.22 0.03 260);
-  --secondary-foreground: oklch(0.85 0.015 255);
+  --gold: oklch(0.76 0.17 82);                   /* 亮金色 */
+  --gold-foreground: oklch(0.12 0.03 60);
+  --gold-muted: oklch(0.20 0.04 78);
 
-  --muted: oklch(0.2 0.025 260);
-  --muted-foreground: oklch(0.58 0.04 255);
+  --secondary: oklch(0.21 0.032 262);
+  --secondary-foreground: oklch(0.85 0.016 255);
+
+  --muted: oklch(0.19 0.026 262);
+  --muted-foreground: oklch(0.57 0.04 255);
 
   --accent: oklch(0.22 0.03 260);
   --accent-foreground: oklch(0.85 0.015 255);
 
-  --destructive: oklch(0.55 0.2 27);
+  --destructive: oklch(0.54 0.20 27);
   --destructive-foreground: oklch(0.98 0 0);
 
-  --success: oklch(0.52 0.16 152);
+  --success: oklch(0.51 0.16 152);
   --success-foreground: oklch(0.98 0 0);
 
-  --warning: oklch(0.68 0.16 65);
-  --warning-foreground: oklch(0.1 0 0);
+  --warning: oklch(0.67 0.16 65);
+  --warning-foreground: oklch(0.10 0 0);
 
-  --info: oklch(0.6 0.15 240);
+  --info: oklch(0.59 0.15 240);
   --info-foreground: oklch(0.98 0 0);
 
-  --border: oklch(0.24 0.028 260);
-  --input: oklch(0.22 0.025 260);
-  --ring: oklch(0.62 0.2 258);
+  --border: oklch(0.23 0.028 290);
+  --input: oklch(0.21 0.025 290);
+  --ring: oklch(0.65 0.22 292);
 
-  --chart-1: oklch(0.62 0.2 258);
-  --chart-2: oklch(0.56 0.18 152);
-  --chart-3: oklch(0.7 0.18 65);
-  --chart-4: oklch(0.65 0.2 310);
-  --chart-5: oklch(0.6 0.2 27);
+  --chart-1: oklch(0.65 0.22 292);
+  --chart-2: oklch(0.76 0.17 82);
+  --chart-3: oklch(0.55 0.18 152);
+  --chart-4: oklch(0.62 0.20 310);
+  --chart-5: oklch(0.60 0.20 27);
 
-  --sidebar: oklch(0.135 0.02 260);
-  --sidebar-foreground: oklch(0.9 0.012 255);
-  --sidebar-primary: oklch(0.62 0.2 258);
+  --sidebar: oklch(0.145 0.022 292);
+  --sidebar-foreground: oklch(0.90 0.012 290);
+  --sidebar-primary: oklch(0.65 0.22 292);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.2 0.03 260);
-  --sidebar-accent-foreground: oklch(0.85 0.015 255);
-  --sidebar-border: oklch(0.22 0.025 260);
-  --sidebar-ring: oklch(0.62 0.2 258);
+  --sidebar-accent: oklch(0.20 0.028 292);
+  --sidebar-accent-foreground: oklch(0.85 0.015 290);
+  --sidebar-border: oklch(0.22 0.022 290);
+  --sidebar-ring: oklch(0.65 0.22 292);
 }
 
 /* ============================================================
    颜色主题覆盖
    ============================================================ */
+
+/* 金色主题 - 以金色为主色调 */
+[data-color-theme="gold"] {
+  --primary: oklch(0.62 0.18 78);
+  --primary-foreground: oklch(0.12 0.03 60);
+  --ring: oklch(0.62 0.18 78);
+  --accent: oklch(0.94 0.06 78);
+  --accent-foreground: oklch(0.42 0.12 72);
+  --sidebar-primary: oklch(0.62 0.18 78);
+  --sidebar-primary-foreground: oklch(0.12 0.03 60);
+  --sidebar-ring: oklch(0.62 0.18 78);
+}
+
 [data-color-theme="blue"] {
   --primary: oklch(0.52 0.22 260.5);
   --primary-foreground: oklch(0.98 0 0);
   --ring: oklch(0.52 0.22 260.5);
+  --accent: oklch(0.94 0.02 255);
+  --accent-foreground: oklch(0.30 0.08 260);
+  --sidebar-primary: oklch(0.52 0.22 260.5);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-ring: oklch(0.52 0.22 260.5);
 }
 
 [data-color-theme="green"] {
   --primary: oklch(0.53 0.18 152);
   --primary-foreground: oklch(0.98 0 0);
   --ring: oklch(0.53 0.18 152);
+  --accent: oklch(0.93 0.03 152);
+  --accent-foreground: oklch(0.28 0.08 152);
+  --sidebar-primary: oklch(0.53 0.18 152);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-ring: oklch(0.53 0.18 152);
 }
 
 [data-color-theme="orange"] {
   --primary: oklch(0.68 0.19 47);
-  --primary-foreground: oklch(0.98 0 0);
+  --primary-foreground: oklch(0.12 0 0);
   --ring: oklch(0.68 0.19 47);
+  --accent: oklch(0.94 0.04 47);
+  --accent-foreground: oklch(0.35 0.10 47);
+  --sidebar-primary: oklch(0.68 0.19 47);
+  --sidebar-primary-foreground: oklch(0.12 0 0);
+  --sidebar-ring: oklch(0.68 0.19 47);
 }
 
 [data-color-theme="red"] {
   --primary: oklch(0.58 0.22 27);
   --primary-foreground: oklch(0.98 0 0);
   --ring: oklch(0.58 0.22 27);
+  --accent: oklch(0.94 0.04 27);
+  --accent-foreground: oklch(0.32 0.10 27);
+  --sidebar-primary: oklch(0.58 0.22 27);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-ring: oklch(0.58 0.22 27);
 }
 
 [data-color-theme="rose"] {
   --primary: oklch(0.62 0.23 16);
   --primary-foreground: oklch(0.98 0 0);
   --ring: oklch(0.62 0.23 16);
+  --accent: oklch(0.94 0.05 16);
+  --accent-foreground: oklch(0.32 0.10 16);
+  --sidebar-primary: oklch(0.62 0.23 16);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-ring: oklch(0.62 0.23 16);
 }
 
 [data-color-theme="violet"] {
-  --primary: oklch(0.6 0.24 292);
+  --primary: oklch(0.60 0.24 292);
   --primary-foreground: oklch(0.98 0 0);
-  --ring: oklch(0.6 0.24 292);
+  --ring: oklch(0.60 0.24 292);
+  --accent: oklch(0.94 0.04 292);
+  --accent-foreground: oklch(0.30 0.10 292);
+  --sidebar-primary: oklch(0.60 0.24 292);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-ring: oklch(0.60 0.24 292);
 }
 
 [data-color-theme="yellow"] {
   --primary: oklch(0.78 0.18 86);
   --primary-foreground: oklch(0.17 0 0);
   --ring: oklch(0.78 0.18 86);
+  --accent: oklch(0.95 0.06 86);
+  --accent-foreground: oklch(0.35 0.12 80);
+  --sidebar-primary: oklch(0.78 0.18 86);
+  --sidebar-primary-foreground: oklch(0.15 0 0);
+  --sidebar-ring: oklch(0.78 0.18 86);
 }
 
 /* ============================================================
@@ -245,6 +302,15 @@ html [data-no-transition] {
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-gold-muted: var(--gold-muted);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -351,7 +417,7 @@ html [data-no-transition] {
     border-color: oklch(from var(--primary) l c h / 0.2);
   }
 
-  /* 统计卡片 - 带顶部强调线 */
+  /* 统计卡片 - 海军蓝顶部强调线 */
   .stat-card {
     @apply bg-card rounded-xl border border-border/60 p-5;
     box-shadow: 0 1px 3px 0 oklch(0 0 0 / 0.05);
@@ -366,7 +432,26 @@ html [data-no-transition] {
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, var(--primary), oklch(from var(--primary) calc(l + 0.1) c h));
+    background: linear-gradient(90deg, var(--primary), oklch(from var(--primary) calc(l + 0.15) c h));
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  /* 统计卡片 - 金色顶部强调线 */
+  .stat-card-gold {
+    @apply bg-card rounded-xl border border-border/60 p-5;
+    box-shadow: 0 1px 3px 0 oklch(0 0 0 / 0.05);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card-gold::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--gold), oklch(from var(--gold) calc(l + 0.1) c h));
     border-radius: var(--radius) var(--radius) 0 0;
   }
 
@@ -378,11 +463,18 @@ html [data-no-transition] {
     border: 1px solid oklch(from var(--border) l c h / 0.5);
   }
 
-  /* 渐变背景 badge */
+  /* 渐变背景 badge - 主色调 */
   .badge-gradient {
-    background: linear-gradient(135deg, oklch(from var(--primary) l c h / 0.12), oklch(from var(--primary) calc(l + 0.05) c h / 0.08));
+    background: linear-gradient(135deg, oklch(from var(--primary) l c h / 0.12), oklch(from var(--primary) calc(l + 0.08) c h / 0.08));
     color: var(--primary);
     border: 1px solid oklch(from var(--primary) l c h / 0.2);
+  }
+
+  /* 渐变背景 badge - 金色 */
+  .badge-gold {
+    background: linear-gradient(135deg, var(--gold-muted), oklch(from var(--gold) calc(l + 0.08) c h / 0.15));
+    color: oklch(from var(--gold) calc(l - 0.12) c h);
+    border: 1px solid oklch(from var(--gold) l c h / 0.3);
   }
 
   /* 导航项激活状态 */
@@ -409,6 +501,13 @@ html [data-no-transition] {
     background: oklch(from var(--primary) l c h / 0.1);
     color: var(--primary);
   }
+
+  /* 金色强调图标 */
+  .page-title-icon-gold {
+    @apply p-1.5 rounded-lg;
+    background: var(--gold-muted);
+    color: var(--gold);
+  }
 }
 
 /* ============================================================
@@ -432,6 +531,10 @@ html [data-no-transition] {
     0% { box-shadow: 0 0 0 0 oklch(from var(--primary) l c h / 0.4); }
     100% { box-shadow: 0 0 0 8px oklch(from var(--primary) l c h / 0); }
   }
+  @keyframes pulse-ring-gold {
+    0% { box-shadow: 0 0 0 0 oklch(from var(--gold) l c h / 0.4); }
+    100% { box-shadow: 0 0 0 8px oklch(from var(--gold) l c h / 0); }
+  }
   @keyframes slide-in-up {
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
@@ -445,19 +548,44 @@ html [data-no-transition] {
     animation: shimmer 2s linear infinite;
   }
   .animate-pulse-ring { animation: pulse-ring 1.5s ease-out infinite; }
+  .animate-pulse-ring-gold { animation: pulse-ring-gold 1.5s ease-out infinite; }
   .animate-slide-in-up { animation: slide-in-up 300ms ease both; }
 
-  /* 文字渐变 */
+  /* 文字渐变 - 主色调 */
   .text-gradient {
-    background: linear-gradient(135deg, var(--primary) 0%, oklch(from var(--primary) calc(l + 0.1) calc(c - 0.03) calc(h + 20)) 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, oklch(from var(--primary) calc(l + 0.15) calc(c - 0.03) calc(h + 15)) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
   }
 
+  /* 文字渐变 - 金色 */
+  .text-gradient-gold {
+    background: linear-gradient(135deg, oklch(from var(--gold) calc(l - 0.08) c h) 0%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* 文字渐变 - 海军蓝到金色（品牌双色） */
+  .text-gradient-navy-gold {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* 背景渐变 - 海军蓝到金色 */
+  .bg-gradient-navy-gold {
+    background: linear-gradient(135deg, var(--primary) 0%, oklch(from var(--gold) l c h / 0.9) 100%);
+  }
+
   /* 阴影工具 */
   .shadow-primary {
     box-shadow: 0 4px 24px -4px oklch(from var(--primary) l c h / 0.35);
+  }
+  .shadow-gold {
+    box-shadow: 0 4px 24px -4px oklch(from var(--gold) l c h / 0.4);
   }
   .shadow-card {
     box-shadow: 0 1px 3px 0 oklch(0 0 0 / 0.05), 0 1px 2px -1px oklch(0 0 0 / 0.05);
@@ -489,33 +617,33 @@ html [data-no-transition] {
 }
 
 /* ============================================================
-   可信赖背景 - 随主题切换（亮/暗）
+   可信赖背景 - 随主题切换（亮/暗），海军蓝+金色双色光晕
    ============================================================ */
 
-/* 亮色模式：极淡蓝色径向光晕，叠加背景色 */
+/* 亮色模式：海军蓝主光晕 + 金色次级光晕 */
 .app-bg {
-  background-color: oklch(0.987 0.003 247.8);
+  background-color: var(--background);
   background-image:
-    radial-gradient(circle at 20% 50%, oklch(0.52 0.22 260.5 / 0.04) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, oklch(0.52 0.22 260.5 / 0.03) 0%, transparent 40%),
-    radial-gradient(circle at 60% 80%, oklch(0.52 0.22 260.5 / 0.02) 0%, transparent 35%);
+    radial-gradient(circle at 20% 50%, oklch(from var(--primary) l c h / 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, oklch(from var(--gold) l c h / 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 60% 80%, oklch(from var(--primary) l c h / 0.03) 0%, transparent 35%);
 }
 
 /* 暗色模式：光晕稍强，与深色背景形成可见层次 */
 .dark .app-bg {
-  background-color: oklch(0.115 0.018 258.7);
+  background-color: var(--background);
   background-image:
-    radial-gradient(circle at 20% 50%, oklch(0.52 0.22 260.5 / 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, oklch(0.52 0.22 260.5 / 0.06) 0%, transparent 40%),
-    radial-gradient(circle at 60% 80%, oklch(0.52 0.22 260.5 / 0.04) 0%, transparent 35%);
+    radial-gradient(circle at 20% 50%, oklch(from var(--primary) l c h / 0.12) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, oklch(from var(--gold) l c h / 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 60% 80%, oklch(from var(--primary) l c h / 0.06) 0%, transparent 35%);
 }
 
 /* 微妙点状网格背景（可选，叠加在 app-bg 上） */
 .dot-grid-bg {
-  background-image: radial-gradient(circle, oklch(0.17 0.025 258.7 / 0.08) 1px, transparent 1px);
+  background-image: radial-gradient(circle, oklch(from var(--foreground) l c h / 0.06) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
 .dark .dot-grid-bg {
-  background-image: radial-gradient(circle, oklch(0.93 0.012 255 / 0.06) 1px, transparent 1px);
+  background-image: radial-gradient(circle, oklch(from var(--foreground) l c h / 0.05) 1px, transparent 1px);
 }

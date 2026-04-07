@@ -763,8 +763,8 @@ export default function InvoiceAdminPage() {
                               className="max-h-32 rounded object-contain border"
                             />
                           ) : (
-                            <div className="size-12 rounded-lg bg-blue-100 dark:bg-blue-950/40 flex items-center justify-center">
-                              <FileCheck className="size-6 text-blue-600" />
+                            <div className="size-12 rounded-lg bg-primary/15 dark:bg-primary/20 flex items-center justify-center">
+                              <FileCheck className="size-6 text-primary" />
                             </div>
                           )}
                           <span className="text-sm font-medium text-green-600">

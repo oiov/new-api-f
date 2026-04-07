@@ -373,20 +373,20 @@ function SubCard({ item, t, onViewLogs }: SubCardProps) {
   ];
 
   return (
-    <div className={cn('border rounded-xl overflow-hidden', state === 'active' ? 'border-emerald-200 dark:border-emerald-900/50' : 'border-border/50')}>
+    <div className={cn('border rounded-xl overflow-hidden', state === 'active' ? 'border-success/20' : 'border-border/50')}>
       <button
         className="w-full text-left p-4 hover:bg-muted/30 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0 flex-1">
-            <div className={cn('shrink-0 rounded-lg p-2', state === 'active' ? 'bg-emerald-500/10' : 'bg-muted')}>
-              <ShieldCheck className={cn('size-4', state === 'active' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground/50')} />
+            <div className={cn('shrink-0 rounded-lg p-2', state === 'active' ? 'bg-success/10' : 'bg-muted')}>
+              <ShieldCheck className={cn('size-4', state === 'active' ? 'text-success' : 'text-muted-foreground/50')} />
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-sm">{item.title}</span>
-                <Badge variant={state === 'active' ? 'default' : 'secondary'} className={cn('text-[10px] py-0 px-1.5 h-4', state === 'active' && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/25')}>
+                <Badge variant={state === 'active' ? 'default' : 'secondary'} className={cn('text-[10px] py-0 px-1.5 h-4', state === 'active' && 'bg-success/15 text-success border-success/25')}>
                   {state === 'active' ? t('生效') : state === 'cancelled' ? t('已作废') : t('已过期')}
                 </Badge>
               </div>
@@ -532,13 +532,13 @@ function PurchaseDialog({
           </div>
 
           {hasDiscount && (
-            <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+            <div className="rounded-lg border border-success/20 bg-success/10 dark:bg-success/20 px-3 py-2 text-xs text-success">
               {t('当前套餐正在限时优惠中，优惠截止时间')}：{new Date(Number(plan.discount_deadline || 0) * 1000).toLocaleString()}
             </div>
           )}
 
           {limitReached && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <div className="rounded-lg border border-warning/20 bg-warning/10 dark:bg-warning/20 px-3 py-2 text-xs text-warning">
               {t('已达到购买上限')} ({purchaseCount}/{limit})
             </div>
           )}
@@ -896,7 +896,7 @@ function SubscriptionContent() {
     {
       label: t('生效中的订阅'), value: String(activeSubs.length),
       helper: activeSubs.length > 0 ? t('正在提供模型权益') : t('当前暂无生效套餐'),
-      icon: Zap, gradient: 'from-blue-500/10 to-blue-500/5', iconBg: 'bg-blue-500/15', iconColor: 'text-blue-600 dark:text-blue-400',
+      icon: Zap, gradient: 'from-primary/10 to-primary/5', iconBg: 'bg-primary/15', iconColor: 'text-primary',
     },
     {
       label: t('历史订阅'), value: String(historySubs.length),
@@ -906,12 +906,12 @@ function SubscriptionContent() {
     {
       label: t('最近到期'), value: nextExpiring ? `${nextExpiring.remainingDays}${t('天')}` : '--',
       helper: nextExpiring ? nextExpiring.title : t('暂无生效套餐'),
-      icon: Clock, gradient: 'from-amber-500/10 to-amber-500/5', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-600 dark:text-amber-400',
+      icon: Clock, gradient: 'from-warning/10 to-warning/5', iconBg: 'bg-warning/15', iconColor: 'text-warning',
     },
     {
       label: t('当前权益概览'), value: activeRemainSummary,
       helper: prefLabel,
-      icon: Crown, gradient: 'from-emerald-500/10 to-emerald-500/5', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-600 dark:text-emerald-400',
+      icon: Crown, gradient: 'from-success/10 to-success/5', iconBg: 'bg-success/15', iconColor: 'text-success',
     },
   ];
 
@@ -943,10 +943,10 @@ function SubscriptionContent() {
 
       {/* Usage visualization */}
       <Card className="border-0 shadow-sm overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-500/10 via-indigo-500/8 to-purple-500/10 dark:from-blue-500/15 dark:via-indigo-500/10 dark:to-purple-500/15 px-5 py-4">
+        <div className="bg-gradient-to-r from-primary/10 via-indigo-500/8 to-purple-500/10 dark:from-primary/15 dark:via-indigo-500/10 dark:to-purple-500/15 px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-blue-500/15 p-1.5">
-              <BarChart3 className="size-4 text-blue-600 dark:text-blue-400" />
+            <div className="rounded-lg bg-primary/15 p-1.5">
+              <BarChart3 className="size-4 text-primary" />
             </div>
             <div>
               <p className="font-semibold text-sm">{t('消耗额度可视化')}</p>
@@ -961,10 +961,10 @@ function SubscriptionContent() {
             <div key={m.key} className="rounded-xl border bg-muted/20 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className={cn('size-2.5 rounded-full', m.unlimited ? 'bg-emerald-500' : m.percent >= 85 ? 'bg-destructive' : m.percent >= 60 ? 'bg-amber-500' : 'bg-emerald-500')} />
+                  <span className={cn('size-2.5 rounded-full', m.unlimited ? 'bg-success' : m.percent >= 85 ? 'bg-destructive' : m.percent >= 60 ? 'bg-warning' : 'bg-success')} />
                   <span className="font-medium text-sm">{m.title}</span>
                 </div>
-                <Badge variant="outline" className={cn('text-[10px]', m.percent >= 85 ? 'text-destructive border-destructive/30' : m.percent >= 60 ? 'text-amber-600 border-amber-300' : 'text-emerald-600 border-emerald-300')}>
+                <Badge variant="outline" className={cn('text-[10px]', m.percent >= 85 ? 'text-destructive border-destructive/30' : m.percent >= 60 ? 'text-warning border-warning/30' : 'text-success border-success/30')}>
                   {m.unlimited ? t('不限') : `${m.percent}%`}
                 </Badge>
               </div>
@@ -990,8 +990,8 @@ function SubscriptionContent() {
       <Card className="border-0 shadow-sm">
         <CardContent className="pt-4 pb-3">
           <div className="flex items-center gap-2 mb-3">
-            <div className="rounded-lg bg-amber-500/15 p-1.5">
-              <BookOpen className="size-3.5 text-amber-600 dark:text-amber-400" />
+            <div className="rounded-lg bg-warning/15 p-1.5">
+              <BookOpen className="size-3.5 text-warning" />
             </div>
             <p className="font-semibold text-sm">{t('使用说明与计费规则')}</p>
           </div>
@@ -1147,13 +1147,13 @@ function SubscriptionContent() {
                           <TableRow key={plan.id || idx} className="hover:bg-muted/30">
                             <TableCell>
                               <div className="flex items-center gap-2.5">
-                                <div className={cn('shrink-0 rounded-lg p-1.5', isPopular ? 'bg-blue-500/15' : 'bg-muted')}>
-                                  <Package className={cn('size-3.5', isPopular ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground')} />
+                                <div className={cn('shrink-0 rounded-lg p-1.5', isPopular ? 'bg-primary/15' : 'bg-muted')}>
+                                  <Package className={cn('size-3.5', isPopular ? 'text-primary' : 'text-muted-foreground')} />
                                 </div>
                                 <div className="min-w-0">
                                   <div className="flex flex-wrap items-center gap-1.5">
                                     <span className="font-medium text-sm">{plan.title || t('订阅套餐')}</span>
-                                    {isPopular && <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 text-blue-600 border-blue-300">{t('推荐')}</Badge>}
+                                    {isPopular && <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 text-primary border-primary/30">{t('推荐')}</Badge>}
                                     {!plan.enabled && <Badge variant="destructive" className="text-[10px] py-0 px-1.5 h-4">{t('已下架')}</Badge>}
                                     {sale.soldOut && <Badge variant="destructive" className="text-[10px] py-0 px-1.5 h-4">{t('已售罄')}</Badge>}
                                     {reached && <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">{t('已达上限')}</Badge>}

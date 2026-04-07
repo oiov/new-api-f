@@ -89,6 +89,7 @@ export interface SystemStatus {
   payment_enabled?: boolean;
   recharge_link?: string;
   subscription_enabled?: boolean;
+  checkin_enabled?: boolean;
   announcements?: Announcement[];
   [key: string]: unknown;
 }
