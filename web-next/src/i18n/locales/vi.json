@@ -1063,6 +1063,7 @@
     "导入到 Codex": "Nhập vào Codex",
     "配置 ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_BASE_URL，支持所有 Claude 模型": "Cấu hình ANTHROPIC_AUTH_TOKEN và ANTHROPIC_BASE_URL, hỗ trợ tất cả mô hình Claude",
     "配置 OPENAI_API_KEY 和 base_url（TOML 格式），默认使用 gpt-4o": "Cấu hình OPENAI_API_KEY và base_url (định dạng TOML), mặc định gpt-4o",
+    "配置 OPENAI_API_KEY 和 base_url（TOML 格式）": "Cấu hình OPENAI_API_KEY và base_url (định dạng TOML)",
     "需要安装 CC Switch 客户端（v3.8+）": "Yêu cầu cài đặt CC Switch (v3.8+)",
     "正在打开 CC Switch...": "Đang mở CC Switch...",
     "导入配置": "Nhập cấu hình",

@@ -1077,6 +1077,7 @@
     "导入到 Codex": "Импорт в Codex",
     "配置 ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_BASE_URL，支持所有 Claude 模型": "Настраивает ANTHROPIC_AUTH_TOKEN и ANTHROPIC_BASE_URL, поддерживает все модели Claude",
     "配置 OPENAI_API_KEY 和 base_url（TOML 格式），默认使用 gpt-4o": "Настраивает OPENAI_API_KEY и base_url (формат TOML), по умолчанию gpt-4o",
+    "配置 OPENAI_API_KEY 和 base_url（TOML 格式）": "Настраивает OPENAI_API_KEY и base_url (формат TOML)",
     "需要安装 CC Switch 客户端（v3.8+）": "Требуется клиент CC Switch (v3.8+)",
     "正在打开 CC Switch...": "Открываем CC Switch...",
     "导入配置": "Импорт конфига",

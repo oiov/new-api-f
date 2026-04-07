@@ -453,7 +453,7 @@ function buildClaudeDeepLink(apiKey: string, baseUrl: string, name: string): str
 }
 
 function buildCodexDeepLink(apiKey: string, baseUrl: string, name: string): string {
-  const tomlConfig = `[model_providers.openai]\nbase_url = "${baseUrl}"\n\n[general]\nmodel = "gpt-4o"`;
+  const tomlConfig = `[model_providers.openai]\nbase_url = "${baseUrl}"`;
   const config = {
     auth: { OPENAI_API_KEY: apiKey },
     config: tomlConfig,
@@ -572,13 +572,8 @@ function ImportConfigSheet({ token, open, onOpenChange }: {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold">OpenAI Codex</p>
                 <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                  {t('配置 OPENAI_API_KEY 和 base_url（TOML 格式），默认使用 gpt-4o')}
+                  {t('配置 OPENAI_API_KEY 和 base_url（TOML 格式）')}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {['gpt-4o', 'gpt-4.1', 'o3'].map(m => (
-                    <span key={m} className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">{m}</span>
-                  ))}
-                </div>
               </div>
             </div>
             <Button
