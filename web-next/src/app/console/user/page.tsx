@@ -2,12 +2,20 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, Users, Search, Trash2, ShieldCheck } from 'lucide-react';
+import { RefreshCw, Users, Search, Trash2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import {
   Table,
   TableBody,
@@ -61,6 +69,11 @@ function UserManageContent() {
   const [totalItems, setTotalItems] = useState(0);
   const PAGE_SIZE = 20;
 
+  // Confirm delete dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+
   const loadUsers = useCallback(async (pg: number) => {
     setLoading(true);
     try {
@@ -112,19 +125,28 @@ function UserManageContent() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm(t('确认删除该用户？此操作不可恢复。'))) return;
+  const requestDelete = (id: number) => {
+    setConfirmId(id);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (confirmId === null) return;
+    setConfirmLoading(true);
     try {
-      const res = await API.post('/api/user/manage', { id, action: 'delete' });
+      const res = await API.post('/api/user/manage', { id: confirmId, action: 'delete' });
       const data = res.data as { success: boolean; message?: string };
       if (data.success) {
-        setUsers((prev) => prev.filter((u) => u.id !== id));
+        setUsers((prev) => prev.filter((u) => u.id !== confirmId));
         toast.success(t('已删除'));
       } else {
         toast.error(data.message || t('删除失败'));
       }
     } catch {
       toast.error(t('删除失败'));
+    } finally {
+      setConfirmLoading(false);
+      setConfirmOpen(false);
     }
   };
 
@@ -229,7 +251,7 @@ function UserManageContent() {
                             variant="ghost"
                             size="sm"
                             className="text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(user.id)}
+                            onClick={() => requestDelete(user.id)}
                             title={t('删除')}
                           >
                             <Trash2 className="size-4" />
@@ -252,6 +274,31 @@ function UserManageContent() {
           />
         </CardContent>
       </Card>
+
+      {/* Confirm delete dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+                <AlertTriangle className="size-4 text-destructive" />
+              </div>
+              {t('删除用户')}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground pt-1">
+              {t('确认删除该用户？此操作不可恢复。')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={confirmLoading}>
+              {t('取消')}
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete} disabled={confirmLoading} className="min-w-[72px]">
+              {confirmLoading ? <RefreshCw className="size-4 animate-spin" /> : t('确认删除')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

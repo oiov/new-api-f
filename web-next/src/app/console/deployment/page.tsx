@@ -2,10 +2,18 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, Server, Plus, Trash2, Edit } from 'lucide-react';
+import { RefreshCw, Server, Plus, Trash2, Edit, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import {
   Table,
   TableBody,
@@ -42,6 +50,11 @@ function DeploymentContent() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Confirm delete dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+
   const loadDeployments = useCallback(async () => {
     setLoading(true);
     try {
@@ -61,17 +74,26 @@ function DeploymentContent() {
     loadDeployments();
   }, [loadDeployments]);
 
-  const handleDelete = async (id: number) => {
-    if (!confirm(t('确认删除该部署？'))) return;
+  const requestDelete = (id: number) => {
+    setConfirmId(id);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (confirmId === null) return;
+    setConfirmLoading(true);
     try {
-      const res = await API.delete(`/api/deployments/${id}`);
+      const res = await API.delete(`/api/deployments/${confirmId}`);
       const data = res.data as { success: boolean };
       if (data.success) {
-        setDeployments((prev) => prev.filter((d) => d.id !== id));
+        setDeployments((prev) => prev.filter((d) => d.id !== confirmId));
         toast.success(t('已删除'));
       }
     } catch {
       toast.error(t('删除失败'));
+    } finally {
+      setConfirmLoading(false);
+      setConfirmOpen(false);
     }
   };
 
@@ -151,7 +173,7 @@ function DeploymentContent() {
                             variant="ghost"
                             size="sm"
                             className="text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(dep.id)}
+                            onClick={() => requestDelete(dep.id)}
                           >
                             <Trash2 className="size-4" />
                           </Button>
@@ -165,6 +187,31 @@ function DeploymentContent() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Confirm delete dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+                <AlertTriangle className="size-4 text-destructive" />
+              </div>
+              {t('删除部署')}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground pt-1">
+              {t('确认删除该部署？')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={confirmLoading}>
+              {t('取消')}
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete} disabled={confirmLoading} className="min-w-[72px]">
+              {confirmLoading ? <RefreshCw className="size-4 animate-spin" /> : t('确认删除')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

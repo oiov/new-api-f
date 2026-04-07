@@ -22,6 +22,10 @@ import {
   Pencil,
   Filter,
   AlertTriangle,
+  Download,
+  ExternalLink,
+  Terminal,
+  Bot,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +41,13 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
 import {
   Table,
   TableBody,
@@ -417,6 +428,182 @@ function SkeletonRows() {
   );
 }
 
+// ─── CCSwitch import sheet ───────────────────────────────────────────────────
+
+function buildClaudeDeepLink(apiKey: string, baseUrl: string, name: string): string {
+  const config = {
+    env: {
+      ANTHROPIC_AUTH_TOKEN: apiKey,
+      ANTHROPIC_BASE_URL: baseUrl,
+      ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
+      ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-4-6',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-4-6',
+    },
+  };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(config))));
+  const params = new URLSearchParams({
+    resource: 'provider',
+    app: 'claude',
+    name,
+    configFormat: 'json',
+    config: encoded,
+  });
+  return `ccswitch://v1/import?${params.toString()}`;
+}
+
+function buildCodexDeepLink(apiKey: string, baseUrl: string, name: string): string {
+  const tomlConfig = `[model_providers.openai]\nbase_url = "${baseUrl}"\n\n[general]\nmodel = "gpt-4o"`;
+  const config = {
+    auth: { OPENAI_API_KEY: apiKey },
+    config: tomlConfig,
+  };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(config))));
+  const params = new URLSearchParams({
+    resource: 'provider',
+    app: 'codex',
+    name,
+    configFormat: 'json',
+    config: encoded,
+  });
+  return `ccswitch://v1/import?${params.toString()}`;
+}
+
+function ImportConfigSheet({ token, open, onOpenChange }: {
+  token: Token | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const status = useSystemStatus();
+  const [loadingApp, setLoadingApp] = useState<'claude' | 'codex' | null>(null);
+
+  const baseUrl = (() => {
+    const addr = status?.server_address;
+    if (!addr) return typeof window !== 'undefined' ? window.location.origin : '';
+    return addr.replace(/\/$/, '');
+  })();
+
+  const providerName = `${status?.system_name || 'fishxcode'} (${token?.name || ''})`;
+
+  const fetchKeyAndImport = async (app: 'claude' | 'codex') => {
+    if (!token) return;
+    setLoadingApp(app);
+    try {
+      const res = await API.post(`/api/token/${token.id}/key`);
+      const data = res.data as { success: boolean; data?: { key: string }; message?: string };
+      if (!data.success || !data.data?.key) {
+        toast.error(data.message || t('获取完整 Key 失败'));
+        return;
+      }
+      const fullKey = data.data.key.startsWith('sk-') ? data.data.key : `sk-${data.data.key}`;
+      const deepLink = app === 'claude'
+        ? buildClaudeDeepLink(fullKey, baseUrl, providerName)
+        : buildCodexDeepLink(fullKey, `${baseUrl}/v1`, providerName);
+
+      window.location.href = deepLink;
+      toast.success(t('正在打开 CC Switch...'));
+      setTimeout(() => onOpenChange(false), 800);
+    } catch {
+      toast.error(t('获取完整 Key 失败'));
+    } finally {
+      setLoadingApp(null);
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-[360px] sm:w-[420px]">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <Download className="size-4 text-primary" />
+            {t('一键导入配置')}
+          </SheetTitle>
+          <SheetDescription className="text-xs">
+            {t('将此令牌导入到 CC Switch 客户端，自动配置 API 端点和密钥')}
+          </SheetDescription>
+        </SheetHeader>
+
+        {/* Token info */}
+        <div className="mt-4 rounded-lg bg-muted/40 px-3 py-2.5 flex items-center gap-2">
+          <Key className="size-3.5 text-muted-foreground shrink-0" />
+          <span className="text-sm font-medium truncate">{token?.name}</span>
+          <span className="ml-auto text-xs text-muted-foreground shrink-0">{baseUrl}</span>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {/* Claude Code card */}
+          <div className="rounded-xl border border-border/60 p-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="size-9 rounded-lg bg-[#CC785C]/10 flex items-center justify-center shrink-0">
+                <Bot className="size-5 text-[#CC785C]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold">Claude Code</p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                  {t('配置 ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_BASE_URL，支持所有 Claude 模型')}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'].map(m => (
+                    <span key={m} className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">{m}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <Button
+              className="w-full mt-3 gap-2"
+              size="sm"
+              onClick={() => fetchKeyAndImport('claude')}
+              disabled={loadingApp !== null}
+            >
+              {loadingApp === 'claude'
+                ? <RefreshCw className="size-3.5 animate-spin" />
+                : <ExternalLink className="size-3.5" />}
+              {t('导入到 Claude Code')}
+            </Button>
+          </div>
+
+          {/* Codex card */}
+          <div className="rounded-xl border border-border/60 p-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="size-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                <Terminal className="size-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold">OpenAI Codex</p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                  {t('配置 OPENAI_API_KEY 和 base_url（TOML 格式），默认使用 gpt-4o')}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {['gpt-4o', 'gpt-4.1', 'o3'].map(m => (
+                    <span key={m} className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">{m}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <Button
+              className="w-full mt-3 gap-2"
+              variant="outline"
+              size="sm"
+              onClick={() => fetchKeyAndImport('codex')}
+              disabled={loadingApp !== null}
+            >
+              {loadingApp === 'codex'
+                ? <RefreshCw className="size-3.5 animate-spin" />
+                : <ExternalLink className="size-3.5" />}
+              {t('导入到 Codex')}
+            </Button>
+          </div>
+        </div>
+
+        <p className="mt-4 text-xs text-muted-foreground text-center">
+          {t('需要安装 CC Switch 客户端（v3.8+）')}
+        </p>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 function TokensContent() {
@@ -433,6 +620,8 @@ function TokensContent() {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<'single' | 'batch'>('single');
   const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importToken, setImportToken] = useState<Token | null>(null);
 
   // Filter & selection state
   const [search, setSearch] = useState('');
@@ -749,7 +938,7 @@ function TokensContent() {
                                 <MoreHorizontal className="size-4" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuContent align="end" className="w-44">
                               <DropdownMenuItem onClick={() => openEdit(token)}>
                                 <Pencil className="size-4 mr-2 text-muted-foreground" />{t('编辑')}
                               </DropdownMenuItem>
@@ -759,6 +948,11 @@ function TokensContent() {
                                 ) : (
                                   <><Activity className="size-4 mr-2 text-success" />{t('启用')}</>
                                 )}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => { setImportToken(token); setImportOpen(true); }}>
+                                <Download className="size-4 mr-2 text-primary" />
+                                <span className="text-primary">{t('导入配置')}</span>
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
@@ -791,6 +985,13 @@ function TokensContent() {
         onConfirm={handleConfirmDelete}
         loading={confirmLoading}
         danger
+      />
+
+      {/* CCSwitch import sheet */}
+      <ImportConfigSheet
+        token={importToken}
+        open={importOpen}
+        onOpenChange={setImportOpen}
       />
     </div>
   );

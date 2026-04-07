@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, Gift, Plus, Trash2, Copy, Search } from 'lucide-react';
+import { RefreshCw, Gift, Plus, Trash2, Copy, Search, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -61,6 +62,11 @@ function RedemptionContent() {
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', quota: '', count: '1' });
 
+  // Confirm delete dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+
   const loadRedemptions = useCallback(async (currentPage = 0, reset = false) => {
     setLoading(true);
     try {
@@ -93,17 +99,26 @@ function RedemptionContent() {
     loadRedemptions(0, true);
   }, [search]);
 
-  const handleDelete = async (id: number) => {
-    if (!confirm(t('确认删除该兑换码？'))) return;
+  const requestDelete = (id: number) => {
+    setConfirmId(id);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (confirmId === null) return;
+    setConfirmLoading(true);
     try {
-      const res = await API.delete(`/api/redemption/${id}`);
+      const res = await API.delete(`/api/redemption/${confirmId}`);
       const data = res.data as { success: boolean };
       if (data.success) {
-        setRedemptions((prev) => prev.filter((r) => r.id !== id));
+        setRedemptions((prev) => prev.filter((r) => r.id !== confirmId));
         toast.success(t('已删除'));
       }
     } catch {
       toast.error(t('删除失败'));
+    } finally {
+      setConfirmLoading(false);
+      setConfirmOpen(false);
     }
   };
 
@@ -246,7 +261,7 @@ function RedemptionContent() {
                             variant="ghost"
                             size="sm"
                             className="text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(item.id)}
+                            onClick={() => requestDelete(item.id)}
                             title={t('删除')}
                           >
                             <Trash2 className="size-4" />
@@ -275,6 +290,31 @@ function RedemptionContent() {
           )}
         </CardContent>
       </Card>
+
+      {/* Confirm delete dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+                <AlertTriangle className="size-4 text-destructive" />
+              </div>
+              {t('删除兑换码')}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground pt-1">
+              {t('确认删除该兑换码？')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={confirmLoading}>
+              {t('取消')}
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete} disabled={confirmLoading} className="min-w-[72px]">
+              {confirmLoading ? <RefreshCw className="size-4 animate-spin" /> : t('确认删除')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
