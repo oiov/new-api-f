@@ -123,9 +123,9 @@ export default function StatusPage() {
           size="sm"
           onClick={() => loadAbout(true)}
           disabled={loading}
-          className="h-8 gap-1.5 text-xs"
+          className="h-8 gap-1.5 text-xs cursor-pointer disabled:cursor-not-allowed"
         >
-          <RefreshCw className={`size-3.5 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`size-3.5 transition-transform duration-300 ${loading ? 'animate-spin' : ''}`} />
           {t('刷新')}
         </Button>
       </motion.div>
@@ -172,7 +172,7 @@ export default function StatusPage() {
                   href="https://github.com/fishxcode/fishxcode"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer"
                 >
                   <Github className="size-3.5" />
                   fishxcode/fishxcode

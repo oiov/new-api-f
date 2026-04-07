@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { motion } from 'framer-motion';
 import {
   BarChart3, BookOpen, ChevronDown, ChevronRight, Clock,
   Crown, FileText, History, Package, RefreshCw, ShieldCheck, Sparkles, Zap,
@@ -30,6 +31,18 @@ import { renderQuota, getCurrencySymbol, formatTimestamp, cn } from '@/lib/utils
 import { useSystemStatus } from '@/context/status-context';
 import { toast } from 'sonner';
 import type { SystemStatus } from '@/types';
+
+// ── Animation variants ───────────────────────────────────────────────────────
+
+const containerVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07 } },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' as const } },
+};
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -244,7 +257,7 @@ function OverviewSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
       {[1, 2, 3, 4].map((i) => (
-        <Card key={i} className="border-0 shadow-sm">
+        <Card key={i} className="border-border/60 shadow-card">
           <CardContent className="p-4 space-y-3">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="h-6 w-32" />
@@ -260,11 +273,11 @@ function OverviewSkeleton() {
 
 interface StatCardProps {
   label: string; value: string; helper: string;
-  icon: React.FC<{ className?: string }>; gradient: string; iconBg: string; iconColor: string;
+  icon: React.FC<{ className?: string }>; iconBg: string; iconColor: string;
 }
-function StatCard({ label, value, helper, icon: Icon, gradient, iconBg, iconColor }: StatCardProps) {
+function StatCard({ label, value, helper, icon: Icon, iconBg, iconColor }: StatCardProps) {
   return (
-    <Card className={`border-0 shadow-sm bg-gradient-to-br ${gradient} hover:shadow-md transition-shadow`}>
+    <Card className="border border-border/60 bg-card shadow-card hover:shadow-card-hover transition-shadow">
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
           <div className="min-w-0 flex-1">
@@ -273,7 +286,7 @@ function StatCard({ label, value, helper, icon: Icon, gradient, iconBg, iconColo
             <p className="mt-1.5 text-xs text-muted-foreground/80">{helper}</p>
           </div>
           <div className={`shrink-0 rounded-lg p-2 ${iconBg}`}>
-            <Icon className={`size-4.5 ${iconColor}`} />
+            <Icon className={`size-4 ${iconColor}`} />
           </div>
         </div>
       </CardContent>
@@ -315,7 +328,7 @@ function GuideSection({ t }: { t: (k: string) => string }) {
       {items.map((item) => (
         <div key={item.key} className="border rounded-lg overflow-hidden">
           <button
-            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-accent/60 dark:hover:bg-accent/40 transition-colors"
             onClick={() => setOpen(open === item.key ? null : item.key)}
           >
             <span>{item.title}</span>
@@ -502,7 +515,7 @@ function PurchaseDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[95vw] sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Crown className="size-4" /> {t('购买订阅套餐')}
@@ -896,29 +909,34 @@ function SubscriptionContent() {
     {
       label: t('生效中的订阅'), value: String(activeSubs.length),
       helper: activeSubs.length > 0 ? t('正在提供模型权益') : t('当前暂无生效套餐'),
-      icon: Zap, gradient: 'from-primary/10 to-primary/5', iconBg: 'bg-primary/15', iconColor: 'text-primary',
+      icon: Zap, iconBg: 'bg-primary/10', iconColor: 'text-primary',
     },
     {
       label: t('历史订阅'), value: String(historySubs.length),
       helper: historySubs.length > 0 ? t('含已过期与已作废记录') : t('暂无历史记录'),
-      icon: History, gradient: 'from-purple-500/10 to-purple-500/5', iconBg: 'bg-purple-500/15', iconColor: 'text-purple-600 dark:text-purple-400',
+      icon: History, iconBg: 'bg-purple-500/10', iconColor: 'text-purple-600 dark:text-purple-400',
     },
     {
       label: t('最近到期'), value: nextExpiring ? `${nextExpiring.remainingDays}${t('天')}` : '--',
       helper: nextExpiring ? nextExpiring.title : t('暂无生效套餐'),
-      icon: Clock, gradient: 'from-warning/10 to-warning/5', iconBg: 'bg-warning/15', iconColor: 'text-warning',
+      icon: Clock, iconBg: 'bg-warning/10', iconColor: 'text-warning',
     },
     {
       label: t('当前权益概览'), value: activeRemainSummary,
       helper: prefLabel,
-      icon: Crown, gradient: 'from-success/10 to-success/5', iconBg: 'bg-success/15', iconColor: 'text-success',
+      icon: Crown, iconBg: 'bg-success/10', iconColor: 'text-success',
     },
   ];
 
   return (
     <div className="space-y-5 pb-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+      >
         <div className="flex items-center gap-3">
           <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
             <Package className="size-5 text-primary" />
@@ -932,76 +950,102 @@ function SubscriptionContent() {
           <RefreshCw className={cn('size-4 mr-2', refreshing && 'animate-spin')} />
           {t('刷新')}
         </Button>
-      </div>
+      </motion.div>
 
       {/* Overview stats */}
       {loading ? <OverviewSkeleton /> : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {overviewItems.map((item) => <StatCard key={item.label} {...item} />)}
-        </div>
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
+        >
+          {overviewItems.map((item) => (
+            <motion.div key={item.label} variants={itemVariants}>
+              <StatCard {...item} />
+            </motion.div>
+          ))}
+        </motion.div>
       )}
 
       {/* Usage visualization */}
-      <Card className="border-0 shadow-sm overflow-hidden">
-        <div className="bg-gradient-to-r from-primary/10 via-indigo-500/8 to-purple-500/10 dark:from-primary/15 dark:via-indigo-500/10 dark:to-purple-500/15 px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-primary/15 p-1.5">
-              <BarChart3 className="size-4 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">{t('消耗额度可视化')}</p>
-              <p className="text-xs text-muted-foreground">{t('聚合展示生效订阅的额度/次数使用进度，帮助你更快判断是否需要续费或加购。')}</p>
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.1 }}
+      >
+        <Card className="border-border/60 shadow-card overflow-hidden">
+          <div className="bg-primary/5 border-b border-border/60 px-5 py-4">
+            <div className="flex items-center gap-2.5">
+              <div className="rounded-lg bg-primary/10 p-1.5">
+                <BarChart3 className="size-4 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm">{t('消耗额度可视化')}</p>
+                <p className="text-xs text-muted-foreground">{t('聚合展示生效订阅的额度/次数使用进度，帮助你更快判断是否需要续费或加购。')}</p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
-          {loading ? (
-            <>{[1, 2].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</>
-          ) : usageMetrics.map((m) => (
-            <div key={m.key} className="rounded-xl border bg-muted/20 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className={cn('size-2.5 rounded-full', m.unlimited ? 'bg-success' : m.percent >= 85 ? 'bg-destructive' : m.percent >= 60 ? 'bg-warning' : 'bg-success')} />
-                  <span className="font-medium text-sm">{m.title}</span>
-                </div>
-                <Badge variant="outline" className={cn('text-[10px]', m.percent >= 85 ? 'text-destructive border-destructive/30' : m.percent >= 60 ? 'text-warning border-warning/30' : 'text-success border-success/30')}>
-                  {m.unlimited ? t('不限') : `${m.percent}%`}
-                </Badge>
-              </div>
-              {!m.unlimited && <Progress value={m.percent} className="h-2 mb-4" />}
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                {[
-                  { label: t('总量'), val: m.totalText },
-                  { label: t('已用'), val: m.usedText },
-                  { label: t('剩余'), val: m.remainText },
-                ].map((c) => (
-                  <div key={c.label} className="rounded-lg bg-background border px-2 py-2 text-center">
-                    <p className="text-muted-foreground">{c.label}</p>
-                    <p className="font-semibold mt-1">{c.val}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+            {loading ? (
+              <>{[1, 2].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</>
+            ) : usageMetrics.map((m) => (
+              <div key={m.key} className="rounded-xl border bg-muted/20 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className={cn('size-2.5 rounded-full', m.unlimited ? 'bg-success' : m.percent >= 85 ? 'bg-destructive' : m.percent >= 60 ? 'bg-warning' : 'bg-success')} />
+                    <span className="font-medium text-sm">{m.title}</span>
                   </div>
-                ))}
+                  <Badge variant="outline" className={cn('text-[10px]', m.percent >= 85 ? 'text-destructive border-destructive/30' : m.percent >= 60 ? 'text-warning border-warning/30' : 'text-success border-success/30')}>
+                    {m.unlimited ? t('不限') : `${m.percent}%`}
+                  </Badge>
+                </div>
+                {!m.unlimited && <Progress value={m.percent} className="h-2 mb-4" />}
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  {[
+                    { label: t('总量'), val: m.totalText },
+                    { label: t('已用'), val: m.usedText },
+                    { label: t('剩余'), val: m.remainText },
+                  ].map((c) => (
+                    <div key={c.label} className="rounded-lg bg-background border px-2 py-2 text-center">
+                      <p className="text-muted-foreground">{c.label}</p>
+                      <p className="font-semibold mt-1">{c.val}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+            ))}
+          </div>
+        </Card>
+      </motion.div>
 
       {/* Guide */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="pt-4 pb-3">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="rounded-lg bg-warning/15 p-1.5">
-              <BookOpen className="size-3.5 text-warning" />
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.18 }}
+      >
+        <Card className="border-border/60 shadow-card">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="rounded-lg bg-warning/10 p-1.5">
+                <BookOpen className="size-3.5 text-warning" />
+              </div>
+              <p className="font-semibold text-sm">{t('使用说明与计费规则')}</p>
             </div>
-            <p className="font-semibold text-sm">{t('使用说明与计费规则')}</p>
-          </div>
-          <p className="text-xs text-muted-foreground mb-3">{t('下单前建议先阅读这里，了解套餐如何生效、如何扣费，以及多套餐并存时的处理方式。')}</p>
-          <GuideSection t={t} />
-        </CardContent>
-      </Card>
+            <p className="text-xs text-muted-foreground mb-3">{t('下单前建议先阅读这里，了解套餐如何生效、如何扣费，以及多套餐并存时的处理方式。')}</p>
+            <GuideSection t={t} />
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Main tabs */}
-      <Card className="border-0 shadow-sm">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.25 }}
+      >
+      <Card className="border-border/60 shadow-card">
         <CardContent className="p-4 md:p-5">
           <Tabs defaultValue="my_subscriptions">
             <TabsList className="mb-4">
@@ -1164,7 +1208,7 @@ function SubscriptionContent() {
                             </TableCell>
                             <TableCell>
                               <div className="inline-flex flex-col">
-                                <span className="font-bold text-base bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                                <span className="font-bold text-base text-primary">
                                   {formatPlanPrice(plan, status)}
                                 </span>
                                 {hasDisc && (

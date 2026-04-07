@@ -221,7 +221,7 @@ function UserManageContent() {
                   const roleInfo = ROLE_MAP[user.role] || { labelKey: String(user.role), variant: 'outline' as const };
                   const statusInfo = STATUS_MAP[user.status] || { labelKey: String(user.status), variant: 'outline' as const };
                   return (
-                    <TableRow key={user.id} className="hover:bg-muted/50">
+                    <TableRow key={user.id} className="hover:bg-accent/60 dark:hover:bg-accent/40">
                       <TableCell className="text-sm text-muted-foreground">{user.id}</TableCell>
                       <TableCell className="font-medium">{user.username}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{user.email || '-'}</TableCell>

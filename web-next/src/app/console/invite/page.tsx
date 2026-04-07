@@ -171,7 +171,7 @@ function InviteContent() {
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="flex items-center justify-between"
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
       >
         <div className="flex items-center gap-4">
           <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -274,7 +274,7 @@ function InviteContent() {
 
       {/* Stats grid */}
       <motion.div variants={itemVariants} initial="hidden" animate="show">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Invited count */}
           <div className="stat-card">
             <div className="flex items-center justify-between mb-3">
@@ -398,7 +398,7 @@ function InviteContent() {
                       <TableRow
                         key={idx}
                         className={cn(
-                          'hover:bg-muted/50',
+                          'hover:bg-accent/60 dark:hover:bg-accent/40',
                           idx === 0 && 'bg-yellow-500/5',
                           idx === 1 && 'bg-slate-500/5',
                           idx === 2 && 'bg-amber-700/5',
@@ -478,7 +478,7 @@ function InviteContent() {
                     </TableHeader>
                     <TableBody>
                       {invitedUsers.map((u, i) => (
-                        <TableRow key={i} className="hover:bg-muted/50">
+                        <TableRow key={i} className="hover:bg-accent/60 dark:hover:bg-accent/40">
                           <TableCell className="text-sm font-mono">{u.username}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{u.display_name || '-'}</TableCell>
                         </TableRow>

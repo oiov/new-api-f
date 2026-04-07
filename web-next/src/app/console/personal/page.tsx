@@ -212,7 +212,7 @@ function PersonalContent() {
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="flex items-center justify-between"
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
       >
         <div className="flex items-center gap-4">
           <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -428,7 +428,7 @@ function PersonalContent() {
                   <Label className="text-sm font-medium">{t('通知渠道')}</Label>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="w-full sm:w-64 h-10 justify-between font-normal">
+                      <Button variant="outline" className="w-full h-10 justify-between font-normal">
                         {t(selectedNotifyLabel)}
                         <ChevronDown className="size-4 text-muted-foreground" />
                       </Button>
@@ -456,7 +456,7 @@ function PersonalContent() {
                     value={notifySetting.quota_warning_threshold ?? ''}
                     onChange={(e) => setNotifySetting({ ...notifySetting, quota_warning_threshold: parseFloat(e.target.value) || 0 })}
                     placeholder="0"
-                    className="h-10 w-full sm:w-64"
+                    className="h-10 w-full"
                   />
                   <p className="text-xs text-muted-foreground">{t('当余额低于此阈值时发送通知，设为 0 表示不限制')}</p>
                 </div>

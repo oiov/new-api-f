@@ -198,7 +198,7 @@ function RiskControlContent() {
                 </TableRow>
               ) : (
                 logs.map((log) => (
-                  <TableRow key={log.id} className="hover:bg-muted/50">
+                  <TableRow key={log.id} className="hover:bg-accent/60 dark:hover:bg-accent/40">
                     <TableCell className="text-sm text-muted-foreground">{log.id}</TableCell>
                     <TableCell>
                       <ActionBadge action={log.action} />

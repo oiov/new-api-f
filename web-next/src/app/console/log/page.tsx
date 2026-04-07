@@ -231,7 +231,7 @@ function LogDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <FileText className="size-4 text-primary" />
@@ -410,7 +410,7 @@ function LogContent() {
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="flex items-center justify-between"
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
       >
         <div className="flex items-center gap-4">
           <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -488,36 +488,36 @@ function LogContent() {
       {/* Toolbar / filters */}
       <div className="space-y-2">
         {/* Row 1: search inputs + type select */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <div className="relative">
+        <div className="flex flex-col sm:flex-row flex-wrap gap-2 items-center">
+          <div className="relative w-full sm:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
               placeholder={t('模型名称')}
               value={modelName}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelName(e.target.value)}
-              className="pl-9 w-44 h-9"
+              className="pl-9 w-full sm:w-44 h-9"
             />
           </div>
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
               placeholder={t('令牌名称')}
               value={tokenName}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTokenName(e.target.value)}
-              className="pl-9 w-44 h-9"
+              className="pl-9 w-full sm:w-44 h-9"
             />
           </div>
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Hash className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
               placeholder={t('请求 ID')}
               value={requestId}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRequestId(e.target.value)}
-              className="pl-9 w-52 h-9 font-mono text-xs"
+              className="pl-9 w-full sm:w-52 h-9 font-mono text-xs"
             />
           </div>
           <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as TypeFilter)}>
-            <SelectTrigger className="w-32 h-9">
+            <SelectTrigger className="w-full sm:w-32 h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -534,7 +534,7 @@ function LogContent() {
         </div>
 
         {/* Row 2: date range */}
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex flex-col sm:flex-row flex-wrap gap-2 items-center">
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <CalendarRange className="size-4" />
             <span className="text-xs">{t('时间范围')}</span>
@@ -543,7 +543,7 @@ function LogContent() {
             type="date"
             value={startDate}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStartDate(e.target.value)}
-            className="w-40 h-9 text-sm"
+            className="w-full sm:w-40 h-9 text-sm"
             max={endDate || undefined}
           />
           <span className="text-muted-foreground text-sm">—</span>
@@ -551,7 +551,7 @@ function LogContent() {
             type="date"
             value={endDate}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEndDate(e.target.value)}
-            className="w-40 h-9 text-sm"
+            className="w-full sm:w-40 h-9 text-sm"
             min={startDate || undefined}
           />
           {hasFilter && (
@@ -612,7 +612,7 @@ function LogContent() {
                   logs.map((log) => (
                     <TableRow
                       key={log.id}
-                      className="hover:bg-muted/50 transition-colors cursor-pointer"
+                      className="hover:bg-accent/60 dark:hover:bg-accent/40 transition-colors cursor-pointer"
                       onClick={() => setSelectedLog(log)}
                     >
                       <TableCell className="text-sm text-muted-foreground whitespace-nowrap">

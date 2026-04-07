@@ -7,6 +7,52 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
+// GetUserUsableGroupsWithBillingFilter 在 GetUserUsableGroups 基础上，
+// 当 EnableGroupBillingFilter 开启时，按用户计费类型过滤可选分组：
+//   - isSubscriptionUser=true  → 只保留 SubscriptionGroups 中的分组
+//   - isSubscriptionUser=false → 只保留 QuotaGroups 中的分组
+//   - 不在任何一个列表里的分组对所有用户均可见
+func GetUserUsableGroupsWithBillingFilter(userGroup string, isSubscriptionUser bool) map[string]string {
+	groups := GetUserUsableGroups(userGroup)
+	if !setting.EnableGroupBillingFilter {
+		return groups
+	}
+
+	subGroups := setting.GetSubscriptionGroups()
+	quotaGroups := setting.GetQuotaGroups()
+
+	// 两个列表都为空时不做过滤，避免误操作锁死用户
+	if len(subGroups) == 0 && len(quotaGroups) == 0 {
+		return groups
+	}
+
+	subSet := make(map[string]bool, len(subGroups))
+	for _, g := range subGroups {
+		subSet[g] = true
+	}
+	quotaSet := make(map[string]bool, len(quotaGroups))
+	for _, g := range quotaGroups {
+		quotaSet[g] = true
+	}
+
+	filtered := make(map[string]string, len(groups))
+	for name, desc := range groups {
+		inSub := subSet[name]
+		inQuota := quotaSet[name]
+		// 不在任何列表中的分组对所有人可见
+		if !inSub && !inQuota {
+			filtered[name] = desc
+			continue
+		}
+		if isSubscriptionUser && inSub {
+			filtered[name] = desc
+		} else if !isSubscriptionUser && inQuota {
+			filtered[name] = desc
+		}
+	}
+	return filtered
+}
+
 func GetUserUsableGroups(userGroup string) map[string]string {
 	groupsCopy := setting.GetUserUsableGroupsCopy()
 	if userGroup != "" {

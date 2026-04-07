@@ -4,11 +4,9 @@ import React, { useState, useCallback, useEffect, useRef, Suspense } from 'react
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import {
-  Eye, EyeOff, UserPlus, Shield, Zap, CheckCircle2,
-  Lock, ArrowLeft, Mail, Send,
+  Eye, EyeOff, UserPlus, Lock, ArrowLeft, Mail, Send,
 } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Turnstile, { type BoundTurnstileObject } from 'react-turnstile';
 import { Button } from '@/components/ui/button';
@@ -18,83 +16,11 @@ import { AuthRedirect } from '@/components/common/auth-guard';
 import { useUser, persistUser } from '@/context/user-context';
 import { useSystemStatus } from '@/context/status-context';
 import { API, updateAPI } from '@/lib/api';
-import { normalizeInviteCode, getLogo, getSystemName } from '@/lib/utils';
+import { normalizeInviteCode } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { User } from '@/types';
 import { AuthConfigNotice } from '@/components/auth/auth-config-notice';
-
-const FEATURES = [
-  { icon: Shield, key: '企业级安全，数据全程加密传输' },
-  { icon: Zap, key: '支持 40+ 主流大模型，统一接入' },
-  { icon: CheckCircle2, key: '稳定可靠，99.9% SLA 保障' },
-];
-
-function BrandPanel() {
-  const { t } = useTranslation();
-  const status = useSystemStatus();
-  const systemName = getSystemName(status);
-  const logoUrl = getLogo(status);
-
-  return (
-    <div className="relative hidden lg:flex flex-col justify-between p-10 overflow-hidden bg-gradient-to-br from-primary via-primary/95 to-[oklch(0.38_0.18_260)]">
-      {/* 背景装饰 */}
-      <div className="absolute inset-0 pointer-events-none" aria-hidden>
-        <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-white/5 translate-y-1/2 -translate-x-1/2" />
-        <div className="absolute top-1/2 left-1/2 w-96 h-96 rounded-full bg-white/3 -translate-x-1/2 -translate-y-1/2" />
-        {/* 网格点 */}
-        <svg className="absolute inset-0 w-full h-full opacity-[0.07]" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="grid-reg" width="32" height="32" patternUnits="userSpaceOnUse">
-              <circle cx="1" cy="1" r="1" fill="white" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid-reg)" />
-        </svg>
-      </div>
-
-      {/* Logo */}
-      <div className="relative z-10 flex items-center gap-3">
-        <div className="size-9 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-sm border border-white/20">
-          <Image src={logoUrl} alt={systemName} width={22} height={22} className="object-contain" />
-        </div>
-        <span className="text-white font-bold text-lg tracking-tight">{systemName}</span>
-      </div>
-
-      {/* 主标语 */}
-      <div className="relative z-10 space-y-6">
-        <div>
-          <h2 className="text-3xl font-bold text-white leading-tight">
-            {t('加入我们，开启')}
-            <br />
-            <span className="text-white/80">{t('AI 开发之旅')}</span>
-          </h2>
-          <p className="mt-3 text-white/60 text-sm leading-relaxed">
-            {t('免费注册，即刻接入 40+ 主流大模型，快速构建 AI 应用。')}
-          </p>
-        </div>
-
-        {/* 特性列表 */}
-        <ul className="space-y-3">
-          {FEATURES.map(({ icon: Icon, key }) => (
-            <li key={key} className="flex items-center gap-3">
-              <div className="size-7 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-                <Icon className="size-3.5 text-white" />
-              </div>
-              <span className="text-white/80 text-sm">{t(key)}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* 底部安全标识 */}
-      <div className="relative z-10 flex items-center gap-2 text-white/40 text-xs">
-        <Lock className="size-3" />
-        <span>SSL 安全加密连接</span>
-      </div>
-    </div>
-  );
-}
+import { BrandPanel } from '@/components/auth/brand-panel';
 
 function RegisterFormInner() {
   const { t } = useTranslation();
@@ -352,7 +278,7 @@ function RegisterFormInner() {
             <button
               type="button"
               tabIndex={-1}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               onClick={() => setShowPassword(!showPassword)}
             >
               {showPassword
@@ -467,7 +393,11 @@ export default function RegisterPage() {
     <AuthRedirect>
       <div className="min-h-[calc(100vh-var(--header-height))] grid lg:grid-cols-[45%_55%]">
         {/* 左侧品牌面板 */}
-        <BrandPanel />
+        <BrandPanel
+          headline="加入我们，开启"
+          subHeadline="AI 开发之旅"
+          description="免费注册，即刻接入 40+ 主流大模型，快速构建 AI 应用。"
+        />
 
         {/* 右侧表单区域 */}
         <div className="flex items-center justify-center px-6 py-12 bg-background">

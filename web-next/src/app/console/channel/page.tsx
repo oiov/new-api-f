@@ -209,7 +209,7 @@ function ModelList({
 
   return (
     <div className="p-1">
-      <div className="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs text-muted-foreground hover:bg-muted/50 cursor-pointer border-b border-border/30 mb-1"
+      <div className="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs text-muted-foreground hover:bg-accent/60 dark:hover:bg-accent/40 cursor-pointer border-b border-border/30 mb-1"
         onClick={() => onToggleAll(!allSelected)}>
         <input type="checkbox" checked={allSelected} readOnly
           className="size-3.5 rounded accent-primary cursor-pointer"
@@ -219,7 +219,7 @@ function ModelList({
       {filtered.map(m => (
         <div key={m}
           className={cn('flex items-center gap-2.5 px-3 py-1.5 rounded-md cursor-pointer text-sm transition-colors',
-            selected.has(m) ? 'bg-primary/5' : 'hover:bg-muted/50')}
+            selected.has(m) ? 'bg-primary/5' : 'hover:bg-accent/60 dark:hover:bg-accent/40')}
           onClick={() => onToggle(m)}>
           <input type="checkbox" checked={selected.has(m)} readOnly
             className="size-3.5 rounded accent-primary cursor-pointer"
@@ -1088,7 +1088,7 @@ function ChannelContent() {
                     const groups = (channel.group || 'default').split(',').map((s: string) => s.trim()).filter(Boolean);
                     return (
                       <TableRow key={channel.id} className={cn(
-                        'hover:bg-muted/50 transition-colors',
+                        'hover:bg-accent/60 dark:hover:bg-accent/40 transition-colors',
                         channel.status !== 1 && 'opacity-70',
                         isChecked && 'bg-primary/5',
                       )}>

@@ -151,7 +151,7 @@ function ModelsContent() {
                 </TableRow>
               ) : (
                 filteredModels.map((model) => (
-                  <TableRow key={model.id} className="hover:bg-muted/50">
+                  <TableRow key={model.id} className="hover:bg-accent/60 dark:hover:bg-accent/40">
                     <TableCell className="font-mono text-sm font-medium">{model.id}</TableCell>
                     <TableCell className="text-sm">{model.owned_by || '-'}</TableCell>
                     <TableCell>

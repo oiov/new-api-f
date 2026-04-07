@@ -25,12 +25,18 @@ func GetGroups(c *gin.Context) {
 
 func GetUserGroups(c *gin.Context) {
 	usableGroups := make(map[string]map[string]interface{})
-	userGroup := ""
 	userId := c.GetInt("id")
-	userGroup, _ = model.GetUserGroup(userId, false)
-	userUsableGroups := service.GetUserUsableGroups(userGroup)
-	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
-		// UserUsableGroups contains the groups that the user can use
+	userGroup, _ := model.GetUserGroup(userId, false)
+
+	// 按计费类型过滤分组
+	isSubscriptionUser := false
+	if setting.EnableGroupBillingFilter {
+		has, _ := model.HasActiveUserSubscription(userId)
+		isSubscriptionUser = has
+	}
+
+	userUsableGroups := service.GetUserUsableGroupsWithBillingFilter(userGroup, isSubscriptionUser)
+	for groupName := range ratio_setting.GetGroupRatioCopy() {
 		if desc, ok := userUsableGroups[groupName]; ok {
 			usableGroups[groupName] = map[string]interface{}{
 				"ratio": service.GetUserGroupRatio(userGroup, groupName),
@@ -50,3 +56,4 @@ func GetUserGroups(c *gin.Context) {
 		"data":    usableGroups,
 	})
 }
+

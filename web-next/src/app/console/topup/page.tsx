@@ -345,12 +345,12 @@ function TopUpHistory({ symbol }: { symbol: string }) {
         <Card className="shadow-card">
           {/* Filter bar */}
           <div className="px-4 pt-4 pb-3 border-b">
-            <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-col sm:flex-row flex-wrap items-end gap-2">
               {/* Status filter */}
-              <div className="flex flex-col gap-1 min-w-[110px]">
+              <div className="flex flex-col gap-1 w-full sm:min-w-[110px] sm:w-auto">
                 <label className="text-xs text-muted-foreground">{t('状态')}</label>
                 <Select value={pendingStatus} onValueChange={setPendingStatus}>
-                  <SelectTrigger className="h-8 text-xs">
+                  <SelectTrigger className="h-8 text-xs w-full sm:w-auto">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -363,10 +363,10 @@ function TopUpHistory({ symbol }: { symbol: string }) {
               </div>
 
               {/* Payment method filter */}
-              <div className="flex flex-col gap-1 min-w-[120px]">
+              <div className="flex flex-col gap-1 w-full sm:min-w-[120px] sm:w-auto">
                 <label className="text-xs text-muted-foreground">{t('支付方式')}</label>
                 <Input
-                  className="h-8 text-xs"
+                  className="h-8 text-xs w-full sm:w-auto"
                   placeholder={t('全部')}
                   value={pendingMethod}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPendingMethod(e.target.value)}
@@ -374,29 +374,29 @@ function TopUpHistory({ symbol }: { symbol: string }) {
               </div>
 
               {/* Start date */}
-              <div className="flex flex-col gap-1 min-w-[130px]">
+              <div className="flex flex-col gap-1 w-full sm:min-w-[130px] sm:w-auto">
                 <label className="text-xs text-muted-foreground">{t('开始日期')}</label>
                 <Input
                   type="date"
-                  className="h-8 text-xs"
+                  className="h-8 text-xs w-full sm:w-auto"
                   value={pendingStart}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPendingStart(e.target.value)}
                 />
               </div>
 
               {/* End date */}
-              <div className="flex flex-col gap-1 min-w-[130px]">
+              <div className="flex flex-col gap-1 w-full sm:min-w-[130px] sm:w-auto">
                 <label className="text-xs text-muted-foreground">{t('结束日期')}</label>
                 <Input
                   type="date"
-                  className="h-8 text-xs"
+                  className="h-8 text-xs w-full sm:w-auto"
                   value={pendingEnd}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPendingEnd(e.target.value)}
                 />
               </div>
 
               {/* Action buttons */}
-              <div className="flex gap-2 ml-auto">
+              <div className="flex gap-2 sm:ml-auto w-full sm:w-auto">
                 <Button variant="outline" size="sm" className="h-8 text-xs" onClick={resetFilters}>
                   {t('重置')}
                 </Button>
@@ -438,7 +438,7 @@ function TopUpHistory({ symbol }: { symbol: string }) {
                   </TableRow>
                 ) : (
                   records.map((r) => (
-                    <TableRow key={r.id} className="hover:bg-muted/50">
+                    <TableRow key={r.id} className="hover:bg-accent/60 dark:hover:bg-accent/40">
                       <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                         {formatTimestamp(r.create_time)}
                       </TableCell>
@@ -623,7 +623,7 @@ function TopUpContent() {
       >
         <div className="flex items-center gap-4">
           <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <CreditCard className="size-5 text-primary" />
+            <Wallet className="size-5 text-primary" />
           </div>
           <div>
             <h1 className="text-xl font-semibold leading-tight">{t('充值兑换')}</h1>

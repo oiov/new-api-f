@@ -123,7 +123,7 @@ function ConfirmDialog({ open, onOpenChange, title, description, onConfirm, load
   const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="w-[95vw] sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className={cn('size-8 rounded-lg flex items-center justify-center', danger ? 'bg-destructive/10' : 'bg-primary/10')}>
@@ -297,7 +297,7 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[95vw] sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -513,7 +513,7 @@ function ImportConfigSheet({ token, open, onOpenChange }: {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[360px] sm:w-[420px]">
+      <SheetContent side="right" className="w-full max-w-[95vw] sm:w-[360px] sm:max-w-none md:w-[420px]">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <LogIn className="size-4 text-primary" />
@@ -740,7 +740,7 @@ function TokensContent() {
 
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
-        className="flex items-center justify-between">
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
             <Key className="size-5 text-primary" />
@@ -751,12 +751,12 @@ function TokensContent() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="h-9"
+          <Button variant="outline" size="sm" className="h-9 gap-1.5"
             onClick={() => loadTokens(true)} disabled={loading || refreshing}>
-            <RefreshCw className={cn('size-4 mr-2', (loading || refreshing) && 'animate-spin')} />{t('刷新')}
+            <RefreshCw className={cn('size-3.5', (loading || refreshing) && 'animate-spin')} />{t('刷新')}
           </Button>
-          <Button size="sm" className="h-9" onClick={openCreate}>
-            <Plus className="size-4 mr-2" />{t('创建令牌')}
+          <Button size="sm" className="h-9 gap-1.5" onClick={openCreate}>
+            <Plus className="size-3.5" />{t('创建令牌')}
           </Button>
         </div>
       </motion.div>
@@ -774,20 +774,20 @@ function TokensContent() {
           icon={Shield} iconBg="bg-destructive/8" iconColor="text-destructive"
           active={statusFilter === '2'} onClick={() => toggleCardFilter('2')} />
         <StatFilterCard label={t('无限额度')} value={unlimitedCount}
-          icon={Infinity} iconBg="bg-violet-50 dark:bg-violet-900/20" iconColor="text-violet-600 dark:text-violet-400"
+          icon={Infinity} iconBg="bg-primary/10" iconColor="text-primary"
           active={statusFilter === 'unlimited'} onClick={() => toggleCardFilter('unlimited')} />
       </motion.div>
 
       {/* Toolbar */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <div className="relative">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-2 items-center">
+        <div className="relative w-full sm:w-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input placeholder={t('搜索令牌名称...')} value={search}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
-            className="pl-9 w-52 h-9" />
+            className="pl-9 w-full sm:w-52 h-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-32 h-9">
+          <SelectTrigger className="w-full sm:w-32 h-9">
             <Filter className="size-3.5 mr-1.5 text-muted-foreground" />
             <SelectValue />
           </SelectTrigger>
@@ -881,7 +881,7 @@ function TokensContent() {
                     return (
                       <TableRow key={token.id}
                         className={cn(
-                          'hover:bg-muted/50 transition-colors',
+                          'hover:bg-accent/60 dark:hover:bg-accent/40 transition-colors',
                           token.status === 2 && 'opacity-60',
                           isChecked && 'bg-primary/5',
                         )}>
@@ -910,7 +910,7 @@ function TokensContent() {
                         <TableCell><TokenStatusBadge status={token.status} /></TableCell>
                         <TableCell className="text-sm text-right">
                           {token.unlimited_quota ? (
-                            <span className="flex items-center justify-end gap-1 text-violet-600 dark:text-violet-400">
+                            <span className="flex items-center justify-end gap-1 text-primary">
                               <Infinity className="size-3.5" />{t('无限')}
                             </span>
                           ) : (
