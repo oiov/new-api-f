@@ -33,7 +33,7 @@ data/
 .gocache-temp
 .gopath
 .vercel
-pricing/
+/pricing/
 scripts/
 .env.2
 .playwright-mcp
