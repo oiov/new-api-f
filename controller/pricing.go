@@ -12,6 +12,7 @@ func GetPricing(c *gin.Context) {
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
+	usableGroupMeta := map[string]map[string]string{}
 	groupRatio := map[string]float64{}
 	for s, f := range ratio_setting.GetGroupRatioCopy() {
 		groupRatio[s] = f
@@ -45,6 +46,13 @@ func GetPricing(c *gin.Context) {
 			delete(groupRatio, group)
 		}
 	}
+	for groupName, desc := range usableGroup {
+		usableGroupMeta[groupName] = map[string]string{
+			"desc":          desc,
+			"billing_type":  service.GetGroupBillingType(groupName),
+			"billing_label": service.GetGroupBillingLabel(groupName),
+		}
+	}
 
 	c.JSON(200, gin.H{
 		"success":            true,
@@ -52,6 +60,7 @@ func GetPricing(c *gin.Context) {
 		"vendors":            model.GetVendors(),
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
+		"usable_group_meta":  usableGroupMeta,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetAutoGroupsFromUsableGroups(usableGroup),
 		"_":                  "a42d372ccf0b5dd13ecf71203521f9d2",
