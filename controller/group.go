@@ -28,14 +28,19 @@ func GetUserGroups(c *gin.Context) {
 	userId := c.GetInt("id")
 	userGroup, _ := model.GetUserGroup(userId, false)
 
-	// 按计费类型过滤分组
+	// 按计费能力过滤分组：订阅状态 + 余额状态独立判断，两者不互斥
 	isSubscriptionUser := false
+	hasQuotaBalance := true // 默认允许按量（无 filter 时兜底）
 	if setting.EnableGroupBillingFilter {
 		has, _ := model.HasActiveUserSubscription(userId)
 		isSubscriptionUser = has
+		// 读取用户余额，大于 0 才算有按量能力
+		if u, err := model.GetUserById(userId, false); err == nil {
+			hasQuotaBalance = u.Quota > 0
+		}
 	}
 
-	userUsableGroups := service.GetUserUsableGroupsWithBillingFilter(userGroup, isSubscriptionUser)
+	userUsableGroups := service.GetUserUsableGroupsWithBillingFilter(userGroup, isSubscriptionUser, hasQuotaBalance)
 	for groupName := range ratio_setting.GetGroupRatioCopy() {
 		if desc, ok := userUsableGroups[groupName]; ok {
 			usableGroups[groupName] = map[string]interface{}{

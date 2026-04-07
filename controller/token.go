@@ -9,10 +9,28 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
 )
+
+// resolveUserGroupAccess 返回用户当前可用分组列表。
+// 同时考虑订阅状态和余额：两者独立，有哪个能力就开哪类分组。
+func resolveUserGroupAccess(userId int) map[string]string {
+	userGroup, _ := model.GetUserGroup(userId, false)
+	isSubscriptionUser := false
+	hasQuotaBalance := true // filter 未开启时不限制，默认放行
+	if setting.EnableGroupBillingFilter {
+		has, _ := model.HasActiveUserSubscription(userId)
+		isSubscriptionUser = has
+		if u, err := model.GetUserById(userId, false); err == nil {
+			hasQuotaBalance = u.Quota > 0
+		}
+	}
+	return service.GetUserUsableGroupsWithBillingFilter(userGroup, isSubscriptionUser, hasQuotaBalance)
+}
 
 func buildMaskedTokenResponse(token *model.Token) *model.Token {
 	if token == nil {
@@ -175,6 +193,22 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
+
+	// 校验分组权限：检查用户是否有权使用该分组
+	userId := c.GetInt("id")
+	allowedGroups := resolveUserGroupAccess(userId)
+
+	// 检查令牌分组是否在允许列表中（auto 分组特殊处理）
+	if token.Group != "auto" {
+		if _, ok := allowedGroups[token.Group]; !ok {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("无权使用分组 '%s'，请选择您可用的分组", token.Group),
+			})
+			return
+		}
+	}
+
 	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
@@ -289,6 +323,20 @@ func UpdateToken(c *gin.Context) {
 	if statusOnly != "" {
 		cleanToken.Status = token.Status
 	} else {
+		// 校验分组权限：检查用户是否有权使用该分组
+		allowedGroups := resolveUserGroupAccess(userId)
+
+		// 检查令牌分组是否在允许列表中（auto 分组特殊处理）
+		if token.Group != "auto" {
+			if _, ok := allowedGroups[token.Group]; !ok {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": fmt.Sprintf("无权使用分组 '%s'，请选择您可用的分组", token.Group),
+				})
+				return
+			}
+		}
+
 		// If you add more fields, please also update token.Update()
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime

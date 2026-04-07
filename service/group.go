@@ -8,11 +8,12 @@ import (
 )
 
 // GetUserUsableGroupsWithBillingFilter 在 GetUserUsableGroups 基础上，
-// 当 EnableGroupBillingFilter 开启时，按用户计费类型过滤可选分组：
-//   - isSubscriptionUser=true  → 只保留 SubscriptionGroups 中的分组
-//   - isSubscriptionUser=false → 只保留 QuotaGroups 中的分组
+// 当 EnableGroupBillingFilter 开启时，按用户计费能力过滤可选分组：
+//   - isSubscriptionUser=true  → 可见 SubscriptionGroups
+//   - hasQuotaBalance=true     → 可见 QuotaGroups
+//   - 两者都满足              → 两类分组均可见
 //   - 不在任何一个列表里的分组对所有用户均可见
-func GetUserUsableGroupsWithBillingFilter(userGroup string, isSubscriptionUser bool) map[string]string {
+func GetUserUsableGroupsWithBillingFilter(userGroup string, isSubscriptionUser bool, hasQuotaBalance ...bool) map[string]string {
 	groups := GetUserUsableGroups(userGroup)
 	if !setting.EnableGroupBillingFilter {
 		return groups
@@ -24,6 +25,12 @@ func GetUserUsableGroupsWithBillingFilter(userGroup string, isSubscriptionUser b
 	// 两个列表都为空时不做过滤，避免误操作锁死用户
 	if len(subGroups) == 0 && len(quotaGroups) == 0 {
 		return groups
+	}
+
+	// 兼容旧调用（只传一个参数）：无订阅时默认按量可用
+	canUseQuota := !isSubscriptionUser
+	if len(hasQuotaBalance) > 0 {
+		canUseQuota = hasQuotaBalance[0]
 	}
 
 	subSet := make(map[string]bool, len(subGroups))
@@ -44,9 +51,13 @@ func GetUserUsableGroupsWithBillingFilter(userGroup string, isSubscriptionUser b
 			filtered[name] = desc
 			continue
 		}
+		// 有活跃订阅 → 可使用订阅专属分组
 		if isSubscriptionUser && inSub {
 			filtered[name] = desc
-		} else if !isSubscriptionUser && inQuota {
+			continue
+		}
+		// 有余额 → 可使用按量专属分组
+		if canUseQuota && inQuota {
 			filtered[name] = desc
 		}
 	}
