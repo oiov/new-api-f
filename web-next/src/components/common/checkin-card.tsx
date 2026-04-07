@@ -416,11 +416,11 @@ export function CheckinCard() {
                   setTurnstileToken(token);
                   turnstileRef.current = bound;
                 }}
-                onExpire={(bound) => {
+                onExpire={(_token, bound) => {
                   setTurnstileToken('');
                   turnstileRef.current = bound;
                 }}
-                options={{ size: 'compact' }}
+                size="compact"
               />
             </div>
           )}
