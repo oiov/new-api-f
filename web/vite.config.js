@@ -121,6 +121,10 @@ export default defineConfig(({ command }) => ({
         target: proxyTarget,
         changeOrigin: true,
       },
+      '/uploads': {
+        target: proxyTarget,
+        changeOrigin: true,
+      },
       '/v1': {
         target: proxyTarget,
         changeOrigin: true,

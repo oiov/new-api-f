@@ -61,10 +61,11 @@ const nextConfig: NextConfig = {
     // NOTE: /api/* is handled by the App Router catch-all route handler at
     // app/api/[[...path]]/route.ts which follows backend redirects server-side.
     return [
-      { source: '/v1/:path*',     destination: `${apiBaseUrl}/v1/:path*` },
-      { source: '/v1beta/:path*', destination: `${apiBaseUrl}/v1beta/:path*` },
-      { source: '/mj/:path*',     destination: `${apiBaseUrl}/mj/:path*` },
-      { source: '/pg/:path*',     destination: `${apiBaseUrl}/pg/:path*` },
+      { source: '/v1/:path*',      destination: `${apiBaseUrl}/v1/:path*` },
+      { source: '/v1beta/:path*',  destination: `${apiBaseUrl}/v1beta/:path*` },
+      { source: '/mj/:path*',      destination: `${apiBaseUrl}/mj/:path*` },
+      { source: '/pg/:path*',      destination: `${apiBaseUrl}/pg/:path*` },
+      { source: '/uploads/:path*', destination: `${apiBaseUrl}/uploads/:path*` },
     ];
   },
 

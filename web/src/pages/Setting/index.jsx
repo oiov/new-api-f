@@ -51,6 +51,7 @@ import PaymentSetting from '../../components/settings/PaymentSetting';
 import ModelDeploymentSetting from '../../components/settings/ModelDeploymentSetting';
 import PerformanceSetting from '../../components/settings/PerformanceSetting';
 import AdminInvoiceManager from '../../components/invoice/AdminInvoiceManager';
+import StorageSetting from '../../components/settings/StorageSetting';
 
 const Setting = () => {
   const { t } = useTranslation();
@@ -159,6 +160,16 @@ const Setting = () => {
       ),
       content: <PerformanceSetting />,
       itemKey: 'performance',
+    });
+    panes.push({
+      tab: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <FileText size={18} />
+          {t('存储设置')}
+        </span>
+      ),
+      content: <StorageSetting />,
+      itemKey: 'storage',
     });
     panes.push({
       tab: (

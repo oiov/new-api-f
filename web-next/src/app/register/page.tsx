@@ -144,7 +144,7 @@ function RegisterFormInner() {
     setSendingCode(true);
     try {
       const res = await API.get(
-        `/api/user/email_bind?email=${encodeURIComponent(form.email)}`,
+        `/api/verification?email=${encodeURIComponent(form.email)}`,
       );
       const data = res.data as { success: boolean; message?: string };
       if (data.success) {
