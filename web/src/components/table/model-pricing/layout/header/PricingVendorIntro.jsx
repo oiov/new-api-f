@@ -17,120 +17,151 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
-import {
-  Card,
-  Tag,
-  Avatar,
-  Typography,
-  Tooltip,
-  Modal,
-} from '@douyinfe/semi-ui';
+import React, { useState, useMemo, useCallback, memo } from 'react';
+import { Tag, Avatar, Button, Modal, Typography, Tooltip } from '@douyinfe/semi-ui';
+import { IconInfoCircle, IconRefresh } from '@douyinfe/semi-icons';
 import { getLobeHubIcon } from '../../../../../helpers/providerIcons';
 import SearchActions from './SearchActions';
 
-const { Paragraph } = Typography;
+const { Paragraph, Text } = Typography;
 
-const CONFIG = {
-  CAROUSEL_INTERVAL: 2000,
-  ICON_SIZE: 40,
-  UNKNOWN_VENDOR: 'unknown',
-};
+const UNKNOWN_VENDOR = 'unknown';
 
-const THEME_COLORS = {
-  allVendors: {
-    primary: '37 99 235',
-    background: 'rgba(59, 130, 246, 0.08)',
-  },
-  specific: {
-    primary: '16 185 129',
-    background: 'rgba(16, 185, 129, 0.1)',
-  },
-};
+// ---------- helpers ----------
 
-const COMPONENT_STYLES = {
-  tag: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    color: '#1f2937',
-    border: '1px solid rgba(255,255,255,0.8)',
-    fontWeight: '500',
-  },
-  avatarContainer:
-    'w-16 h-16 rounded-2xl bg-white/90 shadow-md backdrop-blur-sm flex items-center justify-center',
-  titleText: { color: 'white' },
-  descriptionText: { color: 'rgba(255,255,255,0.9)' },
-};
+const getVendorDisplayName = (vendorName, t) =>
+  vendorName === UNKNOWN_VENDOR ? t('未知供应商') : vendorName;
 
-const CONTENT_TEXTS = {
-  unknown: {
-    displayName: (t) => t('未知供应商'),
-    description: (t) =>
-      t(
+const buildVendorInfo = (allModels, models, t) => {
+  const vendorMap = new Map();
+  let unknownCount = 0;
+
+  const source = allModels.length > 0 ? allModels : models;
+  source.forEach((model) => {
+    if (model.vendor_name) {
+      const cur = vendorMap.get(model.vendor_name);
+      if (cur) {
+        cur.count++;
+      } else {
+        vendorMap.set(model.vendor_name, {
+          name: model.vendor_name,
+          icon: model.vendor_icon || null,
+          description: model.vendor_description || '',
+          count: 1,
+        });
+      }
+    } else {
+      unknownCount++;
+    }
+  });
+
+  const list = Array.from(vendorMap.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
+  if (unknownCount > 0) {
+    list.push({
+      name: UNKNOWN_VENDOR,
+      icon: null,
+      description: t(
         '包含来自未知或未标明供应商的AI模型，这些模型可能来自小型供应商或开源项目。',
       ),
-  },
-  all: {
-    description: (t) =>
-      t('查看所有可用的AI模型供应商，包括众多知名供应商的模型。'),
-  },
-  fallback: {
-    description: (t) => t('该供应商提供多种AI模型，适用于不同的应用场景。'),
-  },
-};
-
-const getVendorDisplayName = (vendorName, t) => {
-  return vendorName === CONFIG.UNKNOWN_VENDOR
-    ? CONTENT_TEXTS.unknown.displayName(t)
-    : vendorName;
-};
-
-const createDefaultAvatar = () => (
-  <div className={COMPONENT_STYLES.avatarContainer}>
-    <Avatar size='large' color='transparent'>
-      AI
-    </Avatar>
-  </div>
-);
-
-const getAvatarBackgroundColor = (isAllVendors) =>
-  isAllVendors
-    ? THEME_COLORS.allVendors.background
-    : THEME_COLORS.specific.background;
-
-const getAvatarText = (vendorName) =>
-  vendorName === CONFIG.UNKNOWN_VENDOR
-    ? '?'
-    : vendorName.charAt(0).toUpperCase();
-
-const createAvatarContent = (vendor, isAllVendors) => {
-  if (vendor.icon) {
-    return getLobeHubIcon(vendor.icon, CONFIG.ICON_SIZE);
+      count: unknownCount,
+    });
   }
 
-  return (
-    <Avatar
-      size='large'
-      style={{ backgroundColor: getAvatarBackgroundColor(isAllVendors) }}
-    >
-      {getAvatarText(vendor.name)}
-    </Avatar>
-  );
+  return list;
 };
 
-const renderVendorAvatar = (vendor, t, isAllVendors = false) => {
-  if (!vendor) {
-    return createDefaultAvatar();
-  }
+// ---------- sub-components ----------
 
-  const displayName = getVendorDisplayName(vendor.name, t);
-  const avatarContent = createAvatarContent(vendor, isAllVendors);
+/** 供应商图标容器 */
+const VendorIconBox = ({ vendor, size = 40, accentColor, t }) => {
+  const inner = useMemo(() => {
+    if (!vendor) return null;
+    if (vendor.icon) return getLobeHubIcon(vendor.icon, size - 8);
+    return null;
+  }, [vendor, size]);
+
+  const initials = vendor
+    ? vendor.name === UNKNOWN_VENDOR
+      ? '?'
+      : vendor.name.slice(0, 2).toUpperCase()
+    : 'AI';
 
   return (
-    <Tooltip content={displayName} position='top'>
-      <div className={COMPONENT_STYLES.avatarContainer}>{avatarContent}</div>
+    <Tooltip content={vendor ? getVendorDisplayName(vendor.name, t) : ''}>
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 12,
+          backgroundColor: accentColor + '18',
+          border: `1.5px solid ${accentColor}30`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        {inner || (
+          <Avatar
+            size='small'
+            style={{
+              backgroundColor: accentColor + '28',
+              color: accentColor,
+              fontWeight: 700,
+              fontSize: size < 36 ? 10 : 13,
+            }}
+          >
+            {initials}
+          </Avatar>
+        )}
+      </div>
     </Tooltip>
   );
 };
+
+/** 轮播供应商图标行（全部供应商时） */
+const VendorIconRow = ({ vendorInfo, maxShow = 6, accentColor, t }) => {
+  const visible = vendorInfo.slice(0, maxShow);
+  const remaining = vendorInfo.length - maxShow;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {visible.map((v) => (
+        <VendorIconBox
+          key={v.name}
+          vendor={v}
+          size={32}
+          accentColor={accentColor}
+          t={t}
+        />
+      ))}
+      {remaining > 0 && (
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            backgroundColor: accentColor + '14',
+            border: `1.5px solid ${accentColor}25`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 11,
+            fontWeight: 600,
+            color: accentColor,
+          }}
+        >
+          +{remaining}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---------- main component ----------
 
 const PricingVendorIntro = memo(
   ({
@@ -150,6 +181,7 @@ const PricingVendorIntro = memo(
     setShowWithRecharge,
     currency,
     setCurrency,
+    siteDisplayType,
     showRatio,
     setShowRatio,
     viewMode,
@@ -158,260 +190,197 @@ const PricingVendorIntro = memo(
     setTokenUnit,
     languageVersion,
   }) => {
-    const [currentOffset, setCurrentOffset] = useState(0);
     const [descModalVisible, setDescModalVisible] = useState(false);
     const [descModalContent, setDescModalContent] = useState('');
 
-    const handleOpenDescModal = useCallback((content) => {
-      setDescModalContent(content || '');
-      setDescModalVisible(true);
-    }, []);
-
-    const handleCloseDescModal = useCallback(() => {
-      setDescModalVisible(false);
-    }, []);
-
-    const renderDescriptionModal = useCallback(
-      () => (
-        <Modal
-          title={t('供应商介绍')}
-          visible={descModalVisible}
-          onCancel={handleCloseDescModal}
-          footer={null}
-          width={isMobile ? '95%' : 600}
-          bodyStyle={{
-            maxHeight: isMobile ? '70vh' : '60vh',
-            overflowY: 'auto',
-          }}
-        >
-          <div className='text-sm mb-4'>{descModalContent}</div>
-        </Modal>
-      ),
-      [descModalVisible, descModalContent, handleCloseDescModal, isMobile, t],
+    const vendorInfo = useMemo(
+      () => buildVendorInfo(allModels, models, t),
+      [allModels, models, t],
     );
 
-    const vendorInfo = useMemo(() => {
-      const vendors = new Map();
-      let unknownCount = 0;
+    const isAllVendors = filterVendor === 'all';
 
-      const sourceModels =
-        Array.isArray(allModels) && allModels.length > 0 ? allModels : models;
-
-      sourceModels.forEach((model) => {
-        if (model.vendor_name) {
-          const existing = vendors.get(model.vendor_name);
-          if (existing) {
-            existing.count++;
-          } else {
-            vendors.set(model.vendor_name, {
-              name: model.vendor_name,
-              icon: model.vendor_icon,
-              description: model.vendor_description,
-              count: 1,
-            });
-          }
-        } else {
-          unknownCount++;
-        }
-      });
-
-      const vendorList = Array.from(vendors.values()).sort((a, b) =>
-        a.name.localeCompare(b.name),
-      );
-
-      if (unknownCount > 0) {
-        vendorList.push({
-          name: CONFIG.UNKNOWN_VENDOR,
-          icon: null,
-          description: CONTENT_TEXTS.unknown.description(t),
-          count: unknownCount,
-        });
-      }
-
-      return vendorList;
-    }, [allModels, models, t]);
-
-    const currentModelCount = models.length;
-
-    useEffect(() => {
-      if (filterVendor !== 'all' || vendorInfo.length <= 1) {
-        setCurrentOffset(0);
-        return;
-      }
-
-      const interval = setInterval(() => {
-        setCurrentOffset((prev) => (prev + 1) % vendorInfo.length);
-      }, CONFIG.CAROUSEL_INTERVAL);
-
-      return () => clearInterval(interval);
-    }, [filterVendor, vendorInfo.length]);
-
-    const getVendorDescription = useCallback(
-      (vendorKey) => {
-        if (vendorKey === 'all') {
-          return CONTENT_TEXTS.all.description(t);
-        }
-        if (vendorKey === CONFIG.UNKNOWN_VENDOR) {
-          return CONTENT_TEXTS.unknown.description(t);
-        }
-        const vendor = vendorInfo.find((v) => v.name === vendorKey);
-        return vendor?.description || CONTENT_TEXTS.fallback.description(t);
-      },
-      [vendorInfo, t],
-    );
-
-    const createCoverStyle = useCallback(
-      (primaryColor) => ({
-        '--palette-primary-darkerChannel': primaryColor,
-        backgroundImage: `linear-gradient(0deg, rgba(var(--palette-primary-darkerChannel) / 80%), rgba(var(--palette-primary-darkerChannel) / 80%)), url('/cover-4.webp')`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      }),
-      [],
-    );
-
-    const renderSearchActions = useCallback(
-      () => (
-        <SearchActions
-          selectedRowKeys={selectedRowKeys}
-          copyText={copyText}
-          handleChange={handleChange}
-          handleCompositionStart={handleCompositionStart}
-          handleCompositionEnd={handleCompositionEnd}
-          isMobile={isMobile}
-          searchValue={searchValue}
-          setShowFilterModal={setShowFilterModal}
-          showWithRecharge={showWithRecharge}
-          setShowWithRecharge={setShowWithRecharge}
-          currency={currency}
-          setCurrency={setCurrency}
-          showRatio={showRatio}
-          setShowRatio={setShowRatio}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          tokenUnit={tokenUnit}
-          setTokenUnit={setTokenUnit}
-          t={t}
-          languageVersion={languageVersion}
-        />
-      ),
-      [
-        selectedRowKeys,
-        copyText,
-        handleChange,
-        handleCompositionStart,
-        handleCompositionEnd,
-        isMobile,
-        searchValue,
-        setShowFilterModal,
-        showWithRecharge,
-        setShowWithRecharge,
-        currency,
-        setCurrency,
-        showRatio,
-        setShowRatio,
-        viewMode,
-        setViewMode,
-        tokenUnit,
-        setTokenUnit,
-        t,
-        languageVersion,
-      ],
-    );
-
-    const renderHeaderCard = useCallback(
-      ({ title, count, description, rightContent, primaryDarkerChannel }) => (
-        <Card
-          className='!rounded-2xl shadow-sm border-0'
-          cover={
-            <div
-              className='relative h-full'
-              style={createCoverStyle(primaryDarkerChannel)}
-            >
-              <div className='relative z-10 h-full flex items-center justify-between p-4'>
-                <div className='flex-1 min-w-0 mr-4'>
-                  <div className='flex flex-row flex-wrap items-center gap-2 sm:gap-3 mb-2'>
-                    <h2
-                      className='text-lg sm:text-xl font-bold truncate'
-                      style={COMPONENT_STYLES.titleText}
-                    >
-                      {title}
-                    </h2>
-                    <Tag
-                      style={COMPONENT_STYLES.tag}
-                      shape='circle'
-                      size='small'
-                      className='self-center'
-                    >
-                      {t('共 {{count}} 个模型', { count })}
-                    </Tag>
-                  </div>
-                  <Paragraph
-                    className='text-xs sm:text-sm leading-relaxed !mb-0 cursor-pointer'
-                    style={COMPONENT_STYLES.descriptionText}
-                    ellipsis={{ rows: 2 }}
-                    onClick={() => handleOpenDescModal(description)}
-                  >
-                    {description}
-                  </Paragraph>
-                </div>
-
-                <div className='flex-shrink-0'>{rightContent}</div>
-              </div>
-            </div>
-          }
-        >
-          {renderSearchActions()}
-        </Card>
-      ),
-      [renderSearchActions, createCoverStyle, handleOpenDescModal, t],
-    );
-
-    const renderAllVendorsAvatar = useCallback(() => {
-      const currentVendor =
-        vendorInfo.length > 0
-          ? vendorInfo[currentOffset % vendorInfo.length]
-          : null;
-      return renderVendorAvatar(currentVendor, t, true);
-    }, [vendorInfo, currentOffset, t]);
-
-    if (filterVendor === 'all') {
-      const headerCard = renderHeaderCard({
-        title: t('全部供应商'),
-        count: currentModelCount,
-        description: getVendorDescription('all'),
-        rightContent: renderAllVendorsAvatar(),
-        primaryDarkerChannel: THEME_COLORS.allVendors.primary,
-      });
+    // 当前展示的供应商对象
+    const currentVendor = useMemo(() => {
+      if (isAllVendors) return null;
       return (
-        <>
-          {headerCard}
-          {renderDescriptionModal()}
-        </>
+        vendorInfo.find((v) => v.name === filterVendor) || null
       );
-    }
+    }, [isAllVendors, vendorInfo, filterVendor]);
 
-    const currentVendor = vendorInfo.find((v) => v.name === filterVendor);
-    if (!currentVendor) {
-      return null;
-    }
+    // 主题色
+    const accentColor = isAllVendors ? '#6366f1' : '#10b981';
 
-    const vendorDisplayName = getVendorDisplayName(currentVendor.name, t);
+    // 标题
+    const headerTitle = isAllVendors
+      ? t('全部供应商')
+      : currentVendor
+        ? getVendorDisplayName(currentVendor.name, t)
+        : filterVendor;
 
-    const headerCard = renderHeaderCard({
-      title: vendorDisplayName,
-      count: currentModelCount,
-      description:
-        currentVendor.description || getVendorDescription(currentVendor.name),
-      rightContent: renderVendorAvatar(currentVendor, t, false),
-      primaryDarkerChannel: THEME_COLORS.specific.primary,
-    });
+    // 描述
+    const description = useMemo(() => {
+      if (isAllVendors) {
+        return t(
+          '查看所有可用的AI模型供应商，包括众多知名供应商的模型。',
+        );
+      }
+      if (!currentVendor) return '';
+      return (
+        currentVendor.description ||
+        t('该供应商提供多种AI模型，适用于不同的应用场景。')
+      );
+    }, [isAllVendors, currentVendor, t]);
+
+    const handleOpenDesc = useCallback(() => {
+      setDescModalContent(description);
+      setDescModalVisible(true);
+    }, [description]);
+
+    const modelCount = models.length;
+    const vendorCount = useMemo(
+      () => vendorInfo.length,
+      [vendorInfo],
+    );
 
     return (
       <>
-        {headerCard}
-        {renderDescriptionModal()}
+        {/* ── 企业级标题区域 ── */}
+        <div className='pricing-vendor-header'>
+          {/* 左侧：图标 + 标题 + 描述 */}
+          <div className='pricing-vendor-header-left'>
+            {/* 图标区域 */}
+            {isAllVendors ? (
+              <VendorIconRow
+                vendorInfo={vendorInfo}
+                maxShow={isMobile ? 3 : 5}
+                accentColor={accentColor}
+                t={t}
+              />
+            ) : (
+              <VendorIconBox
+                vendor={currentVendor}
+                size={44}
+                accentColor={accentColor}
+                t={t}
+              />
+            )}
+
+            {/* 文字区域 */}
+            <div className='pricing-vendor-header-text'>
+              <div className='pricing-vendor-header-title-row'>
+                <span className='pricing-vendor-header-title'>
+                  {headerTitle}
+                </span>
+                {/* 模型数量 badge */}
+                <Tag
+                  shape='circle'
+                  size='small'
+                  style={{
+                    backgroundColor: accentColor + '15',
+                    color: accentColor,
+                    border: `1px solid ${accentColor}30`,
+                    fontWeight: 600,
+                    fontSize: 11,
+                  }}
+                >
+                  {t('共 {{count}} 个模型', { count: modelCount })}
+                </Tag>
+                {/* 全部供应商时显示供应商数量 */}
+                {isAllVendors && vendorCount > 0 && (
+                  <Tag
+                    shape='circle'
+                    size='small'
+                    style={{
+                      backgroundColor: 'var(--semi-color-bg-2)',
+                      color: 'var(--semi-color-text-2)',
+                      border: '1px solid var(--semi-color-border)',
+                      fontWeight: 500,
+                      fontSize: 11,
+                    }}
+                  >
+                    {vendorCount} {t('供应商')}
+                  </Tag>
+                )}
+              </div>
+
+              {/* 描述 */}
+              {description && (
+                <div className='pricing-vendor-header-desc'>
+                  <Text
+                    type='tertiary'
+                    size='small'
+                    ellipsis={{ rows: 1, showTooltip: false }}
+                    style={{ maxWidth: '100%' }}
+                  >
+                    {description}
+                  </Text>
+                  {description.length > 60 && (
+                    <Button
+                      size='small'
+                      theme='borderless'
+                      type='tertiary'
+                      icon={<IconInfoCircle size='small' />}
+                      onClick={handleOpenDesc}
+                      style={{
+                        padding: '0 4px',
+                        height: 20,
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 右侧预留区 — 将来可加入操作按钮 */}
+        </div>
+
+        {/* ── 搜索 + 操作栏 ── */}
+        <div className='pricing-search-actions'>
+          <SearchActions
+            selectedRowKeys={selectedRowKeys}
+            copyText={copyText}
+            handleChange={handleChange}
+            handleCompositionStart={handleCompositionStart}
+            handleCompositionEnd={handleCompositionEnd}
+            isMobile={isMobile}
+            searchValue={searchValue}
+            setShowFilterModal={setShowFilterModal}
+            showWithRecharge={showWithRecharge}
+            setShowWithRecharge={setShowWithRecharge}
+            currency={currency}
+            setCurrency={setCurrency}
+            siteDisplayType={siteDisplayType}
+            showRatio={showRatio}
+            setShowRatio={setShowRatio}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            tokenUnit={tokenUnit}
+            setTokenUnit={setTokenUnit}
+            t={t}
+            languageVersion={languageVersion}
+          />
+        </div>
+
+        {/* 描述弹窗 */}
+        <Modal
+          title={
+            isAllVendors
+              ? t('全部供应商')
+              : getVendorDisplayName(currentVendor?.name || '', t)
+          }
+          visible={descModalVisible}
+          onCancel={() => setDescModalVisible(false)}
+          footer={null}
+          width={isMobile ? '95%' : 560}
+          bodyStyle={{ maxHeight: '60vh', overflowY: 'auto' }}
+        >
+          <Text style={{ fontSize: 14, lineHeight: '1.7' }}>
+            {descModalContent}
+          </Text>
+        </Modal>
       </>
     );
   },

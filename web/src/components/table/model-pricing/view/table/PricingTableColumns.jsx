@@ -193,11 +193,11 @@ export const getPricingTableColumns = ({
 
   const ratioColumn = {
     title: () => (
-      <div className='flex items-center space-x-1'>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span>{t('倍率')}</span>
         <Tooltip content={t('倍率是为了方便换算不同价格的模型')}>
           <IconHelpCircle
-            className='text-blue-500 cursor-pointer'
+            style={{ color: 'var(--semi-color-primary)', cursor: 'pointer' }}
             onClick={() => {
               setModalImageUrl('/ratio.png');
               setIsModalOpenurl(true);
@@ -212,15 +212,15 @@ export const getPricingTableColumns = ({
       const priceData = getPriceData(record);
 
       return (
-        <div className='space-y-1'>
-          <div className='text-gray-700'>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 13 }}>
+          <div style={{ color: 'var(--semi-color-text-1)' }}>
             {t('模型倍率')}：{record.quota_type === 0 ? text : t('无')}
           </div>
-          <div className='text-gray-700'>
+          <div style={{ color: 'var(--semi-color-text-1)' }}>
             {t('补全倍率')}：
             {record.quota_type === 0 ? completionRatio : t('无')}
           </div>
-          <div className='text-gray-700'>
+          <div style={{ color: 'var(--semi-color-text-1)' }}>
             {t('分组倍率')}：{priceData?.usedGroupRatio ?? '-'}
           </div>
         </div>
@@ -237,9 +237,9 @@ export const getPricingTableColumns = ({
       const priceItems = getModelPriceItems(priceData, t, siteDisplayType);
 
       return (
-        <div className='space-y-1'>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 13 }}>
           {priceItems.map((item) => (
-            <div key={item.key} className='text-gray-700'>
+            <div key={item.key} style={{ color: 'var(--semi-color-text-0)' }}>
               {item.label} {item.value}
               {item.suffix}
             </div>

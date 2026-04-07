@@ -80,12 +80,11 @@ const SearchActions = memo(
         </div>
 
         <Button
-          theme='outline'
+          theme='solid'
           type='primary'
           icon={<IconCopy />}
           onClick={handleCopyClick}
           disabled={selectedRowKeys.length === 0}
-          className='!bg-blue-500 hover:!bg-blue-600 !text-white disabled:!bg-gray-300 disabled:!text-gray-500'
         >
           {t('复制')}
         </Button>
@@ -97,7 +96,12 @@ const SearchActions = memo(
             {/* 充值价格显示开关 */}
             {supportsCurrencyDisplay && (
               <div className='flex items-center gap-2'>
-                <span className='text-sm text-gray-600'>{t('充值价格显示')}</span>
+                <span
+                  className='text-sm'
+                  style={{ color: 'var(--semi-color-text-2)' }}
+                >
+                  {t('充值价格显示')}
+                </span>
                 <Switch
                   checked={showWithRecharge}
                   onChange={setShowWithRecharge}
@@ -110,6 +114,7 @@ const SearchActions = memo(
               <Select
                 value={currency}
                 onChange={setCurrency}
+                style={{ minWidth: 90 }}
                 optionList={[
                   { value: 'USD', label: 'USD' },
                   { value: 'CNY', label: 'CNY' },
@@ -120,13 +125,18 @@ const SearchActions = memo(
 
             {/* 显示倍率开关 */}
             <div className='flex items-center gap-2'>
-              <span className='text-sm text-gray-600'>{t('倍率')}</span>
+              <span
+                className='text-sm'
+                style={{ color: 'var(--semi-color-text-2)' }}
+              >
+                {t('倍率')}
+              </span>
               <Switch checked={showRatio} onChange={setShowRatio} />
             </div>
 
             {/* 视图模式切换按钮 */}
             <Button
-              theme={viewMode === 'table' ? 'solid' : 'outline'}
+              theme={viewMode === 'table' ? 'solid' : 'light'}
               type={viewMode === 'table' ? 'primary' : 'tertiary'}
               onClick={handleViewModeToggle}
             >
@@ -135,9 +145,10 @@ const SearchActions = memo(
 
             {/* Token单位切换按钮 */}
             <Button
-              theme={tokenUnit === 'K' ? 'solid' : 'outline'}
+              theme={tokenUnit === 'K' ? 'solid' : 'light'}
               type={tokenUnit === 'K' ? 'primary' : 'tertiary'}
               onClick={handleTokenUnitToggle}
+              style={{ minWidth: 42 }}
             >
               {tokenUnit}
             </Button>

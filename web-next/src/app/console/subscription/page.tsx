@@ -372,9 +372,11 @@ function SubCard({ item, t, onViewLogs }: SubCardProps) {
   const progressColor = usagePercent >= 85 ? 'bg-destructive' : usagePercent >= 60 ? 'bg-amber-500' : 'bg-emerald-500';
 
   const detailItems = [
-    { label: t('有效期'), value: sub.end_time && sub.start_time
-      ? `${formatTimestamp(sub.start_time, 'YYYY-MM-DD')} → ${formatTimestamp(sub.end_time, 'YYYY-MM-DD')}`
-      : '--' },
+    {
+      label: t('有效期'), value: sub.end_time && sub.start_time
+        ? `${formatTimestamp(sub.start_time, 'YYYY-MM-DD')} → ${formatTimestamp(sub.end_time, 'YYYY-MM-DD')}`
+        : '--'
+    },
     { label: t('套餐说明'), value: item.planSubtitle || t('暂无说明') },
     { label: t('生效时间'), value: formatTimestamp(sub.start_time ?? 0, 'YYYY-MM-DD HH:mm') },
     { label: t('到期时间'), value: formatTimestamp(sub.end_time ?? 0, 'YYYY-MM-DD HH:mm') },
@@ -810,7 +812,7 @@ function SubscriptionContent() {
         planSubtitle: plan?.subtitle,
       };
     }).sort((a, b) => (b.subscription.end_time || 0) - (a.subscription.end_time || 0)),
-  [allSubs, planMap, planTitleMap, t]);
+    [allSubs, planMap, planTitleMap, t]);
 
   const activeSubs = useMemo(() => normalizedSubs.filter((s) => s.state === 'active'), [normalizedSubs]);
   const historySubs = useMemo(() => normalizedSubs.filter((s) => s.state !== 'active'), [normalizedSubs]);
@@ -818,7 +820,7 @@ function SubscriptionContent() {
 
   const nextExpiring = useMemo(() =>
     [...activeSubs].sort((a, b) => (a.subscription.end_time || 0) - (b.subscription.end_time || 0))[0],
-  [activeSubs]);
+    [activeSubs]);
 
   const activeRemainSummary = useMemo(() => {
     let quotaRemain = 0, requestRemain = 0, quotaUnlimited = false, requestUnlimited = false;
@@ -842,8 +844,8 @@ function SubscriptionContent() {
 
   const prefLabel = billingPref === 'subscription_only' ? t('仅用订阅')
     : billingPref === 'wallet_first' ? t('优先钱包')
-    : billingPref === 'wallet_only' ? t('仅用钱包')
-    : t('优先订阅');
+      : billingPref === 'wallet_only' ? t('仅用钱包')
+        : t('优先订阅');
 
   // Usage chart (aggregated across active subs)
   const usageMetrics = useMemo(() => {
@@ -857,13 +859,15 @@ function SubscriptionContent() {
       target.remain += item.usageSummary.remain;
     });
     return [
-      { key: 'quota', title: t('额度消耗'), resourceType: 'quota' as const, ...quota,
+      {
+        key: 'quota', title: t('额度消耗'), resourceType: 'quota' as const, ...quota,
         percent: quota.unlimited ? 0 : Math.min(100, Math.round(quota.used / Math.max(quota.total, 1) * 100)),
         totalText: quota.unlimited ? t('不限') : renderQuota(quota.total),
         usedText: quota.unlimited ? t('按实际调用') : renderQuota(quota.used),
         remainText: quota.unlimited ? t('不限') : renderQuota(quota.remain),
       },
-      { key: 'request', title: t('次数消耗'), resourceType: 'request_count' as const, ...req,
+      {
+        key: 'request', title: t('次数消耗'), resourceType: 'request_count' as const, ...req,
         percent: req.unlimited ? 0 : Math.min(100, Math.round(req.used / Math.max(req.total, 1) * 100)),
         totalText: req.unlimited ? t('不限') : String(req.total),
         usedText: req.unlimited ? t('按实际调用') : String(req.used),
@@ -875,7 +879,7 @@ function SubscriptionContent() {
   // Plan options for ConsumeLogsSheet
   const planOptions = useMemo(() =>
     plans.map((p) => ({ label: p.plan?.title || `#${p.plan?.id}`, value: p.plan?.id ?? 0 })).filter((o) => o.value > 0),
-  [plans]);
+    [plans]);
 
   const planMetaRecord = useMemo(() => {
     const m: Record<number, { resource_type?: string; title?: string }> = {};
@@ -1045,246 +1049,247 @@ function SubscriptionContent() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: 0.25 }}
       >
-      <Card className="border-border/60 shadow-card">
-        <CardContent className="p-4 md:p-5">
-          <Tabs defaultValue="my_subscriptions">
-            <TabsList className="mb-4">
-              <TabsTrigger value="my_subscriptions">
-                {t('我的订阅')} ({allSubs.length})
-              </TabsTrigger>
-              <TabsTrigger value="plan_list">
-                {t('套餐列表')} ({sortedPlans.length})
-              </TabsTrigger>
-            </TabsList>
+        <Card className="border-border/60 shadow-card">
+          <CardContent className="p-4 md:p-5">
+            <Tabs defaultValue="my_subscriptions">
+              <TabsList className="mb-4">
+                <TabsTrigger value="my_subscriptions">
+                  {t('我的订阅')} ({allSubs.length})
+                </TabsTrigger>
+                <TabsTrigger value="plan_list">
+                  {t('套餐列表')} ({sortedPlans.length})
+                </TabsTrigger>
+              </TabsList>
 
-            {/* My subscriptions */}
-            <TabsContent value="my_subscriptions" className="space-y-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {(['active', 'history', 'all'] as const).map((f) => (
+              {/* My subscriptions */}
+              <TabsContent value="my_subscriptions" className="space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(['active', 'history', 'all'] as const).map((f) => (
+                      <Button
+                        key={f}
+                        variant={subFilter === f ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-7 text-xs px-3"
+                        onClick={() => setSubFilter(f)}
+                      >
+                        {f === 'active' ? `${t('生效中')} (${activeSubs.length})`
+                          : f === 'history' ? `${t('历史')} (${historySubs.length})`
+                            : t('全部')}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Button
-                      key={f}
-                      variant={subFilter === f ? 'default' : 'outline'}
-                      size="sm"
-                      className="h-7 text-xs px-3"
-                      onClick={() => setSubFilter(f)}
+                      variant="outline" size="sm"
+                      className="h-7 text-xs gap-1.5"
+                      onClick={() => setConsumeFilter({})}
                     >
-                      {f === 'active' ? `${t('生效中')} (${activeSubs.length})`
-                        : f === 'history' ? `${t('历史')} (${historySubs.length})`
-                        : t('全部')}
+                      <FileText className="size-3" />
+                      {t('全部消耗')}
                     </Button>
-                  ))}
+                    <span className="text-xs text-muted-foreground shrink-0">{t('扣费偏好')}</span>
+                    <Select value={billingPref} onValueChange={updateBillingPref}>
+                      <SelectTrigger className="h-7 text-xs w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="subscription_first">{t('优先订阅')}</SelectItem>
+                        <SelectItem value="wallet_first">{t('优先钱包')}</SelectItem>
+                        <SelectItem value="subscription_only">{t('仅用订阅')}</SelectItem>
+                        <SelectItem value="wallet_only">{t('仅用钱包')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button
-                    variant="outline" size="sm"
-                    className="h-7 text-xs gap-1.5"
-                    onClick={() => setConsumeFilter({})}
-                  >
-                    <FileText className="size-3" />
-                    {t('全部消耗')}
-                  </Button>
-                  <span className="text-xs text-muted-foreground shrink-0">{t('扣费偏好')}</span>
-                  <Select value={billingPref} onValueChange={updateBillingPref}>
-                    <SelectTrigger className="h-7 text-xs w-28">
+
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+                  </div>
+                ) : visibleSubs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                    <div className="size-14 rounded-2xl bg-muted flex items-center justify-center">
+                      <Package className="size-7 text-muted-foreground/40" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground/70">{subFilter === 'history' ? t('暂无历史订阅') : t('暂无生效订阅')}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{t('前往"套餐列表"选择适合的方案')}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {visibleSubs.map((item) => (
+                      <SubCard
+                        key={item.key}
+                        item={item}
+                        t={t}
+                        onViewLogs={() => setConsumeFilter({
+                          subscriptionId: item.subscription.id,
+                          planId: item.subscription.plan_id,
+                          title: item.title,
+                        })}
+                      />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Plan list */}
+              <TabsContent value="plan_list" className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-lg bg-indigo-500/15 p-1.5">
+                      <Package className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <p className="font-semibold text-sm">{t('可购买套餐')}</p>
+                  </div>
+                  <Select value={planSort} onValueChange={setPlanSort}>
+                    <SelectTrigger className="h-7 text-xs w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="subscription_first">{t('优先订阅')}</SelectItem>
-                      <SelectItem value="wallet_first">{t('优先钱包')}</SelectItem>
-                      <SelectItem value="subscription_only">{t('仅用订阅')}</SelectItem>
-                      <SelectItem value="wallet_only">{t('仅用钱包')}</SelectItem>
+                      <SelectItem value="recommended">{t('推荐优先')}</SelectItem>
+                      <SelectItem value="price_asc">{t('价格从低到高')}</SelectItem>
+                      <SelectItem value="price_desc">{t('价格从高到低')}</SelectItem>
+                      <SelectItem value="value_desc">{t('权益从多到少')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              {loading ? (
-                <div className="space-y-3">
-                  {[1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
-                </div>
-              ) : visibleSubs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-                  <div className="size-14 rounded-2xl bg-muted flex items-center justify-center">
-                    <Package className="size-7 text-muted-foreground/40" />
+                {loading ? (
+                  <Skeleton className="h-48 rounded-xl" />
+                ) : sortedPlans.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                    <div className="size-14 rounded-2xl bg-muted flex items-center justify-center">
+                      <Sparkles className="size-7 text-muted-foreground/40" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground/70">{t('暂无可购买套餐')}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{t('管理员暂未上架套餐，请稍后再试')}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium text-foreground/70">{subFilter === 'history' ? t('暂无历史订阅') : t('暂无生效订阅')}</p>
-                    <p className="text-sm text-muted-foreground mt-1">{t('前往"套餐列表"选择适合的方案')}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {visibleSubs.map((item) => (
-                    <SubCard
-                      key={item.key}
-                      item={item}
-                      t={t}
-                      onViewLogs={() => setConsumeFilter({
-                        subscriptionId: item.subscription.id,
-                        planId: item.subscription.plan_id,
-                        title: item.title,
-                      })}
-                    />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Plan list */}
-            <TabsContent value="plan_list" className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="rounded-lg bg-indigo-500/15 p-1.5">
-                    <Package className="size-3.5 text-indigo-600 dark:text-indigo-400" />
-                  </div>
-                  <p className="font-semibold text-sm">{t('可购买套餐')}</p>
-                </div>
-                <Select value={planSort} onValueChange={setPlanSort}>
-                  <SelectTrigger className="h-7 text-xs w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recommended">{t('推荐优先')}</SelectItem>
-                    <SelectItem value="price_asc">{t('价格从低到高')}</SelectItem>
-                    <SelectItem value="price_desc">{t('价格从高到低')}</SelectItem>
-                    <SelectItem value="value_desc">{t('权益从多到少')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {loading ? (
-                <Skeleton className="h-48 rounded-xl" />
-              ) : sortedPlans.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-                  <div className="size-14 rounded-2xl bg-muted flex items-center justify-center">
-                    <Sparkles className="size-7 text-muted-foreground/40" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground/70">{t('暂无可购买套餐')}</p>
-                    <p className="text-sm text-muted-foreground mt-1">{t('管理员暂未上架套餐，请稍后再试')}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="overflow-hidden rounded-xl border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t('套餐')}</TableHead>
-                        <TableHead>{t('价格')}</TableHead>
-                        <TableHead className="hidden md:table-cell">{t('核心权益')}</TableHead>
-                        <TableHead className="hidden lg:table-cell">{t('规则')}</TableHead>
-                        <TableHead className="text-right">{t('操作')}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sortedPlans.map((pw, idx) => {
-                        const plan = pw.plan || {};
-                        const count = planPurchaseCountMap.get(plan.id || 0) || 0;
-                        const limit = Number(plan.max_purchase_per_user || 0);
-                        const reached = limit > 0 && count >= limit;
-                        const sale = getSaleSummary(plan);
-                        const disabled = reached || sale.soldOut || !plan.enabled;
-                        const isPopular = planSort === 'recommended' && idx === 0 && sortedPlans.length > 1;
-                        const hasDisc = isDiscountActive(plan);
-                        return (
-                          <TableRow key={plan.id || idx} className="hover:bg-muted/30">
-                            <TableCell>
-                              <div className="flex items-center gap-2.5">
-                                <div className={cn('shrink-0 rounded-lg p-1.5', isPopular ? 'bg-primary/15' : 'bg-muted')}>
-                                  <Package className={cn('size-3.5', isPopular ? 'text-primary' : 'text-muted-foreground')} />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="font-medium text-sm">{plan.title || t('订阅套餐')}</span>
-                                    {isPopular && <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 text-primary border-primary/30">{t('推荐')}</Badge>}
-                                    {!plan.enabled && <Badge variant="destructive" className="text-[10px] py-0 px-1.5 h-4">{t('已下架')}</Badge>}
-                                    {sale.soldOut && <Badge variant="destructive" className="text-[10px] py-0 px-1.5 h-4">{t('已售罄')}</Badge>}
-                                    {reached && <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">{t('已达上限')}</Badge>}
+                ) : (
+                  <div className="overflow-hidden rounded-xl border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t('套餐')}</TableHead>
+                          <TableHead>{t('价格')}</TableHead>
+                          <TableHead className="hidden md:table-cell">{t('核心权益')}</TableHead>
+                          <TableHead className="hidden lg:table-cell">{t('规则')}</TableHead>
+                          <TableHead className="text-right">{t('操作')}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sortedPlans.map((pw, idx) => {
+                          const plan = pw.plan || {};
+                          const count = planPurchaseCountMap.get(plan.id || 0) || 0;
+                          const limit = Number(plan.max_purchase_per_user || 0);
+                          const reached = limit > 0 && count >= limit;
+                          const sale = getSaleSummary(plan);
+                          const disabled = reached || sale.soldOut || !plan.enabled;
+                          const isPopular = planSort === 'recommended' && idx === 0 && sortedPlans.length > 1;
+                          const hasDisc = isDiscountActive(plan);
+                          return (
+                            <TableRow key={plan.id || idx} className="hover:bg-muted/30">
+                              <TableCell>
+                                <div className="flex items-center gap-2.5">
+                                  <div className={cn('shrink-0 rounded-lg p-1.5', isPopular ? 'bg-primary/15' : 'bg-muted')}>
+                                    <Package className={cn('size-3.5', isPopular ? 'text-primary' : 'text-muted-foreground')} />
                                   </div>
-                                  <p className="text-xs text-muted-foreground truncate max-w-[180px]">{plan.subtitle}</p>
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="font-medium text-sm">{plan.title || t('订阅套餐')}</span>
+                                      {isPopular && <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 text-primary border-primary/30">{t('推荐')}</Badge>}
+                                      {!plan.enabled && <Badge variant="destructive" className="text-[10px] py-0 px-1.5 h-4">{t('已下架')}</Badge>}
+                                      {sale.soldOut && <Badge variant="destructive" className="text-[10px] py-0 px-1.5 h-4">{t('已售罄')}</Badge>}
+                                      {reached && <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">{t('已达上限')}</Badge>}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground truncate max-w-[180px]">{plan.subtitle}</p>
+                                  </div>
                                 </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="inline-flex flex-col">
-                                <span className="font-bold text-base text-primary">
-                                  {formatPlanPrice(plan, status)}
-                                </span>
-                                {hasDisc && (
-                                  <span className="text-xs text-muted-foreground line-through">{formatOrigPrice(plan, status)}</span>
-                                )}
-                                <span className="text-xs text-muted-foreground">{formatDuration(plan, t)}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="hidden md:table-cell">
-                              <p className="text-sm">{getBenefitText(plan, t)}</p>
-                              <p className="text-xs text-muted-foreground">{t('有效期')}：{formatDuration(plan, t)}</p>
-                            </TableCell>
-                            <TableCell className="hidden lg:table-cell">
-                              <div className="flex flex-wrap gap-1">
-                                {limit > 0 && <Badge variant="outline" className="text-[10px]">{t('限购')} {limit}</Badge>}
-                                {!sale.unlimited && <Badge variant="outline" className="text-[10px]">{t('剩余')} {sale.remaining}</Badge>}
-                                {plan.upgrade_group && <Badge variant="outline" className="text-[10px]">{plan.upgrade_group}</Badge>}
-                                {!limit && !plan.upgrade_group && sale.sold <= 0 && <span className="text-xs text-muted-foreground">--</span>}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                disabled={disabled}
-                                onClick={() => {
-                                  if (epayMethods.length > 0) setSelectedEpay(epayMethods[0].type);
-                                  setBuyPlan(pw);
-                                }}
-                              >
-                                {disabled ? (sale.soldOut ? t('已售罄') : reached ? t('已达上限') : t('已下架')) : (
-                                  <>{t('立即订阅')} <ChevronRight className="size-3 ml-1" /></>
-                                )}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+                              </TableCell>
+                              <TableCell>
+                                <div className="inline-flex flex-col">
+                                  <span className="font-bold text-base text-primary">
+                                    {formatPlanPrice(plan, status)}
+                                  </span>
+                                  {hasDisc && (
+                                    <span className="text-xs text-muted-foreground line-through">{formatOrigPrice(plan, status)}</span>
+                                  )}
+                                  <span className="text-xs text-muted-foreground">{formatDuration(plan, t)}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                <p className="text-sm">{getBenefitText(plan, t)}</p>
+                                <p className="text-xs text-muted-foreground">{t('有效期')}：{formatDuration(plan, t)}</p>
+                              </TableCell>
+                              <TableCell className="hidden lg:table-cell">
+                                <div className="flex flex-wrap gap-1">
+                                  {limit > 0 && <Badge variant="outline" className="text-[10px]">{t('限购')} {limit}</Badge>}
+                                  {!sale.unlimited && <Badge variant="outline" className="text-[10px]">{t('剩余')} {sale.remaining}</Badge>}
+                                  {plan.upgrade_group && <Badge variant="outline" className="text-[10px]">{plan.upgrade_group}</Badge>}
+                                  {!limit && !plan.upgrade_group && sale.sold <= 0 && <span className="text-xs text-muted-foreground">--</span>}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  disabled={disabled}
+                                  onClick={() => {
+                                    if (epayMethods.length > 0) setSelectedEpay(epayMethods[0].type);
+                                    setBuyPlan(pw);
+                                  }}
+                                >
+                                  {disabled ? (sale.soldOut ? t('已售罄') : reached ? t('已达上限') : t('已下架')) : (
+                                    <>{t('立即订阅')} <ChevronRight className="size-3 ml-1" /></>
+                                  )}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
 
-      {/* Purchase dialog */}
-      <PurchaseDialog
-        open={!!buyPlan}
-        onClose={() => setBuyPlan(null)}
-        plan={buyPlan?.plan ?? null}
-        purchaseCount={buyPlan?.plan?.id ? planPurchaseCountMap.get(buyPlan.plan.id) || 0 : 0}
-        paying={paying}
-        epayMethods={epayMethods}
-        selectedEpayMethod={selectedEpay}
-        onSelectEpay={setSelectedEpay}
-        enableStripe={enableStripe}
-        enableCreem={enableCreem}
-        enableEpay={enableEpay}
-        onPayStripe={payStripe}
-        onPayCreem={payCreem}
-        onPayEpay={payEpay}
-        status={status}
-        t={t}
-      />
+        {/* Purchase dialog */}
+        <PurchaseDialog
+          open={!!buyPlan}
+          onClose={() => setBuyPlan(null)}
+          plan={buyPlan?.plan ?? null}
+          purchaseCount={buyPlan?.plan?.id ? planPurchaseCountMap.get(buyPlan.plan.id) || 0 : 0}
+          paying={paying}
+          epayMethods={epayMethods}
+          selectedEpayMethod={selectedEpay}
+          onSelectEpay={setSelectedEpay}
+          enableStripe={enableStripe}
+          enableCreem={enableCreem}
+          enableEpay={enableEpay}
+          onPayStripe={payStripe}
+          onPayCreem={payCreem}
+          onPayEpay={payEpay}
+          status={status}
+          t={t}
+        />
 
-      {/* Consume logs sheet */}
-      <ConsumeLogsSheet
-        open={!!consumeFilter}
-        onClose={() => setConsumeFilter(null)}
-        title={consumeFilter?.title ? `${t('消耗记录')} · ${consumeFilter.title}` : t('全部订阅消耗记录')}
-        subscriptionId={consumeFilter?.subscriptionId}
-        planId={consumeFilter?.planId}
-        planOptions={planOptions}
-        planMeta={planMetaRecord}
-      />
+        {/* Consume logs sheet */}
+        <ConsumeLogsSheet
+          open={!!consumeFilter}
+          onClose={() => setConsumeFilter(null)}
+          title={consumeFilter?.title ? `${t('消耗记录')} · ${consumeFilter.title}` : t('全部订阅消耗记录')}
+          subscriptionId={consumeFilter?.subscriptionId}
+          planId={consumeFilter?.planId}
+          planOptions={planOptions}
+          planMeta={planMetaRecord}
+        />
+      </motion.div>
     </div>
   );
 }

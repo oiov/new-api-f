@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Button, Col, Form, Row, Select, Spin } from '@douyinfe/semi-ui';
 import {
   compareObjects,
@@ -40,32 +40,40 @@ const parseJsonArray = (str) => {
   }
 };
 
+/** 所有字段的默认值，确保 inputs/inputsRow 始终含完整 key 集合 */
+const DEFAULT_INPUTS = {
+  GroupRatio: '',
+  UserUsableGroups: '',
+  GroupGroupRatio: '',
+  'group_ratio_setting.group_special_usable_group': '',
+  AutoGroups: '',
+  DefaultUseAutoGroup: false,
+  EnableGroupBillingFilter: false,
+  SubscriptionGroups: '',
+  QuotaGroups: '',
+};
+
 export default function GroupRatioSettings(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState({
-    GroupRatio: '',
-    UserUsableGroups: '',
-    GroupGroupRatio: '',
-    'group_ratio_setting.group_special_usable_group': '',
-    AutoGroups: '',
-    DefaultUseAutoGroup: false,
-    EnableGroupBillingFilter: false,
-    SubscriptionGroups: '',
-    QuotaGroups: '',
-  });
+  const [inputs, setInputs] = useState({ ...DEFAULT_INPUTS });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
+  const [groupOptions, setGroupOptions] = useState([]);
 
-  /** 从 GroupRatio JSON 中提取已定义的分组名，作为 Select 的选项 */
-  const groupOptions = useMemo(() => {
+  /** 调用后端接口获取已配置的分组列表（与渠道管理页保持一致） */
+  const fetchGroups = async () => {
     try {
-      const obj = JSON.parse(inputs.GroupRatio || '{}');
-      return Object.keys(obj).map((key) => ({ label: key, value: key }));
+      const res = await API.get('/api/group/');
+      if (res?.data?.success && Array.isArray(res.data.data)) {
+        setGroupOptions(
+          res.data.data.map((g) => ({ label: g, value: g })),
+        );
+      }
     } catch {
-      return [];
+      // 静默失败，Select 仍可手动输入
     }
-  }, [inputs.GroupRatio]);
+  };
 
   async function onSubmit() {
     try {
@@ -122,9 +130,16 @@ export default function GroupRatioSettings(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
+    fetchGroups();
+  }, []);
+
+  useEffect(() => {
+    // 从默认值出发，确保所有 key 始终存在
+    // 即使后端未返回某字段（新增字段未初始化时），inputsRow 也含该 key
+    // 这样 compareObjects 的 hasOwnProperty 检查不会漏掉新字段
+    const currentInputs = { ...DEFAULT_INPUTS };
     for (let key in props.options) {
-      if (Object.keys(inputs).includes(key)) {
+      if (key in DEFAULT_INPUTS) {
         currentInputs[key] = props.options[key];
       }
     }
