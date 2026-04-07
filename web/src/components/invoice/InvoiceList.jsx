@@ -43,7 +43,7 @@ const InvoiceList = () => {
       const res = await API.get('/api/user/invoice', {
         params: { page: p, page_size: pageSize },
       });
-      if (res.data.message === 'success') {
+      if (res.data.success === true) {
         setInvoices(res.data.data?.items || []);
         setTotal(res.data.data?.total || 0);
       }

@@ -43,7 +43,7 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
     setLoading(true);
     try {
       const res = await API.get('/api/user/invoice/invoiceable');
-      if (res.data.message === 'success') {
+      if (res.data.success === true) {
         setTopups(res.data.data || []);
       }
     } catch {
@@ -99,7 +99,7 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
         tax_id: values.tax_id || '',
         email: values.email,
       });
-      if (res.data.message === 'success') {
+      if (res.data.success === true) {
         Toast.success(t('发票申请提交成功'));
         onSuccess?.();
         onClose();

@@ -63,7 +63,7 @@ const AdminInvoiceManager = () => {
       const res = await API.get('/api/invoice/admin', {
         params: { page: p, page_size: pageSize, keyword, status: statusFilter },
       });
-      if (res.data.message === 'success') {
+      if (res.data.success === true) {
         setInvoices(res.data.data?.items || []);
         setTotal(res.data.data?.total || 0);
       }
@@ -92,7 +92,7 @@ const AdminInvoiceManager = () => {
         `/api/invoice/admin/${issueModal.record.id}/issue`,
         { file_url: values.file_url, remark: values.remark || '' },
       );
-      if (res.data.message === 'success') {
+      if (res.data.success === true) {
         Toast.success(t('发票已开具，系统将自动发送邮件通知用户'));
         setIssueModal({ visible: false, record: null });
         fetchInvoices(page);
@@ -120,7 +120,7 @@ const AdminInvoiceManager = () => {
         `/api/invoice/admin/${rejectModal.record.id}/reject`,
         { remark: values.remark },
       );
-      if (res.data.message === 'success') {
+      if (res.data.success === true) {
         Toast.success(t('已拒绝该发票申请'));
         setRejectModal({ visible: false, record: null });
         fetchInvoices(page);
@@ -148,7 +148,7 @@ const AdminInvoiceManager = () => {
         `/api/invoice/admin/${sendModal.record.id}/send`,
         { email: values.email || '' },
       );
-      if (res.data.message === 'success') {
+      if (res.data.success === true) {
         Toast.success(res.data.data || t('邮件已发送'));
         setSendModal({ visible: false, record: null });
         fetchInvoices(page);

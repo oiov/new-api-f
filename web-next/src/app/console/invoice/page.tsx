@@ -110,8 +110,8 @@ export default function InvoicePage() {
       const res = await API.get(`/api/user/invoice`, {
         params: { page: p, page_size: pageSize },
       });
-      const data = res.data as { message: string; data?: { items: Invoice[]; total: number } };
-      if (data.message === 'success') {
+      const data = res.data as { success: boolean; message?: string; data?: { items: Invoice[]; total: number } };
+      if (data.success) {
         setInvoices(data.data?.items || []);
         setTotal(data.data?.total || 0);
       }
@@ -126,8 +126,8 @@ export default function InvoicePage() {
     setTopupsLoading(true);
     try {
       const res = await API.get('/api/user/invoice/invoiceable');
-      const data = res.data as { message: string; data?: TopUp[] };
-      if (data.message === 'success') {
+      const data = res.data as { success: boolean; message?: string; data?: TopUp[] };
+      if (data.success) {
         setInvoiceableTopUps(data.data || []);
       }
     } catch {
@@ -199,8 +199,8 @@ export default function InvoicePage() {
         tax_id: taxId.trim(),
         email: email.trim(),
       });
-      const data = res.data as { message: string; data?: string };
-      if (data.message === 'success') {
+      const data = res.data as { success: boolean; message?: string; data?: string };
+      if (data.success) {
         toast.success(t('发票申请提交成功'));
         setShowRequestModal(false);
         fetchInvoices(1);
