@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, Suspense } from 'react';
+import React, { useState, useCallback, useEffect, useRef, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import {
@@ -10,6 +10,7 @@ import {
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Turnstile, { type BoundTurnstileObject } from 'react-turnstile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -114,6 +115,8 @@ function RegisterFormInner() {
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const turnstileRef = useRef<BoundTurnstileObject | null>(null);
 
   useEffect(() => {
     const affParam = searchParams.get('aff');
@@ -141,11 +144,16 @@ function RegisterFormInner() {
       toast.error(t('请输入邮箱'));
       return;
     }
+    if (status?.turnstile_check && !turnstileToken) {
+      toast.error(t('请稍后几秒重试，Turnstile 正在检查用户环境'));
+      return;
+    }
     setSendingCode(true);
     try {
-      const res = await API.get(
-        `/api/verification?email=${encodeURIComponent(form.email)}`,
-      );
+      const url = status?.turnstile_check
+        ? `/api/verification?email=${encodeURIComponent(form.email)}&turnstile=${turnstileToken}`
+        : `/api/verification?email=${encodeURIComponent(form.email)}`;
+      const res = await API.get(url);
       const data = res.data as { success: boolean; message?: string };
       if (data.success) {
         toast.success(t('验证码已发送'));
@@ -166,6 +174,10 @@ function RegisterFormInner() {
       toast.error(t('两次密码不一致'));
       return;
     }
+    if (status?.turnstile_check && !turnstileToken) {
+      toast.error(t('请稍后几秒重试，Turnstile 正在检查用户环境'));
+      return;
+    }
     setLoading(true);
     try {
       const payload: Record<string, string> = {
@@ -177,7 +189,10 @@ function RegisterFormInner() {
         payload.email = form.email.trim();
         payload.verification_code = form.verificationCode.trim();
       }
-      const res = await API.post('/api/user/register', payload);
+      const url = status?.turnstile_check
+        ? `/api/user/register?turnstile=${turnstileToken}`
+        : '/api/user/register';
+      const res = await API.post(url, payload);
       const data = res.data as { success: boolean; message?: string; data: User };
       if (data.success) {
         persistUser(data.data);
@@ -187,13 +202,17 @@ function RegisterFormInner() {
         router.replace('/console');
       } else {
         toast.error(data.message || t('注册失败'));
+        if (status?.turnstile_check) {
+          setTurnstileToken('');
+          turnstileRef.current?.reset();
+        }
       }
     } catch {
       toast.error(t('注册失败，请稍后重试'));
     } finally {
       setLoading(false);
     }
-  }, [form, dispatch, router, t, status]);
+  }, [form, dispatch, router, t, status, turnstileToken]);
 
   // 注册被关闭
   if (status !== null && !status?.register_enabled) {
@@ -375,6 +394,23 @@ function RegisterFormInner() {
             className="h-10"
           />
         </div>
+
+        {/* Turnstile */}
+        {status?.turnstile_check && status.turnstile_site_key && (
+          <div className="flex justify-center">
+            <Turnstile
+              sitekey={status.turnstile_site_key}
+              onVerify={(token, bound) => {
+                setTurnstileToken(token);
+                turnstileRef.current = bound;
+              }}
+              onExpire={(_token, bound) => {
+                setTurnstileToken('');
+                turnstileRef.current = bound;
+              }}
+            />
+          </div>
+        )}
 
         <Button type="submit" className="w-full h-10 gap-2" disabled={loading}>
           {loading ? (
