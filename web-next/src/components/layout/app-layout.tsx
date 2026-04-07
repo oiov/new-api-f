@@ -34,10 +34,10 @@ function MobileNavSheet({ open, onClose }: { open: boolean; onClose: () => void 
   const pathname = usePathname();
 
   const navLinks = [
-    { href: '/pricing', icon: BarChart3, label: t('价格') },
-    { href: '/status', icon: Info, label: t('关于') },
-    ...(status?.docs_link ? [{ href: '/docs', icon: BookOpen, label: t('文档') }] : []),
-    ...(status?.subscription_enabled ? [{ href: '/console/package', icon: Tag, label: t('套餐') }] : []),
+    { href: '/pricing', icon: BarChart3, label: t('价格方案') },
+    { href: '/status', icon: Info, label: t('系统状态') },
+    ...(status?.docs_link ? [{ href: '/docs', icon: BookOpen, label: t('开发文档') }] : []),
+    ...(status?.subscription_enabled ? [{ href: '/console/package', icon: Tag, label: t('服务套餐') }] : []),
   ];
 
   return (

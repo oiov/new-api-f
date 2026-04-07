@@ -55,26 +55,26 @@ export const useNavigation = (
         to: '/console',
       },
       {
-        text: t('模型广场'),
+        text: t('价格方案'),
         itemKey: 'pricing',
         to: '/pricing',
       },
       {
-        text: t('套餐'),
+        text: t('服务套餐'),
         itemKey: 'package',
         to: '/console/package#package-pricing',
       },
       ...(docsLink
         ? [
             {
-              text: t('文档'),
+              text: t('开发文档'),
               itemKey: 'docs',
               to: '/docs',
             },
           ]
         : []),
       {
-        text: t('状态'),
+        text: t('系统状态'),
         itemKey: 'about',
         to: '/status',
       },

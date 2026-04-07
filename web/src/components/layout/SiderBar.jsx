@@ -168,7 +168,7 @@ const SiderBar = ({ onNavigate = () => { } }) => {
   const publicItems = useMemo(() => {
     const items = [
       {
-        text: t('状态'),
+        text: t('系统状态'),
         itemKey: 'about',
         to: '/status',
       },
