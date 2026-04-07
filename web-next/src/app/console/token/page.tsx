@@ -899,7 +899,20 @@ function TokensContent() {
                             <span className="font-medium text-sm">{token.name}</span>
                           </div>
                         </TableCell>
-                        <TableCell><TokenKeyDisplay tokenId={token.id} maskedKey={token.key} /></TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <TokenKeyDisplay tokenId={token.id} maskedKey={token.key} />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 text-primary/50 hover:text-primary shrink-0"
+                              title={t('导入配置')}
+                              onClick={() => { setImportToken(token); setImportOpen(true); }}
+                            >
+                              <Download className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
                         <TableCell><TokenStatusBadge status={token.status} /></TableCell>
                         <TableCell className="text-sm text-right">
                           {token.unlimited_quota ? (
@@ -948,11 +961,6 @@ function TokensContent() {
                                 ) : (
                                   <><Activity className="size-4 mr-2 text-success" />{t('启用')}</>
                                 )}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => { setImportToken(token); setImportOpen(true); }}>
-                                <Download className="size-4 mr-2 text-primary" />
-                                <span className="text-primary">{t('导入配置')}</span>
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
