@@ -7,8 +7,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { ModelPrice, VendorChip, QuotaTypeFilter } from '../types';
+import { getGroupBillingBadgeClass, getGroupMeta } from '../helpers';
+import type { GroupMeta, ModelPrice, VendorChip, QuotaTypeFilter } from '../types';
 import { FilterGroup, FilterItem } from './filter-group';
 import { VendorIcon } from './vendor-icon';
 
@@ -23,6 +25,7 @@ interface PricingSidebarProps {
   filterTag: string;
   setFilterTag: (t: string) => void;
   usableGroup: Record<string, string>;
+  usableGroupMeta: Record<string, GroupMeta>;
   groupRatio: Record<string, number>;
   allTags: string[];
   vendorChips: VendorChip[];
@@ -38,7 +41,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
     groupFilter, setGroupFilter,
     filterQuotaType, setFilterQuotaType,
     filterTag, setFilterTag,
-    usableGroup, groupRatio,
+    usableGroup, usableGroupMeta, groupRatio,
     allTags, vendorChips,
     loading, hasActiveFilter, onReset,
   } = props;
@@ -70,6 +73,30 @@ export function PricingSidebar(props: PricingSidebarProps) {
   const allGroups = Object.keys(usableGroup).length > 0
     ? Object.keys(usableGroup)
     : Array.from(new Set(prices.flatMap((p) => p.enable_groups || []))).sort();
+
+  const GroupBillingBadge = ({
+    billingType,
+    billingLabel,
+    compact = false,
+  }: {
+    billingType?: string;
+    billingLabel?: string;
+    compact?: boolean;
+  }) => {
+    if (!billingLabel) return null;
+    return (
+      <Badge
+        variant="secondary"
+        className={cn(
+          'border font-medium',
+          compact ? 'h-5 px-1.5 text-[10px]' : 'h-6 px-2 text-[11px]',
+          getGroupBillingBadgeClass(billingType),
+        )}
+      >
+        {billingLabel}
+      </Badge>
+    );
+  };
 
   return (
     <div className="w-[220px] shrink-0 pr-5 border-r border-border/60">
@@ -121,6 +148,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
                 </FilterItem>
                 {allGroups.map((g) => {
                   const ratio = groupRatio[g];
+                  const groupMeta = getGroupMeta(g, usableGroupMeta, usableGroup);
                   return (
                     <FilterItem
                       key={g}
@@ -136,7 +164,14 @@ export function PricingSidebar(props: PricingSidebarProps) {
                         </span>
                       ) : undefined}
                     >
-                      {g}
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate">{g}</span>
+                        <GroupBillingBadge
+                          billingType={groupMeta.billing_type}
+                          billingLabel={groupMeta.billing_label}
+                          compact
+                        />
+                      </span>
                     </FilterItem>
                   );
                 })}

@@ -1,6 +1,6 @@
 import { renderQuota, getCurrencySymbol } from '@/lib/utils';
 import type { SystemStatus } from '@/types';
-import type { SubscriptionPlan } from './types';
+import type { GroupMeta, SubscriptionPlan } from './types';
 
 // ── Price formatting ───────────────────────────────────────────────────────────
 
@@ -85,4 +85,25 @@ export function hueFromStr(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h + s.charCodeAt(i)) % 360;
   return h;
+}
+
+export function getGroupBillingBadgeClass(billingType?: string) {
+  switch (billingType) {
+    case 'subscription':
+      return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800/50';
+    case 'quota':
+      return 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/50';
+    case 'hybrid':
+      return 'bg-green-100 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800/50';
+    default:
+      return 'bg-muted/60 text-muted-foreground border-border';
+  }
+}
+
+export function getGroupMeta(
+  groupName: string,
+  usableGroupMeta: Record<string, GroupMeta>,
+  usableGroup: Record<string, string>,
+): GroupMeta {
+  return usableGroupMeta[groupName] || { desc: usableGroup[groupName] || groupName };
 }

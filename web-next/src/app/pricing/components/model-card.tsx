@@ -2,9 +2,10 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { fmtRatio, hueFromStr } from '../helpers';
-import type { ModelPrice } from '../types';
+import { fmtRatio, getGroupBillingBadgeClass, getGroupMeta, hueFromStr } from '../helpers';
+import type { GroupMeta, ModelPrice } from '../types';
 import { VendorIcon } from './vendor-icon';
 import { CopyButton } from './copy-button';
 
@@ -13,9 +14,37 @@ interface ModelCardProps {
   groupFilter: string;
   setGroupFilter: (g: string) => void;
   openDetail: (m: ModelPrice) => void;
+  usableGroup: Record<string, string>;
+  usableGroupMeta: Record<string, GroupMeta>;
 }
 
-export function ModelCard({ model, groupFilter, setGroupFilter, openDetail }: ModelCardProps) {
+function GroupBillingBadge({
+  billingType,
+  billingLabel,
+  compact = false,
+}: {
+  billingType?: string;
+  billingLabel?: string;
+  compact?: boolean;
+}) {
+  if (!billingLabel) return null;
+  return (
+    <Badge
+      variant="secondary"
+      className={cn(
+        'border font-medium',
+        compact ? 'h-5 px-1.5 text-[10px]' : 'h-6 px-2 text-[11px]',
+        getGroupBillingBadgeClass(billingType),
+      )}
+    >
+      {billingLabel}
+    </Badge>
+  );
+}
+
+export function ModelCard({
+  model, groupFilter, setGroupFilter, openDetail, usableGroup, usableGroupMeta,
+}: ModelCardProps) {
   const { t } = useTranslation();
   const isTokenBased = model.quota_type === 0;
   const inputPrice = fmtRatio(model.model_ratio);
@@ -116,20 +145,28 @@ export function ModelCard({ model, groupFilter, setGroupFilter, openDetail }: Mo
         {/* Groups */}
         {(model.enable_groups || []).length > 0 && (
           <div className="flex flex-wrap gap-1 pt-2 border-t border-border/50">
-            {(model.enable_groups || []).slice(0, 4).map((g) => (
-              <span
-                key={g}
-                onClick={(e) => { e.stopPropagation(); setGroupFilter(groupFilter === g ? 'all' : g); }}
-                className={cn(
-                  'text-[10px] rounded px-1.5 py-0.5 border cursor-pointer transition-colors',
-                  groupFilter === g
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-muted/50 text-muted-foreground border-border/60 hover:border-foreground/30 hover:bg-muted',
-                )}
-              >
-                {g}
-              </span>
-            ))}
+            {(model.enable_groups || []).slice(0, 4).map((g) => {
+              const groupMeta = getGroupMeta(g, usableGroupMeta, usableGroup);
+              return (
+                <span
+                  key={g}
+                  onClick={(e) => { e.stopPropagation(); setGroupFilter(groupFilter === g ? 'all' : g); }}
+                  className={cn(
+                    'text-[10px] rounded px-1.5 py-0.5 border cursor-pointer transition-colors inline-flex items-center gap-1',
+                    groupFilter === g
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-muted/50 text-muted-foreground border-border/60 hover:border-foreground/30 hover:bg-muted',
+                  )}
+                >
+                  {g}
+                  <GroupBillingBadge
+                    billingType={groupMeta.billing_type}
+                    billingLabel={groupMeta.billing_label}
+                    compact
+                  />
+                </span>
+              );
+            })}
             {(model.enable_groups || []).length > 4 && (
               <span className="text-[10px] rounded px-1.5 py-0.5 bg-muted/30 text-muted-foreground border border-border/50">
                 +{(model.enable_groups || []).length - 4}

@@ -51,6 +51,12 @@ export interface PlanWrapper { plan: SubscriptionPlan }
 export type ViewMode = 'card' | 'table';
 export type QuotaTypeFilter = 'all' | 0 | 1;
 
+export interface GroupMeta {
+  desc: string;
+  billing_type?: string;
+  billing_label?: string;
+}
+
 export interface VendorChip {
   name: string;
   icon?: string;

@@ -6,8 +6,9 @@ import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { hueFromStr } from '../helpers';
-import type { VendorChip } from '../types';
+import { cn } from '@/lib/utils';
+import { getGroupBillingBadgeClass, getGroupMeta, hueFromStr } from '../helpers';
+import type { GroupMeta, VendorChip } from '../types';
 import { VendorIcon } from './vendor-icon';
 
 interface VendorGroupHeaderProps {
@@ -15,6 +16,7 @@ interface VendorGroupHeaderProps {
   vendorChips: VendorChip[];
   groupFilter: string;
   usableGroup: Record<string, string>;
+  usableGroupMeta: Record<string, GroupMeta>;
   groupRatio: Record<string, number>;
   modelCount: number;
   setGroupFilter: (g: string) => void;
@@ -22,13 +24,32 @@ interface VendorGroupHeaderProps {
 
 export function VendorGroupHeader({
   activeVendor, vendorChips, groupFilter,
-  usableGroup, groupRatio, modelCount, setGroupFilter,
+  usableGroup, usableGroupMeta, groupRatio, modelCount, setGroupFilter,
 }: VendorGroupHeaderProps) {
   const { t } = useTranslation();
   const selectedVendor = vendorChips.find((v) => v.name === activeVendor);
-  const groupDesc = usableGroup[groupFilter];
+  const groupMeta = getGroupMeta(groupFilter, usableGroupMeta, usableGroup);
+  const groupDesc = groupMeta.desc;
   const groupRat = groupRatio[groupFilter];
   const groupHue = hueFromStr(groupFilter || '');
+
+  const GroupBillingBadge = ({
+    billingType,
+    billingLabel,
+  }: {
+    billingType?: string;
+    billingLabel?: string;
+  }) => {
+    if (!billingLabel) return null;
+    return (
+      <Badge
+        variant="secondary"
+        className={cn('h-6 px-2 text-[11px] border font-medium', getGroupBillingBadgeClass(billingType))}
+      >
+        {billingLabel}
+      </Badge>
+    );
+  };
 
   return (
     <div className="space-y-2">
@@ -90,6 +111,10 @@ export function VendorGroupHeader({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-sm text-foreground">{groupFilter}</span>
+                <GroupBillingBadge
+                  billingType={groupMeta.billing_type}
+                  billingLabel={groupMeta.billing_label}
+                />
                 {groupRat !== undefined && (
                   <span
                     className="text-[11px] font-bold rounded px-1.5 py-0.5 border"

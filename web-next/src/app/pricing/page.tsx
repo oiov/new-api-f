@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { useSystemStatus } from '@/context/status-context';
 import { toast } from 'sonner';
 
-import type { ModelPrice, Vendor, SubscriptionPlan, PlanWrapper } from './types';
+import type { ModelPrice, Vendor, SubscriptionPlan, PlanWrapper, GroupMeta } from './types';
 import { useUrlState } from './hooks/use-url-state';
 import { StatCard } from './components/stat-card';
 import { ModelPricingTab } from './components/model-pricing-tab';
@@ -26,6 +26,7 @@ export default function PricingPage() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [groupRatio, setGroupRatio] = useState<Record<string, number>>({});
   const [usableGroup, setUsableGroup] = useState<Record<string, string>>({});
+  const [usableGroupMeta, setUsableGroupMeta] = useState<Record<string, GroupMeta>>({});
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [plansLoading, setPlansLoading] = useState(true);
@@ -45,12 +46,14 @@ export default function PricingPage() {
         vendors?: Vendor[];
         group_ratio?: Record<string, number>;
         usable_group?: Record<string, string>;
+        usable_group_meta?: Record<string, GroupMeta>;
       };
       if (data.success) {
         setPrices(data.data || []);
         setVendors(data.vendors || []);
         setGroupRatio(data.group_ratio || {});
         setUsableGroup(data.usable_group || {});
+        setUsableGroupMeta(data.usable_group_meta || {});
       }
     } catch {
       toast.error(t('加载价格失败'));
@@ -94,7 +97,7 @@ export default function PricingPage() {
   ];
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-8 space-y-7">
+    <div className="max-w-[1400px] mx-auto px-4 py-8 md:px-6 lg:px-8 lg:py-10 space-y-8 lg:space-y-10">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
         className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
       >
@@ -116,7 +119,7 @@ export default function PricingPage() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.06 }}
-        className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
       >
         {statCards.map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 + 0.06 }}>
@@ -127,7 +130,7 @@ export default function PricingPage() {
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.12 }}>
         <Tabs value={currentTab} onValueChange={handleTabChange}>
-          <TabsList className="h-10 mb-6">
+          <TabsList className="mb-6 h-auto min-h-10 flex-wrap gap-2 p-1">
             <TabsTrigger value="models" className="gap-2 text-sm">
               <BarChart3 className="size-4" />
               {t('模型定价')}
@@ -139,10 +142,17 @@ export default function PricingPage() {
               {!plansLoading && plans.length > 0 && <span className="text-[10px] bg-muted rounded-full px-1.5 py-0.5 font-semibold">{plans.length}</span>}
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="models">
-            <ModelPricingTab prices={prices} loading={loading} usableGroup={usableGroup} groupRatio={groupRatio} vendors={vendors} />
+          <TabsContent value="models" className="mt-0">
+            <ModelPricingTab
+              prices={prices}
+              loading={loading}
+              usableGroup={usableGroup}
+              usableGroupMeta={usableGroupMeta}
+              groupRatio={groupRatio}
+              vendors={vendors}
+            />
           </TabsContent>
-          <TabsContent value="plans">
+          <TabsContent value="plans" className="mt-0">
             <PlansTab plans={plans} loading={plansLoading} status={status} />
           </TabsContent>
         </Tabs>

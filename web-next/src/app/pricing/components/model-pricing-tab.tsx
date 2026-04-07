@@ -15,9 +15,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { fmtRatio } from '../helpers';
+import { Badge } from '@/components/ui/badge';
+import { fmtRatio, getGroupBillingBadgeClass, getGroupMeta } from '../helpers';
 import { useUrlState } from '../hooks/use-url-state';
-import type { ModelPrice, Vendor, QuotaTypeFilter, ViewMode, VendorChip } from '../types';
+import type { GroupMeta, ModelPrice, Vendor, QuotaTypeFilter, ViewMode, VendorChip } from '../types';
 import { CopyButton } from './copy-button';
 import { ModelCard } from './model-card';
 import { ModelDetailSheet } from './model-detail-sheet';
@@ -31,12 +32,13 @@ interface ModelPricingTabProps {
   prices: ModelPrice[];
   loading: boolean;
   usableGroup: Record<string, string>;
+  usableGroupMeta: Record<string, GroupMeta>;
   groupRatio: Record<string, number>;
   vendors: Vendor[];
 }
 
 export function ModelPricingTab({
-  prices, loading, usableGroup, groupRatio, vendors,
+  prices, loading, usableGroup, usableGroupMeta, groupRatio, vendors,
 }: ModelPricingTabProps) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -120,9 +122,33 @@ export function ModelPricingTab({
 
   const openDetail = (model: ModelPrice) => { setSelectedModel(model); setSheetOpen(true); };
 
+  const GroupBillingBadge = ({
+    billingType,
+    billingLabel,
+    compact = false,
+  }: {
+    billingType?: string;
+    billingLabel?: string;
+    compact?: boolean;
+  }) => {
+    if (!billingLabel) return null;
+    return (
+      <Badge
+        variant="secondary"
+        className={cn(
+          'border font-medium',
+          compact ? 'h-5 px-1.5 text-[10px]' : 'h-6 px-2 text-[11px]',
+          getGroupBillingBadgeClass(billingType),
+        )}
+      >
+        {billingLabel}
+      </Badge>
+    );
+  };
+
   return (
     <>
-      <div className={cn('flex gap-0', isMobile ? 'flex-col' : 'flex-row items-start')}>
+      <div className={cn('flex', isMobile ? 'flex-col gap-4' : 'flex-row items-start gap-6 xl:gap-8')}>
         {/* Sidebar */}
         {!isMobile && (
           <PricingSidebar
@@ -131,17 +157,17 @@ export function ModelPricingTab({
             groupFilter={groupFilter} setGroupFilter={handleSetGroupFilter}
             filterQuotaType={filterQuotaType} setFilterQuotaType={handleSetFilterQuotaType}
             filterTag={filterTag} setFilterTag={handleSetFilterTag}
-            usableGroup={usableGroup} groupRatio={groupRatio}
+            usableGroup={usableGroup} usableGroupMeta={usableGroupMeta} groupRatio={groupRatio}
             allTags={allTags} vendorChips={vendorChips}
             loading={loading} hasActiveFilter={hasActiveFilter} onReset={handleReset}
           />
         )}
 
         {/* Main content */}
-        <div className="flex-1 min-w-0 space-y-3">
+        <div className="flex-1 min-w-0 space-y-4 lg:space-y-5">
           <VendorGroupHeader
             activeVendor={activeVendor} vendorChips={vendorChips}
-            groupFilter={groupFilter} usableGroup={usableGroup} groupRatio={groupRatio}
+            groupFilter={groupFilter} usableGroup={usableGroup} usableGroupMeta={usableGroupMeta} groupRatio={groupRatio}
             modelCount={filteredPrices.length} setGroupFilter={handleSetGroupFilter}
           />
 
@@ -173,7 +199,7 @@ export function ModelPricingTab({
           )}
 
           {/* Controls */}
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
               <Input placeholder={t('搜索模型名称...')} value={search} onChange={(e) => handleSearchChange(e.target.value)} className="pl-9 bg-card" />
@@ -192,7 +218,21 @@ export function ModelPricingTab({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t('全部分组')}</SelectItem>
-                  {Object.keys(usableGroup).map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                  {Object.keys(usableGroup).map((g) => {
+                    const groupMeta = getGroupMeta(g, usableGroupMeta, usableGroup);
+                    return (
+                      <SelectItem key={g} value={g}>
+                        <div className="flex items-center gap-2">
+                          <span>{g}</span>
+                          <GroupBillingBadge
+                            billingType={groupMeta.billing_type}
+                            billingLabel={groupMeta.billing_label}
+                            compact
+                          />
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             )}
@@ -232,7 +272,7 @@ export function ModelPricingTab({
           {viewMode === 'card' && (
             <motion.div key="card-grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
               {loading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 xl:gap-5">
                   {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-[160px] rounded-2xl" />)}
                 </div>
               ) : filteredPrices.length === 0 ? (
@@ -249,9 +289,17 @@ export function ModelPricingTab({
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 xl:gap-5">
                     {paginatedPrices.map((model) => (
-                      <ModelCard key={model.model_name} model={model} groupFilter={groupFilter} setGroupFilter={handleSetGroupFilter} openDetail={openDetail} />
+                      <ModelCard
+                        key={model.model_name}
+                        model={model}
+                        groupFilter={groupFilter}
+                        setGroupFilter={handleSetGroupFilter}
+                        openDetail={openDetail}
+                        usableGroup={usableGroup}
+                        usableGroupMeta={usableGroupMeta}
+                      />
                     ))}
                   </div>
                   {filteredPrices.length > PAGE_SIZE && (
@@ -267,8 +315,9 @@ export function ModelPricingTab({
           {/* Table View */}
           {viewMode === 'table' && (
             <motion.div key="table" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-              <div className="rounded-2xl border bg-card overflow-hidden shadow-sm">
-                <table className="w-full text-sm">
+              <div className="rounded-2xl border bg-card shadow-sm">
+                <div className="w-full overflow-x-auto">
+                  <table className="min-w-[940px] w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/30">
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground min-w-[180px]">{t('模型名称')}</th>
@@ -319,8 +368,13 @@ export function ModelPricingTab({
                             <div className="flex flex-wrap gap-1">
                               {(price.enable_groups || []).slice(0, 3).map((g) => (
                                 <span key={g} onClick={(e) => { e.stopPropagation(); handleSetGroupFilter(groupFilter === g ? 'all' : g); }}
-                                  className={cn('text-[11px] rounded-md px-1.5 py-0.5 border cursor-pointer transition-colors', groupFilter === g ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted')}>
+                                  className={cn('text-[11px] rounded-md px-1.5 py-0.5 border cursor-pointer transition-colors inline-flex items-center gap-1', groupFilter === g ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted/60 text-muted-foreground border-border hover:bg-muted')}>
                                   {g}
+                                  <GroupBillingBadge
+                                    billingType={getGroupMeta(g, usableGroupMeta, usableGroup).billing_type}
+                                    billingLabel={getGroupMeta(g, usableGroupMeta, usableGroup).billing_label}
+                                    compact
+                                  />
                                 </span>
                               ))}
                               {(price.enable_groups || []).length > 3 && (
@@ -337,14 +391,21 @@ export function ModelPricingTab({
                       ))
                     )}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               </div>
             </motion.div>
           )}
         </div>
       </div>
 
-      <ModelDetailSheet model={selectedModel} open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      <ModelDetailSheet
+        model={selectedModel}
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        usableGroup={usableGroup}
+        usableGroupMeta={usableGroupMeta}
+      />
     </>
   );
 }

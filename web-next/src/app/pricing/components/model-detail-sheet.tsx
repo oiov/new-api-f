@@ -8,8 +8,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
-import { fmtRatio } from '../helpers';
-import type { ModelPrice } from '../types';
+import { fmtRatio, getGroupBillingBadgeClass, getGroupMeta } from '../helpers';
+import type { GroupMeta, ModelPrice } from '../types';
 import { VendorIcon } from './vendor-icon';
 import { CopyButton } from './copy-button';
 
@@ -17,9 +17,37 @@ interface ModelDetailSheetProps {
   model: ModelPrice | null;
   open: boolean;
   onClose: () => void;
+  usableGroup: Record<string, string>;
+  usableGroupMeta: Record<string, GroupMeta>;
 }
 
-export function ModelDetailSheet({ model, open, onClose }: ModelDetailSheetProps) {
+function GroupBillingBadge({
+  billingType,
+  billingLabel,
+  compact = false,
+}: {
+  billingType?: string;
+  billingLabel?: string;
+  compact?: boolean;
+}) {
+  if (!billingLabel) return null;
+  return (
+    <Badge
+      variant="secondary"
+      className={cn(
+        'border font-medium',
+        compact ? 'h-5 px-1.5 text-[10px]' : 'h-6 px-2 text-[11px]',
+        getGroupBillingBadgeClass(billingType),
+      )}
+    >
+      {billingLabel}
+    </Badge>
+  );
+}
+
+export function ModelDetailSheet({
+  model, open, onClose, usableGroup, usableGroupMeta,
+}: ModelDetailSheetProps) {
   const { t } = useTranslation();
   if (!model) return null;
 
@@ -91,11 +119,20 @@ export function ModelDetailSheet({ model, open, onClose }: ModelDetailSheetProps
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t('可用分组')}</p>
                 <div className="flex flex-wrap gap-2">
-                  {(model.enable_groups || []).map((g) => (
-                    <Badge key={g} variant="outline" className="text-sm px-3 py-1.5 gap-1.5">
-                      <Tag className="size-3" />{g}
-                    </Badge>
-                  ))}
+                  {(model.enable_groups || []).map((g) => {
+                    const groupMeta = getGroupMeta(g, usableGroupMeta, usableGroup);
+                    return (
+                      <Badge key={g} variant="outline" className="text-sm px-3 py-1.5 gap-1.5 flex items-center">
+                        <Tag className="size-3" />
+                        {g}
+                        <GroupBillingBadge
+                          billingType={groupMeta.billing_type}
+                          billingLabel={groupMeta.billing_label}
+                          compact
+                        />
+                      </Badge>
+                    );
+                  })}
                 </div>
               </div>
             )}
