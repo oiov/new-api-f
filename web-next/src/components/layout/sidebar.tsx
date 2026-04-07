@@ -350,7 +350,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, onNavigate }: SidebarPro
         )}
         style={{ height: 'calc(100vh - var(--header-height))' }}
       >
-        <ScrollArea className="flex-1 py-2">
+        <ScrollArea className="flex-1 min-h-0 py-2">
           <div className="space-y-0.5">
             {filteredSections.map((section, sectionIdx) => (
               <div key={section.sectionKey}>
