@@ -9,7 +9,9 @@ import {
   Toast,
   Spin,
   Banner,
+  Input,
 } from '@douyinfe/semi-ui';
+import { IconSearch } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { API, timestamp2string } from '../../helpers';
 
@@ -30,12 +32,14 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
   const [topups, setTopups] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
   const formApi = React.useRef(null);
 
   useEffect(() => {
     if (visible) {
       fetchInvoiceableTopUps();
       setSelectedIds([]);
+      setSearchKeyword('');
     }
   }, [visible]);
 
@@ -53,6 +57,18 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
     }
   };
 
+  const filteredTopups = useMemo(() => {
+    const kw = searchKeyword.trim().toLowerCase();
+    if (!kw) return topups;
+    return topups.filter(
+      (t) =>
+        (t.trade_no && t.trade_no.toLowerCase().includes(kw)) ||
+        (t.payment_method && t.payment_method.toLowerCase().includes(kw)) ||
+        (PAYMENT_METHOD_MAP[t.payment_method] &&
+          PAYMENT_METHOD_MAP[t.payment_method].toLowerCase().includes(kw)),
+    );
+  }, [topups, searchKeyword]);
+
   const selectedAmount = useMemo(() => {
     return topups
       .filter((t) => selectedIds.includes(t.id))
@@ -66,7 +82,13 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
   };
 
   const handleSelectAll = (checked) => {
-    setSelectedIds(checked ? topups.map((t) => t.id) : []);
+    if (checked) {
+      const filteredIds = filteredTopups.map((t) => t.id);
+      setSelectedIds((prev) => [...new Set([...prev, ...filteredIds])]);
+    } else {
+      const filteredIds = new Set(filteredTopups.map((t) => t.id));
+      setSelectedIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+    }
   };
 
   const handleSubmit = async () => {
@@ -113,14 +135,18 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
     }
   };
 
-  const allSelected = topups.length > 0 && selectedIds.length === topups.length;
+  const allSelected =
+    filteredTopups.length > 0 &&
+    filteredTopups.every((t) => selectedIds.includes(t.id));
 
   const columns = [
     {
       title: (
         <Checkbox
           checked={allSelected}
-          indeterminate={selectedIds.length > 0 && !allSelected}
+          indeterminate={
+            filteredTopups.some((t) => selectedIds.includes(t.id)) && !allSelected
+          }
           onChange={(e) => handleSelectAll(e.target.checked)}
         />
       ),
@@ -194,11 +220,19 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
                 '发票最低开票金额为 {{min}} 元，请勾选要开票的充值记录。',
                 { min: MIN_AMOUNT },
               )}
-              style={{ marginBottom: 16 }}
+              style={{ marginBottom: 12 }}
+            />
+            <Input
+              prefix={<IconSearch />}
+              placeholder={t('搜索订单号或支付方式')}
+              value={searchKeyword}
+              onChange={setSearchKeyword}
+              showClear
+              style={{ marginBottom: 10 }}
             />
             <Table
               columns={columns}
-              dataSource={topups}
+              dataSource={filteredTopups}
               rowKey='id'
               pagination={false}
               size='small'

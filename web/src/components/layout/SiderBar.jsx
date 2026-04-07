@@ -38,6 +38,7 @@ const routerMap = {
   redemption: '/console/redemption',
   topup: '/console/topup',
   invoice: '/console/invoice',
+  invoiceAdmin: '/console/invoice-admin',
   invite: '/console/invite',
   user: '/console/user',
   subscription: '/console/subscription',
@@ -234,6 +235,12 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         text: t('风险封控'),
         itemKey: 'riskControl',
         to: '/risk-control',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('发票开具'),
+        itemKey: 'invoiceAdmin',
+        to: '/console/invoice-admin',
         className: isAdmin() ? '' : 'tableHiddle',
       },
     ];

@@ -46,6 +46,7 @@ const Token = lazy(() => import('./pages/Token'));
 const Redemption = lazy(() => import('./pages/Redemption'));
 const TopUp = lazy(() => import('./pages/TopUp'));
 const InvoicePage = lazy(() => import('./pages/Invoice'));
+const InvoiceAdminPage = lazy(() => import('./pages/InvoiceAdmin'));
 const PackagePage = lazy(() => import('./pages/Package'));
 const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
@@ -343,6 +344,16 @@ function App() {
                   <InvoicePage />
                 </Suspense>
               </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/invoice-admin'
+            element={
+              <AdminRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <InvoiceAdminPage />
+                </Suspense>
+              </AdminRoute>
             }
           />
           <Route

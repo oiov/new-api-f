@@ -26,6 +26,7 @@ import {
   RefreshCw,
   BookOpen,
   Crown,
+  Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -312,6 +313,12 @@ export function Sidebar({ collapsed, onToggleCollapsed, onNavigate }: SidebarPro
             label: t('风险封控'),
             href: '/console/risk-control',
             icon: <Shield className="size-full" />,
+            adminOnly: true,
+          },
+          {
+            label: t('发票开具'),
+            href: '/console/invoice-admin',
+            icon: <Receipt className="size-full" />,
             adminOnly: true,
           },
         ],

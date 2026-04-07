@@ -55,6 +55,7 @@ const PageLayout = () => {
     '/console/midjourney',
     '/console/task',
     '/console/models',
+    '/console/invoice-admin',
     '/pricing',
   ];
 
@@ -247,6 +248,7 @@ const PageLayout = () => {
                   : 'hidden',
               WebkitOverflowScrolling: 'touch',
               padding: shouldInnerPadding ? (isMobile ? '5px' : '24px') : '0',
+              paddingTop: shouldEnablePageScroll && !isMobile ? '88px' : undefined,
               position: 'relative',
             }}
           >

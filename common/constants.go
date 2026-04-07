@@ -173,6 +173,17 @@ var (
 	ImageDownloadPermission = RoleGuestUser
 )
 
+// 存储后端配置
+var (
+	StorageBackend     = "local" // "local" 或 "r2"
+	StorageR2Endpoint  = ""
+	StorageR2Bucket    = ""
+	StorageR2Region    = "auto"
+	StorageR2AccessKey = ""
+	StorageR2SecretKey = ""
+	StorageR2PublicURL = ""
+)
+
 // All duration's unit is seconds
 // Shouldn't larger then RateLimitKeyExpirationDuration
 var (

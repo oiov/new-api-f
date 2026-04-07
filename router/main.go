@@ -19,6 +19,8 @@ func SetRouter(router *gin.Engine, buildFS embed.FS, indexPage []byte) {
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
 	SetVideoRouter(router)
+	// 本地上传文件服务（仅 StorageBackend=local 时有效）
+	router.Static("/uploads", "./data/uploads")
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""

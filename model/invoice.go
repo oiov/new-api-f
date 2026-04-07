@@ -172,6 +172,17 @@ func GetInvoiceableTopUps(userId int) ([]*TopUp, error) {
 	return topups, err
 }
 
+// GetInvoiceTopUps 根据发票的 topup_ids 字符串查询关联充值记录
+func GetInvoiceTopUps(topUpIdsStr string) ([]*TopUp, error) {
+	ids := parseTopUpIds(topUpIdsStr)
+	if len(ids) == 0 {
+		return []*TopUp{}, nil
+	}
+	var topups []*TopUp
+	err := DB.Where("id IN ?", ids).Order("id desc").Find(&topups).Error
+	return topups, err
+}
+
 // parseTopUpIds 解析逗号分隔的充值ID字符串
 func parseTopUpIds(s string) []int {
 	var ids []int

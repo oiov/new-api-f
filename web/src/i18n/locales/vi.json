@@ -3972,6 +3972,27 @@
     "发票申请提交成功": "Invoice application submitted",
     "操作失败，请稍后重试": "Operation failed, please try again",
     "发送失败": "Send failed",
-    "发送失败，请稍后重试": "Send failed, please try again"
+    "发送失败，请稍后重试": "Send failed, please try again",
+    "关联订单": "Đơn hàng liên kết",
+    "预览发票": "Xem trước hóa đơn",
+    "关联充值订单": "Đơn nạp tiền liên kết",
+    "发票金额": "Số tiền hóa đơn",
+    "暂无关联订单": "Không có đơn hàng liên kết",
+    "发票预览": "Xem trước hóa đơn",
+    "下载发票": "Tải hóa đơn",
+    "搜索订单号或支付方式": "Tìm theo mã đơn hàng hoặc phương thức thanh toán",
+    "上传发票文件": "Tải lên file hóa đơn",
+    "点击或拖拽发票文件到此区域": "Nhấp hoặc kéo file hóa đơn vào đây",
+    "支持 PDF、PNG、JPG、WEBP，最大 20MB": "Hỗ trợ PDF, PNG, JPG, WEBP, tối đa 20MB",
+    "上传中...": "Đang tải lên...",
+    "文件上传成功": "Tải file thành công",
+    "上传失败": "Tải lên thất bại",
+    "上传失败，请稍后重试": "Tải lên thất bại, vui lòng thử lại",
+    "或手动填写链接": "Hoặc nhập URL thủ công",
+    "上传后自动填入，也可直接粘贴链接": "Tự động điền sau khi tải lên, hoặc dán URL",
+    "请上传文件或填写链接": "Vui lòng tải file hoặc nhập URL",
+    "发票开具": "Xuất hóa đơn",
+    "发票开具管理": "Quản lý xuất hóa đơn (Admin)",
+    "获取关联订单失败": "Lấy đơn hàng liên kết thất bại"
   }
 }

@@ -179,6 +179,13 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
+	common.OptionMap["StorageBackend"] = common.StorageBackend
+	common.OptionMap["StorageR2Endpoint"] = common.StorageR2Endpoint
+	common.OptionMap["StorageR2Bucket"] = common.StorageR2Bucket
+	common.OptionMap["StorageR2Region"] = common.StorageR2Region
+	common.OptionMap["StorageR2AccessKey"] = common.StorageR2AccessKey
+	common.OptionMap["StorageR2SecretKey"] = common.StorageR2SecretKey
+	common.OptionMap["StorageR2PublicURL"] = common.StorageR2PublicURL
 
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
@@ -495,6 +502,20 @@ func updateOptionMap(key string, value string) (err error) {
 		common.WeChatServerToken = value
 	case "WeChatAccountQRCodeImageURL":
 		common.WeChatAccountQRCodeImageURL = value
+	case "StorageBackend":
+		common.StorageBackend = value
+	case "StorageR2Endpoint":
+		common.StorageR2Endpoint = value
+	case "StorageR2Bucket":
+		common.StorageR2Bucket = value
+	case "StorageR2Region":
+		common.StorageR2Region = value
+	case "StorageR2AccessKey":
+		common.StorageR2AccessKey = value
+	case "StorageR2SecretKey":
+		common.StorageR2SecretKey = value
+	case "StorageR2PublicURL":
+		common.StorageR2PublicURL = value
 	case "TelegramBotToken":
 		common.TelegramBotToken = value
 	case "TelegramBotName":

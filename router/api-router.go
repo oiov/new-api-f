@@ -116,6 +116,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/invoice/invoiceable", controller.GetInvoiceableTopUps)
 				selfRoute.GET("/invoice", controller.GetUserInvoices)
 				selfRoute.POST("/invoice", controller.CreateInvoice)
+				selfRoute.GET("/invoice/:id/topups", controller.GetInvoiceTopUps)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -185,9 +186,11 @@ func SetApiRouter(router *gin.Engine) {
 		invoiceAdminRoute.Use(middleware.AdminAuth())
 		{
 			invoiceAdminRoute.GET("", controller.GetAllInvoices)
+			invoiceAdminRoute.GET("/:id/topups", controller.GetInvoiceTopUpsByAdmin)
 			invoiceAdminRoute.PUT("/:id/issue", controller.IssueInvoice)
 			invoiceAdminRoute.PUT("/:id/reject", controller.RejectInvoice)
 			invoiceAdminRoute.POST("/:id/send", controller.SendInvoiceEmail)
+			invoiceAdminRoute.POST("/upload", controller.UploadInvoiceFile)
 		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())

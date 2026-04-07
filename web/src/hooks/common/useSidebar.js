@@ -62,6 +62,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     subscription: true,
     setting: true,
     riskControl: true,
+    invoiceAdmin: true,
   },
 };
 

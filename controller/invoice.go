@@ -41,6 +41,51 @@ func GetUserInvoices(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+// GetInvoiceTopUps 查看某张发票关联的充值订单（用户只能查自己的）
+func GetInvoiceTopUps(c *gin.Context) {
+	userId := c.GetInt("id")
+	invoiceId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || invoiceId <= 0 {
+		common.ApiErrorMsg(c, "无效的发票ID")
+		return
+	}
+	inv, err := model.GetInvoiceById(invoiceId)
+	if err != nil {
+		common.ApiErrorMsg(c, "发票不存在")
+		return
+	}
+	if inv.UserId != userId {
+		common.ApiErrorMsg(c, "无权查看此发票")
+		return
+	}
+	topups, err := model.GetInvoiceTopUps(inv.TopUpIds)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, topups)
+}
+
+// GetInvoiceTopUpsByAdmin 管理员查看某张发票关联的充值订单
+func GetInvoiceTopUpsByAdmin(c *gin.Context) {
+	invoiceId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || invoiceId <= 0 {
+		common.ApiErrorMsg(c, "无效的发票ID")
+		return
+	}
+	inv, err := model.GetInvoiceById(invoiceId)
+	if err != nil {
+		common.ApiErrorMsg(c, "发票不存在")
+		return
+	}
+	topups, err := model.GetInvoiceTopUps(inv.TopUpIds)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, topups)
+}
+
 type InvoiceRequest struct {
 	TopUpIds []int  `json:"topup_ids" binding:"required,min=1"`
 	Title    string `json:"title" binding:"required"`
