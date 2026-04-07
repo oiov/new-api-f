@@ -55,7 +55,7 @@ import type { UsageLog } from '@/types';
 const containerVariants = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const itemVariants = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transition: { duration: 0.3 } } };
 
-type TypeFilter = 'all' | '1' | '2' | '3';
+type TypeFilter = 'all' | '0' | '1' | '2' | '3' | '4' | '5' | '6';
 
 interface LogPageInfo {
   page: number;
@@ -135,28 +135,54 @@ function SkeletonRows() {
 // ─── Log type badge ───────────────────────────────────────────────────────────
 
 function LogTypeBadge({ type }: { type: number }) {
+  const { t } = useTranslation();
   if (type === 1) {
     return (
       <Badge className="bg-success/10 text-success border-success/20 hover:bg-success/10">
-        充值
+        {t('充值')}
       </Badge>
     );
   }
   if (type === 2) {
     return (
       <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">
-        消费
+        {t('消费')}
       </Badge>
     );
   }
   if (type === 3) {
     return (
       <Badge variant="outline">
-        管理
+        {t('管理')}
       </Badge>
     );
   }
-  return <Badge variant="secondary">{type}</Badge>;
+  if (type === 4) {
+    return (
+      <Badge className="bg-sky-500/10 text-sky-600 border-sky-500/20 hover:bg-sky-500/10 dark:text-sky-400">
+        {t('系统')}
+      </Badge>
+    );
+  }
+  if (type === 5) {
+    return (
+      <Badge className="bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/10">
+        {t('错误')}
+      </Badge>
+    );
+  }
+  if (type === 6) {
+    return (
+      <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 hover:bg-amber-500/10 dark:text-amber-400">
+        {t('退款')}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary">
+      {t('未知')}
+    </Badge>
+  );
 }
 
 // ─── Log detail dialog ────────────────────────────────────────────────────────
@@ -499,6 +525,10 @@ function LogContent() {
               <SelectItem value="1">{t('充值')}</SelectItem>
               <SelectItem value="2">{t('消费')}</SelectItem>
               <SelectItem value="3">{t('管理')}</SelectItem>
+              <SelectItem value="4">{t('系统')}</SelectItem>
+              <SelectItem value="5">{t('错误')}</SelectItem>
+              <SelectItem value="6">{t('退款')}</SelectItem>
+              <SelectItem value="0">{t('未知')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
