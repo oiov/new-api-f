@@ -27,6 +27,7 @@ import {
   BookOpen,
   Crown,
   Receipt,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -112,27 +113,25 @@ function NavItemLink({
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        'flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-150',
-        'mx-1.5',
-        collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2',
+        'group relative flex items-center gap-3 rounded-2xl border text-[13px] font-medium transition-all duration-200',
+        collapsed ? 'mx-1 justify-center px-0 py-3' : 'mx-2 px-3.5 py-3',
         active
-          ? cn('text-primary', colors.activeBg)
+          ? 'border-primary/25 bg-gradient-to-r from-primary/16 via-primary/10 to-transparent text-foreground shadow-[0_10px_30px_-18px_hsl(var(--primary)/0.65)]'
           : item.highlight
-            ? 'text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-50/60 dark:hover:bg-amber-900/20'
-            : 'text-muted-foreground hover:text-foreground hover:bg-accent/60',
+            ? 'border-amber-200/70 bg-amber-50/80 text-amber-700 hover:border-amber-300 hover:bg-amber-100/80 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-300 dark:hover:bg-amber-950/40'
+            : 'border-transparent text-muted-foreground hover:border-border/70 hover:bg-background/80 hover:text-foreground hover:shadow-sm',
       )}
     >
       {/* 图标容器 */}
       <span
         className={cn(
-          'shrink-0 flex items-center justify-center rounded-md transition-colors',
-          collapsed ? 'size-5' : 'size-[18px]',
+          'shrink-0 flex items-center justify-center rounded-xl transition-all duration-200',
+          collapsed ? 'size-9' : 'size-9',
           active
-            ? cn(colors.text, colors.bg)
+            ? cn(colors.text, 'bg-white shadow-sm dark:bg-background/80')
             : item.highlight
-              ? 'text-amber-500 dark:text-amber-400'
-              : 'text-current',
-          active && !collapsed ? 'p-[3px]' : '',
+              ? 'bg-amber-100/80 text-amber-500 dark:bg-amber-950/40 dark:text-amber-300'
+              : 'bg-muted/60 text-current group-hover:bg-background group-hover:shadow-sm',
         )}
       >
         {item.icon}
@@ -142,14 +141,14 @@ function NavItemLink({
         <>
           <span className="truncate leading-snug">{item.label}</span>
           {item.badge && (
-            <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+            <span className="ml-auto rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
               {item.badge}
             </span>
           )}
           {/* 高亮项角标：非激活状态显示醒目小标记 */}
           {item.highlight && !active && (
-            <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 leading-none">
-              ★
+            <span className="ml-auto rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold leading-none text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+              重点
             </span>
           )}
         </>
@@ -157,7 +156,7 @@ function NavItemLink({
 
       {/* 激活指示器 */}
       {active && !collapsed && (
-        <span className={cn('ml-auto size-1.5 rounded-full shrink-0', colors.dot)} />
+        <span className={cn('ml-auto h-6 w-1 rounded-full shrink-0', colors.dot)} />
       )}
     </Link>
   );
@@ -367,24 +366,46 @@ export function Sidebar({ collapsed, onToggleCollapsed, onNavigate }: SidebarPro
     <TooltipProvider delayDuration={300}>
       <aside
         className={cn(
-          'flex flex-col bg-sidebar border-r border-sidebar-border',
-          'transition-all duration-300 ease-in-out overflow-hidden shrink-0',
+          'flex shrink-0 flex-col overflow-hidden rounded-[28px] border border-sidebar-border/70 bg-sidebar/92 shadow-[0_20px_50px_-28px_rgba(0,0,0,0.28)] backdrop-blur-xl',
+          'transition-all duration-300 ease-in-out',
           collapsed ? 'w-[var(--sidebar-collapsed-width)]' : 'w-[var(--sidebar-width)]',
         )}
-        style={{ height: 'calc(100vh - var(--header-height))' }}
+        style={{ height: 'calc(100vh - var(--header-height) - 24px)' }}
       >
-        <ScrollArea className="flex-1 min-h-0 py-2">
-          <div className="space-y-0.5">
+        <div className={cn('border-b border-sidebar-border/60', collapsed ? 'px-2 py-3' : 'px-3 pb-3 pt-4')}>
+          {collapsed ? (
+            <div className="flex justify-center">
+              <div className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Sparkles className="size-4" />
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-primary/15 bg-[linear-gradient(135deg,hsl(var(--primary)/0.12),transparent_70%)] px-3.5 py-3.5">
+              <div className="flex items-start gap-3">
+                <div className="flex size-10 items-center justify-center rounded-2xl bg-background/85 text-primary shadow-sm">
+                  <Sparkles className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold tracking-tight text-foreground">{t('控制台工作区')}</p>
+                  <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{t('高频入口已前置，重要页面会保持更强视觉权重')}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <ScrollArea className="min-h-0 flex-1 py-3">
+          <div className="space-y-1.5">
             {filteredSections.map((section, sectionIdx) => (
               <div key={section.sectionKey}>
                 {/* 分区分割线（非第一项） */}
                 {sectionIdx > 0 && (
-                  <div className="mx-3 my-2 h-px bg-border/50" />
+                  <div className="mx-4 my-3 h-px bg-border/50" />
                 )}
 
                 {/* 分区标题 */}
                 {!collapsed && (
-                  <div className="px-4 pt-1 pb-0.5">
+                  <div className="px-4 pb-1 pt-1.5">
                     <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
                       {section.title}
                     </span>
@@ -410,16 +431,16 @@ export function Sidebar({ collapsed, onToggleCollapsed, onNavigate }: SidebarPro
         </ScrollArea>
 
         {/* 收起按钮 */}
-        <div className="p-2 border-t border-sidebar-border/60">
+        <div className="border-t border-sidebar-border/60 p-2.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={onToggleCollapsed}
                 className={cn(
-                  'w-full h-8 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent',
-                  collapsed ? 'justify-center px-0' : 'justify-start gap-2 px-3',
+                  'h-10 w-full rounded-2xl border-border/60 bg-background/70 text-muted-foreground hover:bg-background hover:text-foreground',
+                  collapsed ? 'justify-center px-0' : 'justify-start gap-2 px-3.5',
                 )}
               >
                 <ChevronLeft

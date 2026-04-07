@@ -233,6 +233,19 @@ function TokenKeyDisplay({ tokenId, maskedKey }: { tokenId: number; maskedKey: s
 
 interface TokenFormData { name: string; unlimited: boolean; quota: string; expiredTime: string; group: string }
 const emptyForm = (): TokenFormData => ({ name: '', unlimited: true, quota: '', expiredTime: '', group: '' });
+function getGroupBillingBadgeClass(billingType?: string) {
+  switch (billingType) {
+    case 'subscription':
+      return 'bg-orange-100 text-orange-700 border-orange-200';
+    case 'quota':
+      return 'bg-blue-100 text-blue-700 border-blue-200';
+    case 'hybrid':
+      return 'bg-green-100 text-green-700 border-green-200';
+    default:
+      return 'bg-muted text-muted-foreground border-border';
+  }
+}
+
 function tokenToForm(t: Token): TokenFormData {
   return {
     name: t.name,
@@ -258,6 +271,7 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
   }>>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const isEdit = !!editToken;
+  const selectedGroup = groups.find((g) => g.value === form.group);
 
   useEffect(() => { if (open) setForm(editToken ? tokenToForm(editToken) : emptyForm()); }, [open, editToken]);
 
@@ -313,66 +327,100 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="w-[95vw] sm:max-w-[560px] p-0 overflow-hidden">
+        <DialogHeader className="border-b border-border/60 bg-muted/20 px-6 py-5">
           <DialogTitle className="flex items-center gap-2">
-            <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center">
               <Key className="size-4 text-primary" />
             </div>
-            {isEdit ? t('编辑令牌') : t('创建令牌')}
+            <div className="space-y-0.5">
+              <span>{isEdit ? t('编辑令牌') : t('创建令牌')}</span>
+              <p className="text-xs font-normal text-muted-foreground">
+                {t('为不同分组创建独立密钥，避免计费和权限混用')}
+              </p>
+            </div>
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 pt-1">
+        <div className="space-y-5 px-6 py-5">
           <div className="space-y-1.5">
             <Label className="text-sm">{t('令牌名称')} <span className="text-destructive">*</span></Label>
             <Input value={form.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => set('name', e.target.value)}
               placeholder={t('例如：我的应用')} onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && handleSubmit()} />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label className="text-sm">{t('令牌分组')}</Label>
             <Select
               value={form.group || '__default__'}
               onValueChange={(v) => set('group', v === '__default__' ? '' : v)}
               disabled={groupsLoading}
             >
-              <SelectTrigger>
-                <SelectValue placeholder={t('默认（继承账户分组）')} />
+              <SelectTrigger className="h-auto min-h-11 px-3 py-2.5 items-start">
+                {selectedGroup ? (
+                  <div className="flex min-w-0 flex-1 items-start justify-between gap-3 text-left">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-foreground">{selectedGroup.value}</span>
+                        {selectedGroup.billingLabel && (
+                          <Badge
+                            variant="secondary"
+                            className={cn('h-5 border px-1.5 text-[10px]', getGroupBillingBadgeClass(selectedGroup.billingType))}
+                          >
+                            {selectedGroup.billingLabel}
+                          </Badge>
+                        )}
+                        {selectedGroup.ratio !== undefined && (
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {typeof selectedGroup.ratio === 'string' ? selectedGroup.ratio : `×${selectedGroup.ratio}`}
+                          </span>
+                        )}
+                      </div>
+                      {selectedGroup.label !== selectedGroup.value && (
+                        <p className="line-clamp-1 text-xs text-muted-foreground">{selectedGroup.label}</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="text-sm font-medium text-foreground">{t('默认（继承账户分组）')}</div>
+                    <p className="text-xs text-muted-foreground">{t('使用当前账户默认分组与计费规则')}</p>
+                  </div>
+                )}
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[320px]">
                 <SelectItem value="__default__">
-                  <span className="text-muted-foreground">{t('默认（继承账户分组）')}</span>
+                  <div className="min-w-0 py-1">
+                    <div className="text-sm font-medium text-foreground">{t('默认（继承账户分组）')}</div>
+                    <p className="text-xs text-muted-foreground">{t('使用当前账户默认分组与计费规则')}</p>
+                  </div>
                 </SelectItem>
                 {groups.map((g) => (
                   <SelectItem key={g.value} value={g.value}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{g.value}</span>
-                      {g.billingLabel && (
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            'text-[10px] px-1.5 py-0 h-5',
-                            g.billingType === 'subscription' && 'bg-orange-100 text-orange-700 border-orange-200',
-                            g.billingType === 'quota' && 'bg-blue-100 text-blue-700 border-blue-200',
-                            g.billingType === 'hybrid' && 'bg-green-100 text-green-700 border-green-200'
-                          )}
-                        >
-                          {g.billingLabel}
-                        </Badge>
-                      )}
+                    <div className="flex min-w-0 flex-col gap-1 py-1">
+                      <div className="flex items-center gap-2 flex-wrap pr-5">
+                        <span className="font-semibold text-foreground">{g.value}</span>
+                        {g.billingLabel && (
+                          <Badge
+                            variant="secondary"
+                            className={cn('h-5 border px-1.5 text-[10px]', getGroupBillingBadgeClass(g.billingType))}
+                          >
+                            {g.billingLabel}
+                          </Badge>
+                        )}
+                        {g.ratio !== undefined && (
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {typeof g.ratio === 'string' ? g.ratio : `×${g.ratio}`}
+                          </span>
+                        )}
+                      </div>
                       {g.label !== g.value && (
-                        <span className="text-xs text-muted-foreground">{g.label}</span>
-                      )}
-                      {g.ratio !== undefined && (
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          {typeof g.ratio === 'string' ? g.ratio : `×${g.ratio}`}
-                        </span>
+                        <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">{g.label}</p>
                       )}
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">{t('不选则使用账户默认分组；已标明订阅、按量或通用计费类型')}</p>
+            <p className="text-xs leading-5 text-muted-foreground">{t('不选则继承账户默认分组；分组标签已标明订阅、按量或组合计费类型')}</p>
           </div>
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
             <div>
@@ -394,7 +442,7 @@ function TokenDialog({ open, onOpenChange, editToken, onDone }: {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => set('expiredTime', e.target.value)} />
           </div>
         </div>
-        <DialogFooter className="gap-2 pt-2">
+        <DialogFooter className="gap-2 border-t border-border/60 bg-muted/10 px-6 py-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('取消')}</Button>
           <Button onClick={handleSubmit} disabled={loading} className="min-w-[80px]">
             {loading ? <RefreshCw className="size-4 animate-spin" /> : isEdit ? t('保存') : t('创建')}
@@ -765,28 +813,41 @@ function TokensContent() {
       : t('删除后不可恢复，确认继续？');
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-8 pb-10">
 
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
-        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-4">
-          <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <Key className="size-5 text-primary" />
+        className="overflow-hidden rounded-[30px] border border-border/70 bg-[linear-gradient(135deg,hsl(var(--primary)/0.1),transparent_58%),linear-gradient(180deg,hsl(var(--card)),hsl(var(--card)))] shadow-[0_20px_60px_-32px_hsl(var(--foreground)/0.25)]">
+        <div className="flex flex-col gap-5 px-5 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-4">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-background/85 shadow-sm ring-1 ring-primary/10">
+                <Key className="size-5 text-primary" />
+              </div>
+              <div>
+                <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/8 px-2.5 py-1 text-[11px] font-semibold tracking-[0.16em] text-primary/80">
+                  <span className="size-1.5 rounded-full bg-primary" />
+                  {t('关键访问层')}
+                </div>
+                <h1 className="text-2xl font-semibold leading-tight tracking-tight">{t('令牌管理')}</h1>
+                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">{t('创建和管理 API 访问密钥，建议按业务、环境或分组拆分，提升权限隔离与计费可追踪性。')}</p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
+              <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1.5">{t('总计 {{count}} 个令牌', { count: tokens.length })}</span>
+              <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1.5">{t('启用 {{count}} 个', { count: activeCount })}</span>
+              <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1.5">{t('无限额度 {{count}} 个', { count: unlimitedCount })}</span>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold leading-tight">{t('令牌管理')}</h1>
-            <p className="text-sm text-muted-foreground">{t('创建和管理 API 访问密钥')}</p>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[220px]">
+            <Button variant="outline" size="sm" className="h-10 gap-1.5 rounded-2xl bg-background/80"
+              onClick={() => loadTokens(true)} disabled={loading || refreshing}>
+              <RefreshCw className={cn('size-3.5', (loading || refreshing) && 'animate-spin')} />{t('刷新数据')}
+            </Button>
+            <Button size="sm" className="h-11 gap-1.5 rounded-2xl shadow-primary/20 shadow-lg" onClick={openCreate}>
+              <Plus className="size-3.5" />{t('创建令牌')}
+            </Button>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="h-9 gap-1.5"
-            onClick={() => loadTokens(true)} disabled={loading || refreshing}>
-            <RefreshCw className={cn('size-3.5', (loading || refreshing) && 'animate-spin')} />{t('刷新')}
-          </Button>
-          <Button size="sm" className="h-9 gap-1.5" onClick={openCreate}>
-            <Plus className="size-3.5" />{t('创建令牌')}
-          </Button>
         </div>
       </motion.div>
 
@@ -808,59 +869,72 @@ function TokensContent() {
       </motion.div>
 
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row flex-wrap gap-2 items-center">
-        <div className="relative w-full sm:w-auto">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input placeholder={t('搜索令牌名称...')} value={search}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
-            className="pl-9 w-full sm:w-52 h-9" />
-        </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-32 h-9">
-            <Filter className="size-3.5 mr-1.5 text-muted-foreground" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('全部状态')}</SelectItem>
-            <SelectItem value="1">{t('已启用')}</SelectItem>
-            <SelectItem value="2">{t('已禁用')}</SelectItem>
-            <SelectItem value="3">{t('已过期')}</SelectItem>
-            <SelectItem value="unlimited">{t('无限额度')}</SelectItem>
-          </SelectContent>
-        </Select>
-        {(search || statusFilter !== 'all') && (
-          <Button variant="ghost" size="sm" className="h-9 text-muted-foreground"
-            onClick={() => { setSearch(''); setStatusFilter('all'); }}>
-            {t('清除筛选')}
-          </Button>
-        )}
-
-        {/* Batch delete bar */}
-        {selectedInView.length > 0 && (
-          <div className="ml-auto flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-1.5">
-            <span className="text-xs text-destructive font-medium">
-              {t('已选')} {selectedInView.length} {t('条')}
-            </span>
-            <Button size="sm" variant="destructive" className="h-7 text-xs gap-1.5"
-              onClick={requestDeleteBatch}>
-              <Trash2 className="size-3.5" />{t('批量删除')}
-            </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs"
-              onClick={() => setSelected(new Set())}>
-              {t('取消选择')}
-            </Button>
+      <div className="rounded-[26px] border border-border/70 bg-card/92 p-4 shadow-[0_16px_50px_-32px_hsl(var(--foreground)/0.25)] backdrop-blur-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative w-full lg:max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input placeholder={t('搜索令牌名称...')} value={search}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+              className="h-11 rounded-2xl border-border/70 bg-background/80 pl-10" />
           </div>
-        )}
-        {(search || statusFilter !== 'all') && selectedInView.length === 0 && (
-          <span className="text-xs text-muted-foreground ml-auto">
-            {t('共')} {filteredTokens.length} {t('条')}
-          </span>
-        )}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-11 w-full rounded-2xl border-border/70 bg-background/80 sm:w-40">
+              <Filter className="mr-1.5 size-3.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('全部状态')}</SelectItem>
+              <SelectItem value="1">{t('已启用')}</SelectItem>
+              <SelectItem value="2">{t('已禁用')}</SelectItem>
+              <SelectItem value="3">{t('已过期')}</SelectItem>
+              <SelectItem value="unlimited">{t('无限额度')}</SelectItem>
+            </SelectContent>
+          </Select>
+          {(search || statusFilter !== 'all') && (
+            <Button variant="ghost" size="sm" className="h-11 rounded-2xl px-4 text-muted-foreground"
+              onClick={() => { setSearch(''); setStatusFilter('all'); }}>
+              {t('清除筛选')}
+            </Button>
+          )}
+
+          {selectedInView.length > 0 ? (
+            <div className="lg:ml-auto flex flex-wrap items-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2">
+              <span className="text-xs font-medium text-destructive">
+                {t('已选')} {selectedInView.length} {t('条')}
+              </span>
+              <Button size="sm" variant="destructive" className="h-8 gap-1.5 rounded-xl text-xs"
+                onClick={requestDeleteBatch}>
+                <Trash2 className="size-3.5" />{t('批量删除')}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 rounded-xl text-xs"
+                onClick={() => setSelected(new Set())}>
+                {t('取消选择')}
+              </Button>
+            </div>
+          ) : (
+            <div className="lg:ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{t('当前结果')}</span>
+              <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1 font-medium text-foreground">{filteredTokens.length}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Table */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.1 }}>
-        <Card className="shadow-card">
+        <Card className="overflow-hidden rounded-[30px] border border-border/70 bg-card/96 shadow-[0_20px_60px_-36px_hsl(var(--foreground)/0.28)]">
+          <div className="border-b border-border/60 bg-muted/20 px-5 py-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-base font-semibold tracking-tight">{t('令牌列表')}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{t('查看密钥状态、额度剩余、过期时间以及快捷导入配置。')}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">{t('总数 {{count}}', { count: tokens.length })}</span>
+                <span className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1">{t('筛选后 {{count}}', { count: filteredTokens.length })}</span>
+              </div>
+            </div>
+          </div>
           <CardContent className="p-0">
             <Table>
               <TableHeader>

@@ -350,39 +350,39 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="h-8 px-2.5 flex items-center gap-2 rounded-lg group hover:bg-accent data-[state=open]:bg-accent data-[state=open]:ring-1 data-[state=open]:ring-primary/20 transition-all duration-150"
+                  className="h-10 rounded-2xl border border-border/60 bg-background/70 px-2.5 transition-all duration-200 hover:bg-accent data-[state=open]:bg-accent data-[state=open]:shadow-sm data-[state=open]:ring-1 data-[state=open]:ring-primary/20"
                 >
-                  <Avatar className="size-6 ring-1 ring-primary/25">
+                  <Avatar className="size-7 ring-1 ring-primary/25">
                     <AvatarFallback className="text-[10px] font-bold bg-gradient-to-br from-primary to-primary/70 text-primary-foreground">
                       {getUserInitials()}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden sm:block text-sm font-medium max-w-[80px] truncate">
+                  <span className="hidden max-w-[96px] truncate text-sm font-medium sm:block">
                     {userState.user?.display_name || userState.user?.username}
                   </span>
-                  <ChevronDown className="size-3 text-muted-foreground hidden sm:block transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                  <ChevronDown className="hidden size-3 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180 sm:block" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
                 sideOffset={8}
-                className="w-72 p-0 rounded-xl overflow-hidden border-border/50 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.18),0_4px_12px_-4px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5),0_4px_12px_-4px_rgba(0,0,0,0.3)] bg-popover/95 backdrop-blur-xl"
+                className="w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-[28px] border-border/50 bg-popover/95 p-0 shadow-[0_28px_80px_-36px_rgba(0,0,0,0.45),0_14px_28px_-20px_rgba(0,0,0,0.25)] backdrop-blur-2xl"
               >
                 {/* 用户信息头部 */}
-                <div className="relative px-4 pt-4 pb-3.5 border-b border-border/40 overflow-hidden">
+                <div className="relative overflow-hidden border-b border-border/40 px-5 pb-4 pt-5">
                   <div
-                    className="absolute -top-8 -right-8 size-36 rounded-full pointer-events-none"
-                    style={{ background: 'radial-gradient(circle, hsl(var(--primary) / 0.1) 0%, transparent 70%)' }}
+                    className="pointer-events-none absolute -right-12 -top-12 size-44 rounded-full"
+                    style={{ background: 'radial-gradient(circle, hsl(var(--primary) / 0.14) 0%, transparent 72%)' }}
                     aria-hidden="true"
                   />
-                  <div className="flex items-center gap-3 relative">
-                    <Avatar className="size-10 ring-2 ring-primary/20 ring-offset-1 ring-offset-popover">
-                      <AvatarFallback className="text-sm font-bold bg-gradient-to-br from-primary to-primary/70 text-primary-foreground">
+                  <div className="relative flex items-center gap-3.5">
+                    <Avatar className="size-12 ring-2 ring-primary/20 ring-offset-2 ring-offset-popover">
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/70 text-sm font-bold text-primary-foreground">
                         {getUserInitials()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate tracking-tight">
+                      <p className="truncate text-base font-semibold tracking-tight">
                         {userState.user?.display_name || userState.user?.username}
                       </p>
                       {userState.user?.email && (
@@ -392,8 +392,8 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
                       )}
                     </div>
                   </div>
-                  <div className="mt-3 rounded-lg border border-primary/15 bg-gradient-to-r from-primary/8 via-primary/5 to-transparent">
-                    <div className="flex items-center justify-between px-3 py-2.5">
+                  <div className="mt-4 rounded-2xl border border-primary/15 bg-[linear-gradient(135deg,hsl(var(--primary)/0.12),transparent_72%)]">
+                    <div className="flex items-center justify-between px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <span className="size-1.5 rounded-full bg-primary/70 animate-pulse" aria-hidden="true" />
                         <span className="text-xs text-muted-foreground font-medium">{t('可用余额')}</span>
@@ -413,7 +413,13 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
                 </div>
 
                 {/* 导航菜单项 */}
-                <div className="p-1.5 space-y-0.5">
+                <div className="px-2.5 pb-2 pt-2">
+                  <div className="px-2.5 pb-2 pt-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/55">
+                      {t('快捷入口')}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
                   {[
                     { href: '/console', icon: LayoutDashboard, label: '数据看板', iconBg: 'bg-primary/10 dark:bg-primary/20 border-primary/20', iconColor: 'text-primary' },
                     { href: '/console/token', icon: Key, label: '令牌管理', iconBg: 'bg-warning/10 dark:bg-warning/20 border-warning/20', iconColor: 'text-warning' },
@@ -422,19 +428,33 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
                     { href: '/console/personal', icon: Settings, label: '个人设置', iconBg: 'bg-violet-50 dark:bg-violet-950/40 border-violet-100 dark:border-violet-900/50', iconColor: 'text-violet-600 dark:text-violet-400' },
                   ].map(({ href, icon: Icon, label, iconBg, iconColor }) => (
                     <DropdownMenuItem key={href} asChild>
-                      <Link href={href} className="flex items-center gap-3 px-2.5 py-2 rounded-lg cursor-pointer group/item hover:bg-accent/80 focus:bg-accent/80 transition-all duration-150">
-                        <div className={cn('size-8 rounded-lg flex items-center justify-center shrink-0 border group-hover/item:scale-105 group-hover/item:shadow-sm transition-all duration-150', iconBg)}>
+                      <Link href={href} className="group/item flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-all duration-150 hover:bg-accent/80 focus:bg-accent/80">
+                        <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-2xl border transition-all duration-150 group-hover/item:scale-105 group-hover/item:shadow-sm', iconBg)}>
                           <Icon className={cn('size-4', iconColor)} />
                         </div>
-                        <span className="text-sm font-medium text-foreground/85 group-hover/item:text-foreground transition-colors truncate">{t(label)}</span>
-                        <ChevronRight className="size-3.5 ml-auto text-muted-foreground/40 opacity-0 group-hover/item:opacity-100 -translate-x-1 group-hover/item:translate-x-0 transition-all duration-150" />
+                        <div className="min-w-0">
+                          <span className="truncate text-sm font-medium text-foreground/85 transition-colors group-hover/item:text-foreground">{t(label)}</span>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {label === '令牌管理'
+                              ? t('管理分组、额度与访问密钥')
+                              : label === '我的订阅'
+                                ? t('查看权益、套餐与消耗进度')
+                                : label === '充值兑换'
+                                  ? t('补充余额并管理充值记录')
+                                  : label === '个人设置'
+                                    ? t('维护账号资料与偏好设置')
+                                    : t('查看核心运行与使用概览')}
+                          </p>
+                        </div>
+                        <ChevronRight className="ml-auto size-3.5 -translate-x-1 text-muted-foreground/40 opacity-0 transition-all duration-150 group-hover/item:translate-x-0 group-hover/item:opacity-100" />
                       </Link>
                     </DropdownMenuItem>
                   ))}
+                  </div>
 
                   {isAdmin && (
                     <>
-                      <div className="flex items-center gap-2 px-2 py-1.5 mt-0.5">
+                      <div className="mt-1 flex items-center gap-2 px-2.5 py-2">
                         <div className="flex-1 h-px bg-border/50" />
                         <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-1">
                           {t('管理员')}
@@ -442,8 +462,8 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
                         <div className="flex-1 h-px bg-border/50" />
                       </div>
                       <DropdownMenuItem asChild>
-                        <Link href="/console/setting" className="flex items-center gap-3 px-2.5 py-2 rounded-lg cursor-pointer group/item hover:bg-accent/80 focus:bg-accent/80 transition-all duration-150">
-                          <div className="size-8 rounded-lg flex items-center justify-center shrink-0 bg-muted border border-border group-hover/item:scale-105 group-hover/item:shadow-sm transition-all duration-150">
+                        <Link href="/console/setting" className="group/item flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-all duration-150 hover:bg-accent/80 focus:bg-accent/80">
+                          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border bg-muted transition-all duration-150 group-hover/item:scale-105 group-hover/item:shadow-sm">
                             <Sparkles className="size-4 text-muted-foreground" />
                           </div>
                           <span className="text-sm font-medium text-foreground/85 group-hover/item:text-foreground transition-colors truncate">{t('系统设置')}</span>
@@ -455,15 +475,18 @@ export function Header({ onMobileMenuToggle, drawerOpen }: HeaderProps) {
                 </div>
 
                 <DropdownMenuSeparator className="my-0 bg-border/40" />
-                <div className="p-1.5 pt-1">
+                <div className="p-2.5 pt-2">
                   <DropdownMenuItem
                     onClick={handleLogout}
-                    className="flex items-center gap-3 px-2.5 py-2 rounded-lg cursor-pointer group/item text-destructive/80 hover:text-destructive focus:text-destructive focus:bg-destructive/8 hover:bg-destructive/6 transition-all duration-150"
+                    className="group/item flex items-center gap-3 rounded-2xl px-3 py-2.5 text-destructive/80 transition-all duration-150 hover:bg-destructive/6 hover:text-destructive focus:bg-destructive/8 focus:text-destructive"
                   >
-                    <div className="size-8 rounded-lg flex items-center justify-center shrink-0 bg-destructive/8 dark:bg-destructive/15 border border-destructive/20 group-hover/item:scale-105 transition-all duration-150">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-destructive/20 bg-destructive/8 transition-all duration-150 group-hover/item:scale-105 dark:bg-destructive/15">
                       <LogOut className="size-4 text-destructive" />
                     </div>
-                    <span className="text-sm font-medium truncate">{t('退出登录')}</span>
+                    <div className="min-w-0">
+                      <span className="truncate text-sm font-medium">{t('退出登录')}</span>
+                      <p className="mt-0.5 text-[11px] text-destructive/60">{t('结束当前会话并返回首页')}</p>
+                    </div>
                   </DropdownMenuItem>
                 </div>
               </DropdownMenuContent>

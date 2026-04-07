@@ -99,11 +99,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Dynamic margin based on collapsed state
   const sidebarMargin = collapsed
-    ? 'md:ml-[52px]'
-    : 'md:ml-[224px]';
+    ? 'md:ml-[72px]'
+    : 'md:ml-[244px]';
 
   return (
-    <div className="flex flex-col min-h-screen app-bg">
+    <div className={cn('flex min-h-screen flex-col app-bg', isConsolePage && 'bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.07),transparent_30%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--background)))]')}>
       <Header
         onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
         drawerOpen={drawerOpen}
@@ -112,7 +112,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 overflow-hidden relative">
         {/* Desktop sidebar */}
         {showSidebar && !isMobile && (
-          <div className="shrink-0 fixed left-0 top-[var(--header-height)] z-30 hidden md:flex h-[calc(100vh-var(--header-height))]">
+          <div className="fixed left-3 top-[calc(var(--header-height)+12px)] z-30 hidden h-[calc(100vh-var(--header-height)-24px)] shrink-0 md:flex">
             <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
           </div>
         )}
@@ -120,7 +120,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Mobile sidebar (sheet) for console pages */}
         {showSidebar && (
           <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-            <SheetContent side="left" className="p-0 w-56">
+            <SheetContent side="left" className="w-[88vw] max-w-[320px] border-r-0 bg-transparent p-3 shadow-none">
               <Sidebar
                 collapsed={false}
                 onToggleCollapsed={() => {}}
@@ -138,7 +138,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Main content */}
         <main
           className={cn(
-            'flex flex-col flex-1 min-h-[calc(100vh-var(--header-height))] overflow-auto',
+            'flex min-h-[calc(100vh-var(--header-height))] flex-1 flex-col overflow-auto',
             showSidebar && !isMobile && sidebarMargin,
             'transition-[margin] duration-300',
           )}
@@ -146,7 +146,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div
             className={cn(
               'flex-1',
-              shouldHavePadding && 'p-4 md:p-6',
+              shouldHavePadding && 'px-4 py-5 md:px-7 md:py-7',
             )}
           >
             {children}
