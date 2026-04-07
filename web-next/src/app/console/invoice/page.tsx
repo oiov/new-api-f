@@ -11,15 +11,13 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  ChevronDown,
-  ChevronUp,
   RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -37,6 +35,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { AuthGuard } from '@/components/common/auth-guard';
+import { API } from '@/lib/api';
 import { toast } from 'sonner';
 
 const MIN_INVOICE_AMOUNT = 50;
@@ -108,8 +107,10 @@ export default function InvoicePage() {
   const fetchInvoices = useCallback(async (p = 1) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/user/invoice?page=${p}&page_size=${pageSize}`);
-      const data = await res.json();
+      const res = await API.get(`/api/user/invoice`, {
+        params: { page: p, page_size: pageSize },
+      });
+      const data = res.data as { message: string; data?: { items: Invoice[]; total: number } };
       if (data.message === 'success') {
         setInvoices(data.data?.items || []);
         setTotal(data.data?.total || 0);
@@ -124,8 +125,8 @@ export default function InvoicePage() {
   const fetchInvoiceableTopUps = async () => {
     setTopupsLoading(true);
     try {
-      const res = await fetch('/api/user/invoice/invoiceable');
-      const data = await res.json();
+      const res = await API.get('/api/user/invoice/invoiceable');
+      const data = res.data as { message: string; data?: TopUp[] };
       if (data.message === 'success') {
         setInvoiceableTopUps(data.data || []);
       }
@@ -192,17 +193,13 @@ export default function InvoicePage() {
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/user/invoice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topup_ids: selectedIds,
-          title: invoiceTitle.trim(),
-          tax_id: taxId.trim(),
-          email: email.trim(),
-        }),
+      const res = await API.post('/api/user/invoice', {
+        topup_ids: selectedIds,
+        title: invoiceTitle.trim(),
+        tax_id: taxId.trim(),
+        email: email.trim(),
       });
-      const data = await res.json();
+      const data = res.data as { message: string; data?: string };
       if (data.message === 'success') {
         toast.success(t('发票申请提交成功'));
         setShowRequestModal(false);
@@ -219,17 +216,23 @@ export default function InvoicePage() {
 
   return (
     <AuthGuard>
-      <div className="p-4 md:p-6 space-y-6">
+      <div className="space-y-6 pb-8">
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
           className="flex items-center justify-between"
         >
-          <div>
-            <h1 className="text-2xl font-bold">{t('发票管理')}</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {t('申请开具发票，最低开票金额 {{min}} 元', { min: MIN_INVOICE_AMOUNT })}
-            </p>
+          <div className="flex items-center gap-4">
+            <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <FileText className="size-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">{t('发票管理')}</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {t('申请开具发票，最低开票金额 {{min}} 元', { min: MIN_INVOICE_AMOUNT })}
+              </p>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => fetchInvoices(page)}>

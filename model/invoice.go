@@ -47,7 +47,7 @@ func (inv *Invoice) Insert(topUpIDs []int) error {
 		// 检查这些充值记录是否属于该用户且未被开票
 		var count int64
 		err := tx.Model(&TopUp{}).
-			Where("id IN ? AND user_id = ? AND status = ? AND invoiced = ?",
+			Where("id IN ? AND user_id = ? AND status = ? AND (invoiced = ? OR invoiced IS NULL)",
 				topUpIDs, inv.UserId, common.TopUpStatusSuccess, false).
 			Count(&count).Error
 		if err != nil {
@@ -162,9 +162,10 @@ func GetAllInvoices(pageInfo *common.PageInfo, filters InvoiceAdminFilters) ([]*
 }
 
 // GetInvoiceableTopUps 获取用户可开票的充值记录（已成功且未开票）
+// 兼容旧数据：invoiced 列新增前的记录为 NULL，等价于 false
 func GetInvoiceableTopUps(userId int) ([]*TopUp, error) {
 	var topups []*TopUp
-	err := DB.Where("user_id = ? AND status = ? AND invoiced = ?",
+	err := DB.Where("user_id = ? AND status = ? AND (invoiced = ? OR invoiced IS NULL)",
 		userId, common.TopUpStatusSuccess, false).
 		Order("id desc").
 		Find(&topups).Error
