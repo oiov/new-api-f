@@ -22,7 +22,7 @@ import {
   Pencil,
   Filter,
   AlertTriangle,
-  Download,
+  LogIn,
   ExternalLink,
   Terminal,
   Bot,
@@ -419,7 +419,7 @@ function SkeletonRows() {
     <>
       {Array.from({ length: 5 }).map((_, i) => (
         <TableRow key={i}>
-          {Array.from({ length: 9 }).map((__, j) => (
+          {Array.from({ length: 10 }).map((__, j) => (
             <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
           ))}
         </TableRow>
@@ -516,7 +516,7 @@ function ImportConfigSheet({ token, open, onOpenChange }: {
       <SheetContent side="right" className="w-[360px] sm:w-[420px]">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <Download className="size-4 text-primary" />
+            <LogIn className="size-4 text-primary" />
             {t('一键导入配置')}
           </SheetTitle>
           <SheetDescription className="text-xs">
@@ -845,6 +845,7 @@ function TokensContent() {
                   </TableHead>
                   <TableHead>{t('名称')}</TableHead>
                   <TableHead>{t('密钥')}</TableHead>
+                  <TableHead className="w-16">{t('导入')}</TableHead>
                   <TableHead>{t('状态')}</TableHead>
                   <TableHead className="text-right">{t('剩余额度')}</TableHead>
                   <TableHead className="text-right">{t('已用额度')}</TableHead>
@@ -858,7 +859,7 @@ function TokensContent() {
                   <SkeletonRows />
                 ) : filteredTokens.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-14 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-14 text-muted-foreground">
                       <div className="flex flex-col items-center gap-2.5">
                         <div className="size-12 rounded-full bg-muted flex items-center justify-center">
                           <Key className="size-6 opacity-30" />
@@ -894,19 +895,17 @@ function TokensContent() {
                             <span className="font-medium text-sm">{token.name}</span>
                           </div>
                         </TableCell>
+                        <TableCell><TokenKeyDisplay tokenId={token.id} maskedKey={token.key} /></TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1">
-                            <TokenKeyDisplay tokenId={token.id} maskedKey={token.key} />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-primary/50 hover:text-primary shrink-0"
-                              title={t('导入配置')}
-                              onClick={() => { setImportToken(token); setImportOpen(true); }}
-                            >
-                              <Download className="size-3.5" />
-                            </Button>
-                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-primary/60 hover:text-primary hover:bg-primary/10"
+                            title={t('导入配置')}
+                            onClick={() => { setImportToken(token); setImportOpen(true); }}
+                          >
+                            <LogIn className="size-3.5" />
+                          </Button>
                         </TableCell>
                         <TableCell><TokenStatusBadge status={token.status} /></TableCell>
                         <TableCell className="text-sm text-right">
