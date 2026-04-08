@@ -21,8 +21,8 @@ import React from 'react';
 import { Tag, Typography, Divider } from '@douyinfe/semi-ui';
 import {
   IconAlertTriangle,
-  IconBan,
-  IconBookOpen,
+  IconStop,
+  IconBookStroked,
   IconFile,
   IconRefresh,
   IconLink,
@@ -104,7 +104,7 @@ const DefaultNotice = () => {
 
       {/* 防封 */}
       <Section
-        icon={<IconBan size='small' />}
+        icon={<IconStop size='small' />}
         title={t('防封规则')}
         color='var(--semi-color-danger)'
         badge={t('即日生效')}
@@ -121,7 +121,7 @@ const DefaultNotice = () => {
 
       {/* 必读 */}
       <Section
-        icon={<IconBookOpen size='small' />}
+        icon={<IconBookStroked size='small' />}
         title={t('必读')}
         color='var(--semi-color-primary)'
       >
