@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Check, ChevronRight, Clock, Layers, Package } from 'lucide-react';
+import { Check, ChevronRight, Layers, Package, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { getCurrencySymbol } from '@/lib/utils';
 import type { SystemStatus } from '@/types';
 import {
   isDiscountActive, getEffectivePrice, getSaleSummary,
-  fmtBenefit, fmtDuration, getCurrencyRate,
+  fmtDuration, getCurrencyRate, getPlanRestrictionSummary, getPlanMetricItems,
 } from '../helpers';
 import type { SubscriptionPlan } from '../types';
 
@@ -33,9 +33,9 @@ export function PlanCard({ plan, status, index }: PlanCardProps) {
   const effectivePrice = getEffectivePrice(plan);
   const saleSummary = getSaleSummary(plan);
   const disabled = saleSummary.soldOut || !plan.enabled;
-  const benefit = fmtBenefit(plan, t);
   const duration = fmtDuration(plan, t);
-  const isQuotaType = plan.resource_type !== 'request_count';
+  const restrictions = getPlanRestrictionSummary(plan);
+  const metricItems = getPlanMetricItems(plan, t);
 
   return (
     <motion.div
@@ -76,24 +76,42 @@ export function PlanCard({ plan, status, index }: PlanCardProps) {
           {hasDiscount && <p className="text-xs text-muted-foreground line-through mt-1">{fmtPrice(Number(plan.price_amount || 0), status)}</p>}
         </div>
 
-        <div className="space-y-2.5">
-          <div className="flex items-start gap-2.5 text-sm">
-            <div className="size-5 rounded-full bg-success/15 flex items-center justify-center shrink-0 mt-0.5">
-              <Check className="size-3 text-success" />
+        <div className="grid grid-cols-2 gap-2">
+          {metricItems.map((item) => (
+            <div key={item.label} className="rounded-xl border bg-muted/30 px-3 py-2.5">
+              <p className="text-[11px] text-muted-foreground">{item.label}</p>
+              <p className="mt-1 text-sm font-semibold leading-tight">{item.value}</p>
             </div>
-            <span>
-              <span className="font-semibold">{benefit}</span>
-              <span className="text-muted-foreground ml-1.5 text-xs">{isQuotaType ? t('额度') : t('请求次数')}</span>
-            </span>
-          </div>
+          ))}
+        </div>
+
+        <div className="space-y-2.5">
           <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
-            <div className="size-5 rounded-full bg-muted flex items-center justify-center shrink-0"><Clock className="size-3" /></div>
-            <span>{t('有效期')} {duration}</span>
+            <div className="size-5 rounded-full bg-muted flex items-center justify-center shrink-0"><RefreshCw className="size-3" /></div>
+            <span>{t('请求额度按重置周期滚动恢复')}</span>
           </div>
           {plan.upgrade_group && (
             <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
               <div className="size-5 rounded-full bg-muted flex items-center justify-center shrink-0"><Layers className="size-3" /></div>
               <span>{t('升级分组')}: <span className="font-medium text-foreground">{plan.upgrade_group}</span></span>
+            </div>
+          )}
+          {(restrictions.groups.length > 0 || restrictions.models.length > 0 || restrictions.vendors.length > 0) && (
+            <div className="flex items-start gap-2.5 text-sm">
+              <div className="size-5 rounded-full bg-success/15 flex items-center justify-center shrink-0 mt-0.5">
+                <Check className="size-3 text-success" />
+              </div>
+              <div className="space-y-1 text-muted-foreground">
+                {restrictions.groups.length > 0 && (
+                  <p>{t('可用分组')}: <span className="text-foreground">{restrictions.groups.join(' / ')}</span></p>
+                )}
+                {restrictions.models.length > 0 && (
+                  <p>{t('可用模型')}: <span className="text-foreground">{restrictions.models.slice(0, 3).join(' / ')}</span></p>
+                )}
+                {restrictions.vendors.length > 0 && (
+                  <p>{t('可用供应商')}: <span className="text-foreground">{restrictions.vendors.join(' / ')}</span></p>
+                )}
+              </div>
             </div>
           )}
         </div>

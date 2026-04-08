@@ -93,6 +93,80 @@ export function fmtBenefit(plan: SubscriptionPlan, t: (k: string) => string): st
   return total > 0 ? renderQuota(total) : t('不限额度');
 }
 
+export function fmtReset(plan: SubscriptionPlan, t: (k: string) => string): string {
+  const p = plan.quota_reset_period || 'never';
+  if (p === 'never') return t('不重置');
+  if (p === 'daily') return t('每天');
+  if (p === 'weekly') return t('每周');
+  if (p === 'monthly') return t('每月');
+  if (p === 'yearly') return t('每年');
+  if (p === 'custom') {
+    const s = Number(plan.quota_reset_custom_seconds || 0);
+    if (s >= 86400) return `${Math.floor(s / 86400)}${t('天')}`;
+    if (s >= 3600) return `${Math.floor(s / 3600)}${t('小时')}`;
+    return `${s}${t('秒')}`;
+  }
+  return t('不重置');
+}
+
+export function getPlanRestrictionSummary(plan: SubscriptionPlan) {
+  return {
+    groups: Array.isArray(plan.allowed_groups) ? plan.allowed_groups : [],
+    models: Array.isArray(plan.allowed_models) ? plan.allowed_models : [],
+    vendors: Array.isArray(plan.allowed_vendor_names) ? plan.allowed_vendor_names : [],
+  };
+}
+
+export function getPlanMetricItems(plan: SubscriptionPlan, t: (k: string) => string) {
+  const duration = fmtDuration(plan, t);
+  const reset = fmtReset(plan, t);
+  if (plan.resource_type === 'request_count') {
+    const periodLimit = Number(plan.request_count_period_total || 0);
+    const totalLimit = Number(plan.request_count_total || 0);
+    const periodLabel = plan.quota_reset_period && plan.quota_reset_period !== 'never'
+      ? `${fmtReset(plan, t)}${t('上限')}`
+      : t('周期上限');
+    return [
+      {
+        label: periodLabel,
+        value: periodLimit > 0 ? `${periodLimit} ${t('次')}` : t('不限'),
+      },
+      {
+        label: t('总次数上限'),
+        value: totalLimit > 0 ? `${totalLimit} ${t('次')}` : t('不限'),
+      },
+      {
+        label: t('重置时间'),
+        value: reset,
+      },
+      {
+        label: t('有效期'),
+        value: duration,
+      },
+    ];
+  }
+
+  const total = Number(plan.amount_total ?? plan.total_amount ?? 0);
+  return [
+    {
+      label: plan.quota_reset_period && plan.quota_reset_period !== 'never' ? t('每周期额度') : t('总额度'),
+      value: total > 0 ? renderQuota(total) : t('不限'),
+    },
+    {
+      label: t('权益类型'),
+      value: t('按额度'),
+    },
+    {
+      label: t('重置时间'),
+      value: reset,
+    },
+    {
+      label: t('有效期'),
+      value: duration,
+    },
+  ];
+}
+
 // ── Color utilities ───────────────────────────────────────────────────────────
 
 /** 从字符串生成确定性 HSL 色调 (0-359) */

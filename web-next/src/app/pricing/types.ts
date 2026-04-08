@@ -46,6 +46,10 @@ export interface SubscriptionPlan {
   remaining_sale_count?: number;
   sold_out?: boolean;
   upgrade_group?: string;
+  allowed_groups?: string[];
+  allowed_models?: string[];
+  allowed_vendor_ids?: number[];
+  allowed_vendor_names?: string[];
   enabled?: boolean;
 }
 

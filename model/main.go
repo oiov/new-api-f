@@ -434,6 +434,9 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`request_count_period_total`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
+` + "`allowed_groups_json`" + ` text DEFAULT '',
+` + "`allowed_models_json`" + ` text DEFAULT '',
+` + "`allowed_vendor_ids_json`" + ` text DEFAULT '',
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
@@ -474,6 +477,9 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "request_count_period_total", DDL: "`request_count_period_total` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
+		{Name: "allowed_groups_json", DDL: "`allowed_groups_json` text DEFAULT ''"},
+		{Name: "allowed_models_json", DDL: "`allowed_models_json` text DEFAULT ''"},
+		{Name: "allowed_vendor_ids_json", DDL: "`allowed_vendor_ids_json` text DEFAULT ''"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
 	}

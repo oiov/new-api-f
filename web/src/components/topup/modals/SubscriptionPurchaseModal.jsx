@@ -37,7 +37,9 @@ import {
   formatSubscriptionResourceLabel,
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
+  getSubscriptionPlanMetricItems,
   getSubscriptionEffectivePrice,
+  getSubscriptionRestrictionSummary,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
 
@@ -62,9 +64,8 @@ const SubscriptionPurchaseModal = ({
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
-  const requestCountTotal = Number(plan?.request_count_total || 0);
-  const requestCountPeriodTotal = Number(plan?.request_count_period_total || 0);
   const resetPeriodText = formatSubscriptionResetPeriod(plan, t);
+  const restrictionSummary = getSubscriptionRestrictionSummary(plan);
   const { symbol, rate } = getCurrencyConfig();
   const price = plan ? getSubscriptionEffectivePrice(plan) : 0;
   const hasActiveDiscount = isSubscriptionDiscountActive(plan);
@@ -83,43 +84,7 @@ const SubscriptionPurchaseModal = ({
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
     purchaseLimit > 0 && purchaseCount >= purchaseLimit;
-  const benefitItems = [];
-
-  if (requestCountPeriodTotal > 0) {
-    benefitItems.push({
-      key: 'request_count_period',
-      label: t('周期次数'),
-      value: `${resetPeriodText} ${requestCountPeriodTotal} ${t('次')}`,
-    });
-  }
-
-  if (requestCountTotal > 0 || plan?.resource_type === 'request_count') {
-    benefitItems.push({
-      key: 'request_count',
-      label: t('总次数'),
-      value: requestCountTotal > 0 ? `${requestCountTotal} ${t('次')}` : t('不限'),
-    });
-  }
-
-  if (totalAmount > 0 || plan?.resource_type !== 'request_count') {
-    benefitItems.push({
-      key: 'quota',
-      label: formatSubscriptionResourceLabel(
-        { resource_type: 'quota', quota_reset_period: plan?.quota_reset_period },
-        t,
-      ),
-      value:
-        totalAmount > 0 ? (
-          <Tooltip content={`${t('原生额度')}：${totalAmount}`}>
-            <Text className='text-slate-900 dark:text-slate-100'>
-              {renderQuota(totalAmount)}
-            </Text>
-          </Tooltip>
-        ) : (
-          <Text className='text-slate-900 dark:text-slate-100'>{t('不限')}</Text>
-        ),
-    });
-  }
+  const metricItems = getSubscriptionPlanMetricItems(plan, t);
 
   return (
     <Modal
@@ -173,28 +138,71 @@ const SubscriptionPurchaseModal = ({
                   </Text>
                 </div>
               )}
-              {benefitItems.map((item) => (
-                <div key={item.key} className='flex justify-between items-center'>
-                  <Text strong className='text-slate-700 dark:text-slate-200'>
-                    {item.label}：
-                  </Text>
-                  <div className='flex items-center'>
-                    <Package size={14} className='mr-1 text-slate-500' />
-                    {typeof item.value === 'string' ? (
-                      <Text className='text-slate-900 dark:text-slate-100'>
-                        {item.value}
-                      </Text>
-                    ) : (
-                      item.value
-                    )}
+              <div className='grid grid-cols-2 gap-2'>
+                {metricItems.map((item) => (
+                  <div
+                    key={item.key}
+                    className='rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50'
+                  >
+                    <div className='text-xs text-slate-500'>{item.label}</div>
+                    <div className='mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100'>
+                      {item.value}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <div className='flex justify-between items-center'>
+                <Text strong className='text-slate-700 dark:text-slate-200'>
+                  {formatSubscriptionResourceLabel(
+                    { resource_type: 'quota', quota_reset_period: plan?.quota_reset_period },
+                    t,
+                  )}：
+                </Text>
+                {totalAmount > 0 ? (
+                  <Tooltip content={`${t('原生额度')}：${totalAmount}`}>
+                    <Text className='text-slate-900 dark:text-slate-100'>
+                      {renderQuota(totalAmount)}
+                    </Text>
+                  </Tooltip>
+                ) : (
+                  <Text className='text-slate-900 dark:text-slate-100'>{t('不限')}</Text>
+                )}
+              </div>
               {resetPeriodText !== t('不重置') ? (
                 <Text size='small' type='tertiary'>
                   {t('带重置规则的套餐同时受周期上限与有效期总量约束，任一限制达到后都将暂停服务。')}
                 </Text>
               ) : null}
+              {restrictionSummary.groups.length > 0 && (
+                <div className='flex justify-between items-center'>
+                  <Text strong className='text-slate-700 dark:text-slate-200'>
+                    {t('可用分组')}：
+                  </Text>
+                  <Text className='text-slate-900 dark:text-slate-100'>
+                    {restrictionSummary.groups.join(' / ')}
+                  </Text>
+                </div>
+              )}
+              {restrictionSummary.models.length > 0 && (
+                <div className='flex justify-between items-center'>
+                  <Text strong className='text-slate-700 dark:text-slate-200'>
+                    {t('可用模型')}：
+                  </Text>
+                  <Text className='text-slate-900 dark:text-slate-100'>
+                    {restrictionSummary.models.join(' / ')}
+                  </Text>
+                </div>
+              )}
+              {restrictionSummary.vendors.length > 0 && (
+                <div className='flex justify-between items-center'>
+                  <Text strong className='text-slate-700 dark:text-slate-200'>
+                    {t('可用供应商')}：
+                  </Text>
+                  <Text className='text-slate-900 dark:text-slate-100'>
+                    {restrictionSummary.vendors.join(' / ')}
+                  </Text>
+                </div>
+              )}
               {plan?.upgrade_group ? (
                 <div className='flex justify-between items-center'>
                   <Text strong className='text-slate-700 dark:text-slate-200'>

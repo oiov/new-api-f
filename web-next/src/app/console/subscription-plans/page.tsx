@@ -59,6 +59,10 @@ interface SubscriptionPlan {
   remaining_sale_count?: number;
   sold_out?: boolean;
   upgrade_group?: string;
+  allowed_groups?: string[];
+  allowed_models?: string[];
+  allowed_vendor_ids?: number[];
+  allowed_vendor_names?: string[];
   sort_order?: number;
   stripe_price_id?: string;
   creem_product_id?: string;
@@ -99,7 +103,7 @@ function emptyPlan(): SubscriptionPlan {
     quota_reset_period: 'never', quota_reset_custom_seconds: 0,
     resource_type: 'quota', total_amount: 0, request_count_total: 0, request_count_period_total: 0,
     max_purchase_per_user: 0, sale_limit_count: 0,
-    upgrade_group: '', sort_order: 0,
+    upgrade_group: '', allowed_groups: [], allowed_models: [], allowed_vendor_ids: [], sort_order: 0,
     stripe_price_id: '', creem_product_id: '',
     enabled: true,
   };
@@ -614,10 +618,42 @@ function PlanFormSheet({ open, onClose, initial, onSaved }: PlanFormSheetProps) 
   const isNew = !initial?.id;
   const [form, setForm] = useState<SubscriptionPlan>(emptyPlan());
   const [saving, setSaving] = useState(false);
+  const [groupOptions, setGroupOptions] = useState<string[]>([]);
+  const [modelOptions, setModelOptions] = useState<Array<{ id?: number; model_name?: string }>>([]);
+  const [vendorOptions, setVendorOptions] = useState<Array<{ id?: number; name?: string }>>([]);
 
   useEffect(() => {
     if (open) setForm(initial ? { ...initial } : emptyPlan());
   }, [open, initial]);
+
+  useEffect(() => {
+    if (!open) return;
+    Promise.allSettled([
+      API.get('/api/group'),
+      API.get('/api/models/?page_size=1000'),
+      API.get('/api/vendors/?page_size=1000'),
+    ]).then(([groupRes, modelRes, vendorRes]) => {
+      if (groupRes.status === 'fulfilled' && groupRes.value.data?.success) {
+        setGroupOptions(Array.isArray(groupRes.value.data?.data) ? groupRes.value.data.data : []);
+      } else {
+        setGroupOptions([]);
+      }
+
+      if (modelRes.status === 'fulfilled' && modelRes.value.data?.success) {
+        const items = modelRes.value.data?.data?.items || modelRes.value.data?.data || [];
+        setModelOptions(Array.isArray(items) ? items : []);
+      } else {
+        setModelOptions([]);
+      }
+
+      if (vendorRes.status === 'fulfilled' && vendorRes.value.data?.success) {
+        const items = vendorRes.value.data?.data?.items || vendorRes.value.data?.data || [];
+        setVendorOptions(Array.isArray(items) ? items : []);
+      } else {
+        setVendorOptions([]);
+      }
+    });
+  }, [open]);
 
   const set = (key: keyof SubscriptionPlan) => (val: unknown) =>
     setForm((prev) => ({ ...prev, [key]: val }));
@@ -628,6 +664,28 @@ function PlanFormSheet({ open, onClose, initial, onSaved }: PlanFormSheetProps) 
   const setStr = (key: keyof SubscriptionPlan) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm((prev) => ({ ...prev, [key]: e.target.value }));
+
+  const toggleStringArray = (key: 'allowed_groups' | 'allowed_models', value: string) =>
+    setForm((prev) => {
+      const current = Array.isArray(prev[key]) ? prev[key] as string[] : [];
+      return {
+        ...prev,
+        [key]: current.includes(value)
+          ? current.filter((item) => item !== value)
+          : [...current, value],
+      };
+    });
+
+  const toggleNumberArray = (key: 'allowed_vendor_ids', value: number) =>
+    setForm((prev) => {
+      const current = Array.isArray(prev[key]) ? prev[key] as number[] : [];
+      return {
+        ...prev,
+        [key]: current.includes(value)
+          ? current.filter((item) => item !== value)
+          : [...current, value],
+      };
+    });
 
   const handleSave = async () => {
     if (!form.title?.trim()) { toast.error(t('套餐名称不能为空')); return; }
@@ -797,6 +855,72 @@ function PlanFormSheet({ open, onClose, initial, onSaved }: PlanFormSheetProps) 
                       onChange={setNum('quota_reset_custom_seconds')}
                       className="h-8 text-sm flex-1" placeholder={t('秒数')} />
                   )}
+                </div>
+              </FormRow>
+            </Section>
+
+            <Separator />
+
+            <Section title={t('使用范围')}>
+              <FormRow label={t('可用分组')} hint={t('留空表示所有分组都可用')}>
+                <div className="flex flex-wrap gap-2">
+                  {groupOptions.length > 0 ? groupOptions.map((group) => {
+                    const active = (form.allowed_groups || []).includes(group);
+                    return (
+                      <Button
+                        key={group}
+                        type="button"
+                        size="sm"
+                        variant={active ? 'default' : 'outline'}
+                        className="h-8"
+                        onClick={() => toggleStringArray('allowed_groups', group)}
+                      >
+                        {group}
+                      </Button>
+                    );
+                  }) : <span className="text-xs text-muted-foreground">{t('暂无可选分组')}</span>}
+                </div>
+              </FormRow>
+              <FormRow label={t('可用模型')} hint={t('留空表示所有模型都可用')}>
+                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto rounded-md border p-2">
+                  {modelOptions.length > 0 ? modelOptions.map((item) => {
+                    const modelName = item.model_name || '';
+                    if (!modelName) return null;
+                    const active = (form.allowed_models || []).includes(modelName);
+                    return (
+                      <Button
+                        key={item.id || modelName}
+                        type="button"
+                        size="sm"
+                        variant={active ? 'default' : 'outline'}
+                        className="h-8"
+                        onClick={() => toggleStringArray('allowed_models', modelName)}
+                      >
+                        {modelName}
+                      </Button>
+                    );
+                  }) : <span className="text-xs text-muted-foreground">{t('暂无可选模型')}</span>}
+                </div>
+              </FormRow>
+              <FormRow label={t('可用供应商')} hint={t('留空表示所有供应商都可用')}>
+                <div className="flex flex-wrap gap-2">
+                  {vendorOptions.length > 0 ? vendorOptions.map((item) => {
+                    const vendorID = Number(item.id || 0);
+                    if (vendorID <= 0) return null;
+                    const active = (form.allowed_vendor_ids || []).includes(vendorID);
+                    return (
+                      <Button
+                        key={vendorID}
+                        type="button"
+                        size="sm"
+                        variant={active ? 'default' : 'outline'}
+                        className="h-8"
+                        onClick={() => toggleNumberArray('allowed_vendor_ids', vendorID)}
+                      >
+                        {item.name || vendorID}
+                      </Button>
+                    );
+                  }) : <span className="text-xs text-muted-foreground">{t('暂无可选供应商')}</span>}
                 </div>
               </FormRow>
             </Section>

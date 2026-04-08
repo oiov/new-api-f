@@ -227,6 +227,15 @@ type SubscriptionPlan struct {
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
 
+	AllowedGroupsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_groups_json"`
+	AllowedModelsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_models_json"`
+	AllowedVendorIDsJSON string `json:"-" gorm:"type:text;default:'';column:allowed_vendor_ids_json"`
+
+	AllowedGroups      []string `json:"allowed_groups,omitempty" gorm:"-"`
+	AllowedModels      []string `json:"allowed_models,omitempty" gorm:"-"`
+	AllowedVendorIDs   []int    `json:"allowed_vendor_ids,omitempty" gorm:"-"`
+	AllowedVendorNames []string `json:"allowed_vendor_names,omitempty" gorm:"-"`
+
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
@@ -327,6 +336,9 @@ type SubscriptionOrder struct {
 	PlanRequestCountPeriodTotal int64  `json:"plan_request_count_period_total" gorm:"type:bigint;not null;default:0"`
 	PlanQuotaResetPeriod        string `json:"plan_quota_reset_period" gorm:"type:varchar(16);default:''"`
 	PlanQuotaResetCustomSec     int64  `json:"plan_quota_reset_custom_sec" gorm:"type:bigint;not null;default:0"`
+	PlanAllowedGroupsJSON       string `json:"-" gorm:"type:text;default:'';column:plan_allowed_groups_json"`
+	PlanAllowedModelsJSON       string `json:"-" gorm:"type:text;default:'';column:plan_allowed_models_json"`
+	PlanAllowedVendorIDsJSON    string `json:"-" gorm:"type:text;default:'';column:plan_allowed_vendor_ids_json"`
 
 	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -374,6 +386,9 @@ func (o *SubscriptionOrder) ApplyPlanSnapshot(plan *SubscriptionPlan) {
 	o.PlanRequestCountPeriodTotal = plan.RequestCountPeriodTotal
 	o.PlanQuotaResetPeriod = NormalizeResetPeriod(plan.QuotaResetPeriod)
 	o.PlanQuotaResetCustomSec = plan.QuotaResetCustomSeconds
+	o.PlanAllowedGroupsJSON = strings.TrimSpace(plan.AllowedGroupsJSON)
+	o.PlanAllowedModelsJSON = strings.TrimSpace(plan.AllowedModelsJSON)
+	o.PlanAllowedVendorIDsJSON = strings.TrimSpace(plan.AllowedVendorIDsJSON)
 }
 
 func (o *SubscriptionOrder) SnapshotPlan() *SubscriptionPlan {
@@ -393,6 +408,9 @@ func (o *SubscriptionOrder) SnapshotPlan() *SubscriptionPlan {
 		RequestCountPeriodTotal: o.PlanRequestCountPeriodTotal,
 		QuotaResetPeriod:        NormalizeResetPeriod(o.PlanQuotaResetPeriod),
 		QuotaResetCustomSeconds: o.PlanQuotaResetCustomSec,
+		AllowedGroupsJSON:       strings.TrimSpace(o.PlanAllowedGroupsJSON),
+		AllowedModelsJSON:       strings.TrimSpace(o.PlanAllowedModelsJSON),
+		AllowedVendorIDsJSON:    strings.TrimSpace(o.PlanAllowedVendorIDsJSON),
 	}
 }
 
@@ -413,6 +431,9 @@ func buildSubscriptionPlanSnapshot(plan *SubscriptionPlan, planId int) *Subscrip
 		RequestCountPeriodTotal: plan.RequestCountPeriodTotal,
 		QuotaResetPeriod:        NormalizeResetPeriod(plan.QuotaResetPeriod),
 		QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
+		AllowedGroupsJSON:       strings.TrimSpace(plan.AllowedGroupsJSON),
+		AllowedModelsJSON:       strings.TrimSpace(plan.AllowedModelsJSON),
+		AllowedVendorIDsJSON:    strings.TrimSpace(plan.AllowedVendorIDsJSON),
 	}
 }
 
@@ -432,6 +453,9 @@ type UserSubscription struct {
 	RequestCountPeriodUsed  int64  `json:"request_count_period_used" gorm:"type:bigint;not null;default:0"`
 	ResetPeriod             string `json:"reset_period" gorm:"type:varchar(16);not null;default:'never'"`
 	ResetCustomSeconds      int64  `json:"reset_custom_seconds" gorm:"type:bigint;not null;default:0"`
+	AllowedGroupsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_groups_json"`
+	AllowedModelsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_models_json"`
+	AllowedVendorIDsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_vendor_ids_json"`
 	DurationUnit            string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
 	DurationValue           int    `json:"duration_value" gorm:"type:int;not null;default:1"`
 	CustomSeconds           int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
@@ -567,6 +591,248 @@ func NormalizeSubscriptionResourceType(resourceType string) string {
 	default:
 		return SubscriptionResourceQuota
 	}
+}
+
+func normalizeSubscriptionStringList(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(items))
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func normalizeSubscriptionIntList(items []int) []int {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(items))
+	result := make([]int, 0, len(items))
+	for _, item := range items {
+		if item <= 0 {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func encodeSubscriptionStringList(items []string) (string, error) {
+	normalized := normalizeSubscriptionStringList(items)
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func encodeSubscriptionIntList(items []int) (string, error) {
+	normalized := normalizeSubscriptionIntList(items)
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeSubscriptionStringList(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []string
+	if err := common.UnmarshalJsonStr(raw, &items); err != nil {
+		return nil
+	}
+	return normalizeSubscriptionStringList(items)
+}
+
+func decodeSubscriptionIntList(raw string) []int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []int
+	if err := common.UnmarshalJsonStr(raw, &items); err != nil {
+		return nil
+	}
+	return normalizeSubscriptionIntList(items)
+}
+
+func PrepareSubscriptionPlanRestrictionFields(plan *SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	allowedGroups, err := encodeSubscriptionStringList(plan.AllowedGroups)
+	if err != nil {
+		return err
+	}
+	allowedModels, err := encodeSubscriptionStringList(plan.AllowedModels)
+	if err != nil {
+		return err
+	}
+	allowedVendorIDs, err := encodeSubscriptionIntList(plan.AllowedVendorIDs)
+	if err != nil {
+		return err
+	}
+	plan.AllowedGroups = normalizeSubscriptionStringList(plan.AllowedGroups)
+	plan.AllowedModels = normalizeSubscriptionStringList(plan.AllowedModels)
+	plan.AllowedVendorIDs = normalizeSubscriptionIntList(plan.AllowedVendorIDs)
+	plan.AllowedGroupsJSON = allowedGroups
+	plan.AllowedModelsJSON = allowedModels
+	plan.AllowedVendorIDsJSON = allowedVendorIDs
+	return nil
+}
+
+func applySubscriptionPlanRestrictionFields(plan *SubscriptionPlan, vendorNamesByID map[int]string) {
+	if plan == nil {
+		return
+	}
+	plan.AllowedGroups = decodeSubscriptionStringList(plan.AllowedGroupsJSON)
+	plan.AllowedModels = decodeSubscriptionStringList(plan.AllowedModelsJSON)
+	plan.AllowedVendorIDs = decodeSubscriptionIntList(plan.AllowedVendorIDsJSON)
+	if len(plan.AllowedVendorIDs) == 0 {
+		plan.AllowedVendorNames = nil
+		return
+	}
+	names := make([]string, 0, len(plan.AllowedVendorIDs))
+	for _, vendorID := range plan.AllowedVendorIDs {
+		name := strings.TrimSpace(vendorNamesByID[vendorID])
+		if name == "" {
+			name = strconv.Itoa(vendorID)
+		}
+		names = append(names, name)
+	}
+	plan.AllowedVendorNames = names
+}
+
+func ApplySubscriptionPlanRestrictionFields(plans []*SubscriptionPlan) {
+	if len(plans) == 0 {
+		return
+	}
+	vendorIDs := make([]int, 0)
+	vendorIDSet := make(map[int]struct{})
+	for _, plan := range plans {
+		if plan == nil {
+			continue
+		}
+		for _, vendorID := range decodeSubscriptionIntList(plan.AllowedVendorIDsJSON) {
+			if _, ok := vendorIDSet[vendorID]; ok {
+				continue
+			}
+			vendorIDSet[vendorID] = struct{}{}
+			vendorIDs = append(vendorIDs, vendorID)
+		}
+	}
+	vendorNamesByID := make(map[int]string, len(vendorIDs))
+	if len(vendorIDs) > 0 {
+		var vendors []Vendor
+		if err := DB.Select("id", "name").Where("id IN ?", vendorIDs).Find(&vendors).Error; err == nil {
+			for _, vendor := range vendors {
+				vendorNamesByID[vendor.Id] = vendor.Name
+			}
+		}
+	}
+	for _, plan := range plans {
+		applySubscriptionPlanRestrictionFields(plan, vendorNamesByID)
+	}
+}
+
+func decodeUserSubscriptionAllowedGroups(sub *UserSubscription) []string {
+	if sub == nil {
+		return nil
+	}
+	return decodeSubscriptionStringList(sub.AllowedGroupsJSON)
+}
+
+func decodeUserSubscriptionAllowedModels(sub *UserSubscription) []string {
+	if sub == nil {
+		return nil
+	}
+	return decodeSubscriptionStringList(sub.AllowedModelsJSON)
+}
+
+func decodeUserSubscriptionAllowedVendorIDs(sub *UserSubscription) []int {
+	if sub == nil {
+		return nil
+	}
+	return decodeSubscriptionIntList(sub.AllowedVendorIDsJSON)
+}
+
+func getVendorIDByModelNameTx(tx *gorm.DB, modelName string) int {
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return 0
+	}
+	query := tx
+	if query == nil {
+		query = DB
+	}
+	var exact Model
+	if err := query.Select("vendor_id").Where("model_name = ? AND deleted_at IS NULL", modelName).First(&exact).Error; err == nil {
+		return exact.VendorID
+	}
+	var rules []Model
+	if err := query.Select("vendor_id", "model_name", "name_rule").
+		Where("name_rule <> ? AND deleted_at IS NULL", NameRuleExact).
+		Find(&rules).Error; err != nil {
+		return 0
+	}
+	for _, rule := range rules {
+		switch rule.NameRule {
+		case NameRulePrefix:
+			if strings.HasPrefix(modelName, rule.ModelName) {
+				return rule.VendorID
+			}
+		case NameRuleSuffix:
+			if strings.HasSuffix(modelName, rule.ModelName) {
+				return rule.VendorID
+			}
+		case NameRuleContains:
+			if strings.Contains(modelName, rule.ModelName) {
+				return rule.VendorID
+			}
+		}
+	}
+	modelLower := strings.ToLower(modelName)
+	for pattern, vendorName := range defaultVendorRules {
+		if !strings.Contains(modelLower, pattern) {
+			continue
+		}
+		var vendor Vendor
+		if err := query.Select("id").Where("name = ? AND deleted_at IS NULL", vendorName).First(&vendor).Error; err == nil {
+			return vendor.Id
+		}
+		break
+	}
+	return 0
 }
 
 func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) int64 {
@@ -1081,6 +1347,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		RequestCountPeriodUsed:  0,
 		ResetPeriod:             NormalizeResetPeriod(effectivePlan.QuotaResetPeriod),
 		ResetCustomSeconds:      effectivePlan.QuotaResetCustomSeconds,
+		AllowedGroupsJSON:       strings.TrimSpace(effectivePlan.AllowedGroupsJSON),
+		AllowedModelsJSON:       strings.TrimSpace(effectivePlan.AllowedModelsJSON),
+		AllowedVendorIDsJSON:    strings.TrimSpace(effectivePlan.AllowedVendorIDsJSON),
 		DurationUnit:            effectivePlan.DurationUnit,
 		DurationValue:           effectivePlan.DurationValue,
 		CustomSeconds:           effectivePlan.CustomSeconds,
@@ -1922,6 +2191,9 @@ func createMigratedUserSubscriptionTx(tx *gorm.DB, source *UserSubscription, tar
 		RequestCountPeriodUsed:  source.RequestCountPeriodUsed,
 		ResetPeriod:             NormalizeResetPeriod(targetPlan.QuotaResetPeriod),
 		ResetCustomSeconds:      targetPlan.QuotaResetCustomSeconds,
+		AllowedGroupsJSON:       strings.TrimSpace(targetPlan.AllowedGroupsJSON),
+		AllowedModelsJSON:       strings.TrimSpace(targetPlan.AllowedModelsJSON),
+		AllowedVendorIDsJSON:    strings.TrimSpace(targetPlan.AllowedVendorIDsJSON),
 		DurationUnit:            targetPlan.DurationUnit,
 		DurationValue:           targetPlan.DurationValue,
 		CustomSeconds:           targetPlan.CustomSeconds,
@@ -1977,7 +2249,7 @@ func ExecuteSubscriptionMigration(filter SubscriptionMigrationFilter) (*Subscrip
 			if source.Status != "active" || source.EndTime <= common.GetTimestamp() {
 				return errors.New("subscription is no longer active")
 			}
-			newSub, newGroup, err := createMigratedUserSubscriptionTx(tx, &source, targetPlan, GetDBTimestamp())
+			newSub, newGroup, err := createMigratedUserSubscriptionTx(tx, &source, targetPlan, GetDBTimestampWithTx(tx))
 			if err != nil {
 				return err
 			}
@@ -2567,6 +2839,56 @@ func doesUserSubscriptionMatchGroup(sub *UserSubscription, usingGroup string, cu
 	return ok
 }
 
+func doesUserSubscriptionMatchAllowedGroup(sub *UserSubscription, usingGroup string) bool {
+	allowedGroups := decodeUserSubscriptionAllowedGroups(sub)
+	if len(allowedGroups) == 0 {
+		return true
+	}
+	usingGroup = strings.TrimSpace(usingGroup)
+	if usingGroup == "" {
+		return false
+	}
+	for _, group := range allowedGroups {
+		if group == usingGroup {
+			return true
+		}
+	}
+	return false
+}
+
+func doesUserSubscriptionMatchAllowedModel(sub *UserSubscription, modelName string) bool {
+	allowedModels := decodeUserSubscriptionAllowedModels(sub)
+	if len(allowedModels) == 0 {
+		return true
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return false
+	}
+	for _, allowedModel := range allowedModels {
+		if allowedModel == modelName {
+			return true
+		}
+	}
+	return false
+}
+
+func doesUserSubscriptionMatchAllowedVendor(sub *UserSubscription, vendorID int) bool {
+	allowedVendorIDs := decodeUserSubscriptionAllowedVendorIDs(sub)
+	if len(allowedVendorIDs) == 0 {
+		return true
+	}
+	if vendorID <= 0 {
+		return false
+	}
+	for _, allowedVendorID := range allowedVendorIDs {
+		if allowedVendorID == vendorID {
+			return true
+		}
+	}
+	return false
+}
+
 func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int, sub *UserSubscription, requiredAmount int64, requiredCount int64, resourceType string, returnValue *SubscriptionPreConsumeResult) error {
 	if tx == nil || sub == nil || returnValue == nil {
 		return errors.New("invalid pre-consume args")
@@ -2702,11 +3024,21 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		if err != nil {
 			return err
 		}
+		resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
 		requestCountCandidates := make([]UserSubscription, 0, len(subs))
 		quotaCandidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
 			sub := candidate
 			if !doesUserSubscriptionMatchGroup(&sub, usingGroup, currentUserGroup) {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedGroup(&sub, usingGroup) {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedModel(&sub, modelName) {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedVendor(&sub, resolvedVendorID) {
 				continue
 			}
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)

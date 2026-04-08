@@ -59,6 +59,8 @@ import {
   formatSubscriptionResetPeriod,
   formatSubscriptionResourceLabel,
   getSubscriptionEffectivePrice,
+  getSubscriptionPlanMetricItems,
+  getSubscriptionRestrictionSummary,
   getSubscriptionResourceType,
   getSubscriptionSaleSummary,
   getSubscriptionUsageSummary,
@@ -953,6 +955,8 @@ const SubscriptionPlansCard = ({
     const count = getPlanPurchaseCount(plan?.id);
     const limit = Number(plan?.max_purchase_per_user || 0);
     const saleSummary = getSubscriptionSaleSummary(plan);
+    const metricItems = getSubscriptionPlanMetricItems(plan, t);
+    const restrictionSummary = getSubscriptionRestrictionSummary(plan);
 
     return (
       <div className='grid grid-cols-1 gap-3 lg:grid-cols-4'>
@@ -987,6 +991,35 @@ const SubscriptionPlansCard = ({
               : `${getPlanBenefitDescription(plan, t)} · ${t('有效期')} ${formatSubscriptionDuration(plan, t)}`}
           </div>
         </div>
+        {metricItems.map((item) => (
+          <div
+            key={item.label}
+            className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'
+          >
+            <div className='text-xs text-gray-500'>{item.label}</div>
+            <div className='mt-1 text-sm font-semibold text-semi-color-text-0 break-all'>
+              {item.value}
+            </div>
+          </div>
+        ))}
+        {(restrictionSummary.groups.length > 0 ||
+          restrictionSummary.models.length > 0 ||
+          restrictionSummary.vendors.length > 0) && (
+          <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3 lg:col-span-2'>
+            <div className='text-xs text-gray-500'>{t('可用范围')}</div>
+            <div className='mt-1 text-sm text-semi-color-text-0 break-all'>
+              {restrictionSummary.groups.length > 0
+                ? `${t('分组')}：${restrictionSummary.groups.join(' / ')}`
+                : null}
+              {restrictionSummary.models.length > 0
+                ? ` ${t('模型')}：${restrictionSummary.models.join(' / ')}`
+                : null}
+              {restrictionSummary.vendors.length > 0
+                ? ` ${t('供应商')}：${restrictionSummary.vendors.join(' / ')}`
+                : null}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -1089,12 +1122,17 @@ const SubscriptionPlansCard = ({
         key: 'benefit',
         render: (text, record) => {
           const plan = record?.plan || {};
+          const metricItems = getSubscriptionPlanMetricItems(plan, t);
           return (
             <div className='space-y-1'>
-              <div>{getPlanBenefitDescription(plan, t)}</div>
-              <Text type='tertiary' size='small'>
-                {t('有效期')}：{formatSubscriptionDuration(plan, t)}
-              </Text>
+              {metricItems.map((item) => (
+                <div key={item.label} className='flex items-center justify-between gap-3'>
+                  <Text type='tertiary' size='small'>
+                    {item.label}
+                  </Text>
+                  <Text size='small'>{item.value}</Text>
+                </div>
+              ))}
             </div>
           );
         },
@@ -1107,6 +1145,7 @@ const SubscriptionPlansCard = ({
           const plan = record?.plan || {};
           const limit = Number(plan?.max_purchase_per_user || 0);
           const saleSummary = getSubscriptionSaleSummary(plan);
+          const restrictionSummary = getSubscriptionRestrictionSummary(plan);
           return (
             <div className='flex flex-wrap gap-2'>
               {limit > 0 && (
@@ -1138,6 +1177,21 @@ const SubscriptionPlansCard = ({
                   {t('升级分组')}: {plan.upgrade_group}
                 </Tag>
               )}
+              {restrictionSummary.groups.map((group) => (
+                <Tag key={`group-${group}`} color='white' shape='circle' size='small'>
+                  {t('分组')}: {group}
+                </Tag>
+              ))}
+              {restrictionSummary.models.slice(0, 2).map((modelName) => (
+                <Tag key={`model-${modelName}`} color='white' shape='circle' size='small'>
+                  {t('模型')}: {modelName}
+                </Tag>
+              ))}
+              {restrictionSummary.vendors.map((vendorName) => (
+                <Tag key={`vendor-${vendorName}`} color='white' shape='circle' size='small'>
+                  {t('供应商')}: {vendorName}
+                </Tag>
+              ))}
               {!limit && !plan?.upgrade_group && saleSummary.soldCount <= 0 && (
                 <Text type='tertiary' size='small'>
                   --

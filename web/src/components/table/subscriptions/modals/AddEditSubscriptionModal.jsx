@@ -86,7 +86,11 @@ const AddEditSubscriptionModal = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
+  const [modelOptions, setModelOptions] = useState([]);
+  const [vendorOptions, setVendorOptions] = useState([]);
   const [groupLoading, setGroupLoading] = useState(false);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [vendorLoading, setVendorLoading] = useState(false);
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
   const isEdit = editingPlan?.plan?.id !== undefined;
@@ -114,6 +118,9 @@ const AddEditSubscriptionModal = ({
     request_count_total: 0,
     request_count_period_total: 0,
     upgrade_group: '',
+    allowed_groups: [],
+    allowed_models: [],
+    allowed_vendor_ids: [],
     stripe_price_id: '',
     creem_product_id: '',
   });
@@ -149,6 +156,11 @@ const AddEditSubscriptionModal = ({
       request_count_total: Number(p.request_count_total || 0),
       request_count_period_total: Number(p.request_count_period_total || 0),
       upgrade_group: p.upgrade_group || '',
+      allowed_groups: Array.isArray(p.allowed_groups) ? p.allowed_groups : [],
+      allowed_models: Array.isArray(p.allowed_models) ? p.allowed_models : [],
+      allowed_vendor_ids: Array.isArray(p.allowed_vendor_ids)
+        ? p.allowed_vendor_ids.map((id) => Number(id)).filter((id) => id > 0)
+        : [],
       stripe_price_id: p.stripe_price_id || '',
       creem_product_id: p.creem_product_id || '',
     };
@@ -157,16 +169,41 @@ const AddEditSubscriptionModal = ({
   useEffect(() => {
     if (!visible) return;
     setGroupLoading(true);
-    API.get('/api/group')
-      .then((res) => {
-        if (res.data?.success) {
-          setGroupOptions(res.data?.data || []);
+    setModelLoading(true);
+    setVendorLoading(true);
+    Promise.allSettled([
+      API.get('/api/group'),
+      API.get('/api/models/?page_size=1000'),
+      API.get('/api/vendors/?page_size=1000'),
+    ])
+      .then(([groupRes, modelRes, vendorRes]) => {
+        if (groupRes.status === 'fulfilled' && groupRes.value.data?.success) {
+          setGroupOptions(groupRes.value.data?.data || []);
         } else {
           setGroupOptions([]);
         }
+
+        if (modelRes.status === 'fulfilled' && modelRes.value.data?.success) {
+          const items =
+            modelRes.value.data?.data?.items || modelRes.value.data?.data || [];
+          setModelOptions(Array.isArray(items) ? items : []);
+        } else {
+          setModelOptions([]);
+        }
+
+        if (vendorRes.status === 'fulfilled' && vendorRes.value.data?.success) {
+          const items =
+            vendorRes.value.data?.data?.items || vendorRes.value.data?.data || [];
+          setVendorOptions(Array.isArray(items) ? items : []);
+        } else {
+          setVendorOptions([]);
+        }
       })
-      .catch(() => setGroupOptions([]))
-      .finally(() => setGroupLoading(false));
+      .finally(() => {
+        setGroupLoading(false);
+        setModelLoading(false);
+        setVendorLoading(false);
+      });
   }, [visible]);
 
   const submit = async (values) => {
@@ -220,6 +257,15 @@ const AddEditSubscriptionModal = ({
           request_count_total: Number(values.request_count_total || 0),
           request_count_period_total: Number(values.request_count_period_total || 0),
           upgrade_group: values.upgrade_group || '',
+          allowed_groups: Array.isArray(values.allowed_groups)
+            ? values.allowed_groups
+            : [],
+          allowed_models: Array.isArray(values.allowed_models)
+            ? values.allowed_models
+            : [],
+          allowed_vendor_ids: Array.isArray(values.allowed_vendor_ids)
+            ? values.allowed_vendor_ids.map((id) => Number(id)).filter((id) => id > 0)
+            : [],
         },
       };
       if (editingPlan?.plan?.id) {
@@ -611,6 +657,89 @@ const AddEditSubscriptionModal = ({
                           style={{ width: '100%' }}
                         />
                       )}
+                    </Col>
+                  </Row>
+                </Card>
+
+                {/* 使用范围 */}
+                <Card className='!rounded-2xl shadow-sm border-0 mb-4'>
+                  <div className='flex items-center mb-2'>
+                    <Avatar
+                      size='small'
+                      color='cyan'
+                      className='mr-2 shadow-md'
+                    >
+                      <Tag size='small'>#</Tag>
+                    </Avatar>
+                    <div>
+                      <Text className='text-lg font-medium'>
+                        {t('使用范围')}
+                      </Text>
+                      <div className='text-xs text-gray-600'>
+                        {t('可选限制该套餐仅能用于指定分组、模型或供应商')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Row gutter={12}>
+                    <Col span={24}>
+                      <Form.Select
+                        field='allowed_groups'
+                        label={t('可用分组')}
+                        multiple
+                        filter
+                        showClear
+                        loading={groupLoading}
+                        placeholder={t('不限制分组')}
+                        extraText={t('留空表示所有分组都可用')}
+                      >
+                        {(groupOptions || []).map((g) => (
+                          <Select.Option key={g} value={g}>
+                            {g}
+                          </Select.Option>
+                        ))}
+                      </Form.Select>
+                    </Col>
+
+                    <Col span={24}>
+                      <Form.Select
+                        field='allowed_models'
+                        label={t('可用模型')}
+                        multiple
+                        filter
+                        showClear
+                        loading={modelLoading}
+                        placeholder={t('不限制模型')}
+                        extraText={t('留空表示所有模型都可用')}
+                      >
+                        {(modelOptions || []).map((item) => (
+                          <Select.Option
+                            key={item.id || item.model_name}
+                            value={item.model_name}
+                          >
+                            {item.model_name}
+                          </Select.Option>
+                        ))}
+                      </Form.Select>
+                    </Col>
+
+                    <Col span={24}>
+                      <Form.Select
+                        field='allowed_vendor_ids'
+                        label={t('可用供应商')}
+                        multiple
+                        filter
+                        showClear
+                        loading={vendorLoading}
+                        placeholder={t('不限制供应商')}
+                        extraText={t('留空表示所有供应商都可用')}
+                      >
+                        {(vendorOptions || []).map((item) => (
+                          <Select.Option key={item.id} value={Number(item.id)}>
+                            {item.name}
+                          </Select.Option>
+                        ))}
+                      </Form.Select>
                     </Col>
                   </Row>
                 </Card>

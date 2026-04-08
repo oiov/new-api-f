@@ -59,11 +59,16 @@ func GetSubscriptionPlans(c *gin.Context) {
 		return
 	}
 	now := common.GetTimestamp()
+	planPointers := make([]*model.SubscriptionPlan, 0, len(plans))
+	for i := range plans {
+		applySubscriptionPlanDisplayFields(&plans[i], now)
+		planPointers = append(planPointers, &plans[i])
+	}
+	model.ApplySubscriptionPlanRestrictionFields(planPointers)
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
-	for _, p := range plans {
-		applySubscriptionPlanDisplayFields(&p, now)
+	for i := range plans {
 		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+			Plan: plans[i],
 		})
 	}
 	common.ApiSuccess(c, result)
@@ -169,11 +174,16 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 		return
 	}
 	now := common.GetTimestamp()
+	planPointers := make([]*model.SubscriptionPlan, 0, len(plans))
+	for i := range plans {
+		applySubscriptionPlanDisplayFields(&plans[i], now)
+		planPointers = append(planPointers, &plans[i])
+	}
+	model.ApplySubscriptionPlanRestrictionFields(planPointers)
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
-	for _, p := range plans {
-		applySubscriptionPlanDisplayFields(&p, now)
+	for i := range plans {
 		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+			Plan: plans[i],
 		})
 	}
 	common.ApiSuccess(c, result)
@@ -248,6 +258,33 @@ func normalizeSubscriptionPlanLimitFields(plan *model.SubscriptionPlan) error {
 	if plan.SaleLimitCount > 0 && plan.SoldCount > plan.SaleLimitCount {
 		return fmt.Errorf("已售数量不能大于可购买总数")
 	}
+	if err := model.PrepareSubscriptionPlanRestrictionFields(plan); err != nil {
+		return fmt.Errorf("套餐限制序列化失败")
+	}
+	return nil
+}
+
+func validateSubscriptionPlanRestrictionFields(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	groupRatios := ratio_setting.GetGroupRatioCopy()
+	for _, group := range plan.AllowedGroups {
+		if _, ok := groupRatios[group]; !ok {
+			return fmt.Errorf("可用分组不存在：%s", group)
+		}
+	}
+	if len(plan.AllowedVendorIDs) > 0 {
+		var count int64
+		if err := model.DB.Model(&model.Vendor{}).
+			Where("id IN ?", plan.AllowedVendorIDs).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count != int64(len(plan.AllowedVendorIDs)) {
+			return fmt.Errorf("存在无效的可用供应商配置")
+		}
+	}
 	return nil
 }
 
@@ -291,6 +328,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	if err := validateSubscriptionPlanRestrictionFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -303,6 +344,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	}
 	model.InvalidateSubscriptionPlanCache(req.Plan.Id)
 	applySubscriptionPlanDisplayFields(&req.Plan, common.GetTimestamp())
+	model.ApplySubscriptionPlanRestrictionFields([]*model.SubscriptionPlan{&req.Plan})
 	common.ApiSuccess(c, req.Plan)
 }
 
@@ -351,6 +393,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	if err := validateSubscriptionPlanRestrictionFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -389,9 +435,13 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"total_amount":               req.Plan.TotalAmount,
 			"resource_type":              req.Plan.ResourceType,
 			"request_count_total":        req.Plan.RequestCountTotal,
+			"request_count_period_total": req.Plan.RequestCountPeriodTotal,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
+			"allowed_groups_json":        req.Plan.AllowedGroupsJSON,
+			"allowed_models_json":        req.Plan.AllowedModelsJSON,
+			"allowed_vendor_ids_json":    req.Plan.AllowedVendorIDsJSON,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {

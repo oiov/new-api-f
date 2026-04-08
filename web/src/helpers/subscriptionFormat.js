@@ -164,6 +164,88 @@ export function formatSubscriptionResetPeriod(plan, t) {
   return t('不重置');
 }
 
+export function formatSubscriptionResetHint(plan, t) {
+  const period = getSubscriptionResetPeriodValue(plan);
+  if (period === 'never') return t('不重置');
+  if (period === 'daily') return t('每天 00:00 后滚动重置');
+  if (period === 'weekly') return t('每 7 天滚动重置');
+  if (period === 'monthly') return t('每月按生效时间滚动重置');
+  if (period === 'yearly') return t('每年按生效时间滚动重置');
+  return `${formatSubscriptionResetPeriod(plan, t)} ${t('滚动重置')}`;
+}
+
+export function getSubscriptionRestrictionSummary(plan) {
+  return {
+    groups: Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : [],
+    models: Array.isArray(plan?.allowed_models) ? plan.allowed_models : [],
+    vendors: Array.isArray(plan?.allowed_vendor_names)
+      ? plan.allowed_vendor_names
+      : [],
+  };
+}
+
+export function getSubscriptionPlanMetricItems(plan, t) {
+  const resourceType = getSubscriptionResourceType(plan);
+  const resetPeriod = getSubscriptionResetPeriodValue(plan);
+  const durationText = formatSubscriptionDuration(plan, t);
+  const resetHintText = formatSubscriptionResetHint(plan, t);
+
+  if (resourceType === 'request_count') {
+    const periodLimit = Number(plan?.request_count_period_total || 0);
+    const totalLimit = Number(plan?.request_count_total || 0);
+    const periodLabel =
+      resetPeriod === 'never'
+        ? t('周期上限')
+        : `${formatSubscriptionResetPeriod(plan, t)}${t('上限')}`;
+    return [
+      {
+        key: 'period_limit',
+        label: periodLabel,
+        value: periodLimit > 0 ? `${periodLimit} ${t('次')}` : t('不限'),
+      },
+      {
+        key: 'total_limit',
+        label: t('总次数上限'),
+        value: totalLimit > 0 ? `${totalLimit} ${t('次')}` : t('不限'),
+      },
+      {
+        key: 'reset_time',
+        label: t('重置时间'),
+        value: resetHintText,
+      },
+      {
+        key: 'duration',
+        label: t('有效期'),
+        value: durationText,
+      },
+    ];
+  }
+
+  const totalAmount = Number(plan?.total_amount ?? plan?.amount_total ?? 0);
+  return [
+    {
+      key: 'quota_limit',
+      label: formatSubscriptionResourceLabel(plan, t),
+      value: totalAmount > 0 ? renderQuota(totalAmount) : t('不限'),
+    },
+    {
+      key: 'resource_type',
+      label: t('权益类型'),
+      value: t('按额度'),
+    },
+    {
+      key: 'reset_time',
+      label: t('重置时间'),
+      value: resetHintText,
+    },
+    {
+      key: 'duration',
+      label: t('有效期'),
+      value: durationText,
+    },
+  ];
+}
+
 export function formatSubscriptionRequestBenefit(plan, t) {
   const summary = getSubscriptionUsageSummary(plan);
   if (summary.resourceType !== 'request_count') {
