@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
-import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers/auth';
+import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute } from './helpers/auth';
 import { StatusContext } from './context/Status';
 
 const Home = lazy(() => import('./pages/Home'));
@@ -358,11 +358,11 @@ function App() {
           <Route
             path='/console/invoice-admin'
             element={
-              <AdminRoute>
+              <RootRoute>
                 <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                   <InvoiceAdminPage />
                 </Suspense>
-              </AdminRoute>
+              </RootRoute>
             }
           />
           <Route

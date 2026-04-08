@@ -61,4 +61,15 @@ export function AdminRoute({ children }) {
   return <Navigate to='/forbidden' replace />;
 }
 
+export function RootRoute({ children }) {
+  const user = getUserData();
+  if (!user) {
+    return <Navigate to='/login' state={{ from: history.location }} />;
+  }
+  if (typeof user.role === 'number' && user.role >= 100) {
+    return children;
+  }
+  return <Navigate to='/forbidden' replace />;
+}
+
 export { PrivateRoute };

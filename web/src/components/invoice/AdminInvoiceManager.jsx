@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Tag,
@@ -15,6 +34,8 @@ import {
   Empty,
   Upload,
   Divider,
+  SideSheet,
+  Pagination,
 } from '@douyinfe/semi-ui';
 import { IllustrationNoResult, IllustrationNoResultDark } from '@douyinfe/semi-illustrations';
 import { IconSearch, IconDownload, IconMail, IconList, IconEyeOpened, IconUpload } from '@douyinfe/semi-icons';
@@ -34,6 +55,20 @@ const STATUS_CONFIG = {
   sent: { color: 'green', label: '已发送' },
   rejected: { color: 'red', label: '已拒绝' },
 };
+
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
+const PDF_EXTENSION = /\.pdf(\?.*)?$/i;
+
+// 修复 mixed-content：HTTPS 页面强制 HTTPS 资源
+function resolveUrl(url) {
+  if (!url) return url;
+  if (window.location.protocol === 'https:' && url.startsWith('http:')) {
+    return url.replace(/^http:/, 'https:');
+  }
+  return url;
+}
+
+const TOPUP_PAGE_SIZE = 10;
 
 const AdminInvoiceManager = () => {
   const { t } = useTranslation();
@@ -65,42 +100,17 @@ const AdminInvoiceManager = () => {
   const [sendSubmitting, setSendSubmitting] = useState(false);
   const sendFormApi = React.useRef(null);
 
-  // Detail modal (associated topups)
-  const [detailModal, setDetailModal] = useState({
+  // Detail SideSheet (associated topups)
+  const [detailSheet, setDetailSheet] = useState({
     visible: false,
     record: null,
     topups: [],
     loading: false,
+    topupPage: 1,
   });
 
-  // Image preview modal
-  const [previewModal, setPreviewModal] = useState({ visible: false, url: '' });
-
-  const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
-
-  const openDetail = async (record) => {
-    setDetailModal({ visible: true, record, topups: [], loading: true });
-    try {
-      const res = await API.get(`/api/invoice/admin/${record.id}/topups`);
-      if (res.data.success === true) {
-        setDetailModal((prev) => ({ ...prev, topups: res.data.data || [], loading: false }));
-      } else {
-        Toast.error(t('获取关联订单失败'));
-        setDetailModal((prev) => ({ ...prev, loading: false }));
-      }
-    } catch {
-      Toast.error(t('获取关联订单失败'));
-      setDetailModal((prev) => ({ ...prev, loading: false }));
-    }
-  };
-
-  const handlePreview = (fileUrl) => {
-    if (IMAGE_EXTENSIONS.test(fileUrl)) {
-      setPreviewModal({ visible: true, url: fileUrl });
-    } else {
-      window.open(fileUrl, '_blank');
-    }
-  };
+  // Preview SideSheet
+  const [previewSheet, setPreviewSheet] = useState({ visible: false, url: '', isPdf: false });
 
   const PAYMENT_METHOD_MAP = {
     stripe: 'Stripe',
@@ -108,6 +118,32 @@ const AdminInvoiceManager = () => {
     creem: 'Creem',
     waffo: 'Waffo',
     manual: '管理员充值',
+  };
+
+  const openDetail = async (record) => {
+    setDetailSheet({ visible: true, record, topups: [], loading: true, topupPage: 1 });
+    try {
+      const res = await API.get(`/api/invoice/admin/${record.id}/topups`);
+      if (res.data.success === true) {
+        setDetailSheet((prev) => ({ ...prev, topups: res.data.data || [], loading: false }));
+      } else {
+        Toast.error(t('获取关联订单失败'));
+        setDetailSheet((prev) => ({ ...prev, loading: false }));
+      }
+    } catch {
+      Toast.error(t('获取关联订单失败'));
+      setDetailSheet((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handlePreview = (fileUrl) => {
+    const safe = resolveUrl(fileUrl);
+    const isPdf = PDF_EXTENSION.test(safe);
+    if (isPdf || IMAGE_EXTENSIONS.test(safe)) {
+      setPreviewSheet({ visible: true, url: safe, isPdf });
+    } else {
+      window.open(safe, '_blank');
+    }
   };
 
   const topupColumns = [
@@ -348,7 +384,7 @@ const AdminInvoiceManager = () => {
                     <Button
                       icon={<IconDownload />}
                       size='small'
-                      onClick={() => window.open(record.file_url, '_blank')}
+                      onClick={() => window.open(resolveUrl(record.file_url), '_blank')}
                     />
                   </Tooltip>
                 </>
@@ -402,6 +438,13 @@ const AdminInvoiceManager = () => {
       </Select>
       <Button onClick={() => { setPage(1); fetchInvoices(1); }}>{t('搜索')}</Button>
     </div>
+  );
+
+  // 关联订单抽屉分页计算
+  const topupTotal = detailSheet.topups.length;
+  const topupPageData = detailSheet.topups.slice(
+    (detailSheet.topupPage - 1) * TOPUP_PAGE_SIZE,
+    detailSheet.topupPage * TOPUP_PAGE_SIZE,
   );
 
   return (
@@ -587,69 +630,122 @@ const AdminInvoiceManager = () => {
         </Form>
       </Modal>
 
-      {/* 关联充值订单 Modal */}
-      <Modal
-        title={t('关联充值订单')}
-        visible={detailModal.visible}
-        onCancel={() => setDetailModal((prev) => ({ ...prev, visible: false }))}
-        footer={null}
-        width={700}
-        style={{ maxWidth: '95vw' }}
-      >
-        {detailModal.record && (
-          <div style={{ marginBottom: 12 }}>
-            <Space>
-              <Text type='tertiary'>{t('发票抬头')}：</Text>
-              <Text strong>{detailModal.record.title}</Text>
-              <Text type='tertiary' style={{ marginLeft: 16 }}>{t('发票金额')}：</Text>
-              <Text strong>¥{Number(detailModal.record.amount).toFixed(2)}</Text>
-              <Text type='tertiary' style={{ marginLeft: 16 }}>{t('用户')}：</Text>
-              <Text>{detailModal.record.username || detailModal.record.user_id}</Text>
-            </Space>
-          </div>
-        )}
-        <Spin spinning={detailModal.loading}>
-          <CardTable
-            columns={topupColumns}
-            dataSource={detailModal.topups}
-            rowKey='id'
-            hidePagination
-            size='small'
-            empty={
-              <Empty
-                image={<IllustrationNoResult />}
-                darkModeImage={<IllustrationNoResultDark />}
-                description={t('暂无关联订单')}
-              />
-            }
-          />
-        </Spin>
-      </Modal>
-
-      {/* 发票图片预览 Modal */}
-      <Modal
-        title={t('发票预览')}
-        visible={previewModal.visible}
-        onCancel={() => setPreviewModal({ visible: false, url: '' })}
-        footer={
-          <Button
-            icon={<IconDownload />}
-            onClick={() => window.open(previewModal.url, '_blank')}
-          >
-            {t('下载发票')}
-          </Button>
+      {/* 关联充值订单 — SideSheet 抽屉 */}
+      <SideSheet
+        title={
+          detailSheet.record ? (
+            <div style={{ lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 600, fontSize: 15 }}>{t('关联充值订单')}</div>
+              <div style={{ fontSize: 13, color: 'var(--semi-color-text-1)', marginTop: 2 }}>
+                <span style={{ marginRight: 16 }}>
+                  {t('抬头')}：<strong>{detailSheet.record.title}</strong>
+                </span>
+                <span style={{ marginRight: 16 }}>
+                  {t('金额')}：<strong>¥{Number(detailSheet.record.amount).toFixed(2)}</strong>
+                </span>
+                <span>
+                  {t('用户')}：{detailSheet.record.username || detailSheet.record.user_id}
+                </span>
+              </div>
+            </div>
+          ) : t('关联充值订单')
         }
-        width={700}
-        style={{ maxWidth: '95vw' }}
+        visible={detailSheet.visible}
+        onCancel={() => setDetailSheet((prev) => ({ ...prev, visible: false }))}
+        placement='right'
+        width={isMobile ? '100%' : 680}
+        style={{ display: 'flex', flexDirection: 'column' }}
+        bodyStyle={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 0 }}
+        footer={
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '12px 16px',
+            borderTop: '1px solid var(--semi-color-border)',
+          }}>
+            {topupTotal > TOPUP_PAGE_SIZE ? (
+              <Pagination
+                currentPage={detailSheet.topupPage}
+                pageSize={TOPUP_PAGE_SIZE}
+                total={topupTotal}
+                onChange={(p) => setDetailSheet((prev) => ({ ...prev, topupPage: p }))}
+                size='small'
+                showTotal
+              />
+            ) : (
+              <Text type='tertiary' size='small'>{t('共 {{n}} 条', { n: topupTotal })}</Text>
+            )}
+            <Button onClick={() => setDetailSheet((prev) => ({ ...prev, visible: false }))}>
+              {t('关闭')}
+            </Button>
+          </div>
+        }
       >
-        <div style={{ textAlign: 'center' }}>
-          <img
-            src={previewModal.url}
-            alt='invoice'
-            style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
-          />
+        <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
+          <Spin spinning={detailSheet.loading}>
+            <CardTable
+              columns={topupColumns}
+              dataSource={topupPageData}
+              rowKey='id'
+              hidePagination
+              size='small'
+              empty={
+                <Empty
+                  image={<IllustrationNoResult />}
+                  darkModeImage={<IllustrationNoResultDark />}
+                  description={t('暂无关联订单')}
+                />
+              }
+            />
+          </Spin>
         </div>
-      </Modal>
+      </SideSheet>
+
+      {/* 发票预览 — SideSheet 抽屉 */}
+      <SideSheet
+        title={t('发票预览')}
+        visible={previewSheet.visible}
+        onCancel={() => setPreviewSheet({ visible: false, url: '', isPdf: false })}
+        placement='right'
+        width={isMobile ? '100%' : 760}
+        bodyStyle={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+        footer={
+          <div style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 8,
+            padding: '12px 16px',
+            borderTop: '1px solid var(--semi-color-border)',
+          }}>
+            <Button
+              icon={<IconDownload />}
+              onClick={() => window.open(previewSheet.url, '_blank')}
+            >
+              {t('下载发票')}
+            </Button>
+            <Button onClick={() => setPreviewSheet({ visible: false, url: '', isPdf: false })}>
+              {t('关闭')}
+            </Button>
+          </div>
+        }
+      >
+        <div style={{ flex: 1, overflow: 'auto', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--semi-color-bg-1)' }}>
+          {previewSheet.isPdf ? (
+            <iframe
+              src={previewSheet.url}
+              title='invoice-pdf'
+              style={{ width: '100%', height: '75vh', border: 'none' }}
+            />
+          ) : (
+            <img
+              src={previewSheet.url}
+              alt='invoice'
+              style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain' }}
+            />
+          )}
+        </div>
+      </SideSheet>
     </>
   );
 };

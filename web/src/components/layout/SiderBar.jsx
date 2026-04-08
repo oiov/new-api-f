@@ -248,7 +248,7 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         text: t('发票开具'),
         itemKey: 'invoiceAdmin',
         to: '/console/invoice-admin',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: isRoot() ? '' : 'tableHiddle',
       },
     ];
 
