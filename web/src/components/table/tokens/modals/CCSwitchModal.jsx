@@ -28,6 +28,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { encodeToBase64, selectFilter } from '../../../../helpers';
+import { fetchTokenKey as fetchTokenKeyById } from '../../../../helpers/token';
 
 const APP_CONFIGS = {
   claude: {
@@ -146,7 +147,6 @@ function buildProviderName(group, fallbackLabel) {
 export default function CCSwitchModal({
   visible,
   onClose,
-  tokenKey,
   tokenRecord,
   modelOptions,
 }) {
@@ -158,6 +158,7 @@ export default function CCSwitchModal({
   const [app, setApp] = useState(inferredApp || 'claude');
   const [name, setName] = useState(APP_CONFIGS.claude.defaultName);
   const [models, setModels] = useState(DEFAULT_MODELS.claude);
+  const [submitting, setSubmitting] = useState(false);
 
   const currentConfig = APP_CONFIGS[app] || APP_CONFIGS.claude;
   const currentDefaults = DEFAULT_MODELS[app] || DEFAULT_MODELS.claude;
@@ -212,9 +213,23 @@ export default function CCSwitchModal({
       Toast.warning(t('请选择主模型'));
       return;
     }
-    const url = buildCCSwitchURL(app, name, models, 'sk-' + tokenKey);
-    window.open(url, '_blank');
-    onClose();
+    if (!tokenRecord?.id) {
+      Toast.error(t('令牌不存在'));
+      return;
+    }
+    (async () => {
+      setSubmitting(true);
+      try {
+        const tokenKey = await fetchTokenKeyById(tokenRecord.id);
+        const url = buildCCSwitchURL(app, name, models, `sk-${tokenKey}`);
+        window.open(url, '_blank');
+        onClose();
+      } catch (error) {
+        Toast.error(error?.message || t('获取令牌密钥失败'));
+      } finally {
+        setSubmitting(false);
+      }
+    })();
   };
 
   const fieldLabelStyle = useMemo(
@@ -232,6 +247,8 @@ export default function CCSwitchModal({
       visible={visible}
       onCancel={onClose}
       onOk={handleSubmit}
+      okButtonProps={{ loading: submitting }}
+      cancelButtonProps={{ disabled: submitting }}
       okText={t('打开 CC Switch')}
       cancelText={t('取消')}
       maskClosable={false}
@@ -274,7 +291,7 @@ export default function CCSwitchModal({
           <Input
             value={name}
             onChange={setName}
-            placeholder={currentConfig.defaultName}
+            placeholder={buildProviderName(tokenRecord?.group, currentConfig.defaultName)}
           />
           <Typography.Text type='tertiary' style={{ display: 'block', marginTop: 6 }}>
             {t('建议使用供应商名来区分来源，例如 FishXCode (claude)')}
