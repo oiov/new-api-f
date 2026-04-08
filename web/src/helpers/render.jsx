@@ -17,11 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { useEffect, useSyncExternalStore } from 'react';
 import i18next from 'i18next';
-import { Modal, Tag, Typography } from '@douyinfe/semi-ui';
+import { Modal, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { copy, showSuccess } from './utils';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
 import { getModelCategories } from './providerIcons';
+import {
+  ensureAdminGroupMetadataLoaded,
+  getGroupDescription,
+  subscribeGroupMetadata,
+} from './group';
 
 // 颜色列表
 const colors = [
@@ -222,24 +228,11 @@ export function renderGroup(group) {
   return (
     <span key={group}>
       {groups.map((group) => (
-        <Tag
+        <GroupTagWithDescription
           color={tagColors[group] || stringToColor(group)}
+          group={group}
           key={group}
-          shape='circle'
-          onClick={async (event) => {
-            event.stopPropagation();
-            if (await copy(group)) {
-              showSuccess(i18next.t('已复制：') + group);
-            } else {
-              Modal.error({
-                title: i18next.t('无法复制到剪贴板，请手动复制'),
-                content: group,
-              });
-            }
-          }}
-        >
-          {group}
-        </Tag>
+        />
       ))}
     </span>
   );
@@ -382,6 +375,7 @@ export const renderGroupOption = (item) => {
       onMouseEnter(e);
     }
   };
+  const description = item.fullLabel || item.label || item.value;
 
   return (
     <div
@@ -412,14 +406,102 @@ export const renderGroupOption = (item) => {
             </Tag>
           )}
         </div>
-        <Typography.Text type='secondary' size='small'>
-          {label}
+        <Typography.Text
+          type='secondary'
+          size='small'
+          ellipsis={{ rows: 1, showTooltip: { content: description } }}
+        >
+          {description}
         </Typography.Text>
       </div>
       {item.ratio && renderRatio(item.ratio)}
     </div>
   );
 };
+
+function GroupTagWithDescription({ color, group }) {
+  const snapshot = useSyncExternalStore(
+    subscribeGroupMetadata,
+    () => getGroupDescription(group),
+    () => getGroupDescription(group),
+  );
+
+  useEffect(() => {
+    if (snapshot || !group) {
+      return;
+    }
+    ensureAdminGroupMetadataLoaded().catch(() => {});
+  }, [group, snapshot]);
+
+  const tag = (
+    <Tag
+      color={color}
+      shape='circle'
+      onClick={async (event) => {
+        event.stopPropagation();
+        if (await copy(group)) {
+          showSuccess(i18next.t('已复制：') + group);
+        } else {
+          Modal.error({
+            title: i18next.t('无法复制到剪贴板，请手动复制'),
+            content: group,
+          });
+        }
+      }}
+    >
+      {group}
+    </Tag>
+  );
+
+  if (!snapshot || snapshot === group) {
+    return tag;
+  }
+
+  return (
+    <Tooltip content={snapshot} position='top' showArrow>
+      {tag}
+    </Tooltip>
+  );
+}
+
+export const renderGroupTextWithDescription = (group, fallbackText) => {
+  return <GroupTextWithDescription group={group} fallbackText={fallbackText} />;
+};
+
+function GroupTextWithDescription({ group, fallbackText }) {
+  const description = useSyncExternalStore(
+    subscribeGroupMetadata,
+    () => getGroupDescription(group),
+    () => getGroupDescription(group),
+  );
+
+  useEffect(() => {
+    if (!group || description) {
+      return;
+    }
+    ensureAdminGroupMetadataLoaded().catch(() => {});
+  }, [description, group]);
+
+  if (!group) {
+    return (
+      <Typography.Text type='tertiary'>
+        {fallbackText || i18next.t('未设置')}
+      </Typography.Text>
+    );
+  }
+
+  const content = <Typography.Text type='secondary'>{group}</Typography.Text>;
+
+  if (!description || description === group) {
+    return content;
+  }
+
+  return (
+    <Tooltip content={description} position='top' showArrow>
+      {content}
+    </Tooltip>
+  );
+}
 
 export function renderNumber(num) {
   if (num >= 1000000000) {

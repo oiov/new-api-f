@@ -28,7 +28,7 @@ import {
   Divider,
   Badge,
 } from '@douyinfe/semi-ui';
-import { renderQuota } from '../../../helpers';
+import { renderGroupTextWithDescription, renderQuota } from '../../../helpers';
 import { convertUSDToCurrency } from '../../../helpers/render';
 import {
   formatSubscriptionResourceLabel,
@@ -124,7 +124,9 @@ const renderPlanTitle = (text, record, t) => {
         <Text type='tertiary'>{t('套餐权益')}</Text>
         <Text>{renderPlanLimits(plan, t)}</Text>
         <Text type='tertiary'>{t('升级分组')}</Text>
-        <Text>{plan?.upgrade_group ? plan.upgrade_group : t('不升级')}</Text>
+        {plan?.upgrade_group
+          ? renderGroupTextWithDescription(plan.upgrade_group)
+          : <Text>{t('不升级')}</Text>}
         <Text type='tertiary'>{t('购买上限')}</Text>
         <Text>
           {plan?.max_purchase_per_user > 0
@@ -233,9 +235,11 @@ const renderTotalAmount = (text, record, t) => {
 const renderUpgradeGroup = (text, record, t) => {
   const group = record?.plan?.upgrade_group || '';
   return (
-    <Text type={group ? 'secondary' : 'tertiary'}>
-      {group ? group : t('不升级')}
-    </Text>
+    <span>
+      {group
+        ? renderGroupTextWithDescription(group)
+        : <Text type='tertiary'>{t('不升级')}</Text>}
+    </span>
   );
 };
 

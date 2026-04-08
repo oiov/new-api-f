@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Button, Form } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
+import { renderGroupOption } from '../../../helpers';
 
 const ChannelsFilters = ({
   setEditingChannel,
@@ -111,9 +112,10 @@ const ChannelsFilters = ({
               field='searchGroup'
               placeholder={t('选择分组')}
               optionList={[
-                { label: t('选择分组'), value: null },
+                { label: t('选择分组'), value: null, fullLabel: t('选择分组') },
                 ...groupOptions,
               ]}
+              renderOptionItem={renderGroupOption}
               className='w-full'
               showClear
               pure

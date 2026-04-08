@@ -17,9 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, Tabs, Typography } from '@douyinfe/semi-ui';
+import { Card, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import SeoMeta from '../../components/common/seo/SeoMeta';
 import ModelPricingPage from '../../components/table/model-pricing/layout/PricingPage';
 import SubscriptionPlansCard from '../../components/topup/SubscriptionPlansCard';
@@ -34,7 +34,8 @@ const SubscriptionPricingTab = ({ t }) => {
   const [statusState] = useContext(StatusContext);
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
-  const [billingPreference, setBillingPreference] = useState('subscription_first');
+  const [billingPreference, setBillingPreference] =
+    useState('subscription_first');
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
   const [payMethods, setPayMethods] = useState([]);
@@ -113,7 +114,9 @@ const SubscriptionPricingTab = ({ t }) => {
         }
       }
       if (Array.isArray(nextPayMethods)) {
-        nextPayMethods = nextPayMethods.filter((method) => method?.name && method?.type);
+        nextPayMethods = nextPayMethods.filter(
+          (method) => method?.name && method?.type,
+        );
       } else {
         nextPayMethods = [];
       }
@@ -140,15 +143,7 @@ const SubscriptionPricingTab = ({ t }) => {
   }, [statusState?.status]);
 
   return (
-    <div className='space-y-4'>
-      <Card className='!rounded-2xl border-0 shadow-sm'>
-        <div className='space-y-1'>
-          <Text strong>{t('订阅套餐')}</Text>
-          <div className='text-sm text-semi-color-text-2'>
-            {t('按系列查看 Claude、Codex 等套餐，并直接比较权益与价格')}
-          </div>
-        </div>
-      </Card>
+    <div>
       <SubscriptionPlansCard
         t={t}
         loading={subscriptionLoading}
@@ -174,19 +169,54 @@ const Pricing = () => {
   const { i18n } = useTranslation();
   const { t } = useTranslation();
   const seo = getPricingSeo(i18n.language);
+  const [activeTab, setActiveTab] = useState('model-pricing');
 
   return (
     <>
       <SeoMeta {...seo} />
-      <div className='w-full max-w-7xl mx-auto mt-[60px] px-2 py-4'>
-        <Tabs type='line' keepDOM={false}>
-          <TabPane tab={t('模型价格')} itemKey='model-pricing'>
-            <ModelPricingPage />
-          </TabPane>
-          <TabPane tab={t('订阅套餐')} itemKey='subscription-plans'>
-            <SubscriptionPricingTab t={t} />
-          </TabPane>
-        </Tabs>
+      <div className='pricing-landing-page mx-auto mt-[60px] w-full max-w-[1440px] px-3 py-5 md:px-5 md:py-8'>
+        <Card className='!overflow-hidden !rounded-[30px] border-0 shadow-[0_22px_60px_rgba(15,23,42,0.08)]'>
+          <Tabs
+            type='card'
+            keepDOM={false}
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            className='pricing-landing-tabs'
+          >
+            <TabPane
+              tab={
+                <div className='pricing-tab-label flex items-center gap-2'>
+                  <span>{t('模型价格')}</span>
+                  <Tag color='white' shape='circle' size='small'>
+                    {t('透明')}
+                  </Tag>
+                </div>
+              }
+              itemKey='model-pricing'
+            >
+              <div className='space-y-3 px-1 pb-1'>
+                <div className='pricing-landing-model-panel'>
+                  <ModelPricingPage />
+                </div>
+              </div>
+            </TabPane>
+            <TabPane
+              tab={
+                <div className='pricing-tab-label flex items-center gap-2'>
+                  <span>{t('订阅套餐')}</span>
+                  <Tag color='green' shape='circle' size='small'>
+                    {t('可售卖')}
+                  </Tag>
+                </div>
+              }
+              itemKey='subscription-plans'
+            >
+              <div className='space-y-3 px-1 pb-1'>
+                <SubscriptionPricingTab t={t} />
+              </div>
+            </TabPane>
+          </Tabs>
+        </Card>
       </div>
     </>
   );

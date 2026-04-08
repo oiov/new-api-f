@@ -63,7 +63,7 @@ const SelectableButtonGroup = ({
   const [skeletonCount] = useState(12);
   const [containerRef, containerWidth] = useContainerWidth();
 
-  const ConditionalTooltipText = ({ text }) => {
+  const ConditionalTooltipText = ({ text, tooltipContent }) => {
     const textRef = useRef(null);
     const [isOverflowing, setIsOverflowing] = useState(false);
 
@@ -79,8 +79,10 @@ const SelectableButtonGroup = ({
       </span>
     );
 
-    return isOverflowing ? (
-      <Tooltip content={text}>{textElement}</Tooltip>
+    const tooltip = tooltipContent || text;
+
+    return isOverflowing || tooltipContent ? (
+      <Tooltip content={tooltip}>{textElement}</Tooltip>
     ) : (
       textElement
     );
@@ -203,7 +205,10 @@ const SelectableButtonGroup = ({
               >
                 <div className='sbg-content'>
                   {item.icon && <span className='sbg-icon'>{item.icon}</span>}
-                  <ConditionalTooltipText text={item.label} />
+                      <ConditionalTooltipText
+                        text={item.label}
+                        tooltipContent={item.tooltip}
+                      />
                   {item.tagCount !== undefined && shouldShowTags && (
                     <span className={`sbg-badge ${isActive ? 'sbg-badge-active' : ''}`}>
                       {item.tagCount}

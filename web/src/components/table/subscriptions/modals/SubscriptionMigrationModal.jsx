@@ -34,7 +34,14 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { IconClose, IconPlay, IconSave } from '@douyinfe/semi-icons';
-import { API, showError, showSuccess } from '../../../../helpers';
+import {
+  API,
+  buildGroupOptions,
+  renderGroup,
+  renderGroupOption,
+  showError,
+  showSuccess,
+} from '../../../../helpers';
 import { formatSubscriptionDuration } from '../../../../helpers/subscriptionFormat';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import CardTable from '../../../common/ui/CardTable';
@@ -125,13 +132,7 @@ const SubscriptionMigrationModal = ({
         showError(plansRes.data?.message || t('加载套餐失败'));
       }
       if (groupsRes.data?.success) {
-        const groups = groupsRes.data?.data || [];
-        setGroupOptions(
-          groups.map((group) => ({
-            label: group,
-            value: group,
-          })),
-        );
+        setGroupOptions(buildGroupOptions(groupsRes.data?.data || []));
       } else {
         showError(groupsRes.data?.message || t('加载分组失败'));
       }
@@ -256,7 +257,7 @@ const SubscriptionMigrationModal = ({
       {
         title: t('用户分组'),
         dataIndex: 'user_group',
-        render: (text) => <Tag size='small'>{text || '-'}</Tag>,
+        render: (text) => (text ? renderGroup(text) : <Tag size='small'>-</Tag>),
       },
       {
         title: t('旧套餐'),
@@ -265,7 +266,8 @@ const SubscriptionMigrationModal = ({
           <div>
             <div>{text || `#${record.old_plan_id}`}</div>
             <Text type='tertiary' size='small'>
-              #{record.old_plan_id} · {record.old_upgrade_group || '-'}
+              #{record.old_plan_id} ·{' '}
+              {record.old_upgrade_group ? renderGroup(record.old_upgrade_group) : '-'}
             </Text>
           </div>
         ),
@@ -288,7 +290,10 @@ const SubscriptionMigrationModal = ({
           <div>
             <div>{text || `#${record.target_plan_id}`}</div>
             <Text type='tertiary' size='small'>
-              #{record.target_plan_id} · {record.target_upgrade_group || '-'}
+              #{record.target_plan_id} ·{' '}
+              {record.target_upgrade_group
+                ? renderGroup(record.target_upgrade_group)
+                : '-'}
             </Text>
           </div>
         ),
@@ -387,6 +392,7 @@ const SubscriptionMigrationModal = ({
                 label={t('用户分组')}
                 placeholder={t('请选择用户分组')}
                 optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
                 filter
               />
               <Form.Select
@@ -394,6 +400,7 @@ const SubscriptionMigrationModal = ({
                 label={t('旧订阅分组')}
                 placeholder={t('留空则跟用户分组一致')}
                 optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
                 filter
                 allowCreate
               />

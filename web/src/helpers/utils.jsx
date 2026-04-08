@@ -600,8 +600,19 @@ export const selectFilter = (input, option) => {
   const keyword = input.trim().toLowerCase();
   const valueText = (option?.value ?? '').toString().toLowerCase();
   const labelText = (option?.label ?? '').toString().toLowerCase();
+  const fullLabelText = (option?.fullLabel ?? '')
+    .toString()
+    .toLowerCase();
+  const billingLabelText = (option?.billingLabel ?? '')
+    .toString()
+    .toLowerCase();
 
-  return valueText.includes(keyword) || labelText.includes(keyword);
+  return (
+    valueText.includes(keyword) ||
+    labelText.includes(keyword) ||
+    fullLabelText.includes(keyword) ||
+    billingLabelText.includes(keyword)
+  );
 };
 
 // -------------------------------

@@ -40,7 +40,13 @@ import {
   IconSave,
 } from '@douyinfe/semi-icons';
 import { Clock, RefreshCw } from 'lucide-react';
-import { API, showError, showSuccess } from '../../../../helpers';
+import {
+  API,
+  buildGroupOptions,
+  renderGroupOption,
+  showError,
+  showSuccess,
+} from '../../../../helpers';
 import {
   quotaToDisplayAmount,
   displayAmountToQuota,
@@ -178,7 +184,7 @@ const AddEditSubscriptionModal = ({
     ])
       .then(([groupRes, modelRes, vendorRes]) => {
         if (groupRes.status === 'fulfilled' && groupRes.value.data?.success) {
-          setGroupOptions(groupRes.value.data?.data || []);
+          setGroupOptions(buildGroupOptions(groupRes.value.data?.data || []));
         } else {
           setGroupOptions([]);
         }
@@ -521,17 +527,15 @@ const AddEditSubscriptionModal = ({
                         showClear
                         loading={groupLoading}
                         placeholder={t('不升级')}
+                        optionList={[
+                          { label: t('不升级'), value: '', fullLabel: t('不升级') },
+                          ...groupOptions,
+                        ]}
+                        renderOptionItem={renderGroupOption}
                         extraText={t(
                           '购买或手动新增订阅会升级到该分组；当套餐失效/过期或手动作废/删除后，将回退到升级前分组。回退不会立即生效，通常会有几分钟延迟。',
                         )}
-                      >
-                        <Select.Option value=''>{t('不升级')}</Select.Option>
-                        {(groupOptions || []).map((g) => (
-                          <Select.Option key={g} value={g}>
-                            {g}
-                          </Select.Option>
-                        ))}
-                      </Form.Select>
+                      />
                     </Col>
 
                     <Col span={12}>
@@ -691,14 +695,10 @@ const AddEditSubscriptionModal = ({
                         showClear
                         loading={groupLoading}
                         placeholder={t('不限制分组')}
+                        optionList={groupOptions}
+                        renderOptionItem={renderGroupOption}
                         extraText={t('留空表示所有分组都可用')}
-                      >
-                        {(groupOptions || []).map((g) => (
-                          <Select.Option key={g} value={g}>
-                            {g}
-                          </Select.Option>
-                        ))}
-                      </Form.Select>
+                      />
                     </Col>
 
                     <Col span={24}>

@@ -21,6 +21,7 @@ import React, { useRef } from 'react';
 import { Form, Button } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { DATE_RANGE_PRESETS } from '../../../constants/console.constants';
+import { renderGroupOption } from '../../../helpers';
 
 const AdminTokensFilters = ({
   formInitValues,
@@ -92,13 +93,14 @@ const AdminTokensFilters = ({
           </div>
 
           <div className='w-full'>
-            <Form.Select
-              field='group'
-              placeholder={t('令牌分组')}
-              optionList={groupOptions}
-              showClear
-              filter
-              size='small'
+          <Form.Select
+            field='group'
+            placeholder={t('令牌分组')}
+            optionList={groupOptions}
+            renderOptionItem={renderGroupOption}
+            showClear
+            filter
+            size='small'
             />
           </div>
 

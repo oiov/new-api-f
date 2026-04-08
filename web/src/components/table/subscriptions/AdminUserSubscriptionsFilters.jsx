@@ -21,6 +21,7 @@ import React, { useRef } from 'react';
 import { Form, Button } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { DATE_RANGE_PRESETS } from '../../../constants/console.constants';
+import { renderGroupOption } from '../../../helpers';
 
 const AdminUserSubscriptionsFilters = ({
   formInitValues,
@@ -122,6 +123,7 @@ const AdminUserSubscriptionsFilters = ({
               field='group'
               placeholder={t('配置分组')}
               optionList={groupOptions}
+              renderOptionItem={renderGroupOption}
               showClear
               filter
               size='small'
@@ -133,6 +135,7 @@ const AdminUserSubscriptionsFilters = ({
               field='upgrade_group'
               placeholder={t('升级分组')}
               optionList={groupOptions}
+              renderOptionItem={renderGroupOption}
               showClear
               filter
               size='small'

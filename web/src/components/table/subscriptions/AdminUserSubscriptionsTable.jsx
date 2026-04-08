@@ -23,7 +23,7 @@ import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { renderQuota } from '../../../helpers';
+import { renderGroup, renderQuota } from '../../../helpers';
 import {
   formatSubscriptionResourceLabel,
   formatSubscriptionResetPeriod,
@@ -154,7 +154,7 @@ const AdminUserSubscriptionsTable = ({
         title: t('配置分组'),
         dataIndex: 'user_group',
         width: 120,
-        render: (text) => <Tag size='small'>{text || '-'}</Tag>,
+        render: (text) => (text ? renderGroup(text) : <Tag size='small'>-</Tag>),
       },
       {
         title: t('套餐'),
@@ -167,7 +167,7 @@ const AdminUserSubscriptionsTable = ({
             <div>
               <div>{title}</div>
               <Text type='tertiary' size='small'>
-                {sub?.upgrade_group || '-'}
+                {sub?.upgrade_group ? renderGroup(sub.upgrade_group) : '-'}
               </Text>
             </div>
           );

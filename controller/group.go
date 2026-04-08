@@ -12,14 +12,20 @@ import (
 )
 
 func GetGroups(c *gin.Context) {
-	groupNames := make([]string, 0)
-	for groupName := range ratio_setting.GetGroupRatioCopy() {
-		groupNames = append(groupNames, groupName)
+	groupNames := ratio_setting.GetGroupRatioCopy()
+	groups := make(map[string]map[string]interface{}, len(groupNames))
+	for groupName, ratio := range groupNames {
+		groups[groupName] = map[string]interface{}{
+			"desc":          setting.GetUsableGroupDescription(groupName),
+			"ratio":         ratio,
+			"billing_type":  service.GetGroupBillingType(groupName),
+			"billing_label": service.GetGroupBillingLabel(groupName),
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    groupNames,
+		"data":    groups,
 	})
 }
 

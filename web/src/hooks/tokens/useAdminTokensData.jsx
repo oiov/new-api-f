@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { API, showError } from '../../helpers';
+import { API, buildGroupOptions, showError } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 
@@ -116,11 +116,8 @@ export const useAdminTokensData = () => {
       const res = await API.get('/api/group/');
       if (res?.data?.success) {
         setGroupOptions([
-          { label: t('全部分组'), value: '' },
-          ...((res.data.data || []).map((group) => ({
-            label: group,
-            value: group,
-          })) || []),
+          { label: t('全部分组'), value: '', fullLabel: t('全部分组') },
+          ...buildGroupOptions(res.data.data || []),
         ]);
       }
     } catch (error) {

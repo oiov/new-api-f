@@ -22,6 +22,8 @@ import { Button, Col, Form, Row, Select, Spin } from '@douyinfe/semi-ui';
 import {
   compareObjects,
   API,
+  buildGroupOptions,
+  renderGroupOption,
   showError,
   showSuccess,
   showWarning,
@@ -65,10 +67,8 @@ export default function GroupRatioSettings(props) {
   const fetchGroups = async () => {
     try {
       const res = await API.get('/api/group/');
-      if (res?.data?.success && Array.isArray(res.data.data)) {
-        setGroupOptions(
-          res.data.data.map((g) => ({ label: g, value: g })),
-        );
+      if (res?.data?.success) {
+        setGroupOptions(buildGroupOptions(res.data.data));
       }
     } catch {
       // 静默失败，Select 仍可手动输入
@@ -264,6 +264,7 @@ export default function GroupRatioSettings(props) {
                 multiple
                 value={parseJsonArray(inputs.AutoGroups)}
                 optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
                 allowCreate
                 onChange={(values) =>
                   setInputs({ ...inputs, AutoGroups: JSON.stringify(values) })
@@ -315,6 +316,7 @@ export default function GroupRatioSettings(props) {
                 multiple
                 value={parseJsonArray(inputs.SubscriptionGroups)}
                 optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
                 allowCreate
                 onChange={(values) =>
                   setInputs({
@@ -342,6 +344,7 @@ export default function GroupRatioSettings(props) {
                 multiple
                 value={parseJsonArray(inputs.QuotaGroups)}
                 optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
                 allowCreate
                 onChange={(values) =>
                   setInputs({ ...inputs, QuotaGroups: JSON.stringify(values) })

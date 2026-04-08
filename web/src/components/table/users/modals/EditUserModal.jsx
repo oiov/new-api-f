@@ -21,9 +21,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   API,
+  buildGroupOptions,
   showError,
   showSuccess,
   renderQuota,
+  renderGroupOption,
   renderQuotaWithPrompt,
   getCurrencyConfig,
 } from '../../../../helpers';
@@ -92,7 +94,7 @@ const EditUserModal = (props) => {
   const fetchGroups = async () => {
     try {
       let res = await API.get(`/api/group/`);
-      setGroupOptions(res.data.data.map((g) => ({ label: g, value: g })));
+      setGroupOptions(buildGroupOptions(res.data.data));
     } catch (e) {
       showError(e.message);
     }
@@ -297,6 +299,7 @@ const EditUserModal = (props) => {
                           label={t('分组')}
                           placeholder={t('请选择分组')}
                           optionList={groupOptions}
+                          renderOptionItem={renderGroupOption}
                           allowAdditions
                           search
                           rules={[{ required: true, message: t('请选择分组') }]}

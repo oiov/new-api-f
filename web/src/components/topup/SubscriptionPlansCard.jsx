@@ -19,12 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Badge,
   Button,
   Card,
   Collapse,
   Divider,
   Empty,
+  Input,
+  Pagination,
   Progress,
   Select,
   Skeleton,
@@ -124,7 +125,9 @@ function formatNextResetDisplay(subscription, t) {
   }
 
   const now = Date.now() / 1000;
-  const isActive = subscription?.status === 'active' && Number(subscription?.end_time || 0) > now;
+  const isActive =
+    subscription?.status === 'active' &&
+    Number(subscription?.end_time || 0) > now;
   if (isActive && Number(subscription?.last_reset_time || 0) > 0) {
     return t('到期前不再重置');
   }
@@ -169,13 +172,19 @@ function getPlanBenefitDescription(plan, t) {
   const amountText = getPlanResourceAmountText(plan, t);
 
   if (usageSummary.unlimited) {
-    if (usageSummary.resourceType === 'request_count' && !usageSummary.periodUnlimited) {
+    if (
+      usageSummary.resourceType === 'request_count' &&
+      !usageSummary.periodUnlimited
+    ) {
       return `${resetPeriod} ${usageSummary.periodTotal} ${t('次')} · ${t('有效期内不限总量')}`;
     }
     return t('有效期内不限使用');
   }
 
-  if (usageSummary.resourceType === 'request_count' && !usageSummary.periodUnlimited) {
+  if (
+    usageSummary.resourceType === 'request_count' &&
+    !usageSummary.periodUnlimited
+  ) {
     return `${resetPeriod} ${usageSummary.periodTotal} ${t('次')} · ${t('总计')} ${amountText}`;
   }
 
@@ -215,6 +224,11 @@ const SubscriptionPlansCard = ({
   const [consumeLogsFilter, setConsumeLogsFilter] = useState(null);
   const [planPage, setPlanPage] = useState(1);
   const [planPageSize, setPlanPageSize] = useState(9);
+  const [subscriptionKeyword, setSubscriptionKeyword] = useState('');
+  const [subscriptionPlanFilter, setSubscriptionPlanFilter] = useState('all');
+  const [subscriptionResourceFilter, setSubscriptionResourceFilter] =
+    useState('all');
+  const [subscriptionResetFilter, setSubscriptionResetFilter] = useState('all');
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
   const isPackageVariant = uiVariant === 'package';
@@ -399,7 +413,10 @@ const SubscriptionPlansCard = ({
           remainingDays,
         };
       })
-      .sort((a, b) => (b?.subscription?.end_time || 0) - (a?.subscription?.end_time || 0));
+      .sort(
+        (a, b) =>
+          (b?.subscription?.end_time || 0) - (a?.subscription?.end_time || 0),
+      );
   }, [allSubscriptions, planMap, planTitleMap, t]);
 
   const activeSubscriptionItems = useMemo(
@@ -423,9 +440,64 @@ const SubscriptionPlansCard = ({
     activeSubscriptionItems,
   ]);
 
+  const filteredVisibleSubscriptionItems = useMemo(() => {
+    const keyword = subscriptionKeyword.trim().toLowerCase();
+    return visibleSubscriptionItems.filter((item) => {
+      const subscription = item?.subscription || {};
+      const matchesKeyword =
+        !keyword ||
+        item?.title?.toLowerCase().includes(keyword) ||
+        item?.plan?.subtitle?.toLowerCase().includes(keyword) ||
+        String(subscription?.id || '').includes(keyword) ||
+        String(subscription?.plan_id || '').includes(keyword);
+      const matchesPlan =
+        subscriptionPlanFilter === 'all' ||
+        String(subscription?.plan_id || '') === String(subscriptionPlanFilter);
+      const matchesResource =
+        subscriptionResourceFilter === 'all' ||
+        item?.resourceType === subscriptionResourceFilter;
+      const matchesReset =
+        subscriptionResetFilter === 'all' ||
+        String(subscription?.reset_period || 'never') ===
+          String(subscriptionResetFilter);
+      return matchesKeyword && matchesPlan && matchesResource && matchesReset;
+    });
+  }, [
+    visibleSubscriptionItems,
+    subscriptionKeyword,
+    subscriptionPlanFilter,
+    subscriptionResourceFilter,
+    subscriptionResetFilter,
+  ]);
+
+  const subscriptionPlanOptions = useMemo(() => {
+    const items = (plans || [])
+      .map((item) => item?.plan)
+      .filter((plan) => plan?.id)
+      .map((plan) => ({
+        label: plan.title || `#${plan.id}`,
+        value: String(plan.id),
+      }));
+    return [{ label: t('全部套餐'), value: 'all' }, ...items];
+  }, [plans, t]);
+
+  const resetPeriodOptions = useMemo(
+    () => [
+      { label: t('全部重置周期'), value: 'all' },
+      { label: t('不重置'), value: 'never' },
+      { label: t('每天'), value: 'daily' },
+      { label: t('每周'), value: 'weekly' },
+      { label: t('每月'), value: 'monthly' },
+      { label: t('每年'), value: 'yearly' },
+      { label: t('自定义'), value: 'custom' },
+    ],
+    [t],
+  );
+
   const nextExpiringSubscription = useMemo(() => {
     return [...activeSubscriptionItems].sort(
-      (a, b) => (a?.subscription?.end_time || 0) - (b?.subscription?.end_time || 0),
+      (a, b) =>
+        (a?.subscription?.end_time || 0) - (b?.subscription?.end_time || 0),
     )[0];
   }, [activeSubscriptionItems]);
 
@@ -479,11 +551,15 @@ const SubscriptionPlansCard = ({
       const planB = b?.plan || {};
 
       if (planSort === 'price_asc') {
-        return Number(planA.price_amount || 0) - Number(planB.price_amount || 0);
+        return (
+          Number(planA.price_amount || 0) - Number(planB.price_amount || 0)
+        );
       }
 
       if (planSort === 'price_desc') {
-        return Number(planB.price_amount || 0) - Number(planA.price_amount || 0);
+        return (
+          Number(planB.price_amount || 0) - Number(planA.price_amount || 0)
+        );
       }
 
       if (planSort === 'value_desc') {
@@ -523,7 +599,9 @@ const SubscriptionPlansCard = ({
     {
       label: t('生效中的订阅'),
       value: `${activeSubscriptionItems.length}`,
-      helper: hasActiveSubscription ? t('正在提供模型权益') : t('当前暂无生效套餐'),
+      helper: hasActiveSubscription
+        ? t('正在提供模型权益')
+        : t('当前暂无生效套餐'),
       icon: Zap,
       color: 'blue',
       gradient: 'from-blue-500/10 to-blue-500/5',
@@ -600,7 +678,8 @@ const SubscriptionPlansCard = ({
 
     activeSubscriptionItems.forEach((item) => {
       const usageSummary = item?.usageSummary || {};
-      const resourceType = item?.resourceType === 'request_count' ? 'request_count' : 'quota';
+      const resourceType =
+        item?.resourceType === 'request_count' ? 'request_count' : 'quota';
       const target = usageMap[resourceType];
       if (!target) return;
 
@@ -621,13 +700,18 @@ const SubscriptionPlansCard = ({
             100,
             Math.max(
               0,
-              Math.round((Number(item.used || 0) / Math.max(Number(item.total || 0), 1)) * 100),
+              Math.round(
+                (Number(item.used || 0) /
+                  Math.max(Number(item.total || 0), 1)) *
+                  100,
+              ),
             ),
           );
 
-      const formatter = item.resourceType === 'request_count'
-        ? (value) => `${value}`
-        : (value) => renderQuota(value);
+      const formatter =
+        item.resourceType === 'request_count'
+          ? (value) => `${value}`
+          : (value) => renderQuota(value);
 
       return {
         ...item,
@@ -653,13 +737,19 @@ const SubscriptionPlansCard = ({
         content: (
           <div className='space-y-2 text-sm text-semi-color-text-1'>
             <div>
-              {t('套餐购买成功后会立即生效，并进入“我的订阅”。生效中的套餐会直接参与后续请求结算。')}
+              {t(
+                '套餐购买成功后会立即生效，并进入“我的订阅”。生效中的套餐会直接参与后续请求结算。',
+              )}
             </div>
             <div>
-              {t('你可以在“我的订阅”中查看套餐详情、剩余额度/次数、下次重置时间，以及历史消耗记录。')}
+              {t(
+                '你可以在“我的订阅”中查看套餐详情、剩余额度/次数、下次重置时间，以及历史消耗记录。',
+              )}
             </div>
             <div>
-              {t('按次套餐统计的是成功请求次数；失败请求、鉴权失败、上游报错不会计入成功次数。')}
+              {t(
+                '按次套餐统计的是成功请求次数；失败请求、鉴权失败、上游报错不会计入成功次数。',
+              )}
             </div>
           </div>
         ),
@@ -670,13 +760,19 @@ const SubscriptionPlansCard = ({
         content: (
           <div className='space-y-2 text-sm text-semi-color-text-1'>
             <div>
-              {t('如果你启用了订阅扣费，请求会优先尝试使用可用订阅；如果当前订阅不足，再按你的扣费偏好决定是否回退到钱包余额。')}
+              {t(
+                '如果你启用了订阅扣费，请求会优先尝试使用可用订阅；如果当前订阅不足，再按你的扣费偏好决定是否回退到钱包余额。',
+              )}
             </div>
             <div>
-              {t('按额度套餐会扣减额度余额；按次套餐会在请求成功后扣减成功次数。两种资源类型彼此独立，不会混算。')}
+              {t(
+                '按额度套餐会扣减额度余额；按次套餐会在请求成功后扣减成功次数。两种资源类型彼此独立，不会混算。',
+              )}
             </div>
             <div>
-              {t('带有重置周期的套餐，重置的是“当前周期可用权益”；重置周期从购买生效时间开始按 24 小时、7 天、1 个月、1 年等规则滚动计算；不重置的套餐会持续累计使用，直到到期或耗尽。')}
+              {t(
+                '带有重置周期的套餐，重置的是“当前周期可用权益”；重置周期从购买生效时间开始按 24 小时、7 天、1 个月、1 年等规则滚动计算；不重置的套餐会持续累计使用，直到到期或耗尽。',
+              )}
             </div>
           </div>
         ),
@@ -687,13 +783,19 @@ const SubscriptionPlansCard = ({
         content: (
           <div className='space-y-2 text-sm text-semi-color-text-1'>
             <div>
-              {t('多个生效套餐可以同时存在。系统会按“最早到期优先”使用订阅权益，先消耗最早过期的套餐，再消耗后到期的套餐。')}
+              {t(
+                '多个生效套餐可以同时存在。系统会按“最早到期优先”使用订阅权益，先消耗最早过期的套餐，再消耗后到期的套餐。',
+              )}
             </div>
             <div>
-              {t('如果同时存在多个按次套餐，会优先消耗最早到期的按次套餐；如果存在多个按额度套餐，也会优先消耗最早到期的按额度套餐。')}
+              {t(
+                '如果同时存在多个按次套餐，会优先消耗最早到期的按次套餐；如果存在多个按额度套餐，也会优先消耗最早到期的按额度套餐。',
+              )}
             </div>
             <div>
-              {t('按次套餐和按额度套餐不会互相覆盖。实际命中哪类套餐，取决于当前请求是否走订阅结算以及系统可用的订阅权益。')}
+              {t(
+                '按次套餐和按额度套餐不会互相覆盖。实际命中哪类套餐，取决于当前请求是否走订阅结算以及系统可用的订阅权益。',
+              )}
             </div>
           </div>
         ),
@@ -703,23 +805,25 @@ const SubscriptionPlansCard = ({
         title: t('常见问题答疑'),
         content: (
           <div className='space-y-2 text-sm text-semi-color-text-1'>
-            <div>
-              {t('问：我调整了套餐价格或权益，会影响已购买用户吗？')}
-            </div>
+            <div>{t('问：我调整了套餐价格或权益，会影响已购买用户吗？')}</div>
             <div className='text-semi-color-text-2'>
-              {t('答：不会。已购买订阅会保留购买时的周期和订阅实例快照，不会被后续套餐配置修改直接覆盖。')}
+              {t(
+                '答：不会。已购买订阅会保留购买时的周期和订阅实例快照，不会被后续套餐配置修改直接覆盖。',
+              )}
             </div>
             <div>
               {t('问：删除旧令牌后重新创建同分组令牌，套餐额度/次数会重置吗？')}
             </div>
             <div className='text-semi-color-text-2'>
-              {t('答：不会。订阅权益绑定的是用户账户与订阅实例，不绑定某个具体令牌。新建令牌后仍继续使用原有剩余权益。')}
+              {t(
+                '答：不会。订阅权益绑定的是用户账户与订阅实例，不绑定某个具体令牌。新建令牌后仍继续使用原有剩余权益。',
+              )}
             </div>
-            <div>
-              {t('问：为什么有“总量”和“重置周期”同时存在？')}
-            </div>
+            <div>{t('问：为什么有“总量”和“重置周期”同时存在？')}</div>
             <div className='text-semi-color-text-2'>
-              {t('答：如果页面显示“每个重置周期可用 X，重置 Y”，其中 X 表示单个重置周期内可用的权益，Y 会从购买生效时间开始按每天、每周、每月、每年或其他自定义周期滚动重置；“有效期”只表示套餐会在何时到期，不表示整个有效期内的总权益。')}
+              {t(
+                '答：如果页面显示“每个重置周期可用 X，重置 Y”，其中 X 表示单个重置周期内可用的权益，Y 会从购买生效时间开始按每天、每周、每月、每年或其他自定义周期滚动重置；“有效期”只表示套餐会在何时到期，不表示整个有效期内的总权益。',
+              )}
             </div>
           </div>
         ),
@@ -761,8 +865,17 @@ const SubscriptionPlansCard = ({
       <div className='flex flex-col gap-3 py-1'>
         <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
           <div className='min-w-0 flex items-center gap-3'>
-            <div className={`flex-shrink-0 rounded-lg p-2 ${item.state === 'active' ? 'bg-green-500/10' : 'bg-gray-500/10'}`}>
-              <ShieldCheck size={18} className={item.state === 'active' ? 'text-green-600 dark:text-green-400' : 'text-gray-400'} />
+            <div
+              className={`flex-shrink-0 rounded-lg p-2 ${item.state === 'active' ? 'bg-green-500/10' : 'bg-gray-500/10'}`}
+            >
+              <ShieldCheck
+                size={18}
+                className={
+                  item.state === 'active'
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-gray-400'
+                }
+              />
             </div>
             <div className='min-w-0'>
               <div className='flex flex-wrap items-center gap-2'>
@@ -778,7 +891,8 @@ const SubscriptionPlansCard = ({
           </div>
           <div className='text-left lg:text-right'>
             <div className='font-semibold text-base'>
-              {t('剩余')} {getUsageDisplayText(item.usageSummary, item.resourceType, t)}
+              {t('剩余')}{' '}
+              {getUsageDisplayText(item.usageSummary, item.resourceType, t)}
             </div>
             <Text type='tertiary' size='small'>
               {item.state === 'active'
@@ -812,7 +926,9 @@ const SubscriptionPlansCard = ({
           </div>
           <div className='rounded-lg bg-semi-color-fill-0 p-2'>
             <div>
-              {item.resourceType === 'request_count' ? t('次数重置') : t('额度重置')}
+              {item.resourceType === 'request_count'
+                ? t('次数重置')
+                : t('额度重置')}
             </div>
             <div className='mt-1 font-medium text-semi-color-text-0'>
               {formatSubscriptionResetPeriod(item.subscription, t)}
@@ -827,9 +943,7 @@ const SubscriptionPlansCard = ({
           <div className='rounded-lg bg-semi-color-fill-0 p-2'>
             <div>{t('已用进度')}</div>
             <div className='mt-1 font-medium text-semi-color-text-0'>
-              {item.usageSummary.unlimited
-                ? t('不限')
-                : `${usagePercent}%`}
+              {item.usageSummary.unlimited ? t('不限') : `${usagePercent}%`}
             </div>
           </div>
         </div>
@@ -879,7 +993,8 @@ const SubscriptionPlansCard = ({
         value: formatDateTime(item.subscription?.end_time),
       },
       {
-        label: item.resourceType === 'request_count' ? t('次数重置') : t('额度重置'),
+        label:
+          item.resourceType === 'request_count' ? t('次数重置') : t('额度重置'),
         value: formatSubscriptionResetPeriod(item.subscription, t),
       },
       {
@@ -1042,8 +1157,17 @@ const SubscriptionPlansCard = ({
 
           return (
             <div className='min-w-0 flex items-center gap-3'>
-              <div className={`flex-shrink-0 rounded-lg p-2 ${isPopular ? 'bg-blue-500/15' : 'bg-semi-color-fill-1'}`}>
-                <Package size={16} className={isPopular ? 'text-blue-600 dark:text-blue-400' : 'text-semi-color-text-2'} />
+              <div
+                className={`flex-shrink-0 rounded-lg p-2 ${isPopular ? 'bg-blue-500/15' : 'bg-semi-color-fill-1'}`}
+              >
+                <Package
+                  size={16}
+                  className={
+                    isPopular
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-semi-color-text-2'
+                  }
+                />
               </div>
               <div className='min-w-0'>
                 <div className='flex flex-wrap items-center gap-2'>
@@ -1110,7 +1234,10 @@ const SubscriptionPlansCard = ({
               </Text>
               {activeDiscount ? (
                 <Text type='tertiary' size='small'>
-                  {t('截止')} {new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()}
+                  {t('截止')}{' '}
+                  {new Date(
+                    Number(plan?.discount_deadline || 0) * 1000,
+                  ).toLocaleString()}
                 </Text>
               ) : null}
             </div>
@@ -1126,7 +1253,10 @@ const SubscriptionPlansCard = ({
           return (
             <div className='space-y-1'>
               {metricItems.map((item) => (
-                <div key={item.label} className='flex items-center justify-between gap-3'>
+                <div
+                  key={item.label}
+                  className='flex items-center justify-between gap-3'
+                >
                   <Text type='tertiary' size='small'>
                     {item.label}
                   </Text>
@@ -1178,17 +1308,32 @@ const SubscriptionPlansCard = ({
                 </Tag>
               )}
               {restrictionSummary.groups.map((group) => (
-                <Tag key={`group-${group}`} color='white' shape='circle' size='small'>
+                <Tag
+                  key={`group-${group}`}
+                  color='white'
+                  shape='circle'
+                  size='small'
+                >
                   {t('分组')}: {group}
                 </Tag>
               ))}
               {restrictionSummary.models.slice(0, 2).map((modelName) => (
-                <Tag key={`model-${modelName}`} color='white' shape='circle' size='small'>
+                <Tag
+                  key={`model-${modelName}`}
+                  color='white'
+                  shape='circle'
+                  size='small'
+                >
                   {t('模型')}: {modelName}
                 </Tag>
               ))}
               {restrictionSummary.vendors.map((vendorName) => (
-                <Tag key={`vendor-${vendorName}`} color='white' shape='circle' size='small'>
+                <Tag
+                  key={`vendor-${vendorName}`}
+                  color='white'
+                  shape='circle'
+                  size='small'
+                >
                   {t('供应商')}: {vendorName}
                 </Tag>
               ))}
@@ -1246,6 +1391,187 @@ const SubscriptionPlansCard = ({
     [t, getPlanPurchaseCount, planSort, sortedPlans],
   );
 
+  const renderPackagePlanCard = (record, index) => {
+    const plan = record?.plan || {};
+    const count = getPlanPurchaseCount(plan?.id);
+    const limit = Number(plan?.max_purchase_per_user || 0);
+    const reached = limit > 0 && count >= limit;
+    const saleSummary = getSubscriptionSaleSummary(plan);
+    const restrictionSummary = getSubscriptionRestrictionSummary(plan);
+    const metricItems = getSubscriptionPlanMetricItems(plan, t);
+    const isPopular =
+      planSort === 'recommended' &&
+      sortedPlans.length > 1 &&
+      sortedPlans[0]?.plan?.id === plan?.id;
+    const { symbol, rate } = getCurrencyConfig();
+    const price = getSubscriptionEffectivePrice(plan) * rate;
+    const displayPrice = price.toFixed(Number.isInteger(price) ? 0 : 2);
+    const activeDiscount = isSubscriptionDiscountActive(plan);
+    const disabled = reached || saleSummary.soldOut;
+    const tip = reached
+      ? `${t('已达到购买上限')} (${count}/${limit})`
+      : saleSummary.soldOut
+        ? t('该套餐已售罄')
+        : '';
+
+    const restrictionTags = [
+      ...restrictionSummary.groups.map((item) => ({
+        key: `group-${item}`,
+        label: `${t('分组')} · ${item}`,
+      })),
+      ...restrictionSummary.models.slice(0, 2).map((item) => ({
+        key: `model-${item}`,
+        label: `${t('模型')} · ${item}`,
+      })),
+      ...restrictionSummary.vendors.map((item) => ({
+        key: `vendor-${item}`,
+        label: `${t('供应商')} · ${item}`,
+      })),
+    ].slice(0, 4);
+
+    return (
+      <Card
+        key={plan?.id || index}
+        className={`subscription-plan-selling-card !overflow-hidden border-0 shadow-sm ${
+          isPopular ? 'subscription-plan-selling-card-featured' : ''
+        }`}
+        bodyStyle={{ padding: 0 }}
+      >
+        <div className='subscription-plan-selling-card__inner'>
+          <div className='subscription-plan-selling-card__top'>
+            <div className='flex items-start justify-between gap-3'>
+              <div className='min-w-0 flex-1'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Text strong className='text-base'>
+                    {plan?.title || t('订阅套餐')}
+                  </Text>
+                  {isPopular && (
+                    <Tag color='blue' shape='circle' size='small'>
+                      <Sparkles size={10} className='mr-1' />
+                      {t('主推')}
+                    </Tag>
+                  )}
+                  {saleSummary.soldOut && (
+                    <Tag color='red' shape='circle' size='small'>
+                      {t('已售罄')}
+                    </Tag>
+                  )}
+                  {reached && !saleSummary.soldOut && (
+                    <Tag color='orange' shape='circle' size='small'>
+                      {t('已达上限')}
+                    </Tag>
+                  )}
+                </div>
+                <Text
+                  type='tertiary'
+                  size='small'
+                  className='mt-2 block leading-6'
+                >
+                  {plan?.subtitle || t('暂无说明')}
+                </Text>
+              </div>
+              <div className='rounded-2xl bg-white/80 p-2 shadow-sm dark:bg-white/10'>
+                <Package
+                  size={18}
+                  className={
+                    isPopular
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-semi-color-text-1'
+                  }
+                />
+              </div>
+            </div>
+
+            <div className='subscription-plan-selling-card__price-row mt-5 flex items-end justify-between gap-3'>
+              <div className='min-w-0 flex-1'>
+                <div className='subscription-plan-selling-card__price'>
+                  {symbol}
+                  {displayPrice}
+                  <span className='subscription-plan-selling-card__duration'>
+                    / {formatSubscriptionDuration(plan, t)}
+                  </span>
+                </div>
+                {activeDiscount ? (
+                  <Text type='tertiary' size='small' delete>
+                    {symbol}
+                    {(Number(plan?.price_amount || 0) * rate).toFixed(
+                      Number.isInteger(Number(plan?.price_amount || 0) * rate)
+                        ? 0
+                        : 2,
+                    )}
+                  </Text>
+                ) : null}
+              </div>
+              <div className='subscription-plan-selling-card__sale-meta text-right text-xs text-semi-color-text-2'>
+                <div>
+                  {saleSummary.unlimited
+                    ? `${t('已售')} ${saleSummary.soldCount}`
+                    : `${t('剩余')} ${saleSummary.remainingSaleCount}`}
+                </div>
+                {limit > 0 && <div>{`${t('限购')} ${limit}`}</div>}
+              </div>
+            </div>
+          </div>
+
+          <div className='subscription-plan-selling-card__metrics'>
+            {metricItems.slice(0, 4).map((item) => (
+              <div
+                key={item.key}
+                className='subscription-plan-selling-card__metric'
+              >
+                <div className='subscription-plan-selling-card__metric-label'>
+                  {item.label}
+                </div>
+                <div className='subscription-plan-selling-card__metric-value'>
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className='subscription-plan-selling-card__bottom'>
+            <div className='flex flex-wrap gap-2'>
+              {restrictionTags.length > 0 ? (
+                restrictionTags.map((item) => (
+                  <Tag key={item.key} color='white' shape='circle' size='small'>
+                    {item.label}
+                  </Tag>
+                ))
+              ) : (
+                <Tag color='white' shape='circle' size='small'>
+                  {t('适用范围更灵活')}
+                </Tag>
+              )}
+              {plan?.upgrade_group && (
+                <Tag color='blue' shape='circle' size='small'>
+                  {t('升级分组')} · {plan.upgrade_group}
+                </Tag>
+              )}
+            </div>
+            {disabled ? (
+              <Tooltip content={tip} position='top'>
+                <Button theme='solid' type='primary' disabled block>
+                  {saleSummary.soldOut ? t('已售罄') : t('已达上限')}
+                </Button>
+              </Tooltip>
+            ) : (
+              <Button
+                theme='solid'
+                type='primary'
+                block
+                onClick={() => openBuy(record)}
+                icon={<ChevronRight size={14} />}
+                iconPosition='right'
+              >
+                {t('立即订阅')}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
   const cardContent = (
     <>
       {loading ? (
@@ -1254,161 +1580,153 @@ const SubscriptionPlansCard = ({
             {[1, 2, 3, 4].map((i) => (
               <Card
                 key={i}
-                className={isPackageVariant ? '!rounded-2xl border-0 shadow-sm' : '!rounded-xl border-0 shadow-sm'}
+                className={
+                  isPackageVariant
+                    ? '!rounded-2xl border-0 shadow-sm'
+                    : '!rounded-xl border-0 shadow-sm'
+                }
               >
                 <div className='flex items-start justify-between'>
                   <div className='flex-1'>
-                    <Skeleton.Title active style={{ width: '50%', height: 12, marginBottom: 12 }} />
-                    <Skeleton.Title active style={{ width: '70%', height: 24, marginBottom: 8 }} />
-                    <Skeleton.Title active style={{ width: '60%', height: 12 }} />
+                    <Skeleton.Title
+                      active
+                      style={{ width: '50%', height: 12, marginBottom: 12 }}
+                    />
+                    <Skeleton.Title
+                      active
+                      style={{ width: '70%', height: 24, marginBottom: 8 }}
+                    />
+                    <Skeleton.Title
+                      active
+                      style={{ width: '60%', height: 12 }}
+                    />
                   </div>
                   <Skeleton.Avatar active size='small' shape='square' />
                 </div>
               </Card>
             ))}
           </div>
-          <Card className='!rounded-xl w-full border-0 shadow-sm' bodyStyle={{ padding: '12px' }}>
-            <Skeleton.Paragraph active rows={5} />
-          </Card>
-          <Card className='!rounded-xl w-full border-0 shadow-sm' bodyStyle={{ padding: '12px' }}>
-            <Skeleton.Paragraph active rows={4} />
-          </Card>
+          {!isPackageVariant && (
+            <>
+              <Card
+                className='!rounded-xl w-full border-0 shadow-sm'
+                bodyStyle={{ padding: '12px' }}
+              >
+                <Skeleton.Paragraph active rows={5} />
+              </Card>
+              <Card
+                className='!rounded-xl w-full border-0 shadow-sm'
+                bodyStyle={{ padding: '12px' }}
+              >
+                <Skeleton.Paragraph active rows={4} />
+              </Card>
+            </>
+          )}
         </div>
-      ) : (
-        <Space vertical style={{ width: '100%' }} spacing={isPackageVariant ? 16 : 12}>
-          <div className={isPackageVariant ? 'grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4' : 'grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4'}>
-            {overviewItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Card
-                  key={item.label}
-                  className={`border-0 transition-all duration-300 ${
-                    isPackageVariant
-                      ? '!rounded-2xl shadow-sm hover:-translate-y-0.5 hover:shadow-lg bg-gradient-to-br from-semi-color-bg-0 to-semi-color-fill-0'
-                      : `!rounded-xl shadow-sm bg-gradient-to-br ${item.gradient} hover:shadow-md`
-                  }`}
-                  bodyStyle={{ padding: isPackageVariant ? 18 : 16 }}
-                >
-                  <div className='flex items-start justify-between'>
-                    <div className='min-w-0 flex-1'>
-                      <div className='text-xs font-medium text-gray-500'>{item.label}</div>
-                      <div className='mt-2 text-xl font-bold break-words text-semi-color-text-0'>
-                        {item.value}
-                      </div>
-                      <div className='mt-2 text-xs text-gray-400'>{item.helper}</div>
-                    </div>
-                    <div className={`flex-shrink-0 rounded-lg p-2 ${item.iconBg}`}>
-                      <Icon size={18} className={item.iconColor} />
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-
-          <Card
-            className={isPackageVariant ? 'package-usage-card !rounded-2xl w-full overflow-hidden border-0 shadow-sm' : '!rounded-xl w-full overflow-hidden border-0 shadow-sm'}
-            bodyStyle={{ padding: 0 }}
-          >
-            <div className={isPackageVariant ? 'px-6 pt-6' : 'px-5 pt-5'}>
-              <div className='flex flex-col gap-2'>
+      ) : isPackageVariant ? (
+        <Card
+          className='!rounded-2xl w-full border-0 shadow-sm'
+          bodyStyle={{ padding: '18px 22px' }}
+        >
+          <div className='space-y-3'>
+            <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+              <div>
                 <div className='flex items-center gap-2'>
-                  <div className='rounded-lg bg-amber-500/15 p-1.5'>
-                    <BookOpen size={14} className='text-amber-600 dark:text-amber-400' />
+                  <div className='rounded-lg bg-indigo-500/15 p-1.5'>
+                    <Package
+                      size={14}
+                      className='text-indigo-600 dark:text-indigo-400'
+                    />
                   </div>
-                  <Text strong>{t('使用说明与计费规则')}</Text>
+                  <Text strong>{t('可购买套餐')}</Text>
                 </div>
-                <Text type='tertiary' size='small'>
-                  {t('下单前建议先阅读这里，了解套餐如何生效、如何扣费，以及多套餐并存时的处理方式。')}
+                <Text type='tertiary' size='small' className='mt-1 block'>
+                  {planSort === 'recommended'
+                    ? t(
+                        '优先展示更适合多数用户的套餐，直接查看价格、权益与限制范围',
+                      )
+                    : t('按你的关注点排序后，直接比较不同档位的差异')}
                 </Text>
               </div>
-
-              <Divider margin={12} />
-
-              <Collapse>
-                {packageGuideItems.map((item) => (
-                  <Collapse.Panel
-                    key={item.key}
-                    itemKey={item.key}
-                    header={item.title}
-                  >
-                    {item.content}
-                  </Collapse.Panel>
-                ))}
-              </Collapse>
+              <div className='flex items-center gap-2'>
+                <CalendarClock size={14} className='text-gray-400' />
+                <Select
+                  value={planSort}
+                  size='small'
+                  onChange={setPlanSort}
+                  optionList={[
+                    { value: 'recommended', label: t('推荐优先') },
+                    { value: 'price_asc', label: t('价格从低到高') },
+                    { value: 'price_desc', label: t('价格从高到低') },
+                    { value: 'value_desc', label: t('权益从多到少') },
+                  ]}
+                />
+              </div>
             </div>
 
-            <Divider margin={0} />
+            <Divider margin={8} />
 
-            <div className={isPackageVariant ? 'package-usage-card-header px-6 py-5' : 'bg-gradient-to-r from-blue-500/10 via-indigo-500/8 to-purple-500/10 px-5 py-4 dark:from-blue-500/15 dark:via-indigo-500/10 dark:to-purple-500/15'}>
-              <div className='flex items-center gap-2.5'>
-                <div className={isPackageVariant ? 'rounded-lg bg-white/75 p-2 text-blue-600 shadow-sm dark:bg-white/10 dark:text-blue-400' : 'rounded-lg bg-blue-500/15 p-1.5'}>
-                  <BarChart3 size={16} className={isPackageVariant ? '' : 'text-blue-600 dark:text-blue-400'} />
+            {sortedPlans.length > 0 ? (
+              <div className='space-y-4'>
+                <div className='subscription-plan-selling-grid'>
+                  {pagedPlans.map((record, index) =>
+                    renderPackagePlanCard(record, index),
+                  )}
                 </div>
-                <div>
-                  <Text strong>{t('消耗额度可视化')}</Text>
-                  <div>
-                    <Text type='tertiary' size='small'>
-                      {t('聚合展示生效订阅的额度/次数使用进度，帮助你更快判断是否需要续费或加购。')}
-                    </Text>
+                <div className='subscription-plan-selling-pagination'>
+                  <Text type='tertiary' size='small'>
+                    {t('显示第 {{start}} 条-第 {{end}} 条，共 {{total}} 条', {
+                      start:
+                        sortedPlans.length === 0
+                          ? 0
+                          : (planPage - 1) * planPageSize + 1,
+                      end: Math.min(
+                        planPage * planPageSize,
+                        sortedPlans.length,
+                      ),
+                      total: sortedPlans.length,
+                    })}
+                  </Text>
+                  <div className='subscription-plan-selling-pagination__controls flex items-center gap-3'>
+                    <Select
+                      value={planPageSize}
+                      size='small'
+                      onChange={(size) => {
+                        setPlanPageSize(size);
+                        setPlanPage(1);
+                      }}
+                      optionList={[6, 9, 12, 18].map((size) => ({
+                        value: size,
+                        label: `${t('每页')} ${size}`,
+                      }))}
+                    />
+                    <Pagination
+                      currentPage={planPage}
+                      pageSize={planPageSize}
+                      total={sortedPlans.length}
+                      pageSizeOptions={[6, 9, 12, 18]}
+                      showSizeChanger={false}
+                      onPageChange={setPlanPage}
+                    />
                   </div>
                 </div>
               </div>
-            </div>
-            <div className={isPackageVariant ? 'grid grid-cols-1 gap-4 p-5 md:grid-cols-2' : 'grid grid-cols-1 gap-4 p-4 md:grid-cols-2'}>
-              {usageChartMetrics.map((metric) => (
-                <div
-                  key={metric.key}
-                  className={isPackageVariant ? 'package-usage-metric-card rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-5 transition-all duration-300' : 'rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-5 transition-all duration-200 hover:shadow-sm'}
-                >
-                  <div className='flex items-center justify-between'>
-                    <div className='flex items-center gap-2'>
-                      <div
-                        className='h-2.5 w-2.5 rounded-full'
-                        style={{ backgroundColor: metric.unlimited ? 'var(--semi-color-success)' : metric.progressColor }}
-                      />
-                      <Text strong className='text-base'>{metric.title}</Text>
-                    </div>
-                    <Tag
-                      color={metric.percent >= 85 ? 'red' : metric.percent >= 60 ? 'orange' : 'green'}
-                      shape='circle'
-                      size='small'
-                    >
-                      {metric.unlimited ? t('不限') : `${metric.percent}%`}
-                    </Tag>
-                  </div>
-                  {!metric.unlimited && (
-                    <div className='mt-4'>
-                      <Progress
-                        percent={metric.percent}
-                        stroke={metric.progressColor}
-                        showInfo={false}
-                        style={{ height: isPackageVariant ? 10 : 8 }}
-                      />
-                    </div>
-                  )}
-                  <div className='mt-4 grid grid-cols-3 gap-2 text-xs'>
-                    <div className={isPackageVariant ? 'rounded-xl bg-semi-color-fill-1/80 px-3 py-2.5 text-center' : 'rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'}>
-                      <div className='text-semi-color-text-2'>{t('总量')}</div>
-                      <div className='mt-1.5 font-semibold text-semi-color-text-0'>{metric.totalText}</div>
-                    </div>
-                    <div className={isPackageVariant ? 'rounded-xl bg-semi-color-fill-1/80 px-3 py-2.5 text-center' : 'rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'}>
-                      <div className='text-semi-color-text-2'>{t('已用')}</div>
-                      <div className='mt-1.5 font-semibold text-semi-color-text-0'>{metric.usedText}</div>
-                    </div>
-                    <div className={isPackageVariant ? 'rounded-xl bg-semi-color-fill-1/80 px-3 py-2.5 text-center' : 'rounded-lg bg-semi-color-fill-1 px-3 py-2.5 text-center'}>
-                      <div className='text-semi-color-text-2'>{t('剩余')}</div>
-                      <div className='mt-1.5 font-semibold text-semi-color-text-0'>{metric.remainText}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
+            ) : (
+              <div className='py-8'>
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  title={t('暂无可购买套餐')}
+                  description={t('管理员暂未上架套餐，请稍后再试或联系管理员')}
+                />
+              </div>
+            )}
+          </div>
+        </Card>
+      ) : (
+        <Space vertical style={{ width: '100%' }} spacing={12}>
           <Card
-            className={isPackageVariant ? '!rounded-2xl w-full border-0 shadow-sm' : '!rounded-xl w-full border-0 shadow-sm'}
-            bodyStyle={{ padding: isPackageVariant ? '18px 22px' : '16px 20px' }}
+            className='!rounded-xl w-full border-0 shadow-sm'
+            bodyStyle={{ padding: '16px 20px' }}
           >
             <Tabs
               className='topup-page-tabs'
@@ -1425,7 +1743,9 @@ const SubscriptionPlansCard = ({
                   <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
                     <div className='flex flex-wrap items-center gap-2'>
                       <Tag
-                        color={subscriptionView === 'active' ? 'green' : 'white'}
+                        color={
+                          subscriptionView === 'active' ? 'green' : 'white'
+                        }
                         shape='circle'
                         size='small'
                       >
@@ -1433,7 +1753,9 @@ const SubscriptionPlansCard = ({
                       </Tag>
                       {historySubscriptionItems.length > 0 && (
                         <Tag
-                          color={subscriptionView === 'history' ? 'orange' : 'white'}
+                          color={
+                            subscriptionView === 'history' ? 'orange' : 'white'
+                          }
                           shape='circle'
                           size='small'
                         >
@@ -1444,7 +1766,9 @@ const SubscriptionPlansCard = ({
                     <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
                       <Space wrap>
                         <Button
-                          theme={subscriptionView === 'active' ? 'solid' : 'outline'}
+                          theme={
+                            subscriptionView === 'active' ? 'solid' : 'outline'
+                          }
                           type='primary'
                           size='small'
                           onClick={() => setSubscriptionView('active')}
@@ -1452,7 +1776,9 @@ const SubscriptionPlansCard = ({
                           {t('生效中')}
                         </Button>
                         <Button
-                          theme={subscriptionView === 'history' ? 'solid' : 'outline'}
+                          theme={
+                            subscriptionView === 'history' ? 'solid' : 'outline'
+                          }
                           type='tertiary'
                           size='small'
                           onClick={() => setSubscriptionView('history')}
@@ -1460,7 +1786,9 @@ const SubscriptionPlansCard = ({
                           {t('历史订阅')}
                         </Button>
                         <Button
-                          theme={subscriptionView === 'all' ? 'solid' : 'outline'}
+                          theme={
+                            subscriptionView === 'all' ? 'solid' : 'outline'
+                          }
                           type='tertiary'
                           size='small'
                           onClick={() => setSubscriptionView('all')}
@@ -1517,23 +1845,71 @@ const SubscriptionPlansCard = ({
                     </div>
                   </div>
 
-                  {disableSubscriptionPreference && isSubscriptionPreference && (
-                    <Text type='tertiary' size='small' className='block'>
-                      {t('已保存偏好为')}
-                      {subscriptionPreferenceLabel}
-                      {t('，当前无生效订阅，将自动使用钱包')}
-                    </Text>
-                  )}
+                  <div className='flex flex-col gap-2 rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3 xl:flex-row xl:items-center'>
+                    <Input
+                      value={subscriptionKeyword}
+                      onChange={setSubscriptionKeyword}
+                      placeholder={t('搜索套餐名 / 说明 / 订阅 ID')}
+                      showClear
+                      className='min-w-0 flex-1'
+                    />
+                    <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3'>
+                      <Select
+                        value={subscriptionPlanFilter}
+                        onChange={setSubscriptionPlanFilter}
+                        size='small'
+                        optionList={subscriptionPlanOptions}
+                      />
+                      <Select
+                        value={subscriptionResourceFilter}
+                        onChange={setSubscriptionResourceFilter}
+                        size='small'
+                        optionList={[
+                          { value: 'all', label: t('全部资源类型') },
+                          { value: 'quota', label: t('按额度') },
+                          { value: 'request_count', label: t('按次数') },
+                        ]}
+                      />
+                      <Select
+                        value={subscriptionResetFilter}
+                        onChange={setSubscriptionResetFilter}
+                        size='small'
+                        optionList={resetPeriodOptions}
+                      />
+                    </div>
+                    <Button
+                      theme='outline'
+                      type='tertiary'
+                      size='small'
+                      onClick={() => {
+                        setSubscriptionKeyword('');
+                        setSubscriptionPlanFilter('all');
+                        setSubscriptionResourceFilter('all');
+                        setSubscriptionResetFilter('all');
+                      }}
+                    >
+                      {t('清空筛选')}
+                    </Button>
+                  </div>
+
+                  {disableSubscriptionPreference &&
+                    isSubscriptionPreference && (
+                      <Text type='tertiary' size='small' className='block'>
+                        {t('已保存偏好为')}
+                        {subscriptionPreferenceLabel}
+                        {t('，当前无生效订阅，将自动使用钱包')}
+                      </Text>
+                    )}
 
                   <Divider margin={8} />
 
                   {hasAnySubscription ? (
-                    visibleSubscriptionItems.length > 0 ? (
+                    filteredVisibleSubscriptionItems.length > 0 ? (
                       <Collapse
                         activeKey={expandedSubscriptionKeys}
                         onChange={setExpandedSubscriptionKeys}
                       >
-                        {visibleSubscriptionItems.map((item) => (
+                        {filteredVisibleSubscriptionItems.map((item) => (
                           <Collapse.Panel
                             key={item.key}
                             itemKey={item.key}
@@ -1552,7 +1928,14 @@ const SubscriptionPlansCard = ({
                               ? t('暂无历史订阅')
                               : t('暂无生效订阅')
                           }
-                          description={t('切换筛选或购买新套餐后会显示在这里')}
+                          description={
+                            subscriptionKeyword ||
+                            subscriptionPlanFilter !== 'all' ||
+                            subscriptionResourceFilter !== 'all' ||
+                            subscriptionResetFilter !== 'all'
+                              ? t('当前组合筛选下没有匹配结果')
+                              : t('切换筛选或购买新套餐后会显示在这里')
+                          }
                         />
                       </div>
                     )
@@ -1561,7 +1944,9 @@ const SubscriptionPlansCard = ({
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
                         title={t('暂无订阅记录')}
-                        description={t('你还没有购买套餐，可前往“套餐列表”选择适合的方案')}
+                        description={t(
+                          '你还没有购买套餐，可前往“套餐列表”选择适合的方案',
+                        )}
                       />
                     </div>
                   )}
@@ -1577,13 +1962,18 @@ const SubscriptionPlansCard = ({
                     <div>
                       <div className='flex items-center gap-2'>
                         <div className='rounded-lg bg-indigo-500/15 p-1.5'>
-                          <Package size={14} className='text-indigo-600 dark:text-indigo-400' />
+                          <Package
+                            size={14}
+                            className='text-indigo-600 dark:text-indigo-400'
+                          />
                         </div>
                         <Text strong>{t('可购买套餐')}</Text>
                       </div>
                       <Text type='tertiary' size='small' className='mt-1 block'>
                         {planSort === 'recommended'
-                          ? t('推荐排序综合考虑价格与权益，优先展示更适合多数用户的套餐')
+                          ? t(
+                              '推荐排序综合考虑价格与权益，优先展示更适合多数用户的套餐',
+                            )
                           : t('先看定位与价格，再进入购买弹窗查看完整支付方式')}
                       </Text>
                     </div>
@@ -1606,32 +1996,91 @@ const SubscriptionPlansCard = ({
                   <Divider margin={8} />
 
                   {sortedPlans.length > 0 ? (
-                    <CardTable
-                      columns={planTableColumns}
-                      dataSource={pagedPlans}
-                      rowKey={(row) => row?.plan?.id}
-                      loading={loading}
-                      hidePagination={false}
-                      pagination={{
-                        currentPage: planPage,
-                        pageSize: planPageSize,
-                        total: sortedPlans.length,
-                        pageSizeOpts: [10, 20, 50],
-                        showSizeChanger: true,
-                        onPageChange: setPlanPage,
-                        onPageSizeChange: (size) => {
-                          setPlanPageSize(size);
-                          setPlanPage(1);
-                        },
-                      }}
-                      expandedRowRender={renderPlanExpandedContent}
-                    />
+                    isPackageVariant ? (
+                      <div className='space-y-4'>
+                        <div className='subscription-plan-selling-grid'>
+                          {pagedPlans.map((record, index) =>
+                            renderPackagePlanCard(record, index),
+                          )}
+                        </div>
+                        <div className='subscription-plan-selling-pagination'>
+                          <Text type='tertiary' size='small'>
+                            {t(
+                              '显示第 {{start}} 条-第 {{end}} 条，共 {{total}} 条',
+                              {
+                                start:
+                                  sortedPlans.length === 0
+                                    ? 0
+                                    : (planPage - 1) * planPageSize + 1,
+                                end: Math.min(
+                                  planPage * planPageSize,
+                                  sortedPlans.length,
+                                ),
+                                total: sortedPlans.length,
+                              },
+                            )}
+                          </Text>
+                          <div className='flex justify-end'>
+                            <Select
+                              value={planPageSize}
+                              size='small'
+                              onChange={(size) => {
+                                setPlanPageSize(size);
+                                setPlanPage(1);
+                              }}
+                              optionList={[6, 9, 12, 18].map((size) => ({
+                                value: size,
+                                label: `${t('每页')} ${size}`,
+                              }))}
+                            />
+                          </div>
+                        </div>
+                        <div className='flex flex-col gap-3 border-t border-semi-color-border pt-4 lg:flex-row lg:items-center lg:justify-between'>
+                          <Text type='tertiary' size='small'>
+                            {t(
+                              '卡片视图更适合直接售卖，点击购买后仍会进入完整支付流程。',
+                            )}
+                          </Text>
+                          <Pagination
+                            currentPage={planPage}
+                            pageSize={planPageSize}
+                            total={sortedPlans.length}
+                            pageSizeOptions={[6, 9, 12, 18]}
+                            showSizeChanger={false}
+                            onPageChange={setPlanPage}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <CardTable
+                        columns={planTableColumns}
+                        dataSource={pagedPlans}
+                        rowKey={(row) => row?.plan?.id}
+                        loading={loading}
+                        hidePagination={false}
+                        pagination={{
+                          currentPage: planPage,
+                          pageSize: planPageSize,
+                          total: sortedPlans.length,
+                          pageSizeOpts: [10, 20, 50],
+                          showSizeChanger: true,
+                          onPageChange: setPlanPage,
+                          onPageSizeChange: (size) => {
+                            setPlanPageSize(size);
+                            setPlanPage(1);
+                          },
+                        }}
+                        expandedRowRender={renderPlanExpandedContent}
+                      />
+                    )
                   ) : (
                     <div className='py-8'>
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
                         title={t('暂无可购买套餐')}
-                        description={t('管理员暂未上架套餐，请稍后再试或联系管理员')}
+                        description={t(
+                          '管理员暂未上架套餐，请稍后再试或联系管理员',
+                        )}
                       />
                     </div>
                   )}
@@ -1639,7 +2088,6 @@ const SubscriptionPlansCard = ({
               </TabPane>
             </Tabs>
           </Card>
-
         </Space>
       )}
     </>
@@ -1648,7 +2096,15 @@ const SubscriptionPlansCard = ({
   return (
     <>
       {withCard ? (
-        <Card className={isPackageVariant ? 'package-page-shell !rounded-3xl border border-semi-color-border shadow-md' : '!rounded-2xl shadow-sm border-0'}>{cardContent}</Card>
+        <Card
+          className={
+            isPackageVariant
+              ? 'package-page-shell !rounded-3xl border border-semi-color-border shadow-md'
+              : '!rounded-2xl shadow-sm border-0'
+          }
+        >
+          {cardContent}
+        </Card>
       ) : (
         <div className='space-y-3'>{cardContent}</div>
       )}

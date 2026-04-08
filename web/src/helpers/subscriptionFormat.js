@@ -68,7 +68,10 @@ export function isSubscriptionDiscountActive(plan, now = Date.now() / 1000) {
 }
 
 export function getSubscriptionEffectivePrice(plan, now = Date.now() / 1000) {
-  if (plan?.effective_price_amount !== undefined && plan?.effective_price_amount !== null) {
+  if (
+    plan?.effective_price_amount !== undefined &&
+    plan?.effective_price_amount !== null
+  ) {
     return Number(plan.effective_price_amount || 0);
   }
   return isSubscriptionDiscountActive(plan, now)
@@ -93,7 +96,8 @@ export function getSubscriptionUsageSummary(plan) {
     const remain = total > 0 ? Math.max(0, total - used) : 0;
     const periodTotal = getSubscriptionRequestCountPeriodLimit(plan);
     const periodUsed = Number(plan?.request_count_period_used || 0);
-    const periodRemain = periodTotal > 0 ? Math.max(0, periodTotal - periodUsed) : 0;
+    const periodRemain =
+      periodTotal > 0 ? Math.max(0, periodTotal - periodUsed) : 0;
     return {
       resourceType,
       total,
@@ -255,7 +259,9 @@ export function formatSubscriptionRequestBenefit(plan, t) {
   }
   const parts = [];
   if (!summary.periodUnlimited) {
-    parts.push(`${formatSubscriptionResetPeriod(plan, t)} ${summary.periodTotal} ${t('次')}`);
+    parts.push(
+      `${formatSubscriptionResetPeriod(plan, t)} ${summary.periodTotal} ${t('次')}`,
+    );
   }
   if (!summary.unlimited) {
     parts.push(`${t('总计')} ${summary.total} ${t('次')}`);

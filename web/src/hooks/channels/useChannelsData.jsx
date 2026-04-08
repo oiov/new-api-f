@@ -21,6 +21,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   API,
+  buildGroupOptions,
   showError,
   showInfo,
   showSuccess,
@@ -574,12 +575,7 @@ export const useChannelsData = () => {
     try {
       let res = await API.get(`/api/group/`);
       if (res === undefined) return;
-      setGroupOptions(
-        res.data.data.map((group) => ({
-          label: group,
-          value: group,
-        })),
-      );
+      setGroupOptions(buildGroupOptions(res.data.data));
     } catch (error) {
       showError(error.message);
     }
