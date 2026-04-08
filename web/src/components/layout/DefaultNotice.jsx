@@ -141,6 +141,9 @@ const DefaultNotice = () => {
         <Row label={t('起开金额')} value={t('50 元')} />
         <Row label={t('普通发票')} value={t('免手续费')} />
         <Row label={t('专用发票')} value={t('1% 增值税 + 5% 所得税')} />
+        <Item style={{ marginTop: 6 }}>
+          {t('发票申请请直接在系统内提交，无需联系客服。')}
+        </Item>
       </Section>
 
       <Divider style={{ margin: '12px 0' }} />
@@ -149,8 +152,8 @@ const DefaultNotice = () => {
       <Section icon={<IconRefresh size='small' />} title={t('退款政策')}>
         <Row label={t('退款规则')} value={t('支持无理由退款')} />
         <Row label={t('退款金额')} value={t('实充金额 - 实消金额')} />
-        <Item style={{ marginTop: 4 }}>
-          {t('开票 / 补单 / 退款请联系小助理')}
+        <Item style={{ marginTop: 6 }}>
+          {t('退款请前往')}<Link to='/contact' style={{ color: 'var(--semi-color-primary)', margin: '0 2px' }}>{t('联系我们')}</Link>{t('页面咨询。补单联系管理员处理即可。')}
         </Item>
       </Section>
 
