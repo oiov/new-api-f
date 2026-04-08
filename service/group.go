@@ -69,6 +69,15 @@ func GetUserUsableGroupsWithBillingFilter(userGroup string, isSubscriptionUser b
 			filtered[name] = desc
 		}
 	}
+	// 订阅用户可访问所有订阅专属分组，即使该分组不在基础可用分组集合中
+	// （管理员可能只把分组加入 SubscriptionGroups，而未加入 UserUsableGroups）
+	if isSubscriptionUser {
+		for _, g := range subGroups {
+			if _, ok := filtered[g]; !ok {
+				filtered[g] = setting.GetUsableGroupDescription(g)
+			}
+		}
+	}
 	return filtered
 }
 

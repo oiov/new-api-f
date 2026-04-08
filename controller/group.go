@@ -39,14 +39,15 @@ func GetUserGroups(c *gin.Context) {
 		hasQuotaBalance = userCache.Quota > 0
 	}
 	userUsableGroups := service.GetUserUsableGroupsForUser(userId, userCache.Group, hasQuotaBalance)
-	for groupName := range ratio_setting.GetGroupRatioCopy() {
-		if desc, ok := userUsableGroups[groupName]; ok {
-			usableGroups[groupName] = map[string]interface{}{
-				"ratio":         service.GetUserGroupRatio(userCache.Group, groupName),
-				"desc":          desc,
-				"billing_type":  service.GetGroupBillingType(groupName),
-				"billing_label": service.GetGroupBillingLabel(groupName),
-			}
+	for groupName, desc := range userUsableGroups {
+		if groupName == "auto" {
+			continue
+		}
+		usableGroups[groupName] = map[string]interface{}{
+			"ratio":         service.GetUserGroupRatio(userCache.Group, groupName),
+			"desc":          desc,
+			"billing_type":  service.GetGroupBillingType(groupName),
+			"billing_label": service.GetGroupBillingLabel(groupName),
 		}
 	}
 	if _, ok := userUsableGroups["auto"]; ok {

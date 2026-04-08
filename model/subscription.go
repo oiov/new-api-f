@@ -724,18 +724,16 @@ func reconcileUserSubscriptionUsageFromLogs(sub *UserSubscription, now int64) (b
 	if windowStart <= 0 {
 		windowStart = now
 	}
-	expectedAmountUsed, expectedCountUsed, hasPreConsumeRecords, err := summarizeUserSubscriptionUsageFromPreConsumeRecords(sub, windowStart, now)
+	expectedAmountUsed, expectedCountUsed, preConsumeRequestIDs, err := summarizeUserSubscriptionUsageFromPreConsumeRecords(sub, windowStart, now)
 	if err != nil {
 		return false, err
 	}
-	if !hasPreConsumeRecords {
-		summary, err := summarizeSubscriptionConsumeLogs(0, sub.Id, 0, sub.UserId, windowStart, now)
-		if err != nil {
-			return false, err
-		}
-		expectedAmountUsed = summary.TotalQuotaConsumed
-		expectedCountUsed = summary.TotalRequestConsumed
+	summary, err := summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(0, sub.Id, 0, sub.UserId, windowStart, now, preConsumeRequestIDs)
+	if err != nil {
+		return false, err
 	}
+	expectedAmountUsed += summary.TotalQuotaConsumed
+	expectedCountUsed += summary.TotalRequestConsumed
 	if sub.AmountTotal > 0 && expectedAmountUsed > sub.AmountTotal {
 		expectedAmountUsed = sub.AmountTotal
 	}
@@ -754,28 +752,38 @@ func reconcileUserSubscriptionUsageFromLogs(sub *UserSubscription, now int64) (b
 	return changed, nil
 }
 
-func summarizeUserSubscriptionUsageFromPreConsumeRecords(sub *UserSubscription, startTimestamp int64, endTimestamp int64) (int64, int64, bool, error) {
+func summarizeUserSubscriptionUsageFromPreConsumeRecords(sub *UserSubscription, startTimestamp int64, endTimestamp int64) (int64, int64, map[string]struct{}, error) {
 	if sub == nil {
-		return 0, 0, false, nil
+		return 0, 0, nil, nil
 	}
 	if DB == nil || !DB.Migrator().HasTable(&SubscriptionPreConsumeRecord{}) {
-		return 0, 0, false, nil
+		return 0, 0, nil, nil
 	}
-	type usageSummary struct {
-		Count       int64
-		Amount      int64
-		RecordCount int64
+	type usageRecord struct {
+		RequestId string `gorm:"column:request_id"`
+		Count     int64  `gorm:"column:pre_consumed_count"`
+		Amount    int64  `gorm:"column:pre_consumed_amount"`
 	}
-	var summary usageSummary
+	records := make([]usageRecord, 0)
 	err := DB.Model(&SubscriptionPreConsumeRecord{}).
-		Select("COALESCE(SUM(pre_consumed_count), 0) AS count, COALESCE(SUM(pre_consumed_amount), 0) AS amount, COUNT(*) AS record_count").
+		Select("request_id, pre_consumed_count, pre_consumed_amount").
 		Where("user_subscription_id = ? AND user_id = ? AND status = ?", sub.Id, sub.UserId, "consumed").
 		Where("created_at >= ? AND created_at <= ?", startTimestamp, endTimestamp).
-		Take(&summary).Error
+		Find(&records).Error
 	if err != nil {
-		return 0, 0, false, err
+		return 0, 0, nil, err
 	}
-	return summary.Amount, summary.Count, summary.RecordCount > 0, nil
+	requestIDs := make(map[string]struct{}, len(records))
+	var amountUsed int64
+	var countUsed int64
+	for _, record := range records {
+		amountUsed += record.Amount
+		countUsed += record.Count
+		if record.RequestId != "" {
+			requestIDs[record.RequestId] = struct{}{}
+		}
+	}
+	return amountUsed, countUsed, requestIDs, nil
 }
 
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {

@@ -56,6 +56,7 @@ type SubscriptionConsumeSummary struct {
 
 type subscriptionConsumeSummaryRow struct {
 	CreatedAt int64  `gorm:"column:created_at"`
+	RequestId string `gorm:"column:request_id"`
 	Other     string `gorm:"column:other"`
 }
 
@@ -507,9 +508,13 @@ func buildSubscriptionConsumeLogsQuery(userId int, subscriptionId int, planId in
 }
 
 func summarizeSubscriptionConsumeLogs(userId int, subscriptionId int, planId int, filterUserId int, startTimestamp int64, endTimestamp int64) (*SubscriptionConsumeSummary, error) {
+	return summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(userId, subscriptionId, planId, filterUserId, startTimestamp, endTimestamp, nil)
+}
+
+func summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(userId int, subscriptionId int, planId int, filterUserId int, startTimestamp int64, endTimestamp int64, excludedRequestIDs map[string]struct{}) (*SubscriptionConsumeSummary, error) {
 	rows := make([]subscriptionConsumeSummaryRow, 0)
 	tx := buildSubscriptionConsumeLogsQuery(userId, subscriptionId, planId, filterUserId, startTimestamp, endTimestamp)
-	if err := tx.Select("logs.created_at, logs.other").Find(&rows).Error; err != nil {
+	if err := tx.Select("logs.created_at, logs.request_id, logs.other").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
@@ -525,6 +530,11 @@ func summarizeSubscriptionConsumeLogs(userId int, subscriptionId int, planId int
 
 	summary := &SubscriptionConsumeSummary{}
 	for _, row := range rows {
+		if excludedRequestIDs != nil && row.RequestId != "" {
+			if _, ok := excludedRequestIDs[row.RequestId]; ok {
+				continue
+			}
+		}
 		otherMap := map[string]interface{}{}
 		if err := common.UnmarshalJsonStr(row.Other, &otherMap); err != nil {
 			continue

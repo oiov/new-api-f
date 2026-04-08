@@ -28,7 +28,7 @@ func withSubscriptionQueryTestDB(t *testing.T, run func()) {
 	LOG_DB = db
 	common.UsingSQLite = true
 
-	require.NoError(t, db.AutoMigrate(&User{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &Log{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &SubscriptionPreConsumeRecord{}, &Log{}))
 
 	t.Cleanup(func() {
 		DB = oldDB
@@ -392,6 +392,65 @@ func TestRefreshActiveSubscriptionResetWindows_ReconcilesCurrentCycleUsageWithou
 		var sub UserSubscription
 		require.NoError(t, DB.Where("id = ?", 802).First(&sub).Error)
 		require.EqualValues(t, 1, sub.RequestCountUsed)
+		require.Equal(t, "active", sub.Status)
+	})
+}
+
+func TestRefreshActiveSubscriptionResetWindows_MergesLegacyLogsAndPreConsumeWithoutDoubleCounting(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{Id: 91, Username: "mixed_usage_user", AffCode: "aff_mixed_usage_user", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                804,
+			UserId:            91,
+			PlanId:            704,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 10,
+			RequestCountUsed:  0,
+			ResetPeriod:       SubscriptionResetNever,
+			Status:            "active",
+			StartTime:         now - 3600,
+			EndTime:           now + 3600,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionPreConsumeRecord{
+			Id:                 1,
+			RequestId:          "req-dup",
+			UserId:             91,
+			UserSubscriptionId: 804,
+			PreConsumed:        1,
+			PreConsumedCount:   1,
+			Status:             "consumed",
+			CreatedAt:          now - 120,
+			UpdatedAt:          now - 120,
+		}).Error)
+
+		legacyOther := `{"billing_source":"subscription","subscription_id":804,"subscription_plan_id":704,"subscription_consumed":1,"subscription_resource_type":"request_count"}`
+		require.NoError(t, DB.Create(&Log{
+			Id:        960,
+			UserId:    91,
+			Type:      LogTypeConsume,
+			RequestId: "",
+			CreatedAt: now - 240,
+			Other:     legacyOther,
+		}).Error)
+		require.NoError(t, DB.Create(&Log{
+			Id:        961,
+			UserId:    91,
+			Type:      LogTypeConsume,
+			RequestId: "req-dup",
+			CreatedAt: now - 120,
+			Other:     legacyOther,
+		}).Error)
+
+		updated, err := RefreshActiveSubscriptionResetWindows(50)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, updated)
+
+		var sub UserSubscription
+		require.NoError(t, DB.Where("id = ?", 804).First(&sub).Error)
+		require.EqualValues(t, 2, sub.RequestCountUsed)
 		require.Equal(t, "active", sub.Status)
 	})
 }
