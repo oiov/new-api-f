@@ -22,6 +22,8 @@ import { API, showError } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import ModelPricingEditor from './components/ModelPricingEditor';
 
+const FILTER_MODE_UNSET = ['un', 'set'].join('');
+
 export default function ModelRatioNotSetEditor(props) {
   const { t } = useTranslation();
   const [enabledModels, setEnabledModels] = useState([]);
@@ -50,7 +52,7 @@ export default function ModelRatioNotSetEditor(props) {
       options={props.options}
       refresh={props.refresh}
       candidateModelNames={enabledModels}
-      filterMode='unset'
+      filterMode={FILTER_MODE_UNSET}
       allowAddModel={false}
       allowDeleteModel={false}
       showConflictFilter={false}

@@ -110,35 +110,35 @@ const StorageSetting = () => {
               <Form.Input
                 field='StorageR2Endpoint'
                 label={t('Endpoint（存储桶 API 地址）')}
-                placeholder='https://ACCOUNT_ID.r2.cloudflarestorage.com'
+                placeholder={t('例如：https://ACCOUNT_ID.r2.cloudflarestorage.com')}
                 value={inputs.StorageR2Endpoint}
                 onChange={(v) => setInputs((p) => ({ ...p, StorageR2Endpoint: v }))}
               />
               <Form.Input
                 field='StorageR2Bucket'
                 label={t('存储桶名称（Bucket）')}
-                placeholder='my-invoice-bucket'
+                placeholder={t('例如：my-invoice-bucket')}
                 value={inputs.StorageR2Bucket}
                 onChange={(v) => setInputs((p) => ({ ...p, StorageR2Bucket: v }))}
               />
               <Form.Input
                 field='StorageR2Region'
                 label={t('区域（Region）')}
-                placeholder='auto'
+                placeholder={t('例如：auto')}
                 value={inputs.StorageR2Region}
                 onChange={(v) => setInputs((p) => ({ ...p, StorageR2Region: v }))}
               />
               <Form.Input
                 field='StorageR2AccessKey'
                 label={t('Access Key ID')}
-                placeholder='R2 API Token Access Key'
+                placeholder={t('R2 API Token Access Key')}
                 value={inputs.StorageR2AccessKey}
                 onChange={(v) => setInputs((p) => ({ ...p, StorageR2AccessKey: v }))}
               />
               <Form.Input
                 field='StorageR2SecretKey'
                 label={t('Secret Access Key')}
-                placeholder='R2 API Token Secret Key'
+                placeholder={t('R2 API Token Secret Key')}
                 mode='password'
                 value={inputs.StorageR2SecretKey}
                 onChange={(v) => setInputs((p) => ({ ...p, StorageR2SecretKey: v }))}
@@ -146,7 +146,7 @@ const StorageSetting = () => {
               <Form.Input
                 field='StorageR2PublicURL'
                 label={t('公开访问 URL 前缀（可选）')}
-                placeholder='https://files.example.com'
+                placeholder={t('例如：https://files.example.com')}
                 value={inputs.StorageR2PublicURL}
                 onChange={(v) => setInputs((p) => ({ ...p, StorageR2PublicURL: v }))}
                 extraText={t('设置后发票文件 URL 将使用此前缀，否则使用 Endpoint/Bucket 拼接')}

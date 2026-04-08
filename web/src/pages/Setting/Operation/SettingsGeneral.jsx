@@ -220,9 +220,9 @@ export default function GeneralSettings(props) {
                         'general_setting.quota_display_type',
                       )}
                     >
-                      <Select.Option value='USD'>USD ($)</Select.Option>
-                      <Select.Option value='CNY'>CNY (¥)</Select.Option>
-                      <Select.Option value='TOKENS'>Tokens</Select.Option>
+                      <Select.Option value='USD'>{t('USD ($)')}</Select.Option>
+                      <Select.Option value='CNY'>{t('CNY (¥)')}</Select.Option>
+                      <Select.Option value='TOKENS'>{t('Tokens')}</Select.Option>
                       <Select.Option value='CUSTOM'>
                         {t('自定义货币')}
                       </Select.Option>
@@ -251,8 +251,8 @@ export default function GeneralSettings(props) {
                   field={'DisplayTokenStatEnabled'}
                   label={t('额度查询接口返回令牌额度而非用户额度')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={handleFieldChange('DisplayTokenStatEnabled')}
                 />
               </Col>
@@ -261,8 +261,8 @@ export default function GeneralSettings(props) {
                   field={'DefaultCollapseSidebar'}
                   label={t('默认折叠侧边栏')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={handleFieldChange('DefaultCollapseSidebar')}
                 />
               </Col>
@@ -271,8 +271,8 @@ export default function GeneralSettings(props) {
                   field={'DemoSiteEnabled'}
                   label={t('演示站点模式')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={handleFieldChange('DemoSiteEnabled')}
                 />
               </Col>
@@ -282,8 +282,8 @@ export default function GeneralSettings(props) {
                   label={t('自用模式')}
                   extraText={t('开启后不限制：必须设置模型倍率')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={handleFieldChange('SelfUseModeEnabled')}
                 />
               </Col>

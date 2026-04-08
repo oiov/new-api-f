@@ -211,7 +211,7 @@ const renderModelLimits = (text, record, t) => {
           position='top'
           showArrow
         >
-          <Avatar size='extra-extra-small' alt='unknown'>
+          <Avatar size='extra-extra-small' alt={t('其他')}>
             {t('其他')}
           </Avatar>
         </Tooltip>,
@@ -556,7 +556,9 @@ export const getTokensColumns = ({
       render: (text, record) => (
         <div>
           <div>{record.username || '-'}</div>
-          <div className='text-xs text-gray-500'>ID: {record.user_id}</div>
+          <div className='text-xs text-gray-500'>
+            {t('用户 ID')}: {record.user_id}
+          </div>
         </div>
       ),
     });

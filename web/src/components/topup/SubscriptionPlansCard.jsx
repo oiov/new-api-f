@@ -37,7 +37,14 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess, renderQuota } from '../../helpers';
+import {
+  API,
+  showError,
+  showSuccess,
+  renderGroup,
+  renderGroupTextWithDescription,
+  renderQuota,
+} from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
 import {
   BarChart3,
@@ -198,6 +205,33 @@ function getPlanBenefitDescription(plan, t) {
   return `${t('每个重置周期可用')} ${amountText} · ${t('重置')} ${resetPeriod}`;
 }
 
+function inferSubscriptionPlanSeries(plan) {
+  const text = [
+    plan?.title,
+    plan?.subtitle,
+    plan?.upgrade_group,
+    ...(Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : []),
+    ...(Array.isArray(plan?.allowed_models) ? plan.allowed_models : []),
+    ...(Array.isArray(plan?.allowed_vendor_names) ? plan.allowed_vendor_names : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const isClaude =
+    text.includes('claude') || text.includes('anthropic') || text.includes('cc-');
+  const isCodex =
+    text.includes('codex') ||
+    text.includes('openai') ||
+    text.includes('gpt') ||
+    text.includes('o4');
+
+  if (isClaude && !isCodex) return 'claude';
+  if (isCodex && !isClaude) return 'codex';
+  if (isClaude && isCodex) return 'mixed';
+  return 'other';
+}
+
 const SubscriptionPlansCard = ({
   t,
   loading = false,
@@ -223,7 +257,8 @@ const SubscriptionPlansCard = ({
   const [refreshing, setRefreshing] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState(initialMainTab);
   const [subscriptionView, setSubscriptionView] = useState('active');
-  const [planSort, setPlanSort] = useState('recommended');
+  const [planSort, setPlanSort] = useState('price_asc');
+  const [planSeriesFilter, setPlanSeriesFilter] = useState('all');
   const [expandedSubscriptionKeys, setExpandedSubscriptionKeys] = useState([]);
   const [consumeLogsFilter, setConsumeLogsFilter] = useState(null);
   const [planPage, setPlanPage] = useState(1);
@@ -563,8 +598,23 @@ const SubscriptionPlansCard = ({
     return parts.join(' · ');
   }, [activeSubscriptionItems, hasActiveSubscription, t]);
 
-  const sortedPlans = useMemo(() => {
+  const filteredPlans = useMemo(() => {
     const result = [...(plans || [])];
+    if (planSeriesFilter === 'all') {
+      return result;
+    }
+    return result.filter((item) => {
+      const plan = item?.plan || {};
+      const series = inferSubscriptionPlanSeries(plan);
+      if (planSeriesFilter === 'mixed') {
+        return series === 'mixed';
+      }
+      return series === planSeriesFilter;
+    });
+  }, [plans, planSeriesFilter]);
+
+  const sortedPlans = useMemo(() => {
+    const result = [...filteredPlans];
     result.sort((a, b) => {
       const planA = a?.plan || {};
       const planB = b?.plan || {};
@@ -592,11 +642,11 @@ const SubscriptionPlansCard = ({
       return Number(planA.price_amount || 0) - Number(planB.price_amount || 0);
     });
     return result;
-  }, [plans, planSort, getPlanPurchaseCount]);
+  }, [filteredPlans, planSort, getPlanPurchaseCount]);
 
   useEffect(() => {
     setPlanPage(1);
-  }, [planSort, plans.length]);
+  }, [planSort, planSeriesFilter, filteredPlans.length]);
 
   const totalPlanPages = Math.max(
     1,
@@ -1103,7 +1153,9 @@ const SubscriptionPlansCard = ({
         <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'>
           <div className='text-xs text-gray-500'>{t('升级分组')}</div>
           <div className='mt-1 text-sm text-semi-color-text-0 break-all'>
-            {plan?.upgrade_group || '--'}
+            {plan?.upgrade_group
+              ? renderGroupTextWithDescription(plan.upgrade_group)
+              : '--'}
           </div>
         </div>
         <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'>
@@ -1322,19 +1374,10 @@ const SubscriptionPlansCard = ({
                 </Tag>
               )}
               {plan?.upgrade_group && (
-                <Tag color='white' shape='circle' size='small'>
-                  {t('升级分组')}: {plan.upgrade_group}
-                </Tag>
+                <div>{renderGroup(plan.upgrade_group)}</div>
               )}
               {restrictionSummary.groups.map((group) => (
-                <Tag
-                  key={`group-${group}`}
-                  color='white'
-                  shape='circle'
-                  size='small'
-                >
-                  {t('分组')}: {group}
-                </Tag>
+                <div key={`group-${group}`}>{renderGroup(group)}</div>
               ))}
               {restrictionSummary.models.slice(0, 2).map((modelName) => (
                 <Tag
@@ -1358,7 +1401,7 @@ const SubscriptionPlansCard = ({
               ))}
               {!limit && !plan?.upgrade_group && saleSummary.soldCount <= 0 && (
                 <Text type='tertiary' size='small'>
-                  --
+                  {t('暂无')}
                 </Text>
               )}
             </div>
@@ -1436,14 +1479,17 @@ const SubscriptionPlansCard = ({
     const restrictionTags = [
       ...restrictionSummary.groups.map((item) => ({
         key: `group-${item}`,
-        label: `${t('分组')} · ${item}`,
+        type: 'group',
+        value: item,
       })),
       ...restrictionSummary.models.slice(0, 2).map((item) => ({
         key: `model-${item}`,
+        type: 'model',
         label: `${t('模型')} · ${item}`,
       })),
       ...restrictionSummary.vendors.map((item) => ({
         key: `vendor-${item}`,
+        type: 'vendor',
         label: `${t('供应商')} · ${item}`,
       })),
     ].slice(0, 4);
@@ -1552,9 +1598,13 @@ const SubscriptionPlansCard = ({
             <div className='flex flex-wrap gap-2'>
               {restrictionTags.length > 0 ? (
                 restrictionTags.map((item) => (
-                  <Tag key={item.key} color='white' shape='circle' size='small'>
-                    {item.label}
-                  </Tag>
+                  item.type === 'group' ? (
+                    <div key={item.key}>{renderGroup(item.value)}</div>
+                  ) : (
+                    <Tag key={item.key} color='white' shape='circle' size='small'>
+                      {item.label}
+                    </Tag>
+                  )
                 ))
               ) : (
                 <Tag color='white' shape='circle' size='small'>
@@ -1562,9 +1612,7 @@ const SubscriptionPlansCard = ({
                 </Tag>
               )}
               {plan?.upgrade_group && (
-                <Tag color='blue' shape='circle' size='small'>
-                  {t('升级分组')} · {plan.upgrade_group}
-                </Tag>
+                <div>{renderGroup(plan.upgrade_group)}</div>
               )}
             </div>
             {disabled ? (
@@ -1917,16 +1965,37 @@ const SubscriptionPlansCard = ({
                             size='small'
                             className='subscription-plan-selling-toolbar__desc'
                           >
-                            {planSort === 'recommended'
-                              ? t(
-                                  '推荐排序综合考虑价格与权益，优先展示更适合多数用户的套餐',
-                                )
-                              : t(
-                                  '先看定位与价格，再进入购买弹窗查看完整支付方式',
-                                )}
+                            {planSort === 'price_asc'
+                              ? t('当前默认按金额从低到高排序，适合快速横向比价')
+                              : t('先看定位与价格，再进入购买弹窗查看完整支付方式')}
                           </Text>
                         </div>
                       </div>
+                    </div>
+                    <div className='w-full'>
+                      <Tabs
+                        type='button'
+                        collapsible={false}
+                        activeKey={planSeriesFilter}
+                        onChange={setPlanSeriesFilter}
+                      >
+                        <TabPane
+                          itemKey='all'
+                          tab={`${t('全部系列')} (${plans.length})`}
+                        />
+                        <TabPane
+                          itemKey='claude'
+                          tab={t('Claude 系列')}
+                        />
+                        <TabPane
+                          itemKey='codex'
+                          tab={t('Codex 系列')}
+                        />
+                        <TabPane
+                          itemKey='mixed'
+                          tab={t('混合系列')}
+                        />
+                      </Tabs>
                     </div>
                     <div className='subscription-plan-selling-toolbar__controls'>
                       <div className='subscription-plan-selling-toolbar__switch'>
@@ -1968,10 +2037,10 @@ const SubscriptionPlansCard = ({
                           size='small'
                           onChange={setPlanSort}
                           optionList={[
-                            { value: 'recommended', label: t('推荐优先') },
                             { value: 'price_asc', label: t('价格从低到高') },
                             { value: 'price_desc', label: t('价格从高到低') },
                             { value: 'value_desc', label: t('权益从多到少') },
+                            { value: 'recommended', label: t('推荐优先') },
                           ]}
                         />
                       </div>

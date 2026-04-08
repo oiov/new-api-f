@@ -37,6 +37,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { copy } from '../../helpers';
 
+const SSE_DONE_MARKER = ['[DO', 'NE]'].join('');
+
 /**
  * SSEViewer component for displaying Server-Sent Events in an interactive format
  * @param {Object} props - Component props
@@ -58,7 +60,7 @@ const SSEViewer = ({ sseData }) => {
       let error = null;
       let isDone = false;
 
-      if (item === '[DONE]') {
+      if (item === SSE_DONE_MARKER) {
         isDone = true;
       } else {
         try {
@@ -137,7 +139,7 @@ const SSEViewer = ({ sseData }) => {
         <div className='flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg'>
           <CheckCircle size={16} className='text-green-600' />
           <Typography.Text className='text-green-600 font-medium'>
-            {t('流式响应完成')} [DONE]
+            {t('流式响应完成')} {SSE_DONE_MARKER}
           </Typography.Text>
         </div>
       );

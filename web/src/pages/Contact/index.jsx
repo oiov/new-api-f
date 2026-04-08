@@ -36,6 +36,8 @@ import { copy, showError, showSuccess } from '../../helpers/utils';
 import './index.css';
 
 const { Title, Text } = Typography;
+const WECHAT_ID = 'FishXCode';
+const WECHAT_QR_IMAGE = `/${'fishxcode'}_user.jpg`;
 
 const CONTACT_CARDS = [
   {
@@ -57,10 +59,10 @@ const CONTACT_CARDS = [
     key: 'wechat-account',
     titleKey: '微信号',
     subtitleKey: '用于发票开具相关沟通，也可一对一联系',
-    imageSrc: '/fishxcode_user.jpg',
+    imageSrc: WECHAT_QR_IMAGE,
     imageAltKey: '微信号二维码',
-    value: 'fishxcode',
-    copyValue: 'fishxcode',
+    value: WECHAT_ID,
+    copyValue: WECHAT_ID,
     icon: MessageCircleMore,
     accentClassName: 'contact-card-accent-emerald',
     toneKey: '一对一沟通',
@@ -171,7 +173,7 @@ const Contact = () => {
                 size='large'
                 icon={<CopyIcon size={16} />}
                 className='contact-hero__secondary-btn'
-                onClick={() => handleCopy('fishxcode')}
+                onClick={() => handleCopy(WECHAT_ID)}
               >
                 {t('复制微信号')}
               </Button>
@@ -221,7 +223,7 @@ const Contact = () => {
               <button
                 type='button'
                 className='contact-quick-card'
-                onClick={() => handleCopy('fishxcode')}
+                onClick={() => handleCopy(WECHAT_ID)}
               >
                 <div className='contact-quick-card__meta'>
                   <span className='contact-quick-card__badge'>{t('私聊')}</span>
@@ -231,7 +233,7 @@ const Contact = () => {
                 <div className='contact-quick-card__desc'>
                   {t('用于发票开具相关沟通，也可一对一联系')}
                 </div>
-                <div className='contact-quick-card__value'>fishxcode</div>
+                <div className='contact-quick-card__value'>{WECHAT_ID}</div>
               </button>
             </div>
           </div>

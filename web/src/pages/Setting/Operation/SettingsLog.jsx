@@ -135,7 +135,7 @@ export default function SettingsLog(props) {
             }}
           >
             <Text strong style={{ color: '#d46b08' }}>
-              ⚠️ {t('注意')}：
+              {t('注意')}：
             </Text>
             <Text style={{ color: '#333' }}>{t('将删除')} </Text>
             <Text strong style={{ color: '#cf1322' }}>
@@ -208,8 +208,8 @@ export default function SettingsLog(props) {
                   field={'LogConsumeEnabled'}
                   label={t('启用额度消费日志记录')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) => {
                     setInputs({
                       ...inputs,
@@ -223,8 +223,8 @@ export default function SettingsLog(props) {
                   field={'ErrorLogDisplayEnabled'}
                   label={t('展示错误日志')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) => {
                     setInputs({
                       ...inputs,
@@ -245,8 +245,8 @@ export default function SettingsLog(props) {
                   field={'ErrorDetailsEnabled'}
                   label={t('记录并返回详细错误')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) => {
                     setInputs({
                       ...inputs,

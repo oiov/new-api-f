@@ -50,7 +50,7 @@ const ParameterControl = ({
           <div className='flex items-center gap-2'>
             <Thermometer size={16} className='text-gray-500' />
             <Typography.Text strong className='text-sm'>
-              Temperature
+              {t('温度')}
             </Typography.Text>
             <Tag size='small' shape='circle'>
               {inputs.temperature}
@@ -94,7 +94,7 @@ const ParameterControl = ({
           <div className='flex items-center gap-2'>
             <Target size={16} className='text-gray-500' />
             <Typography.Text strong className='text-sm'>
-              Top P
+              {t('核采样 Top P')}
             </Typography.Text>
             <Tag size='small' shape='circle'>
               {inputs.top_p}
@@ -134,7 +134,7 @@ const ParameterControl = ({
           <div className='flex items-center gap-2'>
             <Repeat size={16} className='text-gray-500' />
             <Typography.Text strong className='text-sm'>
-              Frequency Penalty
+              {t('频率惩罚')}
             </Typography.Text>
             <Tag size='small' shape='circle'>
               {inputs.frequency_penalty}
@@ -178,7 +178,7 @@ const ParameterControl = ({
           <div className='flex items-center gap-2'>
             <Ban size={16} className='text-gray-500' />
             <Typography.Text strong className='text-sm'>
-              Presence Penalty
+              {t('存在惩罚')}
             </Typography.Text>
             <Tag size='small' shape='circle'>
               {inputs.presence_penalty}
@@ -222,7 +222,7 @@ const ParameterControl = ({
           <div className='flex items-center gap-2'>
             <Hash size={16} className='text-gray-500' />
             <Typography.Text strong className='text-sm'>
-              Max Tokens
+              {t('最大令牌数')}
             </Typography.Text>
           </div>
           <Button
@@ -242,7 +242,7 @@ const ParameterControl = ({
           />
         </div>
         <Input
-          placeholder='MaxTokens'
+          placeholder={t('请输入最大令牌数')}
           name='max_tokens'
           required
           autoComplete='new-password'
@@ -262,7 +262,7 @@ const ParameterControl = ({
           <div className='flex items-center gap-2'>
             <Shuffle size={16} className='text-gray-500' />
             <Typography.Text strong className='text-sm'>
-              Seed
+              {t('随机种子')}
             </Typography.Text>
             <Typography.Text className='text-xs text-gray-400'>
               ({t('可选，用于复现结果')})

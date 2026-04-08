@@ -202,8 +202,8 @@ export default function SettingsHeaderNavModules(props) {
     },
     {
       key: 'pricing',
-      title: t('模型广场'),
-      description: t('模型定价，需要登录访问'),
+      title: t('价格方案'),
+      description: t('模型价格与套餐展示入口'),
       hasSubConfig: true, // 标识该模块有子配置
     },
     {
@@ -214,13 +214,13 @@ export default function SettingsHeaderNavModules(props) {
     },
     {
       key: 'docs',
-      title: t('文档'),
-      description: t('系统文档和帮助信息'),
+      title: t('开发文档'),
+      description: t('开发文档与接入说明入口'),
     },
     {
       key: 'about',
-      title: t('关于'),
-      description: t('关于系统的详细信息'),
+      title: t('系统状态'),
+      description: t('系统状态与站点说明页面'),
     },
     {
       key: 'contact',
@@ -333,7 +333,7 @@ export default function SettingsHeaderNavModules(props) {
                             }}
                           >
                             {module.key === 'pricing'
-                              ? t('开启后未登录用户无法访问模型广场')
+                              ? t('开启后未登录用户无法访问价格方案页面')
                               : t('开启后未登录用户无法访问套餐页面')}
                           </Text>
                         </div>

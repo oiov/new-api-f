@@ -28,6 +28,12 @@ import {
 import { Code, Edit, Check, X, AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+const REQUEST_PLACEHOLDER = JSON.stringify(
+  { model: 'gpt-4o', messages: ['...'], ['...']: '...' },
+  null,
+  0,
+).replace('["..."]', '...');
+
 const CustomRequestEditor = ({
   customRequestMode,
   customRequestBody,
@@ -187,7 +193,7 @@ const CustomRequestEditor = ({
             <TextArea
               value={localValue}
               onChange={handleValueChange}
-              placeholder='{"model": "gpt-4o", "messages": [...], ...}'
+              placeholder={REQUEST_PLACEHOLDER}
               autosize={{ minRows: 8, maxRows: 20 }}
               className={`custom-request-textarea !rounded-lg font-mono text-sm ${!isValid ? '!border-red-500' : ''}`}
               style={{

@@ -379,7 +379,7 @@ const RechargeCard = ({
                                 fontWeight: 'normal',
                               }}
                             >
-                              (1 $ = {rate.toFixed(2)} {symbol})
+                              ({t('1 美元 =')} {rate.toFixed(2)} {symbol})
                             </span>
                           );
                         })()}

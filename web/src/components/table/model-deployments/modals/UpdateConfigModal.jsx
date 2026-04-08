@@ -219,7 +219,7 @@ const UpdateConfigModal = ({ visible, onCancel, deployment, onSuccess, t }) => {
               </Text>
               <div className='mt-1'>
                 <Text type='secondary' size='small'>
-                  ID: {deployment?.id}
+                  {t('部署 ID')}: {deployment?.id}
                 </Text>
               </div>
             </div>

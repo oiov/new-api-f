@@ -221,7 +221,7 @@ const renderInviteInfo = (text, record, t) => {
             className='!text-xs cursor-pointer'
             onClick={handleCopyAffCode}
           >
-            AFF: {record.aff_code || '-'}
+            {t('邀请返佣码')}: {record.aff_code || '-'}
           </Tag>
         </Tooltip>
         <Tag color='white' shape='circle' className='!text-xs'>

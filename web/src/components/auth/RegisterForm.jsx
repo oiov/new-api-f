@@ -247,7 +247,7 @@ const RegisterForm = () => {
       return;
     }
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
       return;
     }
     setWechatCodeSubmitLoading(true);
@@ -262,13 +262,13 @@ const RegisterForm = () => {
         setUserData(data);
         updateAPI();
         navigate('/');
-        showSuccess('注册成功！');
+        showSuccess(t('注册成功！'));
         setShowWeChatLoginModal(false);
       } else {
         showError(message);
       }
     } catch (error) {
-      showError('注册失败，请重试');
+      showError(t('注册失败，请重试'));
     } finally {
       setWechatCodeSubmitLoading(false);
     }
@@ -292,21 +292,23 @@ const RegisterForm = () => {
     }
     const normalizedUsername = (username || '').trim();
     if (normalizedUsername.length === 0) {
-      showInfo('请输入用户名');
+      showInfo(t('请输入用户名'));
       return;
     }
     if (normalizedUsername.length > USERNAME_MAX_LENGTH) {
       showInfo(
-        `用户名最长 ${USERNAME_MAX_LENGTH} 个字符，请不要直接填写完整邮箱地址`,
+        t('用户名最长 {{count}} 个字符，请不要直接填写完整邮箱地址', {
+          count: USERNAME_MAX_LENGTH,
+        }),
       );
       return;
     }
     if (password.length < 8) {
-      showInfo('密码长度不得小于 8 位！');
+      showInfo(t('密码长度不得小于 8 位！'));
       return;
     }
     if (password !== password2) {
-      showInfo('两次输入的密码不一致');
+      showInfo(t('两次输入的密码不一致'));
       return;
     }
     if (username && password) {
@@ -314,7 +316,7 @@ const RegisterForm = () => {
         return;
       }
       if (turnstileEnabled && turnstileToken === '') {
-        showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+        showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
         return;
       }
       setRegisterLoading(true);
@@ -331,12 +333,12 @@ const RegisterForm = () => {
         const { success, message } = res.data;
         if (success) {
           navigate('/login');
-          showSuccess('注册成功！');
+          showSuccess(t('注册成功！'));
         } else {
           showError(getFriendlyRegisterError(message, status, t));
         }
       } catch (error) {
-        showError('注册失败，请重试');
+        showError(t('注册失败，请重试'));
       } finally {
         setRegisterLoading(false);
       }
@@ -346,7 +348,7 @@ const RegisterForm = () => {
   const sendVerificationCode = async () => {
     if (inputs.email === '') return;
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
       return;
     }
     setVerificationCodeLoading(true);
@@ -356,7 +358,7 @@ const RegisterForm = () => {
       );
       const { success, message } = res.data;
       if (success) {
-        showSuccess('验证码发送成功，请检查你的邮箱！');
+        showSuccess(t('验证码发送成功，请检查你的邮箱！'));
         setDisableButton(true); // 发送成功后禁用按钮，开始倒计时
       } else {
         showError(message);
@@ -499,7 +501,7 @@ const RegisterForm = () => {
       const { success, message, data } = res.data;
       if (success) {
         userDispatch({ type: 'login', payload: data });
-        showSuccess('注册成功！');
+        showSuccess(t('注册成功！'));
         setUserData(data);
         updateAPI();
         navigate('/');
@@ -507,7 +509,7 @@ const RegisterForm = () => {
         showError(message);
       }
     } catch (error) {
-      showError('注册失败，请重试');
+      showError(t('注册失败，请重试'));
     }
   };
 
@@ -516,7 +518,7 @@ const RegisterForm = () => {
       <div className='flex flex-col items-center'>
         <div className='w-full max-w-md'>
           <div className='flex items-center justify-center mb-6 gap-2'>
-            <img src={logo} alt='Logo' className='h-10 rounded-full' />
+            <img src={logo} alt={t('站点标志')} className='h-10 rounded-full' />
             <Title heading={3} className='!text-gray-800'>
               {systemName}
             </Title>
@@ -708,7 +710,7 @@ const RegisterForm = () => {
       <div className='flex flex-col items-center'>
         <div className='w-full max-w-md'>
           <div className='flex items-center justify-center mb-6 gap-2'>
-            <img src={logo} alt='Logo' className='h-10 rounded-full' />
+            <img src={logo} alt={t('站点标志')} className='h-10 rounded-full' />
             <Title heading={3} className='!text-gray-800'>
               {systemName}
             </Title>
@@ -920,7 +922,7 @@ const RegisterForm = () => {
         }}
       >
         <div className='flex flex-col items-center'>
-          <img src={status.wechat_qrcode} alt='微信二维码' className='mb-4' />
+          <img src={status.wechat_qrcode} alt={t('微信二维码')} className='mb-4' />
         </div>
 
         <div className='text-center mb-4'>

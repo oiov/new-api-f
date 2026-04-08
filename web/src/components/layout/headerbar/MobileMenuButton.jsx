@@ -45,6 +45,9 @@ const MobileMenuButton = ({
       aria-label={
         (isMobile ? drawerOpen : collapsed) ? t('关闭侧边栏') : t('打开侧边栏')
       }
+      title={
+        (isMobile ? drawerOpen : collapsed) ? t('关闭侧边栏') : t('打开侧边栏')
+      }
       onClick={onToggle}
       theme='borderless'
       type='tertiary'

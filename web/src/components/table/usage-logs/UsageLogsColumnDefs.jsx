@@ -229,7 +229,7 @@ function renderBillingTag(record, t) {
         ) : null}
         {subscriptionId > 0 ? (
           <Tag color='cyan' shape='circle'>
-            {t('订阅实例')}：#{subscriptionId}
+            {t('订阅实例')}：{t('编号')} {subscriptionId}
           </Tag>
         ) : null}
       </Space>

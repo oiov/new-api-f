@@ -158,7 +158,7 @@ const renderPlatform = (platform, t) => {
     case 'suno':
       return (
         <Tag color='green' shape='circle'>
-          Suno
+          {t('Suno')}
         </Tag>
       );
     default:

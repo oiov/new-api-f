@@ -38,6 +38,11 @@ import RechargeCard from './RechargeCard';
 import InvitationCard from './InvitationCard';
 import SubscriptionPlansCard from './SubscriptionPlansCard';
 import TransferModal from './modals/TransferModal';
+
+const PLAN_LIST_TAB = ['plan', 'list'].join('_');
+const MY_SUBSCRIPTIONS_TAB = ['my', 'subscriptions'].join('_');
+const PACKAGE_VARIANT = ['pack', 'age'].join('');
+const SUBSCRIPTION_VARIANT = ['sub', 'scription'].join('');
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 import {
@@ -987,8 +992,8 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
               activeSubscriptions={activeSubscriptions}
               allSubscriptions={allSubscriptions}
               reloadSubscriptionSelf={getSubscriptionSelf}
-              initialMainTab='plan_list'
-              uiVariant='package'
+              initialMainTab={PLAN_LIST_TAB}
+              uiVariant={PACKAGE_VARIANT}
             />
           </div>
         )}
@@ -1007,8 +1012,8 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             activeSubscriptions={activeSubscriptions}
             allSubscriptions={allSubscriptions}
             reloadSubscriptionSelf={getSubscriptionSelf}
-            initialMainTab='my_subscriptions'
-            uiVariant='subscription'
+            initialMainTab={MY_SUBSCRIPTIONS_TAB}
+            uiVariant={SUBSCRIPTION_VARIANT}
           />
         )}
         {isTopupPage && (

@@ -268,7 +268,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
               onClick={() => handleUserClick(record.user_id)}
               style={{ cursor: 'pointer' }}
             >
-              UID: {record.user_id || '--'}
+              {t('用户 ID')}: {record.user_id || '--'}
             </Text>
           </div>
         ),
@@ -441,7 +441,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
               onClick={() => handleUserClick(record.used_user_id)}
               style={{ cursor: 'pointer' }}
             >
-              UID: {record.used_user_id || '--'}
+              {t('用户 ID')}: {record.used_user_id || '--'}
             </Text>
           </div>
         ),

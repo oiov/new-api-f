@@ -81,7 +81,11 @@ export default function SettingModelDeployment(props) {
       );
 
       if (response?.data?.success) {
-        showSuccess(t('API Key 验证成功！连接到 io.net 服务正常'));
+        showSuccess(
+          t('API Key 验证成功！连接到 {{service}} 服务正常', {
+            service: t('io.net'),
+          }),
+        );
       } else {
         const rawMessage = response?.data?.message;
         const localizedMessage = rawMessage

@@ -675,28 +675,28 @@ const NotificationSettings = ({
                               values: ['$0.99'],
                               timestamp: 1739950503,
                             }}
-                            title='webhook'
-                            language='json'
+                            title={t('Webhook')}
+                            language={t('JSON')}
                           />
                         </div>
                         <div className='text-xs text-gray-500 leading-relaxed'>
                           <div>
-                            <strong>type:</strong>{' '}
+                            <strong>{t('类型')}:</strong>{' '}
                             {t('通知类型 (quota_exceed: 额度预警)')}{' '}
                           </div>
                           <div>
-                            <strong>title:</strong> {t('通知标题')}
+                            <strong>{t('标题')}:</strong> {t('通知标题')}
                           </div>
                           <div>
-                            <strong>content:</strong>{' '}
+                            <strong>{t('内容')}:</strong>{' '}
                             {t('通知内容，支持 {{value}} 变量占位符')}
                           </div>
                           <div>
-                            <strong>values:</strong>{' '}
+                            <strong>{t('变量值')}:</strong>{' '}
                             {t('按顺序替换content中的变量占位符')}
                           </div>
                           <div>
-                            <strong>timestamp:</strong> {t('Unix时间戳')}
+                            <strong>{t('时间戳')}:</strong> {t('Unix时间戳')}
                           </div>
                         </div>
                       </div>
@@ -757,7 +757,7 @@ const NotificationSettings = ({
                             rel='noopener noreferrer'
                             className='text-blue-500 hover:text-blue-600 font-medium'
                           >
-                            Bark {t('官方文档')}
+                            {t('Bark')} {t('官方文档')}
                           </a>
                         </div>
                       </div>
@@ -861,7 +861,7 @@ const NotificationSettings = ({
                             rel='noopener noreferrer'
                             className='text-blue-500 hover:text-blue-600 font-medium'
                           >
-                            Gotify {t('官方文档')}
+                            {t('Gotify')} {t('官方文档')}
                           </a>
                         </div>
                       </div>

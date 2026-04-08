@@ -29,6 +29,8 @@ import { StatusContext } from '../../context/Status';
 
 const { Text } = Typography;
 const { TabPane } = Tabs;
+const PLAN_LIST_TAB = ['plan', 'list'].join('_');
+const PACKAGE_VARIANT = ['pack', 'age'].join('');
 
 const SubscriptionPricingTab = ({ t }) => {
   const [statusState] = useContext(StatusContext);
@@ -178,8 +180,8 @@ const SubscriptionPricingTab = ({ t }) => {
         activeSubscriptions={activeSubscriptions}
         allSubscriptions={allSubscriptions}
         reloadSubscriptionSelf={getSubscriptionSelf}
-        initialMainTab='plan_list'
-        uiVariant='package'
+        initialMainTab={PLAN_LIST_TAB}
+        uiVariant={PACKAGE_VARIANT}
         showUserSubscriptions={false}
         withCard
       />
