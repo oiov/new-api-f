@@ -95,6 +95,10 @@ const DefaultNotice = () => {
           <Text strong size='small'>{t('按量用户')}</Text>
           {t(' → 选择按量分组')}
         </Item>
+        <Item>
+          <Text type='danger' size='small' strong>{t('各分组校验签名机制不同，分组之间不能混用。')}</Text>
+          {t('使用错误分组的令牌调用将直接返回鉴权错误，无法降级兼容。')}
+        </Item>
         <Item style={{ marginTop: 4 }}>
           {t('claude 模型仅限 Claude Code 内调用，禁止在外部工具中测试，否则触发风控。')}
         </Item>
