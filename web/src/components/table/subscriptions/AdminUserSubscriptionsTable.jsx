@@ -146,7 +146,7 @@ const AdminUserSubscriptionsTable = ({
   const columns = useMemo(
     () => [
       {
-        title: 'ID',
+        title: t('ID'),
         dataIndex: ['subscription', 'id'],
         width: 70,
       },
@@ -229,7 +229,7 @@ const AdminUserSubscriptionsTable = ({
         render: (_, record) => renderStatusTag(record?.subscription, t),
       },
       {
-        title: '',
+        title: t('操作'),
         width: 120,
         render: (_, record) => (
           <Button

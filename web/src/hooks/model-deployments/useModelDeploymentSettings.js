@@ -18,9 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { API } from '../../helpers';
 
 export const useModelDeploymentSettings = () => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState({
     'model_deployment.ionet.enabled': false,
@@ -57,7 +59,7 @@ export const useModelDeploymentSettings = () => {
 
   const buildConnectionError = (
     rawMessage,
-    fallbackMessage = 'Connection failed',
+    fallbackMessage = t('连接失败'),
   ) => {
     const message = (rawMessage || fallbackMessage).trim();
     const normalized = message.toLowerCase();
@@ -102,19 +104,19 @@ export const useModelDeploymentSettings = () => {
         setConnectionState({
           loading: false,
           ok: false,
-          error: { type: 'network', message: 'Network connection failed' },
+          error: { type: 'network', message: t('网络连接失败') },
         });
         return;
       }
       const rawMessage =
-        error?.response?.data?.message || error?.message || 'Unknown error';
+        error?.response?.data?.message || error?.message || t('未知错误');
       setConnectionState({
         loading: false,
         ok: false,
-        error: buildConnectionError(rawMessage, 'Connection failed'),
+        error: buildConnectionError(rawMessage, t('连接失败')),
       });
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!loading && isIoNetEnabled) {

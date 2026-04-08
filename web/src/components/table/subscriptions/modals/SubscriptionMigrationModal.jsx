@@ -66,20 +66,20 @@ function buildPayload(values) {
   };
 }
 
-const RESOURCE_OPTIONS = [
-  { label: '额度', value: 'quota' },
-  { label: '次数', value: 'request_count' },
-];
-
-const DURATION_OPTIONS = [
-  { label: '不排除', value: '' },
-  { label: '天卡', value: 'day' },
-  { label: '周卡', value: 'week' },
-  { label: '月卡', value: 'month' },
-  { label: '年卡', value: 'year' },
-];
-
 const SubscriptionMigrationModal = ({ visible, handleClose, refresh, t }) => {
+  const RESOURCE_OPTIONS = [
+    { label: t('额度'), value: 'quota' },
+    { label: t('次数'), value: 'request_count' },
+  ];
+
+  const DURATION_OPTIONS = [
+    { label: t('不排除'), value: '' },
+    { label: t('天卡'), value: 'day' },
+    { label: t('周卡'), value: 'week' },
+    { label: t('月卡'), value: 'month' },
+    { label: t('年卡'), value: 'year' },
+  ];
+
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
   const [plans, setPlans] = useState([]);

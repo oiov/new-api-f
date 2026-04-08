@@ -86,6 +86,60 @@ function renderPlanSales(plan, t) {
   return `${t('已售')} ${saleSummary.soldCount} / ${t('剩余')} ${saleSummary.remainingSaleCount}`;
 }
 
+function renderSalesCount(text, record, t) {
+  const saleSummary = getSubscriptionSaleSummary(record?.plan);
+  return (
+    <div>
+      <Text strong>{saleSummary.soldCount}</Text>
+      <Text type='tertiary' size='small' style={{ display: 'block' }}>
+        {saleSummary.unlimited
+          ? t('不限量')
+          : `${t('总量')} ${saleSummary.saleLimitCount}`}
+      </Text>
+    </div>
+  );
+}
+
+function renderSalesDetail(text, record, t) {
+  const saleSummary = getSubscriptionSaleSummary(record?.plan);
+  const content = (
+    <div style={{ width: 220 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: 8 }}>
+        <Text type='tertiary'>{t('已售数量')}</Text>
+        <Text strong>{saleSummary.soldCount}</Text>
+        <Text type='tertiary'>{t('销售上限')}</Text>
+        <Text>
+          {saleSummary.unlimited ? t('不限') : saleSummary.saleLimitCount}
+        </Text>
+        <Text type='tertiary'>{t('剩余可售')}</Text>
+        <Text>
+          {saleSummary.unlimited ? t('不限') : saleSummary.remainingSaleCount}
+        </Text>
+        <Text type='tertiary'>{t('销售状态')}</Text>
+        <Text>
+          {saleSummary.unlimited
+            ? t('不限量')
+            : saleSummary.soldOut
+              ? t('已售罄')
+              : t('可售')}
+        </Text>
+      </div>
+    </div>
+  );
+
+  return (
+    <Popover content={content} position='top' showArrow>
+      <Tag color={saleSummary.soldOut ? 'red' : 'blue'} shape='circle'>
+        {saleSummary.unlimited
+          ? t('不限量')
+          : saleSummary.soldOut
+            ? t('已售罄')
+            : t('查看详情')}
+      </Tag>
+    </Popover>
+  );
+}
+
 function formatDuration(plan, t) {
   if (!plan) return '';
   const u = plan.duration_unit || 'month';
@@ -297,8 +351,25 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
 
 const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
   const isEnabled = record?.plan?.enabled;
+  const soldCount = Number(record?.plan?.sold_count || 0);
+  const canSafeRemove = soldCount === 0;
 
   const handleToggle = () => {
+    if (canSafeRemove && isEnabled) {
+      Modal.confirm({
+        title: t('确认安全删除'),
+        content: t(
+          '安全删除后，该套餐将从默认列表和用户端隐藏，但数据库记录与历史订单会保留，可通过“仅看禁用”重新查看并恢复。',
+        ),
+        centered: true,
+        okButtonProps: {
+          type: 'danger',
+        },
+        onOk: () => setPlanEnabled(record, false),
+      });
+      return;
+    }
+
     if (isEnabled) {
       Modal.confirm({
         title: t('确认禁用'),
@@ -328,7 +399,7 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
       </Button>
       {isEnabled ? (
         <Button theme='light' type='danger' size='small' onClick={handleToggle}>
-          {t('禁用')}
+          {canSafeRemove ? t('安全删除') : t('禁用')}
         </Button>
       ) : (
         <Button
@@ -337,7 +408,7 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
           size='small'
           onClick={handleToggle}
         >
-          {t('启用')}
+          {canSafeRemove ? t('恢复展示') : t('启用')}
         </Button>
       )}
     </Space>
@@ -352,7 +423,7 @@ export const getSubscriptionsColumns = ({
 }) => {
   return [
     {
-      title: 'ID',
+      title: t('ID'),
       dataIndex: ['plan', 'id'],
       width: 60,
       render: (text) => <Text type='tertiary'>#{text}</Text>,
@@ -397,6 +468,16 @@ export const getSubscriptionsColumns = ({
       title: t('库存'),
       width: 120,
       render: (text, record) => renderInventory(text, record, t),
+    },
+    {
+      title: t('销量'),
+      width: 100,
+      render: (text, record) => renderSalesCount(text, record, t),
+    },
+    {
+      title: t('销售详情'),
+      width: 110,
+      render: (text, record) => renderSalesDetail(text, record, t),
     },
     {
       title: t('优先级'),

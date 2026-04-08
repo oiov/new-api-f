@@ -23,6 +23,7 @@ import CardPro from '../../common/ui/CardPro';
 import SubscriptionsTable from './SubscriptionsTable';
 import SubscriptionsActions from './SubscriptionsActions';
 import SubscriptionsDescription from './SubscriptionsDescription';
+import SubscriptionsPlanFilters from './SubscriptionsPlanFilters';
 import AdminUserSubscriptionsFilters from './AdminUserSubscriptionsFilters';
 import AdminUserSubscriptionsTable from './AdminUserSubscriptionsTable';
 import AddEditSubscriptionModal from './modals/AddEditSubscriptionModal';
@@ -77,9 +78,14 @@ const SubscriptionsPage = () => {
           label: item?.plan?.title || `#${item?.plan?.id}`,
           value: item?.plan?.id,
         }))}
-        planMetaMap={new Map(
-          (subscriptionsData.allPlans || []).map((item) => [item?.plan?.id, item?.plan]),
-        )}
+        planMetaMap={
+          new Map(
+            (subscriptionsData.allPlans || []).map((item) => [
+              item?.plan?.id,
+              item?.plan,
+            ]),
+          )
+        }
         t={t}
       />
 
@@ -103,19 +109,34 @@ const SubscriptionsPage = () => {
                     openMigration={() => setShowMigration(true)}
                     enableBatchMode={subscriptionsData.enableBatchMode}
                     setEnableBatchMode={subscriptionsData.setEnableBatchMode}
-                    batchSetPlansEnabled={subscriptionsData.batchSetPlansEnabled}
+                    batchSetPlansEnabled={
+                      subscriptionsData.batchSetPlansEnabled
+                    }
                     batchUpdatingPlans={subscriptionsData.batchUpdatingPlans}
                     t={t}
                   />
                 </div>
                 <Banner
                   type='info'
-                  description={t('Stripe/Creem 需在第三方平台创建商品并填入 ID')}
+                  description={t(
+                    'Stripe/Creem 需在第三方平台创建商品并填入 ID',
+                  )}
                   closeIcon={null}
                   className='!rounded-lg order-2 md:order-1'
                   style={{ maxWidth: '100%' }}
                 />
               </div>
+            }
+            searchArea={
+              <SubscriptionsPlanFilters
+                formInitValues={subscriptionsData.planFiltersFormInitValues}
+                setFormApi={subscriptionsData.setPlanFiltersFormApi}
+                searchPlans={subscriptionsData.searchPlans}
+                resetPlanFilters={subscriptionsData.resetPlanFilters}
+                loading={subscriptionsData.loading}
+                groupOptions={subscriptionsData.groupOptions}
+                t={t}
+              />
             }
             paginationArea={createCardProPagination({
               currentPage: subscriptionsData.activePage,
@@ -128,7 +149,10 @@ const SubscriptionsPage = () => {
             })}
             t={t}
           >
-            <SubscriptionsTable {...subscriptionsData} enableEpay={enableEpay} />
+            <SubscriptionsTable
+              {...subscriptionsData}
+              enableEpay={enableEpay}
+            />
           </CardPro>
         </TabPane>
 
@@ -136,13 +160,15 @@ const SubscriptionsPage = () => {
           <CardPro
             type='type1'
             descriptionArea={
-                <SubscriptionsDescription
-                  compactMode={compactMode}
-                  setCompactMode={setCompactMode}
-                  title={t('订阅管理详情')}
-                  subtitle={t('支持按创建时间、生效开始时间、到期时间，以及套餐、状态、来源、用户、配置分组、升级分组和资源类型进行组合筛选，适合统计与财务审计')}
-                  t={t}
-                />
+              <SubscriptionsDescription
+                compactMode={compactMode}
+                setCompactMode={setCompactMode}
+                title={t('订阅管理详情')}
+                subtitle={t(
+                  '支持按创建时间、生效开始时间、到期时间，以及套餐、状态、来源、用户、配置分组、升级分组和资源类型进行组合筛选，适合统计与财务审计',
+                )}
+                t={t}
+              />
             }
             actionsArea={
               <div className='flex items-center justify-between gap-2 w-full'>
@@ -156,9 +182,13 @@ const SubscriptionsPage = () => {
             }
             searchArea={
               <AdminUserSubscriptionsFilters
-                formInitValues={subscriptionsData.userSubscriptionsFormInitValues}
+                formInitValues={
+                  subscriptionsData.userSubscriptionsFormInitValues
+                }
                 setFormApi={subscriptionsData.setUserSubscriptionsFormApi}
-                searchUserSubscriptions={subscriptionsData.searchUserSubscriptions}
+                searchUserSubscriptions={
+                  subscriptionsData.searchUserSubscriptions
+                }
                 loading={subscriptionsData.userSubscriptionsLoading}
                 groupOptions={subscriptionsData.groupOptions}
                 planOptions={subscriptionsData.planOptions}

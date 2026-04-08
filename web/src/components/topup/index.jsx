@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useContext, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   API,
   showError,
@@ -53,6 +53,7 @@ const VIEW_PACKAGE = 'package';
 
 const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const { t } = useTranslation();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
@@ -148,6 +149,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const isInvitePage = mode === VIEW_INVITE;
   const isPackagePage = mode === VIEW_PACKAGE;
   const shouldLoadTopupData = isTopupPage || isPackagePage;
+  const isConsoleRoute = location.pathname.startsWith('/console');
 
   const formatInvitePlanBenefit = (plan) => {
     if (!plan) {
@@ -164,11 +166,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
       usageText = `${label}${renderQuota(summary.total)}`;
     }
 
-    const parts = [
-      plan.title,
-      usageText,
-      formatSubscriptionDuration(plan, t),
-    ];
+    const parts = [plan.title, usageText, formatSubscriptionDuration(plan, t)];
     if (plan?.upgrade_group) {
       parts.push(`${t('升级分组')} ${plan.upgrade_group}`);
     }
@@ -769,7 +767,13 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   useEffect(() => {
     if (!isInvitePage) return;
     getInviteDetails().then();
-  }, [isInvitePage, invitedUsersPage, invitedUsersPageSize, inviterRewardPage, inviterRewardPageSize]);
+  }, [
+    isInvitePage,
+    invitedUsersPage,
+    invitedUsersPageSize,
+    inviterRewardPage,
+    inviterRewardPageSize,
+  ]);
 
   useEffect(() => {
     if (shouldLoadTopupData) {
@@ -896,7 +900,11 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   };
 
   return (
-    <div className='w-full max-w-7xl mx-auto relative min-h-screen lg:min-h-0 mt-[60px] px-2'>
+    <div
+      className={`w-full max-w-7xl mx-auto relative min-h-screen lg:min-h-0 px-2 ${
+        isConsoleRoute ? '' : 'mt-[60px]'
+      }`}
+    >
       {/* 划转模态框 */}
       <TransferModal
         t={t}
