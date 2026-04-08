@@ -724,12 +724,18 @@ func reconcileUserSubscriptionUsageFromLogs(sub *UserSubscription, now int64) (b
 	if windowStart <= 0 {
 		windowStart = now
 	}
-	summary, err := summarizeSubscriptionConsumeLogs(0, sub.Id, 0, sub.UserId, windowStart, now)
+	expectedAmountUsed, expectedCountUsed, hasPreConsumeRecords, err := summarizeUserSubscriptionUsageFromPreConsumeRecords(sub, windowStart, now)
 	if err != nil {
 		return false, err
 	}
-	expectedAmountUsed := summary.TotalQuotaConsumed
-	expectedCountUsed := summary.TotalRequestConsumed
+	if !hasPreConsumeRecords {
+		summary, err := summarizeSubscriptionConsumeLogs(0, sub.Id, 0, sub.UserId, windowStart, now)
+		if err != nil {
+			return false, err
+		}
+		expectedAmountUsed = summary.TotalQuotaConsumed
+		expectedCountUsed = summary.TotalRequestConsumed
+	}
 	if sub.AmountTotal > 0 && expectedAmountUsed > sub.AmountTotal {
 		expectedAmountUsed = sub.AmountTotal
 	}
@@ -746,6 +752,30 @@ func reconcileUserSubscriptionUsageFromLogs(sub *UserSubscription, now int64) (b
 		changed = true
 	}
 	return changed, nil
+}
+
+func summarizeUserSubscriptionUsageFromPreConsumeRecords(sub *UserSubscription, startTimestamp int64, endTimestamp int64) (int64, int64, bool, error) {
+	if sub == nil {
+		return 0, 0, false, nil
+	}
+	if DB == nil || !DB.Migrator().HasTable(&SubscriptionPreConsumeRecord{}) {
+		return 0, 0, false, nil
+	}
+	type usageSummary struct {
+		Count       int64
+		Amount      int64
+		RecordCount int64
+	}
+	var summary usageSummary
+	err := DB.Model(&SubscriptionPreConsumeRecord{}).
+		Select("COALESCE(SUM(pre_consumed_count), 0) AS count, COALESCE(SUM(pre_consumed_amount), 0) AS amount, COUNT(*) AS record_count").
+		Where("user_subscription_id = ? AND user_id = ? AND status = ?", sub.Id, sub.UserId, "consumed").
+		Where("created_at >= ? AND created_at <= ?", startTimestamp, endTimestamp).
+		Take(&summary).Error
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return summary.Amount, summary.Count, summary.RecordCount > 0, nil
 }
 
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {
