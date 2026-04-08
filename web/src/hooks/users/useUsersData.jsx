@@ -266,7 +266,14 @@ export const useUsersData = () => {
     if (searchKeyword === '' && searchGroup === '') {
       loadUsers(page, pageSize).then();
     } else {
-      searchUsers(page, pageSize, searchKeyword, searchGroup, sortBy, sortOrder).then();
+      searchUsers(
+        page,
+        pageSize,
+        searchKeyword,
+        searchGroup,
+        sortBy,
+        sortOrder,
+      ).then();
     }
   };
 
@@ -301,7 +308,14 @@ export const useUsersData = () => {
     if (searchKeyword === '' && searchGroup === '') {
       await loadUsers(page, pageSize);
     } else {
-      await searchUsers(page, pageSize, searchKeyword, searchGroup, sortBy, sortOrder);
+      await searchUsers(
+        page,
+        pageSize,
+        searchKeyword,
+        searchGroup,
+        sortBy,
+        sortOrder,
+      );
     }
   };
 

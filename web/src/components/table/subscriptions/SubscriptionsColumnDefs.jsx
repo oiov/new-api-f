@@ -53,7 +53,10 @@ function renderPlanLimits(plan, t) {
   if (hasRequestCountLimit(plan)) {
     items.push(
       `${formatSubscriptionResourceLabel(
-        { resource_type: 'request_count', quota_reset_period: plan?.quota_reset_period },
+        {
+          resource_type: 'request_count',
+          quota_reset_period: plan?.quota_reset_period,
+        },
         t,
       )} ${Number(plan?.request_count_total || 0)}`,
     );
@@ -61,7 +64,10 @@ function renderPlanLimits(plan, t) {
   if (hasAmountLimit(plan)) {
     items.push(
       `${formatSubscriptionResourceLabel(
-        { resource_type: 'quota', quota_reset_period: plan?.quota_reset_period },
+        {
+          resource_type: 'quota',
+          quota_reset_period: plan?.quota_reset_period,
+        },
         t,
       )} ${renderQuota(Number(plan?.total_amount || 0))}`,
     );
@@ -116,17 +122,25 @@ const renderPlanTitle = (text, record, t) => {
         {isSubscriptionDiscountActive(plan) ? (
           <>
             <Text type='tertiary'>{t('原价')}</Text>
-            <Text delete>{convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}</Text>
+            <Text delete>
+              {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+            </Text>
             <Text type='tertiary'>{t('优惠截止')}</Text>
-            <Text>{new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()}</Text>
+            <Text>
+              {new Date(
+                Number(plan?.discount_deadline || 0) * 1000,
+              ).toLocaleString()}
+            </Text>
           </>
         ) : null}
         <Text type='tertiary'>{t('套餐权益')}</Text>
         <Text>{renderPlanLimits(plan, t)}</Text>
         <Text type='tertiary'>{t('升级分组')}</Text>
-        {plan?.upgrade_group
-          ? renderGroupTextWithDescription(plan.upgrade_group)
-          : <Text>{t('不升级')}</Text>}
+        {plan?.upgrade_group ? (
+          renderGroupTextWithDescription(plan.upgrade_group)
+        ) : (
+          <Text>{t('不升级')}</Text>
+        )}
         <Text type='tertiary'>{t('购买上限')}</Text>
         <Text>
           {plan?.max_purchase_per_user > 0
@@ -236,9 +250,11 @@ const renderUpgradeGroup = (text, record, t) => {
   const group = record?.plan?.upgrade_group || '';
   return (
     <span>
-      {group
-        ? renderGroupTextWithDescription(group)
-        : <Text type='tertiary'>{t('不升级')}</Text>}
+      {group ? (
+        renderGroupTextWithDescription(group)
+      ) : (
+        <Text type='tertiary'>{t('不升级')}</Text>
+      )}
     </span>
   );
 };
@@ -359,7 +375,12 @@ export const getSubscriptionsColumns = ({
           <div>
             {renderPrice(effective)}
             {activeDiscount ? (
-              <Text type='tertiary' size='small' delete style={{ display: 'block' }}>
+              <Text
+                type='tertiary'
+                size='small'
+                delete
+                style={{ display: 'block' }}
+              >
                 {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
               </Text>
             ) : null}

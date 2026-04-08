@@ -41,12 +41,14 @@ export const useSubscriptionsData = () => {
 
   // Admin user subscriptions
   const [userSubscriptions, setUserSubscriptions] = useState([]);
-  const [userSubscriptionsLoading, setUserSubscriptionsLoading] = useState(true);
+  const [userSubscriptionsLoading, setUserSubscriptionsLoading] =
+    useState(true);
   const [userSubscriptionsPage, setUserSubscriptionsPage] = useState(1);
   const [userSubscriptionsPageSize, setUserSubscriptionsPageSize] =
     useState(ITEMS_PER_PAGE);
   const [userSubscriptionsTotal, setUserSubscriptionsTotal] = useState(0);
-  const [userSubscriptionsFormApi, setUserSubscriptionsFormApi] = useState(null);
+  const [userSubscriptionsFormApi, setUserSubscriptionsFormApi] =
+    useState(null);
 
   // Drawer states
   const [showEdit, setShowEdit] = useState(false);

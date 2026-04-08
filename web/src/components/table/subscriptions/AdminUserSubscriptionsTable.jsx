@@ -58,8 +58,8 @@ function renderUsageBlock(sub, t) {
           { resource_type: 'quota', reset_period: sub?.reset_period },
           t,
         )}{' '}
-        {renderQuota(amountUsed)}/{renderQuota(amountTotal)} ·{' '}
-        {t('剩余')} {renderQuota(Math.max(0, amountTotal - amountUsed))}
+        {renderQuota(amountUsed)}/{renderQuota(amountTotal)} · {t('剩余')}{' '}
+        {renderQuota(Math.max(0, amountTotal - amountUsed))}
       </div>,
     );
   }
@@ -84,12 +84,24 @@ function renderStatusTag(sub, t) {
   const isExpiredByTime = end > 0 && end < now;
   const isActive = status === 'active' && !isExpiredByTime;
   if (isActive) {
-    return <Tag color='green' size='small'>{t('生效')}</Tag>;
+    return (
+      <Tag color='green' size='small'>
+        {t('生效')}
+      </Tag>
+    );
   }
   if (status === 'cancelled') {
-    return <Tag color='grey' size='small'>{t('已作废')}</Tag>;
+    return (
+      <Tag color='grey' size='small'>
+        {t('已作废')}
+      </Tag>
+    );
   }
-  return <Tag color='orange' size='small'>{t('已过期')}</Tag>;
+  return (
+    <Tag color='orange' size='small'>
+      {t('已过期')}
+    </Tag>
+  );
 }
 
 function renderSourceTag(source, t) {
@@ -154,7 +166,8 @@ const AdminUserSubscriptionsTable = ({
         title: t('配置分组'),
         dataIndex: 'user_group',
         width: 120,
-        render: (text) => (text ? renderGroup(text) : <Tag size='small'>-</Tag>),
+        render: (text) =>
+          text ? renderGroup(text) : <Tag size='small'>-</Tag>,
       },
       {
         title: t('套餐'),
@@ -162,7 +175,8 @@ const AdminUserSubscriptionsTable = ({
         render: (_, record) => {
           const sub = record?.subscription;
           const title =
-            planTitleMap.get(sub?.plan_id) || (sub?.plan_id ? `#${sub.plan_id}` : '-');
+            planTitleMap.get(sub?.plan_id) ||
+            (sub?.plan_id ? `#${sub.plan_id}` : '-');
           return (
             <div>
               <div>{title}</div>

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Badge,
   Button,
   Card,
   Collapse,
@@ -46,6 +47,8 @@ import {
   Clock,
   Crown,
   History,
+  LayoutGrid,
+  List,
   Package,
   RefreshCw,
   ShieldCheck,
@@ -211,6 +214,7 @@ const SubscriptionPlansCard = ({
   withCard = true,
   initialMainTab = 'my_subscriptions',
   uiVariant = 'subscription',
+  showUserSubscriptions = true,
 }) => {
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -232,6 +236,9 @@ const SubscriptionPlansCard = ({
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
   const isPackageVariant = uiVariant === 'package';
+  const [planViewMode, setPlanViewMode] = useState(
+    isPackageVariant ? 'card' : 'table',
+  );
 
   const openBuy = (p) => {
     setSelectedPlan(p);
@@ -342,6 +349,18 @@ const SubscriptionPlansCard = ({
   const hasActiveSubscription = activeSubscriptions.length > 0;
   const hasAnySubscription = allSubscriptions.length > 0;
   const disableSubscriptionPreference = !hasActiveSubscription;
+
+  useEffect(() => {
+    if (uiVariant !== 'package' || !showUserSubscriptions) {
+      return;
+    }
+    setActiveMainTab(hasAnySubscription ? 'my_subscriptions' : 'plan_list');
+  }, [hasAnySubscription, showUserSubscriptions, uiVariant]);
+
+  useEffect(() => {
+    setPlanViewMode(isPackageVariant ? 'card' : 'table');
+  }, [isPackageVariant]);
+
   const isSubscriptionPreference =
     billingPreference === 'subscription_first' ||
     billingPreference === 'subscription_only';
@@ -1623,105 +1642,6 @@ const SubscriptionPlansCard = ({
             </>
           )}
         </div>
-      ) : isPackageVariant ? (
-        <Card
-          className='!rounded-2xl w-full border-0 shadow-sm'
-          bodyStyle={{ padding: '18px 22px' }}
-        >
-          <div className='space-y-3'>
-            <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
-              <div>
-                <div className='flex items-center gap-2'>
-                  <div className='rounded-lg bg-indigo-500/15 p-1.5'>
-                    <Package
-                      size={14}
-                      className='text-indigo-600 dark:text-indigo-400'
-                    />
-                  </div>
-                  <Text strong>{t('可购买套餐')}</Text>
-                </div>
-                <Text type='tertiary' size='small' className='mt-1 block'>
-                  {planSort === 'recommended'
-                    ? t(
-                        '优先展示更适合多数用户的套餐，直接查看价格、权益与限制范围',
-                      )
-                    : t('按你的关注点排序后，直接比较不同档位的差异')}
-                </Text>
-              </div>
-              <div className='flex items-center gap-2'>
-                <CalendarClock size={14} className='text-gray-400' />
-                <Select
-                  value={planSort}
-                  size='small'
-                  onChange={setPlanSort}
-                  optionList={[
-                    { value: 'recommended', label: t('推荐优先') },
-                    { value: 'price_asc', label: t('价格从低到高') },
-                    { value: 'price_desc', label: t('价格从高到低') },
-                    { value: 'value_desc', label: t('权益从多到少') },
-                  ]}
-                />
-              </div>
-            </div>
-
-            <Divider margin={8} />
-
-            {sortedPlans.length > 0 ? (
-              <div className='space-y-4'>
-                <div className='subscription-plan-selling-grid'>
-                  {pagedPlans.map((record, index) =>
-                    renderPackagePlanCard(record, index),
-                  )}
-                </div>
-                <div className='subscription-plan-selling-pagination'>
-                  <Text type='tertiary' size='small'>
-                    {t('显示第 {{start}} 条-第 {{end}} 条，共 {{total}} 条', {
-                      start:
-                        sortedPlans.length === 0
-                          ? 0
-                          : (planPage - 1) * planPageSize + 1,
-                      end: Math.min(
-                        planPage * planPageSize,
-                        sortedPlans.length,
-                      ),
-                      total: sortedPlans.length,
-                    })}
-                  </Text>
-                  <div className='subscription-plan-selling-pagination__controls flex items-center gap-3'>
-                    <Select
-                      value={planPageSize}
-                      size='small'
-                      onChange={(size) => {
-                        setPlanPageSize(size);
-                        setPlanPage(1);
-                      }}
-                      optionList={[6, 9, 12, 18].map((size) => ({
-                        value: size,
-                        label: `${t('每页')} ${size}`,
-                      }))}
-                    />
-                    <Pagination
-                      currentPage={planPage}
-                      pageSize={planPageSize}
-                      total={sortedPlans.length}
-                      pageSizeOptions={[6, 9, 12, 18]}
-                      showSizeChanger={false}
-                      onPageChange={setPlanPage}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className='py-8'>
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  title={t('暂无可购买套餐')}
-                  description={t('管理员暂未上架套餐，请稍后再试或联系管理员')}
-                />
-              </div>
-            )}
-          </div>
-        </Card>
       ) : (
         <Space vertical style={{ width: '100%' }} spacing={12}>
           <Card
@@ -1735,269 +1655,334 @@ const SubscriptionPlansCard = ({
               activeKey={activeMainTab}
               onChange={(key) => setActiveMainTab(key)}
             >
-              <TabPane
-                itemKey='my_subscriptions'
-                tab={`${t('我的订阅')} (${allSubscriptions.length})`}
-              >
-                <div className='space-y-3'>
-                  <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
-                    <div className='flex flex-wrap items-center gap-2'>
-                      <Tag
-                        color={
-                          subscriptionView === 'active' ? 'green' : 'white'
-                        }
-                        shape='circle'
-                        size='small'
-                      >
-                        {activeSubscriptionItems.length} {t('个生效中')}
-                      </Tag>
-                      {historySubscriptionItems.length > 0 && (
+              {showUserSubscriptions && (
+                <TabPane
+                  itemKey='my_subscriptions'
+                  tab={`${t('我的订阅')} (${allSubscriptions.length})`}
+                >
+                  <div className='space-y-3'>
+                    <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
+                      <div className='flex flex-wrap items-center gap-2'>
                         <Tag
                           color={
-                            subscriptionView === 'history' ? 'orange' : 'white'
+                            subscriptionView === 'active' ? 'green' : 'white'
                           }
                           shape='circle'
                           size='small'
                         >
-                          {historySubscriptionItems.length} {t('个历史记录')}
+                          {activeSubscriptionItems.length} {t('个生效中')}
                         </Tag>
-                      )}
-                    </div>
-                    <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
-                      <Space wrap>
-                        <Button
-                          theme={
-                            subscriptionView === 'active' ? 'solid' : 'outline'
-                          }
-                          type='primary'
-                          size='small'
-                          onClick={() => setSubscriptionView('active')}
-                        >
-                          {t('生效中')}
-                        </Button>
-                        <Button
-                          theme={
-                            subscriptionView === 'history' ? 'solid' : 'outline'
-                          }
-                          type='tertiary'
-                          size='small'
-                          onClick={() => setSubscriptionView('history')}
-                        >
-                          {t('历史订阅')}
-                        </Button>
-                        <Button
-                          theme={
-                            subscriptionView === 'all' ? 'solid' : 'outline'
-                          }
-                          type='tertiary'
-                          size='small'
-                          onClick={() => setSubscriptionView('all')}
-                        >
-                          {t('全部')}
-                        </Button>
-                        <Button
-                          theme='outline'
-                          type='tertiary'
-                          size='small'
-                          onClick={() => setConsumeLogsFilter({})}
-                        >
-                          {t('全部订阅消耗')}
-                        </Button>
-                      </Space>
-                      <div className='flex items-center gap-2'>
-                        <Select
-                          value={displayBillingPreference}
-                          onChange={onChangeBillingPreference}
-                          size='small'
-                          optionList={[
-                            {
-                              value: 'subscription_first',
-                              label: disableSubscriptionPreference
-                                ? `${t('优先订阅')} (${t('无生效')})`
-                                : t('优先订阅'),
-                              disabled: disableSubscriptionPreference,
-                            },
-                            { value: 'wallet_first', label: t('优先钱包') },
-                            {
-                              value: 'subscription_only',
-                              label: disableSubscriptionPreference
-                                ? `${t('仅用订阅')} (${t('无生效')})`
-                                : t('仅用订阅'),
-                              disabled: disableSubscriptionPreference,
-                            },
-                            { value: 'wallet_only', label: t('仅用钱包') },
-                          ]}
-                        />
-                        <Button
-                          size='small'
-                          theme='light'
-                          type='tertiary'
-                          icon={
-                            <RefreshCw
-                              size={12}
-                              className={refreshing ? 'animate-spin' : ''}
-                            />
-                          }
-                          onClick={handleRefresh}
-                          loading={refreshing}
-                        />
+                        {historySubscriptionItems.length > 0 && (
+                          <Tag
+                            color={
+                              subscriptionView === 'history'
+                                ? 'orange'
+                                : 'white'
+                            }
+                            shape='circle'
+                            size='small'
+                          >
+                            {historySubscriptionItems.length} {t('个历史记录')}
+                          </Tag>
+                        )}
+                      </div>
+                      <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
+                        <Space wrap>
+                          <Button
+                            theme={
+                              subscriptionView === 'active'
+                                ? 'solid'
+                                : 'outline'
+                            }
+                            type='primary'
+                            size='small'
+                            onClick={() => setSubscriptionView('active')}
+                          >
+                            {t('生效中')}
+                          </Button>
+                          <Button
+                            theme={
+                              subscriptionView === 'history'
+                                ? 'solid'
+                                : 'outline'
+                            }
+                            type='tertiary'
+                            size='small'
+                            onClick={() => setSubscriptionView('history')}
+                          >
+                            {t('历史订阅')}
+                          </Button>
+                          <Button
+                            theme={
+                              subscriptionView === 'all' ? 'solid' : 'outline'
+                            }
+                            type='tertiary'
+                            size='small'
+                            onClick={() => setSubscriptionView('all')}
+                          >
+                            {t('全部')}
+                          </Button>
+                          <Button
+                            theme='outline'
+                            type='tertiary'
+                            size='small'
+                            onClick={() => setConsumeLogsFilter({})}
+                          >
+                            {t('全部订阅消耗')}
+                          </Button>
+                        </Space>
+                        <div className='flex items-center gap-2'>
+                          <Select
+                            value={displayBillingPreference}
+                            onChange={onChangeBillingPreference}
+                            size='small'
+                            optionList={[
+                              {
+                                value: 'subscription_first',
+                                label: disableSubscriptionPreference
+                                  ? `${t('优先订阅')} (${t('无生效')})`
+                                  : t('优先订阅'),
+                                disabled: disableSubscriptionPreference,
+                              },
+                              { value: 'wallet_first', label: t('优先钱包') },
+                              {
+                                value: 'subscription_only',
+                                label: disableSubscriptionPreference
+                                  ? `${t('仅用订阅')} (${t('无生效')})`
+                                  : t('仅用订阅'),
+                                disabled: disableSubscriptionPreference,
+                              },
+                              { value: 'wallet_only', label: t('仅用钱包') },
+                            ]}
+                          />
+                          <Button
+                            size='small'
+                            theme='light'
+                            type='tertiary'
+                            icon={
+                              <RefreshCw
+                                size={12}
+                                className={refreshing ? 'animate-spin' : ''}
+                              />
+                            }
+                            onClick={handleRefresh}
+                            loading={refreshing}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className='flex flex-col gap-2 rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3 xl:flex-row xl:items-center'>
-                    <Input
-                      value={subscriptionKeyword}
-                      onChange={setSubscriptionKeyword}
-                      placeholder={t('搜索套餐名 / 说明 / 订阅 ID')}
-                      showClear
-                      className='min-w-0 flex-1'
-                    />
-                    <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3'>
-                      <Select
-                        value={subscriptionPlanFilter}
-                        onChange={setSubscriptionPlanFilter}
-                        size='small'
-                        optionList={subscriptionPlanOptions}
+                    <div className='flex flex-col gap-2 rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3 xl:flex-row xl:items-center'>
+                      <Input
+                        value={subscriptionKeyword}
+                        onChange={setSubscriptionKeyword}
+                        placeholder={t('搜索套餐名 / 说明 / 订阅 ID')}
+                        showClear
+                        className='min-w-0 flex-1'
                       />
-                      <Select
-                        value={subscriptionResourceFilter}
-                        onChange={setSubscriptionResourceFilter}
+                      <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3'>
+                        <Select
+                          value={subscriptionPlanFilter}
+                          onChange={setSubscriptionPlanFilter}
+                          size='small'
+                          optionList={subscriptionPlanOptions}
+                        />
+                        <Select
+                          value={subscriptionResourceFilter}
+                          onChange={setSubscriptionResourceFilter}
+                          size='small'
+                          optionList={[
+                            { value: 'all', label: t('全部资源类型') },
+                            { value: 'quota', label: t('按额度') },
+                            { value: 'request_count', label: t('按次数') },
+                          ]}
+                        />
+                        <Select
+                          value={subscriptionResetFilter}
+                          onChange={setSubscriptionResetFilter}
+                          size='small'
+                          optionList={resetPeriodOptions}
+                        />
+                      </div>
+                      <Button
+                        theme='outline'
+                        type='tertiary'
                         size='small'
-                        optionList={[
-                          { value: 'all', label: t('全部资源类型') },
-                          { value: 'quota', label: t('按额度') },
-                          { value: 'request_count', label: t('按次数') },
-                        ]}
-                      />
-                      <Select
-                        value={subscriptionResetFilter}
-                        onChange={setSubscriptionResetFilter}
-                        size='small'
-                        optionList={resetPeriodOptions}
-                      />
-                    </div>
-                    <Button
-                      theme='outline'
-                      type='tertiary'
-                      size='small'
-                      onClick={() => {
-                        setSubscriptionKeyword('');
-                        setSubscriptionPlanFilter('all');
-                        setSubscriptionResourceFilter('all');
-                        setSubscriptionResetFilter('all');
-                      }}
-                    >
-                      {t('清空筛选')}
-                    </Button>
-                  </div>
-
-                  {disableSubscriptionPreference &&
-                    isSubscriptionPreference && (
-                      <Text type='tertiary' size='small' className='block'>
-                        {t('已保存偏好为')}
-                        {subscriptionPreferenceLabel}
-                        {t('，当前无生效订阅，将自动使用钱包')}
-                      </Text>
-                    )}
-
-                  <Divider margin={8} />
-
-                  {hasAnySubscription ? (
-                    filteredVisibleSubscriptionItems.length > 0 ? (
-                      <Collapse
-                        activeKey={expandedSubscriptionKeys}
-                        onChange={setExpandedSubscriptionKeys}
+                        onClick={() => {
+                          setSubscriptionKeyword('');
+                          setSubscriptionPlanFilter('all');
+                          setSubscriptionResourceFilter('all');
+                          setSubscriptionResetFilter('all');
+                        }}
                       >
-                        {filteredVisibleSubscriptionItems.map((item) => (
-                          <Collapse.Panel
-                            key={item.key}
-                            itemKey={item.key}
-                            header={renderSubscriptionHeader(item)}
-                          >
-                            {renderSubscriptionBody(item)}
-                          </Collapse.Panel>
-                        ))}
-                      </Collapse>
+                        {t('清空筛选')}
+                      </Button>
+                    </div>
+
+                    {disableSubscriptionPreference &&
+                      isSubscriptionPreference && (
+                        <Text type='tertiary' size='small' className='block'>
+                          {t('已保存偏好为')}
+                          {subscriptionPreferenceLabel}
+                          {t('，当前无生效订阅，将自动使用钱包')}
+                        </Text>
+                      )}
+
+                    <Divider margin={8} />
+
+                    {hasAnySubscription ? (
+                      filteredVisibleSubscriptionItems.length > 0 ? (
+                        <Collapse
+                          activeKey={expandedSubscriptionKeys}
+                          onChange={setExpandedSubscriptionKeys}
+                        >
+                          {filteredVisibleSubscriptionItems.map((item) => (
+                            <Collapse.Panel
+                              key={item.key}
+                              itemKey={item.key}
+                              header={renderSubscriptionHeader(item)}
+                            >
+                              {renderSubscriptionBody(item)}
+                            </Collapse.Panel>
+                          ))}
+                        </Collapse>
+                      ) : (
+                        <div className='py-8'>
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            title={
+                              subscriptionView === 'history'
+                                ? t('暂无历史订阅')
+                                : t('暂无生效订阅')
+                            }
+                            description={
+                              subscriptionKeyword ||
+                              subscriptionPlanFilter !== 'all' ||
+                              subscriptionResourceFilter !== 'all' ||
+                              subscriptionResetFilter !== 'all'
+                                ? t('当前组合筛选下没有匹配结果')
+                                : t('切换筛选或购买新套餐后会显示在这里')
+                            }
+                          />
+                        </div>
+                      )
                     ) : (
                       <div className='py-8'>
                         <Empty
                           image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          title={
-                            subscriptionView === 'history'
-                              ? t('暂无历史订阅')
-                              : t('暂无生效订阅')
-                          }
-                          description={
-                            subscriptionKeyword ||
-                            subscriptionPlanFilter !== 'all' ||
-                            subscriptionResourceFilter !== 'all' ||
-                            subscriptionResetFilter !== 'all'
-                              ? t('当前组合筛选下没有匹配结果')
-                              : t('切换筛选或购买新套餐后会显示在这里')
-                          }
+                          title={t('暂无订阅记录')}
+                          description={t(
+                            '你还没有购买套餐，可前往“套餐列表”选择适合的方案',
+                          )}
                         />
                       </div>
-                    )
-                  ) : (
-                    <div className='py-8'>
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        title={t('暂无订阅记录')}
-                        description={t(
-                          '你还没有购买套餐，可前往“套餐列表”选择适合的方案',
-                        )}
-                      />
-                    </div>
-                  )}
-                </div>
-              </TabPane>
+                    )}
+                  </div>
+                </TabPane>
+              )}
 
               <TabPane
                 itemKey='plan_list'
                 tab={`${t('套餐列表')} (${sortedPlans.length})`}
               >
                 <div className='space-y-3'>
-                  <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
-                    <div>
-                      <div className='flex items-center gap-2'>
-                        <div className='rounded-lg bg-indigo-500/15 p-1.5'>
+                  <div className='subscription-plan-selling-toolbar'>
+                    <div className='subscription-plan-selling-toolbar__hero'>
+                      <div className='flex items-start gap-3'>
+                        <div className='subscription-plan-selling-toolbar__icon'>
                           <Package
-                            size={14}
-                            className='text-indigo-600 dark:text-indigo-400'
+                            size={16}
+                            className='text-indigo-600 dark:text-indigo-300'
                           />
                         </div>
-                        <Text strong>{t('可购买套餐')}</Text>
+                        <div className='min-w-0 flex-1'>
+                          <div className='flex flex-wrap items-center gap-2'>
+                            <Text
+                              strong
+                              className='subscription-plan-selling-toolbar__title'
+                            >
+                              {t('可购买套餐')}
+                            </Text>
+                            <Tag color='white' shape='circle' size='small'>
+                              {sortedPlans.length} {t('个方案')}
+                            </Tag>
+                            <Tag color='blue' shape='circle' size='small'>
+                              {planViewMode === 'card'
+                                ? t('卡片视图')
+                                : t('列表视图')}
+                            </Tag>
+                          </div>
+                          <Text
+                            type='tertiary'
+                            size='small'
+                            className='subscription-plan-selling-toolbar__desc'
+                          >
+                            {planSort === 'recommended'
+                              ? t(
+                                  '推荐排序综合考虑价格与权益，优先展示更适合多数用户的套餐',
+                                )
+                              : t(
+                                  '先看定位与价格，再进入购买弹窗查看完整支付方式',
+                                )}
+                          </Text>
+                        </div>
                       </div>
-                      <Text type='tertiary' size='small' className='mt-1 block'>
-                        {planSort === 'recommended'
-                          ? t(
-                              '推荐排序综合考虑价格与权益，优先展示更适合多数用户的套餐',
-                            )
-                          : t('先看定位与价格，再进入购买弹窗查看完整支付方式')}
-                      </Text>
                     </div>
-                    <div className='flex items-center gap-2'>
-                      <CalendarClock size={14} className='text-gray-400' />
-                      <Select
-                        value={planSort}
-                        size='small'
-                        onChange={setPlanSort}
-                        optionList={[
-                          { value: 'recommended', label: t('推荐优先') },
-                          { value: 'price_asc', label: t('价格从低到高') },
-                          { value: 'price_desc', label: t('价格从高到低') },
-                          { value: 'value_desc', label: t('权益从多到少') },
-                        ]}
-                      />
+                    <div className='subscription-plan-selling-toolbar__controls'>
+                      <div className='subscription-plan-selling-toolbar__switch'>
+                        <Tooltip content={t('卡片视图')}>
+                          <Button
+                            theme={
+                              planViewMode === 'card' ? 'solid' : 'borderless'
+                            }
+                            type={
+                              planViewMode === 'card' ? 'primary' : 'tertiary'
+                            }
+                            icon={<LayoutGrid size={14} />}
+                            size='small'
+                            onClick={() => setPlanViewMode('card')}
+                            aria-label={t('卡片视图')}
+                          />
+                        </Tooltip>
+                        <Tooltip content={t('列表视图')}>
+                          <Button
+                            theme={
+                              planViewMode === 'table' ? 'solid' : 'borderless'
+                            }
+                            type={
+                              planViewMode === 'table' ? 'primary' : 'tertiary'
+                            }
+                            icon={<List size={14} />}
+                            size='small'
+                            onClick={() => setPlanViewMode('table')}
+                            aria-label={t('列表视图')}
+                          />
+                        </Tooltip>
+                      </div>
+                      <div className='subscription-plan-selling-toolbar__sort'>
+                        <div className='subscription-plan-selling-toolbar__sort-icon'>
+                          <CalendarClock size={14} className='text-gray-400' />
+                        </div>
+                        <Select
+                          value={planSort}
+                          size='small'
+                          onChange={setPlanSort}
+                          optionList={[
+                            { value: 'recommended', label: t('推荐优先') },
+                            { value: 'price_asc', label: t('价格从低到高') },
+                            { value: 'price_desc', label: t('价格从高到低') },
+                            { value: 'value_desc', label: t('权益从多到少') },
+                          ]}
+                        />
+                      </div>
                     </div>
                   </div>
 
                   <Divider margin={8} />
 
                   {sortedPlans.length > 0 ? (
-                    isPackageVariant ? (
-                      <div className='space-y-4'>
+                    planViewMode === 'card' ? (
+                      <div className='subscription-plan-selling-content space-y-4'>
                         <div className='subscription-plan-selling-grid'>
                           {pagedPlans.map((record, index) =>
                             renderPackagePlanCard(record, index),
@@ -2052,26 +2037,28 @@ const SubscriptionPlansCard = ({
                         </div>
                       </div>
                     ) : (
-                      <CardTable
-                        columns={planTableColumns}
-                        dataSource={pagedPlans}
-                        rowKey={(row) => row?.plan?.id}
-                        loading={loading}
-                        hidePagination={false}
-                        pagination={{
-                          currentPage: planPage,
-                          pageSize: planPageSize,
-                          total: sortedPlans.length,
-                          pageSizeOpts: [10, 20, 50],
-                          showSizeChanger: true,
-                          onPageChange: setPlanPage,
-                          onPageSizeChange: (size) => {
-                            setPlanPageSize(size);
-                            setPlanPage(1);
-                          },
-                        }}
-                        expandedRowRender={renderPlanExpandedContent}
-                      />
+                      <div className='subscription-plan-selling-content'>
+                        <CardTable
+                          columns={planTableColumns}
+                          dataSource={pagedPlans}
+                          rowKey={(row) => row?.plan?.id}
+                          loading={loading}
+                          hidePagination={false}
+                          pagination={{
+                            currentPage: planPage,
+                            pageSize: planPageSize,
+                            total: sortedPlans.length,
+                            pageSizeOpts: [10, 20, 50],
+                            showSizeChanger: true,
+                            onPageChange: setPlanPage,
+                            onPageSizeChange: (size) => {
+                              setPlanPageSize(size);
+                              setPlanPage(1);
+                            },
+                          }}
+                          expandedRowRender={renderPlanExpandedContent}
+                        />
+                      </div>
                     )
                   ) : (
                     <div className='py-8'>

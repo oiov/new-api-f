@@ -111,7 +111,10 @@ const AdminUserSubscriptionsFilters = ({
             <Form.Select
               field='plan_id'
               placeholder={t('订阅套餐')}
-              optionList={[{ label: t('全部套餐'), value: '' }, ...(planOptions || [])]}
+              optionList={[
+                { label: t('全部套餐'), value: '' },
+                ...(planOptions || []),
+              ]}
               showClear
               filter
               size='small'

@@ -155,7 +155,10 @@ const SelectableButtonGroup = ({
               }}
             >
               {withCheckbox && (
-                <div className='animate-pulse bg-semi-color-fill-1 rounded' style={{ width: 14, height: 14, flexShrink: 0 }} />
+                <div
+                  className='animate-pulse bg-semi-color-fill-1 rounded'
+                  style={{ width: 14, height: 14, flexShrink: 0 }}
+                />
               )}
               <div
                 className='animate-pulse bg-semi-color-fill-1 rounded'
@@ -170,9 +173,7 @@ const SelectableButtonGroup = ({
       </Row>
     );
 
-    return (
-      <Skeleton loading={true} placeholder={placeholder}></Skeleton>
-    );
+    return <Skeleton loading={true} placeholder={placeholder}></Skeleton>;
   };
 
   const contentElement = showSkeleton ? (
@@ -205,12 +206,14 @@ const SelectableButtonGroup = ({
               >
                 <div className='sbg-content'>
                   {item.icon && <span className='sbg-icon'>{item.icon}</span>}
-                      <ConditionalTooltipText
-                        text={item.label}
-                        tooltipContent={item.tooltip}
-                      />
+                  <ConditionalTooltipText
+                    text={item.label}
+                    tooltipContent={item.tooltip}
+                  />
                   {item.tagCount !== undefined && shouldShowTags && (
-                    <span className={`sbg-badge ${isActive ? 'sbg-badge-active' : ''}`}>
+                    <span
+                      className={`sbg-badge ${isActive ? 'sbg-badge-active' : ''}`}
+                    >
                       {item.tagCount}
                     </span>
                   )}
@@ -232,11 +235,15 @@ const SelectableButtonGroup = ({
               <div className='sbg-content'>
                 {item.icon && <span className='sbg-icon'>{item.icon}</span>}
                 <ConditionalTooltipText text={item.label} />
-                {item.tagCount !== undefined && shouldShowTags && item.tagCount !== '' && (
-                  <span className={`sbg-badge ${isActive ? 'sbg-badge-active' : ''}`}>
-                    {item.tagCount}
-                  </span>
-                )}
+                {item.tagCount !== undefined &&
+                  shouldShowTags &&
+                  item.tagCount !== '' && (
+                    <span
+                      className={`sbg-badge ${isActive ? 'sbg-badge-active' : ''}`}
+                    >
+                      {item.tagCount}
+                    </span>
+                  )}
               </div>
             </Button>
           </Col>
@@ -251,15 +258,30 @@ const SelectableButtonGroup = ({
       ref={containerRef}
     >
       {title && (
-        <div className='flex items-center gap-2 mb-2' style={{ marginTop: 12, marginBottom: 4 }}>
-          <span className='text-xs font-medium whitespace-nowrap' style={{ color: 'var(--semi-color-text-2)' }}>
+        <div
+          className='flex items-center gap-2 mb-2'
+          style={{ marginTop: 12, marginBottom: 4 }}
+        >
+          <span
+            className='text-xs font-medium whitespace-nowrap'
+            style={{ color: 'var(--semi-color-text-2)' }}
+          >
             {showSkeleton ? (
-              <div className='animate-pulse bg-semi-color-fill-1 rounded inline-block' style={{ width: 80, height: 14 }} />
+              <div
+                className='animate-pulse bg-semi-color-fill-1 rounded inline-block'
+                style={{ width: 80, height: 14 }}
+              />
             ) : (
               title
             )}
           </span>
-          <div style={{ flex: 1, height: 1, background: 'var(--semi-color-border)' }} />
+          <div
+            style={{
+              flex: 1,
+              height: 1,
+              background: 'var(--semi-color-border)',
+            }}
+          />
         </div>
       )}
       {needCollapse && !showSkeleton ? (

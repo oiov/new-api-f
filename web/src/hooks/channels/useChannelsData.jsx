@@ -146,9 +146,9 @@ export const useChannelsData = () => {
     RESPONSE_TIME: 'response_time',
     BALANCE: 'balance',
     PRIORITY: 'priority',
-      WEIGHT: 'weight',
-      REQUEST_COUNT_TODAY: 'request_count_today',
-      OPERATE: 'operate',
+    WEIGHT: 'weight',
+    REQUEST_COUNT_TODAY: 'request_count_today',
+    OPERATE: 'operate',
   };
 
   // Initialize from localStorage
@@ -729,7 +729,9 @@ export const useChannelsData = () => {
 
   const batchSetChannelModelMapping = async () => {
     if (enableTagMode) {
-      showError(t('标签聚合模式下不支持批量修改模型映射，请先关闭标签聚合模式。'));
+      showError(
+        t('标签聚合模式下不支持批量修改模型映射，请先关闭标签聚合模式。'),
+      );
       return;
     }
     if (selectedChannels.length === 0) {
@@ -1120,7 +1122,9 @@ export const useChannelsData = () => {
       for (let i = 0; i < channelsToTest.length; i += concurrencyLimit) {
         const batch = channelsToTest.slice(i, i + concurrencyLimit);
         const batchResults = await Promise.all(
-          batch.map((channel) => testChannel(channel, '', '', false, { silent: true })),
+          batch.map((channel) =>
+            testChannel(channel, '', '', false, { silent: true }),
+          ),
         );
         batchResults.forEach((result) => {
           if (result?.success) {

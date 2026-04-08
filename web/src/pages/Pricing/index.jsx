@@ -23,7 +23,7 @@ import { Card, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import SeoMeta from '../../components/common/seo/SeoMeta';
 import ModelPricingPage from '../../components/table/model-pricing/layout/PricingPage';
 import SubscriptionPlansCard from '../../components/topup/SubscriptionPlansCard';
-import { API } from '../../helpers';
+import { API, getUserData } from '../../helpers';
 import { getPricingSeo } from '../../helpers/seo';
 import { StatusContext } from '../../context/Status';
 
@@ -48,6 +48,8 @@ const SubscriptionPricingTab = ({ t }) => {
   const [enableCreemTopUp, setEnableCreemTopUp] = useState(
     statusState?.status?.enable_creem_topup || false,
   );
+  const currentUser = useMemo(() => getUserData(), []);
+  const isLoggedIn = !!currentUser?.id;
 
   const getSubscriptionPlans = async () => {
     setSubscriptionLoading(true);
@@ -66,8 +68,16 @@ const SubscriptionPricingTab = ({ t }) => {
   };
 
   const getSubscriptionSelf = async () => {
+    if (!isLoggedIn) {
+      setBillingPreference('subscription_first');
+      setActiveSubscriptions([]);
+      setAllSubscriptions([]);
+      return;
+    }
     try {
-      const res = await API.get('/api/subscription/self');
+      const res = await API.get('/api/subscription/self', {
+        skipErrorHandler: true,
+      });
       if (res.data?.success) {
         setBillingPreference(
           res.data.data?.billing_preference || 'subscription_first',
@@ -82,12 +92,21 @@ const SubscriptionPricingTab = ({ t }) => {
   };
 
   const updateBillingPreference = async (pref) => {
+    if (!isLoggedIn) {
+      return;
+    }
     const previousPref = billingPreference;
     setBillingPreference(pref);
     try {
-      const res = await API.put('/api/subscription/self/preference', {
-        billing_preference: pref,
-      });
+      const res = await API.put(
+        '/api/subscription/self/preference',
+        {
+          billing_preference: pref,
+        },
+        {
+          skipErrorHandler: true,
+        },
+      );
       if (res.data?.success) {
         setBillingPreference(
           res.data?.data?.billing_preference || pref || previousPref,
@@ -102,7 +121,9 @@ const SubscriptionPricingTab = ({ t }) => {
 
   const getTopupInfo = async () => {
     try {
-      const res = await API.get('/api/user/topup/info');
+      const res = await API.get('/api/user/topup/info', {
+        skipErrorHandler: true,
+      });
       const { data, success } = res.data || {};
       if (!success) return;
       let nextPayMethods = data?.pay_methods || [];
@@ -133,7 +154,7 @@ const SubscriptionPricingTab = ({ t }) => {
     getSubscriptionPlans().then();
     getSubscriptionSelf().then();
     getTopupInfo().then();
-  }, []);
+  }, [isLoggedIn]);
 
   useEffect(() => {
     if (!statusState?.status) return;
@@ -159,6 +180,7 @@ const SubscriptionPricingTab = ({ t }) => {
         reloadSubscriptionSelf={getSubscriptionSelf}
         initialMainTab='plan_list'
         uiVariant='package'
+        showUserSubscriptions={false}
         withCard
       />
     </div>

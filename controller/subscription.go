@@ -50,6 +50,19 @@ func validateSubscriptionPlanPurchaseAvailability(userId int, plan *model.Subscr
 	return nil
 }
 
+func shouldSyncActiveSubscriptionsForPlanUpdate(currentPlan, nextPlan *model.SubscriptionPlan) bool {
+	if currentPlan == nil || nextPlan == nil {
+		return true
+	}
+	return model.NormalizeSubscriptionResourceType(currentPlan.ResourceType) !=
+		model.NormalizeSubscriptionResourceType(nextPlan.ResourceType) ||
+		currentPlan.RequestCountTotal != nextPlan.RequestCountTotal ||
+		currentPlan.RequestCountPeriodTotal != nextPlan.RequestCountPeriodTotal ||
+		model.NormalizeResetPeriod(currentPlan.QuotaResetPeriod) !=
+			model.NormalizeResetPeriod(nextPlan.QuotaResetPeriod) ||
+		currentPlan.QuotaResetCustomSeconds != nextPlan.QuotaResetCustomSeconds
+}
+
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
@@ -402,8 +415,14 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	currentPlan, err := model.GetSubscriptionPlanById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	needSyncActiveSubscriptions := shouldSyncActiveSubscriptionsForPlanUpdate(currentPlan, &req.Plan)
 
-	err := model.DB.Transaction(func(tx *gorm.DB) error {
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
 		var actualIssuedCount int64
 		if err := tx.Model(&model.UserSubscription{}).
 			Where("plan_id = ?", id).
@@ -447,8 +466,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err
 		}
-		if err := model.SyncActiveSubscriptionsForPlanTx(tx, id); err != nil {
-			return err
+		if needSyncActiveSubscriptions {
+			if err := model.SyncActiveSubscriptionsForPlanTx(tx, id); err != nil {
+				return fmt.Errorf("同步活跃订阅快照失败: %w", err)
+			}
 		}
 		return nil
 	})

@@ -793,7 +793,6 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
     }
   }, [statusState?.status]);
 
-
   const renderAmount = () => {
     return amount + ' ' + t('元');
   };

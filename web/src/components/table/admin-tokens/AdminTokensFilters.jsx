@@ -93,14 +93,14 @@ const AdminTokensFilters = ({
           </div>
 
           <div className='w-full'>
-          <Form.Select
-            field='group'
-            placeholder={t('令牌分组')}
-            optionList={groupOptions}
-            renderOptionItem={renderGroupOption}
-            showClear
-            filter
-            size='small'
+            <Form.Select
+              field='group'
+              placeholder={t('令牌分组')}
+              optionList={groupOptions}
+              renderOptionItem={renderGroupOption}
+              showClear
+              filter
+              size='small'
             />
           </div>
 

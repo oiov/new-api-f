@@ -79,12 +79,7 @@ const DURATION_OPTIONS = [
   { label: '年卡', value: 'year' },
 ];
 
-const SubscriptionMigrationModal = ({
-  visible,
-  handleClose,
-  refresh,
-  t,
-}) => {
+const SubscriptionMigrationModal = ({ visible, handleClose, refresh, t }) => {
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
   const [plans, setPlans] = useState([]);
@@ -257,7 +252,8 @@ const SubscriptionMigrationModal = ({
       {
         title: t('用户分组'),
         dataIndex: 'user_group',
-        render: (text) => (text ? renderGroup(text) : <Tag size='small'>-</Tag>),
+        render: (text) =>
+          text ? renderGroup(text) : <Tag size='small'>-</Tag>,
       },
       {
         title: t('旧套餐'),
@@ -267,7 +263,9 @@ const SubscriptionMigrationModal = ({
             <div>{text || `#${record.old_plan_id}`}</div>
             <Text type='tertiary' size='small'>
               #{record.old_plan_id} ·{' '}
-              {record.old_upgrade_group ? renderGroup(record.old_upgrade_group) : '-'}
+              {record.old_upgrade_group
+                ? renderGroup(record.old_upgrade_group)
+                : '-'}
             </Text>
           </div>
         ),
@@ -358,11 +356,18 @@ const SubscriptionMigrationModal = ({
               icon={<IconSave />}
               onClick={handleExecute}
               loading={executing}
-              disabled={!previewResult || Number(previewResult?.data?.total || 0) <= 0}
+              disabled={
+                !previewResult || Number(previewResult?.data?.total || 0) <= 0
+              }
             >
               {t('执行迁移')}
             </Button>
-            <Button theme='light' type='primary' icon={<IconClose />} onClick={handleClose}>
+            <Button
+              theme='light'
+              type='primary'
+              icon={<IconClose />}
+              onClick={handleClose}
+            >
               {t('关闭')}
             </Button>
           </Space>
@@ -436,7 +441,8 @@ const SubscriptionMigrationModal = ({
             <Tag color='orange'>{t('默认排除天卡')}</Tag>
             {previewResult ? (
               <Text>
-                {t('命中用户')} {Number(previewResult.data?.total || 0)} {t('个')}
+                {t('命中用户')} {Number(previewResult.data?.total || 0)}{' '}
+                {t('个')}
               </Text>
             ) : (
               <Text type='tertiary'>{t('变更表单后需要重新预览')}</Text>
@@ -452,9 +458,13 @@ const SubscriptionMigrationModal = ({
             scroll={{ x: 'max-content' }}
             empty={
               <Empty
-                image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
+                image={
+                  <IllustrationNoResult style={{ width: 150, height: 150 }} />
+                }
                 darkModeImage={
-                  <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
+                  <IllustrationNoResultDark
+                    style={{ width: 150, height: 150 }}
+                  />
                 }
                 description={t('暂无预览结果')}
                 style={{ padding: 30 }}
