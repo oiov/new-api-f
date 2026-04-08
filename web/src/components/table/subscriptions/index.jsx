@@ -140,7 +140,7 @@ const SubscriptionsPage = () => {
                   compactMode={compactMode}
                   setCompactMode={setCompactMode}
                   title={t('订阅管理详情')}
-                  subtitle={t('支持按创建时间、生效开始时间、到期时间，以及套餐、状态、来源、用户和分组进行组合筛选，适合统计与财务审计')}
+                  subtitle={t('支持按创建时间、生效开始时间、到期时间，以及套餐、状态、来源、用户、配置分组、升级分组和资源类型进行组合筛选，适合统计与财务审计')}
                   t={t}
                 />
             }

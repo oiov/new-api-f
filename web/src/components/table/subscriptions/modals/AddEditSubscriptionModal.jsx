@@ -108,6 +108,7 @@ const AddEditSubscriptionModal = ({
     sort_order: 0,
     max_purchase_per_user: 0,
     sale_limit_count: 0,
+    sold_count: 0,
     resource_type: 'quota',
     total_amount: 0,
     request_count_total: 0,
@@ -140,6 +141,7 @@ const AddEditSubscriptionModal = ({
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
       sale_limit_count: Number(p.sale_limit_count || 0),
+      sold_count: Number(p.sold_count || 0),
       resource_type: getSubscriptionResourceType(p),
       total_amount: Number(
         quotaToDisplayAmount(p.total_amount || 0).toFixed(2),
@@ -172,11 +174,23 @@ const AddEditSubscriptionModal = ({
       showError(t('套餐标题不能为空'));
       return;
     }
+    if (Number(values.sold_count || 0) < 0) {
+      showError(t('已售数量不能为负数'));
+      return;
+    }
+    if (
+      Number(values.sale_limit_count || 0) > 0 &&
+      Number(values.sold_count || 0) > Number(values.sale_limit_count || 0)
+    ) {
+      showError(t('已售数量不能大于可购买总数'));
+      return;
+    }
     if (
       Number(values.total_amount || 0) <= 0 &&
-      Number(values.request_count_total || 0) <= 0
+      Number(values.request_count_total || 0) <= 0 &&
+      Number(values.request_count_period_total || 0) <= 0
     ) {
-      showError(t('总额度和总次数不能同时为 0'));
+      showError(t('总额度、总次数和周期次数不能同时为 0'));
       return;
     }
     setLoading(true);
@@ -200,6 +214,7 @@ const AddEditSubscriptionModal = ({
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
           sale_limit_count: Number(values.sale_limit_count || 0),
+          sold_count: Number(values.sold_count || 0),
           resource_type: values.resource_type || 'quota',
           total_amount: displayAmountToQuota(values.total_amount),
           request_count_total: Number(values.request_count_total || 0),
@@ -509,6 +524,21 @@ const AddEditSubscriptionModal = ({
                         min={0}
                         precision={0}
                         extraText={t('0 表示不限')}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='sold_count'
+                        label={t('已售数量')}
+                        min={0}
+                        precision={0}
+                        extraText={
+                          values.sale_limit_count > 0
+                            ? t('不能大于可购买总数，也不能低于实际已发放数量')
+                            : t('可手动维护历史已售数量，但不能低于实际已发放数量')
+                        }
                         style={{ width: '100%' }}
                       />
                     </Col>

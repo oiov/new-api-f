@@ -1569,11 +1569,14 @@ type adminUserSubscriptionListRow struct {
 
 func GetAdminUserSubscriptions(
 	pageInfo *common.PageInfo,
+	subscriptionId int,
 	username string,
 	userGroup string,
+	upgradeGroup string,
 	status string,
 	planId int,
 	source string,
+	resourceType string,
 	timeField string,
 	startTimestamp int64,
 	endTimestamp int64,
@@ -1581,10 +1584,16 @@ func GetAdminUserSubscriptions(
 	if pageInfo == nil {
 		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
 	}
+	subscriptionId = max(subscriptionId, 0)
 	username = strings.TrimSpace(username)
 	userGroup = strings.TrimSpace(userGroup)
+	upgradeGroup = strings.TrimSpace(upgradeGroup)
 	status = strings.TrimSpace(status)
 	source = strings.TrimSpace(source)
+	resourceType = strings.TrimSpace(resourceType)
+	if resourceType != "" {
+		resourceType = NormalizeSubscriptionResourceType(resourceType)
+	}
 	timeField = strings.TrimSpace(timeField)
 	now := common.GetTimestamp()
 
@@ -1592,6 +1601,9 @@ func GetAdminUserSubscriptions(
 		Select("user_subscriptions.*, users.username as username, users." + commonGroupCol + " as user_group").
 		Joins("left join users on users.id = user_subscriptions.user_id")
 
+	if subscriptionId > 0 {
+		baseQuery = baseQuery.Where("user_subscriptions.id = ?", subscriptionId)
+	}
 	if username != "" {
 		if keywordInt, err := strconv.Atoi(username); err == nil {
 			baseQuery = baseQuery.Where("users.id = ? OR users.username LIKE ?", keywordInt, "%"+username+"%")
@@ -1602,11 +1614,17 @@ func GetAdminUserSubscriptions(
 	if userGroup != "" {
 		baseQuery = baseQuery.Where("users."+commonGroupCol+" = ?", userGroup)
 	}
+	if upgradeGroup != "" {
+		baseQuery = baseQuery.Where("user_subscriptions.upgrade_group = ?", upgradeGroup)
+	}
 	if planId > 0 {
 		baseQuery = baseQuery.Where("user_subscriptions.plan_id = ?", planId)
 	}
 	if source != "" {
 		baseQuery = baseQuery.Where("user_subscriptions.source = ?", source)
+	}
+	if resourceType != "" {
+		baseQuery = baseQuery.Where("user_subscriptions.resource_type = ?", resourceType)
 	}
 	switch status {
 	case "active":

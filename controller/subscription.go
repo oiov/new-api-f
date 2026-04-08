@@ -270,7 +270,6 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		req.Plan.Currency = "USD"
 	}
 	req.Plan.Currency = "USD"
-	req.Plan.SoldCount = 0
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -331,7 +330,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		req.Plan.Currency = "USD"
 	}
 	req.Plan.Currency = "USD"
-	req.Plan.SoldCount = 0
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -360,6 +358,16 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	}
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var actualIssuedCount int64
+		if err := tx.Model(&model.UserSubscription{}).
+			Where("plan_id = ?", id).
+			Count(&actualIssuedCount).Error; err != nil {
+			return err
+		}
+		if req.Plan.SoldCount < actualIssuedCount {
+			return fmt.Errorf("已售数量不能小于实际已发放数量 %d", actualIssuedCount)
+		}
+
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
 			"title":                      req.Plan.Title,
@@ -377,6 +385,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"creem_product_id":           req.Plan.CreemProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"sale_limit_count":           req.Plan.SaleLimitCount,
+			"sold_count":                 req.Plan.SoldCount,
 			"total_amount":               req.Plan.TotalAmount,
 			"resource_type":              req.Plan.ResourceType,
 			"request_count_total":        req.Plan.RequestCountTotal,
@@ -473,21 +482,27 @@ func AdminListUserSubscriptions(c *gin.Context) {
 
 func AdminListAllUserSubscriptions(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
+	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
 	username := c.Query("username")
 	group := c.Query("group")
+	upgradeGroup := c.Query("upgrade_group")
 	status := c.Query("status")
 	planId, _ := strconv.Atoi(c.Query("plan_id"))
 	source := c.Query("source")
+	resourceType := c.Query("resource_type")
 	timeField := c.Query("time_field")
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	items, total, err := model.GetAdminUserSubscriptions(
 		pageInfo,
+		subscriptionId,
 		username,
 		group,
+		upgradeGroup,
 		status,
 		planId,
 		source,
+		resourceType,
 		timeField,
 		startTimestamp,
 		endTimestamp,

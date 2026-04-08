@@ -151,7 +151,7 @@ const AdminUserSubscriptionsTable = ({
         ),
       },
       {
-        title: t('用户分组'),
+        title: t('配置分组'),
         dataIndex: 'user_group',
         width: 120,
         render: (text) => <Tag size='small'>{text || '-'}</Tag>,

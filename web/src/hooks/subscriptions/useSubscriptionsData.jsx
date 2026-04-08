@@ -106,11 +106,14 @@ export const useSubscriptionsData = () => {
       end_timestamp = values.dateRange[1] || '';
     }
     return {
+      subscription_id: values.subscription_id || '',
       username: values.username || '',
       group: values.group || '',
+      upgrade_group: values.upgrade_group || '',
       status: values.status || '',
       plan_id: values.plan_id || '',
       source: values.source || '',
+      resource_type: values.resource_type || '',
       time_field: values.time_field || 'created_at',
       start_timestamp,
       end_timestamp,
@@ -126,13 +129,16 @@ export const useSubscriptionsData = () => {
     setUserSubscriptionsLoading(true);
     try {
       const searchParams = new URLSearchParams({
+        subscription_id: nextFilters.subscription_id || '',
         p: String(page),
         page_size: String(size),
         username: nextFilters.username || '',
         group: nextFilters.group || '',
+        upgrade_group: nextFilters.upgrade_group || '',
         status: nextFilters.status || '',
         plan_id: nextFilters.plan_id || '',
         source: nextFilters.source || '',
+        resource_type: nextFilters.resource_type || '',
         time_field: nextFilters.time_field || 'created_at',
         start_timestamp: nextFilters.start_timestamp
           ? String(Date.parse(nextFilters.start_timestamp) / 1000)
@@ -343,11 +349,14 @@ export const useSubscriptionsData = () => {
     userSubscriptionsPageSize,
     userSubscriptionsTotal,
     userSubscriptionsFormInitValues: {
+      subscription_id: '',
       username: '',
       group: '',
+      upgrade_group: '',
       status: '',
       plan_id: '',
       source: '',
+      resource_type: '',
       time_field: 'created_at',
       dateRange: [],
     },
