@@ -91,11 +91,22 @@ func GetAllTokensByAdmin(c *gin.Context) {
 }
 
 func SearchTokensByAdmin(c *gin.Context) {
-	keyword := c.Query("keyword")
-	token := c.Query("token")
 	pageInfo := common.GetPageQuery(c)
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 
-	tokens, total, err := model.SearchTokensByAdmin(keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	filters := model.AdminTokenSearchFilters{
+		Username:     c.Query("username"),
+		TokenName:    c.Query("token_name"),
+		Token:        c.Query("token"),
+		Status:       c.Query("status"),
+		Group:        c.Query("group"),
+		ExpiredState: c.Query("expired_state"),
+		StartTime:    startTimestamp,
+		EndTime:      endTimestamp,
+	}
+
+	tokens, total, err := model.SearchTokensByAdmin(filters, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return

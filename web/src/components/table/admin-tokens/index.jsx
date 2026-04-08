@@ -23,7 +23,7 @@ import { Key, Shield } from 'lucide-react';
 import CardPro from '../../common/ui/CardPro';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
 import TokensTable from '../tokens/TokensTable';
-import TokensFilters from '../tokens/TokensFilters';
+import AdminTokensFilters from './AdminTokensFilters';
 import { useAdminTokensData } from '../../../hooks/tokens/useAdminTokensData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -68,12 +68,13 @@ const AdminTokensPage = () => {
             <span>{tokensData.t('查看所有用户令牌的状态、额度和使用情况')}</span>
           </div>
 
-          <TokensFilters
+          <AdminTokensFilters
             formInitValues={tokensData.formInitValues}
             setFormApi={tokensData.setFormApi}
             searchTokens={tokensData.searchTokens}
             loading={tokensData.loading}
             searching={tokensData.searching}
+            groupOptions={tokensData.groupOptions}
             t={tokensData.t}
           />
         </div>

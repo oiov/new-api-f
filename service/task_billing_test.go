@@ -474,6 +474,95 @@ func TestPreConsumeUserSubscription_AllowsUsableChildGroupOfCurrentSubscriptionG
 	assert.Equal(t, int64(500), getSubscriptionUsed(t, sub.Id))
 }
 
+func TestPreConsumeUserSubscription_AllowsUsingGroupWhenCurrentUserGroupIsStale(t *testing.T) {
+	truncate(t)
+
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","codex_sub":"Codex 订阅组"}`))
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"vip分组"}`))
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Clear()
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.AddAll(map[string]map[string]string{
+			"vip": {
+				"append_1":   "vip_special_group_1",
+				"-:remove_1": "vip_removed_group_1",
+			},
+		})
+	})
+
+	const userID = 12
+	seedUser(t, userID, 10000)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Update("group", "codex包月").Error)
+
+	seedSubscriptionPlan(t, 112, model.SubscriptionResourceQuota)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 112).Update("upgrade_group", "codex_sub").Error)
+
+	sub := &model.UserSubscription{
+		Id:           112,
+		UserId:       userID,
+		PlanId:       112,
+		AmountTotal:  5000,
+		AmountUsed:   0,
+		UpgradeGroup: "codex_sub",
+		Status:       "active",
+		StartTime:    time.Now().Unix(),
+		EndTime:      time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	res, err := model.PreConsumeUserSubscription("req-stale-user-group", userID, "test-model", "codex_sub", 0, 500)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, sub.Id, res.UserSubscriptionId)
+	assert.Equal(t, int64(500), res.PreConsumed)
+	assert.Equal(t, model.SubscriptionResourceQuota, res.ResourceType)
+	assert.Equal(t, int64(500), getSubscriptionUsed(t, sub.Id))
+}
+
+func TestPreConsumeUserSubscription_RejectsUsingGroupOnlyAllowedByStaleCurrentUserGroup(t *testing.T) {
+	truncate(t)
+
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","codex_sub":"Codex 订阅组"}`))
+	ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Set("default", map[string]string{
+		"claude": "Claude 分组",
+	})
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"vip分组"}`))
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Clear()
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.AddAll(map[string]map[string]string{
+			"vip": {
+				"append_1":   "vip_special_group_1",
+				"-:remove_1": "vip_removed_group_1",
+			},
+		})
+	})
+
+	const userID = 13
+	seedUser(t, userID, 10000)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Update("group", "default").Error)
+
+	seedSubscriptionPlan(t, 113, model.SubscriptionResourceQuota)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 113).Update("upgrade_group", "codex_sub").Error)
+
+	sub := &model.UserSubscription{
+		Id:           113,
+		UserId:       userID,
+		PlanId:       113,
+		AmountTotal:  5000,
+		AmountUsed:   0,
+		UpgradeGroup: "codex_sub",
+		Status:       "active",
+		StartTime:    time.Now().Unix(),
+		EndTime:      time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	res, err := model.PreConsumeUserSubscription("req-stale-user-group-reject", userID, "test-model", "claude", 0, 500)
+	require.Error(t, err)
+	require.Nil(t, res)
+	assert.Contains(t, err.Error(), "subscription quota insufficient")
+	assert.Equal(t, int64(0), getSubscriptionUsed(t, sub.Id))
+}
+
 func TestRefundTaskQuota_NoToken(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

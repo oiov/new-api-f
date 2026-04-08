@@ -1290,6 +1290,34 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+func GetActiveUserSubscriptionGroups(userId int) ([]string, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	var subs []UserSubscription
+	if err := DB.Select("upgrade_group").
+		Where("user_id = ? AND status = ? AND (end_time = 0 OR end_time > ?)", userId, "active", now).
+		Order("end_time asc, id asc").
+		Find(&subs).Error; err != nil {
+		return nil, err
+	}
+	groups := make([]string, 0, len(subs))
+	seen := make(map[string]struct{}, len(subs))
+	for i := range subs {
+		group := strings.TrimSpace(subs[i].UpgradeGroup)
+		if group == "" {
+			continue
+		}
+		if _, ok := seen[group]; ok {
+			continue
+		}
+		seen[group] = struct{}{}
+		groups = append(groups, group)
+	}
+	return groups, nil
+}
+
 // HasActiveUserSubscription returns whether the user has any active subscription.
 // This is a lightweight existence check to avoid heavy pre-consume transactions.
 func HasActiveUserSubscription(userId int) (bool, error) {
@@ -2387,16 +2415,21 @@ func doesUserSubscriptionMatchGroup(sub *UserSubscription, usingGroup string, cu
 	}
 	subGroup := strings.TrimSpace(sub.UpgradeGroup)
 	usingGroup = strings.TrimSpace(usingGroup)
+	currentUserGroup = strings.TrimSpace(currentUserGroup)
 	if subGroup == "" || usingGroup == "" {
 		return true
 	}
 	if subGroup == usingGroup {
 		return true
 	}
-	if strings.TrimSpace(currentUserGroup) != subGroup {
+	if currentUserGroup == "" {
 		return false
 	}
-	_, ok := getUsableGroupsForUserGroup(currentUserGroup)[usingGroup]
+	if currentUserGroup == subGroup {
+		_, ok := getUsableGroupsForUserGroup(currentUserGroup)[usingGroup]
+		return ok
+	}
+	_, ok := getUsableGroupsForUserGroup(subGroup)[usingGroup]
 	return ok
 }
 

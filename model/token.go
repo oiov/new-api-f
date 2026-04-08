@@ -33,6 +33,17 @@ type Token struct {
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
 
+type AdminTokenSearchFilters struct {
+	Username     string
+	TokenName    string
+	Token        string
+	Status       string
+	Group        string
+	ExpiredState string
+	StartTime    int64
+	EndTime      int64
+}
+
 func (token *Token) Clean() {
 	token.Key = ""
 }
@@ -97,6 +108,16 @@ func qualifiedTokenKeyCol() string {
 	return "tokens.`key`"
 }
 
+func qualifiedTokenGroupCol() string {
+	if commonGroupCol != "" {
+		return "tokens." + commonGroupCol
+	}
+	if common.UsingPostgreSQL {
+		return `tokens."group"`
+	}
+	return "tokens.`group`"
+}
+
 func GetAllTokensByAdmin(startIdx int, num int) ([]*Token, int64, error) {
 	var tokens []*Token
 	var total int64
@@ -118,6 +139,69 @@ func GetAllTokensByAdmin(startIdx int, num int) ([]*Token, int64, error) {
 	}
 
 	return tokens, total, nil
+}
+
+func buildAdminTokenSearchQuery(filters AdminTokenSearchFilters) (*gorm.DB, error) {
+	baseQuery := DB.Model(&Token{}).
+		Select("tokens.*, users.username").
+		Joins("LEFT JOIN users ON users.id = tokens.user_id")
+
+	if filters.Username != "" {
+		usernamePattern, err := sanitizeLikePattern(strings.TrimSpace(filters.Username))
+		if err != nil {
+			return nil, err
+		}
+		usernameQuery := baseQuery.Where("users.username LIKE ? ESCAPE '!'", usernamePattern)
+		if keywordInt, convErr := strconv.Atoi(strings.TrimSpace(filters.Username)); convErr == nil {
+			usernameQuery = usernameQuery.Or("tokens.user_id = ?", keywordInt)
+		}
+		baseQuery = usernameQuery
+	}
+
+	if filters.TokenName != "" {
+		tokenNamePattern, err := sanitizeLikePattern(strings.TrimSpace(filters.TokenName))
+		if err != nil {
+			return nil, err
+		}
+		baseQuery = baseQuery.Where("tokens.name LIKE ? ESCAPE '!'", tokenNamePattern)
+	}
+
+	if filters.Token != "" {
+		tokenPattern, err := sanitizeLikePattern(strings.TrimPrefix(strings.TrimSpace(filters.Token), "sk-"))
+		if err != nil {
+			return nil, err
+		}
+		baseQuery = baseQuery.Where(qualifiedTokenKeyCol()+" LIKE ? ESCAPE '!'", tokenPattern)
+	}
+
+	if filters.Status != "" {
+		status, err := strconv.Atoi(filters.Status)
+		if err != nil {
+			return nil, errors.New("状态参数无效")
+		}
+		baseQuery = baseQuery.Where("tokens.status = ?", status)
+	}
+
+	if filters.Group != "" {
+		baseQuery = baseQuery.Where(qualifiedTokenGroupCol()+" = ?", filters.Group)
+	}
+
+	now := common.GetTimestamp()
+	switch strings.TrimSpace(filters.ExpiredState) {
+	case "expired":
+		baseQuery = baseQuery.Where("tokens.expired_time <> ? AND tokens.expired_time < ?", -1, now)
+	case "not_expired":
+		baseQuery = baseQuery.Where("(tokens.expired_time = ? OR tokens.expired_time >= ?)", -1, now)
+	}
+
+	if filters.StartTime > 0 {
+		baseQuery = baseQuery.Where("tokens.created_time >= ?", filters.StartTime)
+	}
+	if filters.EndTime > 0 {
+		baseQuery = baseQuery.Where("tokens.created_time <= ?", filters.EndTime)
+	}
+
+	return baseQuery, nil
 }
 
 func buildUserTokenSearchQuery(userId int, keyword string, token string) (*gorm.DB, error) {
@@ -240,7 +324,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	return tokens, total, nil
 }
 
-func SearchTokensByAdmin(keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+func SearchTokensByAdmin(filters AdminTokenSearchFilters, offset int, limit int) (tokens []*Token, total int64, err error) {
 	if limit <= 0 || limit > searchHardLimit {
 		limit = searchHardLimit
 	}
@@ -248,33 +332,9 @@ func SearchTokensByAdmin(keyword string, token string, offset int, limit int) (t
 		offset = 0
 	}
 
-	baseQuery := DB.Model(&Token{}).
-		Select("tokens.*, users.username").
-		Joins("LEFT JOIN users ON users.id = tokens.user_id")
-
-	if keyword != "" {
-		keywordPattern, err := sanitizeLikePattern(keyword)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		keywordQuery := baseQuery.Where(
-			"tokens.name LIKE ? ESCAPE '!' OR users.username LIKE ? ESCAPE '!'",
-			keywordPattern,
-			keywordPattern,
-		)
-		if keywordInt, convErr := strconv.Atoi(strings.TrimSpace(keyword)); convErr == nil {
-			keywordQuery = keywordQuery.Or("tokens.user_id = ?", keywordInt)
-		}
-		baseQuery = keywordQuery
-	}
-
-	if token != "" {
-		tokenPattern, err := sanitizeLikePattern(strings.TrimPrefix(token, "sk-"))
-		if err != nil {
-			return nil, 0, err
-		}
-		baseQuery = baseQuery.Where(qualifiedTokenKeyCol()+" LIKE ? ESCAPE '!'", tokenPattern)
+	baseQuery, err := buildAdminTokenSearchQuery(filters)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	if err = baseQuery.Count(&total).Error; err != nil {

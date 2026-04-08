@@ -34,24 +34,52 @@ export const useAdminTokensData = () => {
   const [searching, setSearching] = useState(false);
   const [searchMode, setSearchMode] = useState(false);
   const [formApi, setFormApi] = useState(null);
+  const [groupOptions, setGroupOptions] = useState([]);
   const [showKeys] = useState({});
   const [resolvedTokenKeys] = useState({});
   const [loadingTokenKeys] = useState({});
   const [appliedFilters, setAppliedFilters] = useState({
-    searchKeyword: '',
-    searchToken: '',
+    username: '',
+    token_name: '',
+    token: '',
+    status: '',
+    group: '',
+    expired_state: '',
+    start_timestamp: '',
+    end_timestamp: '',
   });
 
   const formInitValues = {
-    searchKeyword: '',
-    searchToken: '',
+    username: '',
+    token_name: '',
+    token: '',
+    status: '',
+    group: '',
+    expired_state: '',
+    dateRange: [],
   };
 
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
+    let start_timestamp = '';
+    let end_timestamp = '';
+    if (
+      formValues.dateRange &&
+      Array.isArray(formValues.dateRange) &&
+      formValues.dateRange.length === 2
+    ) {
+      start_timestamp = formValues.dateRange[0] || '';
+      end_timestamp = formValues.dateRange[1] || '';
+    }
     return {
-      searchKeyword: formValues.searchKeyword || '',
-      searchToken: formValues.searchToken || '',
+      username: formValues.username || '',
+      token_name: formValues.token_name || '',
+      token: formValues.token || '',
+      status: formValues.status || '',
+      group: formValues.group || '',
+      expired_state: formValues.expired_state || '',
+      start_timestamp,
+      end_timestamp,
     };
   };
 
@@ -83,24 +111,84 @@ export const useAdminTokensData = () => {
     }
   };
 
+  const loadGroups = async () => {
+    try {
+      const res = await API.get('/api/group/');
+      if (res?.data?.success) {
+        setGroupOptions([
+          { label: t('全部分组'), value: '' },
+          ...((res.data.data || []).map((group) => ({
+            label: group,
+            value: group,
+          })) || []),
+        ]);
+      }
+    } catch (error) {
+      showError(error?.message || t('加载分组失败'));
+    }
+  };
+
   const searchTokens = async (page = 1, size = pageSize, filters = null) => {
     const normalizedFilters = filters || getFormValues();
-    const { searchKeyword = '', searchToken = '' } = normalizedFilters;
+    const {
+      username = '',
+      token_name = '',
+      token = '',
+      status = '',
+      group = '',
+      expired_state = '',
+      start_timestamp = '',
+      end_timestamp = '',
+    } = normalizedFilters;
 
-    if (searchKeyword === '' && searchToken === '') {
+    if (
+      username === '' &&
+      token_name === '' &&
+      token === '' &&
+      status === '' &&
+      group === '' &&
+      expired_state === '' &&
+      start_timestamp === '' &&
+      end_timestamp === ''
+    ) {
       await loadTokens(1, size);
       return;
     }
 
     setSearching(true);
     try {
+      const searchParams = new URLSearchParams({
+        username,
+        token_name,
+        token,
+        status,
+        group,
+        expired_state,
+        p: String(page),
+        size: String(size),
+        start_timestamp: start_timestamp
+          ? String(Date.parse(start_timestamp) / 1000)
+          : '',
+        end_timestamp: end_timestamp
+          ? String(Date.parse(end_timestamp) / 1000)
+          : '',
+      });
       const res = await API.get(
-        `/api/token/admin/search?keyword=${encodeURIComponent(searchKeyword)}&token=${encodeURIComponent(searchToken)}&p=${page}&size=${size}`,
+        `/api/token/admin/search?${searchParams.toString()}`,
       );
       const { success, message, data } = res.data;
       if (success) {
         setSearchMode(true);
-        setAppliedFilters({ searchKeyword, searchToken });
+        setAppliedFilters({
+          username,
+          token_name,
+          token,
+          status,
+          group,
+          expired_state,
+          start_timestamp,
+          end_timestamp,
+        });
         syncPageData(data);
       } else {
         showError(message);
@@ -139,6 +227,7 @@ export const useAdminTokensData = () => {
   };
 
   useEffect(() => {
+    loadGroups().then();
     loadTokens(1).catch((error) => {
       showError(error?.message || t('加载令牌失败'));
     });
@@ -155,6 +244,7 @@ export const useAdminTokensData = () => {
     setCompactMode,
     formInitValues,
     setFormApi,
+    groupOptions,
     showKeys,
     resolvedTokenKeys,
     loadingTokenKeys,
