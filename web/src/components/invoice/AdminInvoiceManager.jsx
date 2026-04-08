@@ -702,50 +702,38 @@ const AdminInvoiceManager = () => {
         </div>
       </SideSheet>
 
-      {/* 发票预览 — SideSheet 抽屉 */}
-      <SideSheet
+      {/* 发票预览 Modal */}
+      <Modal
         title={t('发票预览')}
         visible={previewSheet.visible}
         onCancel={() => setPreviewSheet({ visible: false, url: '', isPdf: false })}
-        placement='right'
-        width={isMobile ? '100%' : 760}
-        bodyStyle={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         footer={
-          <div style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-            padding: '12px 16px',
-            borderTop: '1px solid var(--semi-color-border)',
-          }}>
-            <Button
-              icon={<IconDownload />}
-              onClick={() => window.open(previewSheet.url, '_blank')}
-            >
-              {t('下载发票')}
-            </Button>
-            <Button onClick={() => setPreviewSheet({ visible: false, url: '', isPdf: false })}>
-              {t('关闭')}
-            </Button>
-          </div>
+          <Button
+            icon={<IconDownload />}
+            onClick={() => window.open(previewSheet.url, '_blank')}
+          >
+            {t('下载发票')}
+          </Button>
         }
+        width={isMobile ? '95vw' : 760}
+        style={{ maxWidth: '95vw' }}
       >
-        <div style={{ flex: 1, overflow: 'auto', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--semi-color-bg-1)' }}>
+        <div style={{ textAlign: 'center' }}>
           {previewSheet.isPdf ? (
             <iframe
               src={previewSheet.url}
               title='invoice-pdf'
-              style={{ width: '100%', height: '75vh', border: 'none' }}
+              style={{ width: '100%', height: '70vh', border: 'none' }}
             />
           ) : (
             <img
               src={previewSheet.url}
               alt='invoice'
-              style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain' }}
+              style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
             />
           )}
         </div>
-      </SideSheet>
+      </Modal>
     </>
   );
 };

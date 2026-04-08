@@ -29,7 +29,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { API } from '../../helpers/api';
 import { showError, getRelativeTime } from '../../helpers/utils';
-import defaultNoticeRaw from '../../assets/default-notice.md?raw';
+import DefaultNotice from './DefaultNotice';
 import {
   IllustrationNoContent,
   IllustrationNoContentDark,
@@ -51,6 +51,7 @@ const NoticeModal = ({
 }) => {
   const { t } = useTranslation();
   const [noticeContent, setNoticeContent] = useState('');
+  const [useDefaultNotice, setUseDefaultNotice] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [renderedAnnouncementMap, setRenderedAnnouncementMap] = useState({});
@@ -95,19 +96,24 @@ const NoticeModal = ({
       const res = await API.get('/api/notice');
       const { success, message, data } = res.data;
       if (success) {
-        const source = (data && data.trim() !== '') ? data : defaultNoticeRaw;
-        const htmlNotice = await parseMarkdownToHtml(source);
-        setNoticeContent(htmlNotice);
+        if (data && data.trim() !== '') {
+          const htmlNotice = await parseMarkdownToHtml(data);
+          setNoticeContent(htmlNotice);
+          setUseDefaultNotice(false);
+        } else {
+          // 后台未配置，展示默认国际化组件
+          setNoticeContent('');
+          setUseDefaultNotice(true);
+        }
       } else {
         showError(message);
-        // 后台接口报错时也 fallback 到默认文件
-        const htmlNotice = await parseMarkdownToHtml(defaultNoticeRaw);
-        setNoticeContent(htmlNotice);
+        setNoticeContent('');
+        setUseDefaultNotice(true);
       }
     } catch (error) {
       showError(error.message);
-      const htmlNotice = await parseMarkdownToHtml(defaultNoticeRaw);
-      setNoticeContent(htmlNotice);
+      setNoticeContent('');
+      setUseDefaultNotice(true);
     } finally {
       setLoading(false);
     }
@@ -168,20 +174,8 @@ const NoticeModal = ({
       );
     }
 
-    if (!noticeContent) {
-      return (
-        <div className='py-12'>
-          <Empty
-            image={
-              <IllustrationNoContent style={{ width: 150, height: 150 }} />
-            }
-            darkModeImage={
-              <IllustrationNoContentDark style={{ width: 150, height: 150 }} />
-            }
-            description={t('暂无公告')}
-          />
-        </div>
-      );
+    if (useDefaultNotice) {
+      return <DefaultNotice />;
     }
 
     return (
