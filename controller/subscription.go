@@ -220,14 +220,24 @@ func normalizeSubscriptionPlanLimitFields(plan *model.SubscriptionPlan) error {
 		return nil
 	}
 	plan.ResourceType = model.NormalizeSubscriptionResourceType(plan.ResourceType)
+	plan.QuotaResetPeriod = model.NormalizeResetPeriod(plan.QuotaResetPeriod)
 	if plan.TotalAmount < 0 {
 		return fmt.Errorf("总额度不能为负数")
 	}
 	if plan.RequestCountTotal < 0 {
-		return fmt.Errorf("次数不能为负数")
+		return fmt.Errorf("总次数不能为负数")
 	}
-	if plan.TotalAmount <= 0 && plan.RequestCountTotal <= 0 {
-		return fmt.Errorf("总额度和次数不能同时为0")
+	if plan.RequestCountPeriodTotal < 0 {
+		return fmt.Errorf("周期次数不能为负数")
+	}
+	if plan.ResourceType == model.SubscriptionResourceRequestCount && plan.QuotaResetPeriod == model.SubscriptionResetNever && plan.RequestCountPeriodTotal > 0 {
+		return fmt.Errorf("设置周期次数上限时必须配置重置周期")
+	}
+	if plan.TotalAmount <= 0 && plan.RequestCountTotal <= 0 && plan.RequestCountPeriodTotal <= 0 {
+		return fmt.Errorf("总额度、总次数和周期次数不能同时为0")
+	}
+	if plan.ResourceType == model.SubscriptionResourceRequestCount && plan.QuotaResetPeriod == model.SubscriptionResetNever {
+		plan.RequestCountPeriodTotal = 0
 	}
 	if plan.SaleLimitCount < 0 {
 		return fmt.Errorf("可购买总数不能为负数")

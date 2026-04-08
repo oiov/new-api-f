@@ -45,6 +45,12 @@ export function getSubscriptionResetPeriodValue(plan) {
   return plan?.reset_period || plan?.quota_reset_period || 'never';
 }
 
+export function getSubscriptionRequestCountPeriodLimit(plan) {
+  const period = getSubscriptionResetPeriodValue(plan);
+  if (period === 'never') return 0;
+  return Number(plan?.request_count_period_total || 0);
+}
+
 export function isSubscriptionResourcePeriodic(plan) {
   return getSubscriptionResetPeriodValue(plan) !== 'never';
 }
@@ -83,12 +89,19 @@ export function getSubscriptionUsageSummary(plan) {
     const total = Number(plan?.request_count_total || 0);
     const used = Number(plan?.request_count_used || 0);
     const remain = total > 0 ? Math.max(0, total - used) : 0;
+    const periodTotal = getSubscriptionRequestCountPeriodLimit(plan);
+    const periodUsed = Number(plan?.request_count_period_used || 0);
+    const periodRemain = periodTotal > 0 ? Math.max(0, periodTotal - periodUsed) : 0;
     return {
       resourceType,
       total,
       used,
       remain,
       unlimited: total <= 0,
+      periodTotal,
+      periodUsed,
+      periodRemain,
+      periodUnlimited: periodTotal <= 0,
     };
   }
   const total = Number(plan?.amount_total ?? plan?.total_amount ?? 0);
@@ -149,4 +162,22 @@ export function formatSubscriptionResetPeriod(plan, t) {
     return `${seconds} ${t('秒')}`;
   }
   return t('不重置');
+}
+
+export function formatSubscriptionRequestBenefit(plan, t) {
+  const summary = getSubscriptionUsageSummary(plan);
+  if (summary.resourceType !== 'request_count') {
+    return '';
+  }
+  const parts = [];
+  if (!summary.periodUnlimited) {
+    parts.push(`${formatSubscriptionResetPeriod(plan, t)} ${summary.periodTotal} ${t('次')}`);
+  }
+  if (!summary.unlimited) {
+    parts.push(`${t('总计')} ${summary.total} ${t('次')}`);
+  }
+  if (parts.length === 0) {
+    return t('不限次数');
+  }
+  return parts.join(' · ');
 }

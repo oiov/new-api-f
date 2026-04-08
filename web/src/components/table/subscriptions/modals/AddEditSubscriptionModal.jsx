@@ -111,6 +111,7 @@ const AddEditSubscriptionModal = ({
     resource_type: 'quota',
     total_amount: 0,
     request_count_total: 0,
+    request_count_period_total: 0,
     upgrade_group: '',
     stripe_price_id: '',
     creem_product_id: '',
@@ -144,6 +145,7 @@ const AddEditSubscriptionModal = ({
         quotaToDisplayAmount(p.total_amount || 0).toFixed(2),
       ),
       request_count_total: Number(p.request_count_total || 0),
+      request_count_period_total: Number(p.request_count_period_total || 0),
       upgrade_group: p.upgrade_group || '',
       stripe_price_id: p.stripe_price_id || '',
       creem_product_id: p.creem_product_id || '',
@@ -201,6 +203,7 @@ const AddEditSubscriptionModal = ({
           resource_type: values.resource_type || 'quota',
           total_amount: displayAmountToQuota(values.total_amount),
           request_count_total: Number(values.request_count_total || 0),
+          request_count_period_total: Number(values.request_count_period_total || 0),
           upgrade_group: values.upgrade_group || '',
         },
       };
@@ -403,6 +406,21 @@ const AddEditSubscriptionModal = ({
 
                     <Col span={12}>
                       <Form.InputNumber
+                        field='request_count_period_total'
+                        label={t('周期次数上限')}
+                        min={0}
+                        precision={0}
+                        extraText={
+                          values.quota_reset_period === 'never'
+                            ? t('未开启重置时此字段不生效')
+                            : t('例如每日 500 次、每周 5000 次；0 表示当前周期不限')
+                        }
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.InputNumber
                         field='request_count_total'
                         label={requestCountFieldLabel}
                         min={0}
@@ -411,7 +429,7 @@ const AddEditSubscriptionModal = ({
                           values.quota_reset_period === 'never'
                             ? t('0 表示不限制，可与总额度同时生效')
                             : t(
-                                '设置了重置周期后，这里表示每个重置周期内可用的次数；0 表示不限制。',
+                                '这里表示整个有效期内的总次数上限，可与上面的周期次数同时生效；0 表示不限制。',
                               )
                         }
                         style={{ width: '100%' }}

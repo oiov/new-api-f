@@ -33,10 +33,13 @@ export interface SubscriptionPlan {
   duration_unit?: string;
   duration_value?: number;
   custom_seconds?: number;
+  quota_reset_period?: string;
+  quota_reset_custom_seconds?: number;
   resource_type?: string;
   amount_total?: number;
   total_amount?: number;
   request_count_total?: number;
+  request_count_period_total?: number;
   max_purchase_per_user?: number;
   sale_limit_count?: number;
   sold_count?: number;

@@ -52,6 +52,7 @@ interface SubscriptionPlan {
   total_amount?: number;
   amount_total?: number;
   request_count_total?: number;
+  request_count_period_total?: number;
   max_purchase_per_user?: number;
   sale_limit_count?: number;
   sold_count?: number;
@@ -96,7 +97,7 @@ function emptyPlan(): SubscriptionPlan {
     price_amount: 0, discount_price_amount: 0, discount_deadline: 0,
     duration_unit: 'month', duration_value: 1, custom_seconds: 0,
     quota_reset_period: 'never', quota_reset_custom_seconds: 0,
-    resource_type: 'quota', total_amount: 0, request_count_total: 0,
+    resource_type: 'quota', total_amount: 0, request_count_total: 0, request_count_period_total: 0,
     max_purchase_per_user: 0, sale_limit_count: 0,
     upgrade_group: '', sort_order: 0,
     stripe_price_id: '', creem_product_id: '',
@@ -155,8 +156,22 @@ function fmtDuration(plan: SubscriptionPlan, t: (k: string) => string): string {
 
 function fmtBenefit(plan: SubscriptionPlan, t: (k: string) => string): string {
   if (plan.resource_type === 'request_count') {
-    const n = Number(plan.request_count_total || 0);
-    return n > 0 ? `${n} ${t('次')}` : t('不限次数');
+    const periodLimit = Number(plan.request_count_period_total || 0);
+    const totalLimit = Number(plan.request_count_total || 0);
+    const resetLabelMap: Record<string, string> = {
+      daily: t('每天'),
+      weekly: t('每周'),
+      monthly: t('每月'),
+      yearly: t('每年'),
+    };
+    const parts: string[] = [];
+    if ((plan.quota_reset_period || 'never') !== 'never' && periodLimit > 0) {
+      parts.push(`${resetLabelMap[plan.quota_reset_period || ''] || t('每周期')} ${periodLimit} ${t('次')}`);
+    }
+    if (totalLimit > 0) {
+      parts.push(`${t('总计')} ${totalLimit} ${t('次')}`);
+    }
+    return parts.length > 0 ? parts.join(' · ') : t('不限次数');
   }
   const total = Number(plan.total_amount ?? plan.amount_total ?? 0);
   return total > 0 ? renderQuota(total) : t('不限额度');
@@ -738,11 +753,18 @@ function PlanFormSheet({ open, onClose, initial, onSaved }: PlanFormSheetProps) 
                 </Select>
               </FormRow>
               {form.resource_type === 'request_count' ? (
-                <FormRow label={t('总次数')} hint={t('0 表示不限次数')}>
-                  <Input type="number" min={0}
-                    value={form.request_count_total ?? 0} onChange={setNum('request_count_total')}
-                    className="h-8 text-sm" />
-                </FormRow>
+                <>
+                  <FormRow label={t('周期次数上限')} hint={t('未开启重置时不生效；0 表示当前周期不限')}>
+                    <Input type="number" min={0}
+                      value={form.request_count_period_total ?? 0} onChange={setNum('request_count_period_total')}
+                      className="h-8 text-sm" />
+                  </FormRow>
+                  <FormRow label={t('总次数')} hint={t('整个有效期内的总次数上限；0 表示不限')}>
+                    <Input type="number" min={0}
+                      value={form.request_count_total ?? 0} onChange={setNum('request_count_total')}
+                      className="h-8 text-sm" />
+                  </FormRow>
+                </>
               ) : (
                 <FormRow label={t('总额度')} hint={t('0 表示不限额度，单位同系统设置')}>
                   <Input type="number" min={0}

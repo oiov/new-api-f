@@ -218,8 +218,10 @@ type SubscriptionPlan struct {
 
 	// ResourceType controls whether this plan is billed by quota or successful request count.
 	ResourceType string `json:"resource_type" gorm:"type:varchar(32);not null;default:'quota'"`
-	// RequestCountTotal is the total successful request count for request_count plans (0 = unlimited).
+	// RequestCountTotal is the total successful request count allowed across the whole subscription lifetime (0 = unlimited).
 	RequestCountTotal int64 `json:"request_count_total" gorm:"type:bigint;not null;default:0"`
+	// RequestCountPeriodTotal is the successful request count allowed within each reset period (0 = unlimited).
+	RequestCountPeriodTotal int64 `json:"request_count_period_total" gorm:"type:bigint;not null;default:0"`
 
 	// Quota reset period for plan
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
@@ -314,16 +316,17 @@ type SubscriptionOrder struct {
 	PlanId int     `json:"plan_id" gorm:"index"`
 	Money  float64 `json:"money"`
 
-	PlanTitle               string `json:"plan_title" gorm:"type:varchar(255);default:''"`
-	PlanDurationUnit        string `json:"plan_duration_unit" gorm:"type:varchar(16);default:''"`
-	PlanDurationValue       int    `json:"plan_duration_value" gorm:"type:int;not null;default:0"`
-	PlanCustomSeconds       int64  `json:"plan_custom_seconds" gorm:"type:bigint;not null;default:0"`
-	PlanUpgradeGroup        string `json:"plan_upgrade_group" gorm:"type:varchar(64);default:''"`
-	PlanTotalAmount         int64  `json:"plan_total_amount" gorm:"type:bigint;not null;default:0"`
-	PlanResourceType        string `json:"plan_resource_type" gorm:"type:varchar(32);default:''"`
-	PlanRequestCountTotal   int64  `json:"plan_request_count_total" gorm:"type:bigint;not null;default:0"`
-	PlanQuotaResetPeriod    string `json:"plan_quota_reset_period" gorm:"type:varchar(16);default:''"`
-	PlanQuotaResetCustomSec int64  `json:"plan_quota_reset_custom_sec" gorm:"type:bigint;not null;default:0"`
+	PlanTitle                   string `json:"plan_title" gorm:"type:varchar(255);default:''"`
+	PlanDurationUnit            string `json:"plan_duration_unit" gorm:"type:varchar(16);default:''"`
+	PlanDurationValue           int    `json:"plan_duration_value" gorm:"type:int;not null;default:0"`
+	PlanCustomSeconds           int64  `json:"plan_custom_seconds" gorm:"type:bigint;not null;default:0"`
+	PlanUpgradeGroup            string `json:"plan_upgrade_group" gorm:"type:varchar(64);default:''"`
+	PlanTotalAmount             int64  `json:"plan_total_amount" gorm:"type:bigint;not null;default:0"`
+	PlanResourceType            string `json:"plan_resource_type" gorm:"type:varchar(32);default:''"`
+	PlanRequestCountTotal       int64  `json:"plan_request_count_total" gorm:"type:bigint;not null;default:0"`
+	PlanRequestCountPeriodTotal int64  `json:"plan_request_count_period_total" gorm:"type:bigint;not null;default:0"`
+	PlanQuotaResetPeriod        string `json:"plan_quota_reset_period" gorm:"type:varchar(16);default:''"`
+	PlanQuotaResetCustomSec     int64  `json:"plan_quota_reset_custom_sec" gorm:"type:bigint;not null;default:0"`
 
 	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -368,6 +371,7 @@ func (o *SubscriptionOrder) ApplyPlanSnapshot(plan *SubscriptionPlan) {
 	o.PlanTotalAmount = plan.TotalAmount
 	o.PlanResourceType = NormalizeSubscriptionResourceType(plan.ResourceType)
 	o.PlanRequestCountTotal = plan.RequestCountTotal
+	o.PlanRequestCountPeriodTotal = plan.RequestCountPeriodTotal
 	o.PlanQuotaResetPeriod = NormalizeResetPeriod(plan.QuotaResetPeriod)
 	o.PlanQuotaResetCustomSec = plan.QuotaResetCustomSeconds
 }
@@ -386,6 +390,7 @@ func (o *SubscriptionOrder) SnapshotPlan() *SubscriptionPlan {
 		TotalAmount:             o.PlanTotalAmount,
 		ResourceType:            NormalizeSubscriptionResourceType(o.PlanResourceType),
 		RequestCountTotal:       o.PlanRequestCountTotal,
+		RequestCountPeriodTotal: o.PlanRequestCountPeriodTotal,
 		QuotaResetPeriod:        NormalizeResetPeriod(o.PlanQuotaResetPeriod),
 		QuotaResetCustomSeconds: o.PlanQuotaResetCustomSec,
 	}
@@ -405,6 +410,7 @@ func buildSubscriptionPlanSnapshot(plan *SubscriptionPlan, planId int) *Subscrip
 		TotalAmount:             plan.TotalAmount,
 		ResourceType:            NormalizeSubscriptionResourceType(plan.ResourceType),
 		RequestCountTotal:       plan.RequestCountTotal,
+		RequestCountPeriodTotal: plan.RequestCountPeriodTotal,
 		QuotaResetPeriod:        NormalizeResetPeriod(plan.QuotaResetPeriod),
 		QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
 	}
@@ -419,14 +425,16 @@ type UserSubscription struct {
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
 
-	ResourceType       string `json:"resource_type" gorm:"type:varchar(32);not null;default:'quota'"`
-	RequestCountTotal  int64  `json:"request_count_total" gorm:"type:bigint;not null;default:0"`
-	RequestCountUsed   int64  `json:"request_count_used" gorm:"type:bigint;not null;default:0"`
-	ResetPeriod        string `json:"reset_period" gorm:"type:varchar(16);not null;default:'never'"`
-	ResetCustomSeconds int64  `json:"reset_custom_seconds" gorm:"type:bigint;not null;default:0"`
-	DurationUnit       string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
-	DurationValue      int    `json:"duration_value" gorm:"type:int;not null;default:1"`
-	CustomSeconds      int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
+	ResourceType            string `json:"resource_type" gorm:"type:varchar(32);not null;default:'quota'"`
+	RequestCountTotal       int64  `json:"request_count_total" gorm:"type:bigint;not null;default:0"`
+	RequestCountUsed        int64  `json:"request_count_used" gorm:"type:bigint;not null;default:0"`
+	RequestCountPeriodTotal int64  `json:"request_count_period_total" gorm:"type:bigint;not null;default:0"`
+	RequestCountPeriodUsed  int64  `json:"request_count_period_used" gorm:"type:bigint;not null;default:0"`
+	ResetPeriod             string `json:"reset_period" gorm:"type:varchar(16);not null;default:'never'"`
+	ResetCustomSeconds      int64  `json:"reset_custom_seconds" gorm:"type:bigint;not null;default:0"`
+	DurationUnit            string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
+	DurationValue           int    `json:"duration_value" gorm:"type:int;not null;default:1"`
+	CustomSeconds           int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
 
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
@@ -609,6 +617,10 @@ func syncSubscriptionPlanSnapshotFields(sub *UserSubscription, plan *Subscriptio
 		sub.RequestCountTotal = plan.RequestCountTotal
 		changed = true
 	}
+	if sub.RequestCountPeriodTotal != plan.RequestCountPeriodTotal {
+		sub.RequestCountPeriodTotal = plan.RequestCountPeriodTotal
+		changed = true
+	}
 	if sub.ResetPeriod != resetPeriod {
 		sub.ResetPeriod = resetPeriod
 		changed = true
@@ -668,15 +680,65 @@ func getSubscriptionUsageWindowStart(sub *UserSubscription) int64 {
 	return sub.StartTime
 }
 
+func getSubscriptionRequestCountPeriodLimit(sub *UserSubscription) int64 {
+	if sub == nil {
+		return 0
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+		return 0
+	}
+	if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever {
+		return 0
+	}
+	if sub.RequestCountPeriodTotal <= 0 {
+		return sub.RequestCountTotal
+	}
+	return sub.RequestCountPeriodTotal
+}
+
+func hasSeparatePeriodRequestCounter(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	return NormalizeResetPeriod(sub.ResetPeriod) != SubscriptionResetNever && sub.RequestCountPeriodTotal > 0
+}
+
+func hasLifetimeRequestCountLimit(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+		return false
+	}
+	if NormalizeResetPeriod(sub.ResetPeriod) != SubscriptionResetNever && !hasSeparatePeriodRequestCounter(sub) {
+		return false
+	}
+	return sub.RequestCountTotal > 0
+}
+
+func getCurrentRequestCountUsed(sub *UserSubscription) int64 {
+	if sub == nil {
+		return 0
+	}
+	if hasSeparatePeriodRequestCounter(sub) {
+		return sub.RequestCountPeriodUsed
+	}
+	return sub.RequestCountUsed
+}
+
 func hasUserSubscriptionRemainingEntitlement(sub *UserSubscription) bool {
 	if sub == nil {
 		return false
 	}
 	if NormalizeSubscriptionResourceType(sub.ResourceType) == SubscriptionResourceRequestCount {
-		if sub.RequestCountTotal <= 0 {
-			return true
+		if hasLifetimeRequestCountLimit(sub) && sub.RequestCountUsed >= sub.RequestCountTotal {
+			return false
 		}
-		return sub.RequestCountUsed < sub.RequestCountTotal
+		periodLimit := getSubscriptionRequestCountPeriodLimit(sub)
+		if periodLimit > 0 && getCurrentRequestCountUsed(sub) >= periodLimit {
+			return false
+		}
+		return true
 	}
 	if sub.AmountTotal <= 0 {
 		return true
@@ -724,7 +786,7 @@ func reconcileUserSubscriptionUsageFromLogs(sub *UserSubscription, now int64) (b
 	if windowStart <= 0 {
 		windowStart = now
 	}
-	expectedAmountUsed, expectedCountUsed, preConsumeRequestIDs, err := summarizeUserSubscriptionUsageFromPreConsumeRecords(sub, windowStart, now)
+	expectedAmountUsed, expectedPeriodCountUsed, preConsumeRequestIDs, err := summarizeUserSubscriptionUsageFromPreConsumeRecords(sub, windowStart, now)
 	if err != nil {
 		return false, err
 	}
@@ -733,21 +795,48 @@ func reconcileUserSubscriptionUsageFromLogs(sub *UserSubscription, now int64) (b
 		return false, err
 	}
 	expectedAmountUsed += summary.TotalQuotaConsumed
-	expectedCountUsed += summary.TotalRequestConsumed
+	expectedPeriodCountUsed += summary.TotalRequestConsumed
 	if sub.AmountTotal > 0 && expectedAmountUsed > sub.AmountTotal {
 		expectedAmountUsed = sub.AmountTotal
 	}
-	if sub.RequestCountTotal > 0 && expectedCountUsed > sub.RequestCountTotal {
-		expectedCountUsed = sub.RequestCountTotal
+	if periodLimit := getSubscriptionRequestCountPeriodLimit(sub); periodLimit > 0 && expectedPeriodCountUsed > periodLimit {
+		expectedPeriodCountUsed = periodLimit
 	}
 	changed := false
 	if sub.AmountUsed != expectedAmountUsed {
 		sub.AmountUsed = expectedAmountUsed
 		changed = true
 	}
-	if sub.RequestCountUsed != expectedCountUsed {
-		sub.RequestCountUsed = expectedCountUsed
-		changed = true
+	if hasSeparatePeriodRequestCounter(sub) {
+		expectedTotalCountUsed, _, totalPreConsumeRequestIDs, err := summarizeUserSubscriptionUsageFromPreConsumeRecords(sub, sub.StartTime, now)
+		if err != nil {
+			return false, err
+		}
+		totalSummary, err := summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(0, sub.Id, 0, sub.UserId, sub.StartTime, now, totalPreConsumeRequestIDs)
+		if err != nil {
+			return false, err
+		}
+		expectedTotalCountUsed += totalSummary.TotalRequestConsumed
+		if sub.RequestCountTotal > 0 && expectedTotalCountUsed > sub.RequestCountTotal {
+			expectedTotalCountUsed = sub.RequestCountTotal
+		}
+		if sub.RequestCountUsed != expectedTotalCountUsed {
+			sub.RequestCountUsed = expectedTotalCountUsed
+			changed = true
+		}
+		if sub.RequestCountPeriodUsed != expectedPeriodCountUsed {
+			sub.RequestCountPeriodUsed = expectedPeriodCountUsed
+			changed = true
+		}
+	} else {
+		if sub.RequestCountUsed != expectedPeriodCountUsed {
+			sub.RequestCountUsed = expectedPeriodCountUsed
+			changed = true
+		}
+		if sub.RequestCountPeriodUsed != 0 {
+			sub.RequestCountPeriodUsed = 0
+			changed = true
+		}
 	}
 	return changed, nil
 }
@@ -981,28 +1070,30 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		}
 	}
 	sub := &UserSubscription{
-		UserId:             userId,
-		PlanId:             lockedPlan.Id,
-		AmountTotal:        effectivePlan.TotalAmount,
-		AmountUsed:         0,
-		ResourceType:       NormalizeSubscriptionResourceType(effectivePlan.ResourceType),
-		RequestCountTotal:  effectivePlan.RequestCountTotal,
-		RequestCountUsed:   0,
-		ResetPeriod:        NormalizeResetPeriod(effectivePlan.QuotaResetPeriod),
-		ResetCustomSeconds: effectivePlan.QuotaResetCustomSeconds,
-		DurationUnit:       effectivePlan.DurationUnit,
-		DurationValue:      effectivePlan.DurationValue,
-		CustomSeconds:      effectivePlan.CustomSeconds,
-		StartTime:          now.Unix(),
-		EndTime:            endUnix,
-		Status:             "active",
-		Source:             source,
-		LastResetTime:      lastReset,
-		NextResetTime:      nextReset,
-		UpgradeGroup:       upgradeGroup,
-		PrevUserGroup:      prevGroup,
-		CreatedAt:          common.GetTimestamp(),
-		UpdatedAt:          common.GetTimestamp(),
+		UserId:                  userId,
+		PlanId:                  lockedPlan.Id,
+		AmountTotal:             effectivePlan.TotalAmount,
+		AmountUsed:              0,
+		ResourceType:            NormalizeSubscriptionResourceType(effectivePlan.ResourceType),
+		RequestCountTotal:       effectivePlan.RequestCountTotal,
+		RequestCountUsed:        0,
+		RequestCountPeriodTotal: effectivePlan.RequestCountPeriodTotal,
+		RequestCountPeriodUsed:  0,
+		ResetPeriod:             NormalizeResetPeriod(effectivePlan.QuotaResetPeriod),
+		ResetCustomSeconds:      effectivePlan.QuotaResetCustomSeconds,
+		DurationUnit:            effectivePlan.DurationUnit,
+		DurationValue:           effectivePlan.DurationValue,
+		CustomSeconds:           effectivePlan.CustomSeconds,
+		StartTime:               now.Unix(),
+		EndTime:                 endUnix,
+		Status:                  "active",
+		Source:                  source,
+		LastResetTime:           lastReset,
+		NextResetTime:           nextReset,
+		UpgradeGroup:            upgradeGroup,
+		PrevUserGroup:           prevGroup,
+		CreatedAt:               common.GetTimestamp(),
+		UpdatedAt:               common.GetTimestamp(),
 	}
 	if err := tx.Create(sub).Error; err != nil {
 		return nil, err
@@ -1147,7 +1238,11 @@ func RefreshActiveSubscriptionResetWindows(batchSize int) (int, error) {
 			advanced := sub.LastResetTime > baseUnix && sub.LastResetTime <= now
 			if advanced {
 				sub.AmountUsed = 0
-				sub.RequestCountUsed = 0
+				if hasSeparatePeriodRequestCounter(&sub) {
+					sub.RequestCountPeriodUsed = 0
+				} else {
+					sub.RequestCountUsed = 0
+				}
 			}
 			usageChanged, err := reconcileUserSubscriptionUsageFromLogs(&sub, now)
 			if err != nil {
@@ -1166,6 +1261,7 @@ func RefreshActiveSubscriptionResetWindows(batchSize int) (int, error) {
 			if advanced || usageChanged {
 				updates["amount_used"] = sub.AmountUsed
 				updates["request_count_used"] = sub.RequestCountUsed
+				updates["request_count_period_used"] = sub.RequestCountPeriodUsed
 			}
 			if statusChanged {
 				updates["status"] = sub.Status
@@ -1340,7 +1436,7 @@ func HasUsableUserSubscription(userId int) (bool, error) {
 	}
 	now := common.GetTimestamp()
 	var subs []UserSubscription
-	if err := DB.Select("id, status, end_time, resource_type, request_count_total, request_count_used, amount_total, amount_used").
+	if err := DB.Select("id, status, end_time, resource_type, request_count_total, request_count_used, request_count_period_total, request_count_period_used, reset_period, amount_total, amount_used").
 		Where("user_id = ? AND status = ? AND (end_time = 0 OR end_time > ?)", userId, "active", now).
 		Order("end_time asc, id asc").
 		Find(&subs).Error; err != nil {
@@ -1797,28 +1893,30 @@ func createMigratedUserSubscriptionTx(tx *gorm.DB, source *UserSubscription, tar
 		requestCountTotal = 0
 	}
 	newSub := &UserSubscription{
-		UserId:             source.UserId,
-		PlanId:             targetPlan.Id,
-		AmountTotal:        amountTotal,
-		AmountUsed:         amountUsed,
-		ResourceType:       targetResourceType,
-		RequestCountTotal:  requestCountTotal,
-		RequestCountUsed:   requestCountUsed,
-		ResetPeriod:        NormalizeResetPeriod(targetPlan.QuotaResetPeriod),
-		ResetCustomSeconds: targetPlan.QuotaResetCustomSeconds,
-		DurationUnit:       targetPlan.DurationUnit,
-		DurationValue:      targetPlan.DurationValue,
-		CustomSeconds:      targetPlan.CustomSeconds,
-		StartTime:          source.StartTime,
-		EndTime:            source.EndTime,
-		Status:             "active",
-		Source:             "migration",
-		LastResetTime:      lastReset,
-		NextResetTime:      nextReset,
-		UpgradeGroup:       targetGroup,
-		PrevUserGroup:      prevGroup,
-		CreatedAt:          common.GetTimestamp(),
-		UpdatedAt:          common.GetTimestamp(),
+		UserId:                  source.UserId,
+		PlanId:                  targetPlan.Id,
+		AmountTotal:             amountTotal,
+		AmountUsed:              amountUsed,
+		ResourceType:            targetResourceType,
+		RequestCountTotal:       requestCountTotal,
+		RequestCountUsed:        requestCountUsed,
+		RequestCountPeriodTotal: targetPlan.RequestCountPeriodTotal,
+		RequestCountPeriodUsed:  source.RequestCountPeriodUsed,
+		ResetPeriod:             NormalizeResetPeriod(targetPlan.QuotaResetPeriod),
+		ResetCustomSeconds:      targetPlan.QuotaResetCustomSeconds,
+		DurationUnit:            targetPlan.DurationUnit,
+		DurationValue:           targetPlan.DurationValue,
+		CustomSeconds:           targetPlan.CustomSeconds,
+		StartTime:               source.StartTime,
+		EndTime:                 source.EndTime,
+		Status:                  "active",
+		Source:                  "migration",
+		LastResetTime:           lastReset,
+		NextResetTime:           nextReset,
+		UpgradeGroup:            targetGroup,
+		PrevUserGroup:           prevGroup,
+		CreatedAt:               common.GetTimestamp(),
+		UpdatedAt:               common.GetTimestamp(),
 	}
 	if err := tx.Create(newSub).Error; err != nil {
 		return nil, "", err
@@ -2186,7 +2284,11 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 				return errors.New("subscription is not active")
 			}
 			sub.AmountUsed = 0
-			sub.RequestCountUsed = 0
+			if hasSeparatePeriodRequestCounter(&sub) {
+				sub.RequestCountPeriodUsed = 0
+			} else {
+				sub.RequestCountUsed = 0
+			}
 			if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever {
 				sub.LastResetTime = 0
 				sub.NextResetTime = 0
@@ -2205,17 +2307,20 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 }
 
 type SubscriptionPreConsumeResult struct {
-	UserSubscriptionId int
-	PreConsumed        int64
-	PreConsumedAmount  int64
-	PreConsumedCount   int64
-	AmountTotal        int64
-	AmountUsedBefore   int64
-	AmountUsedAfter    int64
-	ResourceType       string
-	RequestCountTotal  int64
-	RequestCountBefore int64
-	RequestCountAfter  int64
+	UserSubscriptionId       int
+	PreConsumed              int64
+	PreConsumedAmount        int64
+	PreConsumedCount         int64
+	AmountTotal              int64
+	AmountUsedBefore         int64
+	AmountUsedAfter          int64
+	ResourceType             string
+	RequestCountTotal        int64
+	RequestCountPeriodTotal  int64
+	RequestCountBefore       int64
+	RequestCountAfter        int64
+	RequestCountPeriodBefore int64
+	RequestCountPeriodAfter  int64
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -2356,7 +2461,11 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, _ 
 		return nil
 	}
 	sub.AmountUsed = 0
-	sub.RequestCountUsed = 0
+	if hasSeparatePeriodRequestCounter(sub) {
+		sub.RequestCountPeriodUsed = 0
+	} else {
+		sub.RequestCountUsed = 0
+	}
 	return tx.Save(sub).Error
 }
 
@@ -2374,9 +2483,16 @@ func isUserSubscriptionEligibleForPreConsume(sub *UserSubscription, amount int64
 			return false, requiredAmount, requiredCount, resourceType
 		}
 	}
-	if sub.RequestCountTotal > 0 {
+	if hasLifetimeRequestCountLimit(sub) {
 		requiredCount = 1
 		remain := sub.RequestCountTotal - sub.RequestCountUsed
+		if remain < requiredCount {
+			return false, requiredAmount, requiredCount, resourceType
+		}
+	}
+	if periodLimit := getSubscriptionRequestCountPeriodLimit(sub); periodLimit > 0 {
+		requiredCount = 1
+		remain := periodLimit - getCurrentRequestCountUsed(sub)
 		if remain < requiredCount {
 			return false, requiredAmount, requiredCount, resourceType
 		}
@@ -2439,6 +2555,7 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 	}
 	usedBefore := sub.AmountUsed
 	requestCountBefore := sub.RequestCountUsed
+	requestCountPeriodBefore := sub.RequestCountPeriodUsed
 	primaryPreConsumed := requiredAmount
 	if primaryPreConsumed <= 0 {
 		primaryPreConsumed = requiredCount
@@ -2467,14 +2584,22 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			returnValue.ResourceType = resourceType
 			returnValue.RequestCountTotal = sub.RequestCountTotal
+			returnValue.RequestCountPeriodTotal = sub.RequestCountPeriodTotal
 			returnValue.RequestCountBefore = sub.RequestCountUsed
 			returnValue.RequestCountAfter = sub.RequestCountUsed
+			returnValue.RequestCountPeriodBefore = sub.RequestCountPeriodUsed
+			returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
 			return nil
 		}
 		return err
 	}
 	if requiredCount > 0 {
-		sub.RequestCountUsed += requiredCount
+		if hasLifetimeRequestCountLimit(sub) || !hasSeparatePeriodRequestCounter(sub) {
+			sub.RequestCountUsed += requiredCount
+		}
+		if hasSeparatePeriodRequestCounter(sub) {
+			sub.RequestCountPeriodUsed += requiredCount
+		}
 	}
 	if requiredAmount > 0 {
 		sub.AmountUsed += requiredAmount
@@ -2491,8 +2616,11 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 	returnValue.AmountUsedAfter = sub.AmountUsed
 	returnValue.ResourceType = resourceType
 	returnValue.RequestCountTotal = sub.RequestCountTotal
+	returnValue.RequestCountPeriodTotal = sub.RequestCountPeriodTotal
 	returnValue.RequestCountBefore = requestCountBefore
 	returnValue.RequestCountAfter = sub.RequestCountUsed
+	returnValue.RequestCountPeriodBefore = requestCountPeriodBefore
+	returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
 	return nil
 }
 
@@ -2534,8 +2662,11 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			returnValue.ResourceType = NormalizeSubscriptionResourceType(sub.ResourceType)
 			returnValue.RequestCountTotal = sub.RequestCountTotal
+			returnValue.RequestCountPeriodTotal = sub.RequestCountPeriodTotal
 			returnValue.RequestCountBefore = sub.RequestCountUsed
 			returnValue.RequestCountAfter = sub.RequestCountUsed
+			returnValue.RequestCountPeriodBefore = sub.RequestCountPeriodUsed
+			returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
 			return nil
 		}
 
@@ -2762,14 +2893,27 @@ func postConsumeUserSubscriptionDeltaDetailedTx(tx *gorm.DB, userSubscriptionId 
 		return err
 	}
 	if countDelta != 0 {
-		newCountUsed := sub.RequestCountUsed + countDelta
-		if newCountUsed < 0 {
-			newCountUsed = 0
+		if hasLifetimeRequestCountLimit(&sub) || !hasSeparatePeriodRequestCounter(&sub) {
+			newCountUsed := sub.RequestCountUsed + countDelta
+			if newCountUsed < 0 {
+				newCountUsed = 0
+			}
+			if hasLifetimeRequestCountLimit(&sub) && newCountUsed > sub.RequestCountTotal {
+				return fmt.Errorf("subscription request count exceeds total, used=%d total=%d", newCountUsed, sub.RequestCountTotal)
+			}
+			sub.RequestCountUsed = newCountUsed
 		}
-		if sub.RequestCountTotal > 0 && newCountUsed > sub.RequestCountTotal {
-			return fmt.Errorf("subscription request count exceeds total, used=%d total=%d", newCountUsed, sub.RequestCountTotal)
+		if hasSeparatePeriodRequestCounter(&sub) || sub.RequestCountPeriodUsed > 0 {
+			newPeriodCountUsed := sub.RequestCountPeriodUsed + countDelta
+			if newPeriodCountUsed < 0 {
+				newPeriodCountUsed = 0
+			}
+			periodLimit := getSubscriptionRequestCountPeriodLimit(&sub)
+			if periodLimit > 0 && newPeriodCountUsed > periodLimit {
+				return fmt.Errorf("subscription request count exceeds period limit, used=%d total=%d", newPeriodCountUsed, periodLimit)
+			}
+			sub.RequestCountPeriodUsed = newPeriodCountUsed
 		}
-		sub.RequestCountUsed = newCountUsed
 	}
 	if amountDelta != 0 {
 		newAmountUsed := sub.AmountUsed + amountDelta

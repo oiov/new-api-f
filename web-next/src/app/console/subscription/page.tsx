@@ -68,6 +68,8 @@ interface SubscriptionPlan {
   amount_used?: number;
   request_count_total?: number;
   request_count_used?: number;
+  request_count_period_total?: number;
+  request_count_period_used?: number;
   upgrade_group?: string;
   max_purchase_per_user?: number;
   sale_limit_count?: number;
@@ -96,6 +98,8 @@ interface UserSubscription {
   amount_used?: number;
   request_count_total?: number;
   request_count_used?: number;
+  request_count_period_total?: number;
+  request_count_period_used?: number;
   source?: string;
   upgrade_group?: string;
 }
@@ -156,11 +160,36 @@ function getUsageSummary(plan: SubscriptionPlan | UserSubscription) {
   if (getResourceType(plan) === 'request_count') {
     const total = Number(plan.request_count_total || 0);
     const used = Number(plan.request_count_used || 0);
-    return { total, used, remain: total > 0 ? Math.max(0, total - used) : 0, unlimited: total <= 0 };
+    const resetPeriod = getResetPeriodValue(plan);
+    const periodTotal = resetPeriod === 'never'
+      ? 0
+      : Number(plan.request_count_period_total || 0);
+    const periodUsed = resetPeriod === 'never'
+      ? 0
+      : Number(plan.request_count_period_used || 0);
+    return {
+      total,
+      used,
+      remain: total > 0 ? Math.max(0, total - used) : 0,
+      unlimited: total <= 0,
+      periodTotal,
+      periodUsed,
+      periodRemain: periodTotal > 0 ? Math.max(0, periodTotal - periodUsed) : 0,
+      periodUnlimited: periodTotal <= 0,
+    };
   }
   const total = Number(plan.amount_total ?? plan.total_amount ?? 0);
   const used = Number(plan.amount_used ?? 0);
-  return { total, used, remain: total > 0 ? Math.max(0, total - used) : 0, unlimited: total <= 0 };
+  return {
+    total,
+    used,
+    remain: total > 0 ? Math.max(0, total - used) : 0,
+    unlimited: total <= 0,
+    periodTotal: 0,
+    periodUsed: 0,
+    periodRemain: 0,
+    periodUnlimited: true,
+  };
 }
 
 function isDiscountActive(plan: SubscriptionPlan, now = Date.now() / 1000): boolean {
@@ -191,23 +220,69 @@ function getSaleSummary(plan: SubscriptionPlan) {
 
 function getResourceLabel(plan: SubscriptionPlan | UserSubscription, t: (k: string) => string): string {
   const isRC = getResourceType(plan) === 'request_count';
+  const summary = getUsageSummary(plan);
   const isPeriodic = getResetPeriodValue(plan) !== 'never';
-  if (isRC) return isPeriodic ? t('每周期次数') : t('总次数');
+  if (isRC) return isPeriodic && !summary.periodUnlimited ? t('周期次数') : t('总次数');
   return isPeriodic ? t('每周期额度') : t('总额度');
 }
 
 function getBenefitText(plan: SubscriptionPlan, t: (k: string) => string): string {
   const summary = getUsageSummary(plan);
   const reset = formatResetPeriod(plan, t);
-  if (summary.unlimited) return t('有效期内不限使用');
+  if (summary.unlimited && summary.periodUnlimited) return t('有效期内不限使用');
   const amount = getResourceType(plan) === 'request_count'
     ? `${summary.total} ${t('次')}`
     : renderQuota(summary.total);
+  if (getResourceType(plan) === 'request_count' && !summary.periodUnlimited) {
+    const parts = [`${reset} ${summary.periodTotal} ${t('次')}`];
+    if (!summary.unlimited) {
+      parts.push(`${t('总计')} ${summary.total} ${t('次')}`);
+    } else {
+      parts.push(t('有效期内不限总量'));
+    }
+    return parts.join(' · ');
+  }
   if (reset === t('不重置')) return `${t('有效期内共可用')} ${amount}`;
   return `${t('每个重置周期可用')} ${amount} · ${t('重置')} ${reset}`;
 }
 
-function displayQuota(summary: ReturnType<typeof getUsageSummary>, type: 'quota' | 'request_count', field: 'total' | 'used' | 'remain', t: (k: string) => string): string {
+function getRequestCountBreakdown(summary: ReturnType<typeof getUsageSummary>, plan: SubscriptionPlan | UserSubscription, t: (k: string) => string) {
+  if (getResourceType(plan) !== 'request_count') {
+    return [] as Array<{ label: string; value: string }>;
+  }
+  const items: Array<{ label: string; value: string }> = [];
+  const reset = formatResetPeriod(plan, t);
+  if (!summary.periodUnlimited) {
+    items.push({
+      label: t('周期次数'),
+      value: `${displayQuota(summary, 'request_count', 'periodUsed', t)} / ${displayQuota(summary, 'request_count', 'periodTotal', t)}`,
+    });
+    items.push({
+      label: t('周期剩余'),
+      value: displayQuota(summary, 'request_count', 'periodRemain', t),
+    });
+    items.push({
+      label: t('重置周期'),
+      value: reset,
+    });
+  }
+  items.push({
+    label: t('总次数'),
+    value: `${displayQuota(summary, 'request_count', 'used', t)} / ${displayQuota(summary, 'request_count', 'total', t)}`,
+  });
+  items.push({
+    label: t('总剩余'),
+    value: displayQuota(summary, 'request_count', 'remain', t),
+  });
+  return items;
+}
+
+function displayQuota(summary: ReturnType<typeof getUsageSummary>, type: 'quota' | 'request_count', field: 'total' | 'used' | 'remain' | 'periodTotal' | 'periodUsed' | 'periodRemain', t: (k: string) => string): string {
+  if (field === 'periodTotal' || field === 'periodUsed' || field === 'periodRemain') {
+    if (summary.periodUnlimited) return t('不限');
+    const val = summary[field];
+    return type === 'request_count' ? `${val} ${t('次')}` : renderQuota(val);
+  }
   if (summary.unlimited) return t('不限');
   const val = summary[field];
   return type === 'request_count' ? `${val} ${t('次')}` : renderQuota(val);
@@ -369,6 +444,7 @@ function SubCard({ item, t, onViewLogs }: SubCardProps) {
   const [expanded, setExpanded] = useState(false);
   const sub = item.subscription;
   const { usageSummary, state, resourceType } = item;
+  const requestCountBreakdown = getRequestCountBreakdown(usageSummary, sub, t);
   const usagePercent = usageSummary.unlimited ? 0
     : Math.min(100, Math.round((usageSummary.used / Math.max(usageSummary.total, 1)) * 100));
   const progressColor = usagePercent >= 85 ? 'bg-destructive' : usagePercent >= 60 ? 'bg-amber-500' : 'bg-emerald-500';
@@ -387,6 +463,7 @@ function SubCard({ item, t, onViewLogs }: SubCardProps) {
     { label: t('来源'), value: sub.source || '--' },
     { label: t('升级分组'), value: sub.upgrade_group || '--' },
     { label: item.usageLabel, value: `${displayQuota(usageSummary, resourceType, 'used', t)} / ${displayQuota(usageSummary, resourceType, 'total', t)}` },
+    ...requestCountBreakdown,
   ];
 
   return (
@@ -414,7 +491,7 @@ function SubCard({ item, t, onViewLogs }: SubCardProps) {
           </div>
           <div className="text-right shrink-0">
             <p className="font-semibold text-sm">
-              {t('剩余')} {displayQuota(usageSummary, resourceType, 'remain', t)}
+              {t('剩余')} {displayQuota(usageSummary, resourceType, resourceType === 'request_count' && !usageSummary.periodUnlimited ? 'periodRemain' : 'remain', t)}
             </p>
             <p className="text-xs text-muted-foreground">
               {state === 'active' ? `${t('还有')} ${item.remainingDays} ${t('天')}` : formatTimestamp(sub.end_time ?? 0, 'YYYY-MM-DD')}
@@ -433,7 +510,7 @@ function SubCard({ item, t, onViewLogs }: SubCardProps) {
           {[
             { label: t('到期时间'), value: formatTimestamp(sub.end_time ?? 0, 'YYYY-MM-DD') },
             { label: resourceType === 'request_count' ? t('次数重置') : t('额度重置'), value: formatResetPeriod(sub, t) },
-            { label: item.usageLabel, value: `${displayQuota(usageSummary, resourceType, 'used', t)} / ${displayQuota(usageSummary, resourceType, 'total', t)}` },
+            { label: resourceType === 'request_count' && !usageSummary.periodUnlimited ? t('周期次数') : item.usageLabel, value: resourceType === 'request_count' && !usageSummary.periodUnlimited ? `${displayQuota(usageSummary, resourceType, 'periodUsed', t)} / ${displayQuota(usageSummary, resourceType, 'periodTotal', t)}` : `${displayQuota(usageSummary, resourceType, 'used', t)} / ${displayQuota(usageSummary, resourceType, 'total', t)}` },
             { label: t('已用进度'), value: usageSummary.unlimited ? t('不限') : `${usagePercent}%` },
           ].map((info) => (
             <div key={info.label} className="rounded-lg bg-muted/50 px-2 py-1.5 text-xs">
@@ -531,7 +608,12 @@ function PurchaseDialog({
             <Row label={t('有效期')} value={formatDuration(plan, t)} />
             {reset !== t('不重置') && <Row label={t('重置周期')} value={reset} />}
             {getResourceType(plan) === 'request_count' ? (
-              <Row label={getResourceLabel(plan, t)} value={Number(plan.request_count_total || 0) > 0 ? `${plan.request_count_total} ${t('次')}` : t('不限')} />
+              <>
+                {Number(plan.request_count_period_total || 0) > 0 && reset !== t('不重置') && (
+                  <Row label={t('周期次数')} value={`${reset} ${plan.request_count_period_total} ${t('次')}`} />
+                )}
+                <Row label={t('总次数')} value={Number(plan.request_count_total || 0) > 0 ? `${plan.request_count_total} ${t('次')}` : t('不限')} />
+              </>
             ) : (
               <Row label={getResourceLabel(plan, t)} value={Number(plan.amount_total ?? plan.total_amount ?? 0) > 0 ? renderQuota(Number(plan.amount_total ?? plan.total_amount)) : t('不限')} />
             )}

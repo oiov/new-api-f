@@ -296,6 +296,9 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if err := migrateLegacyPeriodicRequestCountPlans(); err != nil {
+		return err
+	}
 	if updated, err := RefreshActiveSubscriptionResetWindows(500); err != nil {
 		return err
 	} else if updated > 0 {
@@ -372,6 +375,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := migrateLegacyPeriodicRequestCountPlans(); err != nil {
+		return err
+	}
 	if updated, err := RefreshActiveSubscriptionResetWindows(500); err != nil {
 		return err
 	} else if updated > 0 {
@@ -425,6 +431,7 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`resource_type`" + ` varchar(32) NOT NULL DEFAULT 'quota',
 ` + "`request_count_total`" + ` bigint NOT NULL DEFAULT 0,
+` + "`request_count_period_total`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
 ` + "`created_at`" + ` bigint,
@@ -464,6 +471,7 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
 		{Name: "resource_type", DDL: "`resource_type` varchar(32) NOT NULL DEFAULT 'quota'"},
 		{Name: "request_count_total", DDL: "`request_count_total` bigint NOT NULL DEFAULT 0"},
+		{Name: "request_count_period_total", DDL: "`request_count_period_total` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
@@ -591,6 +599,71 @@ func migrateSubscriptionPlanPriceAmount() {
 			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
 		}
 	}
+}
+
+func migrateLegacyPeriodicRequestCountPlans() error {
+	if DB == nil {
+		return nil
+	}
+	if !DB.Migrator().HasTable(&SubscriptionPlan{}) || !DB.Migrator().HasTable(&SubscriptionOrder{}) || !DB.Migrator().HasTable(&UserSubscription{}) {
+		return nil
+	}
+	if !DB.Migrator().HasColumn(&SubscriptionPlan{}, "request_count_period_total") ||
+		!DB.Migrator().HasColumn(&SubscriptionOrder{}, "plan_request_count_period_total") ||
+		!DB.Migrator().HasColumn(&UserSubscription{}, "request_count_period_total") ||
+		!DB.Migrator().HasColumn(&UserSubscription{}, "request_count_period_used") {
+		return nil
+	}
+
+	type migrationItem struct {
+		name string
+		sql  string
+	}
+	items := []migrationItem{
+		{
+			name: "subscription_plans",
+			sql: `UPDATE subscription_plans
+SET request_count_period_total = request_count_total,
+    request_count_total = 0
+WHERE resource_type = 'request_count'
+  AND COALESCE(quota_reset_period, 'never') <> 'never'
+  AND COALESCE(request_count_period_total, 0) = 0
+  AND COALESCE(request_count_total, 0) > 0`,
+		},
+		{
+			name: "subscription_orders",
+			sql: `UPDATE subscription_orders
+SET plan_request_count_period_total = plan_request_count_total,
+    plan_request_count_total = 0
+WHERE COALESCE(plan_resource_type, 'quota') = 'request_count'
+  AND COALESCE(plan_quota_reset_period, 'never') <> 'never'
+  AND COALESCE(plan_request_count_period_total, 0) = 0
+  AND COALESCE(plan_request_count_total, 0) > 0`,
+		},
+		{
+			name: "user_subscriptions",
+			sql: `UPDATE user_subscriptions
+SET request_count_period_total = request_count_total,
+    request_count_period_used = request_count_used,
+    request_count_total = 0,
+    request_count_used = 0
+WHERE resource_type = 'request_count'
+  AND COALESCE(reset_period, 'never') <> 'never'
+  AND COALESCE(request_count_period_total, 0) = 0
+  AND (COALESCE(request_count_total, 0) > 0 OR COALESCE(request_count_used, 0) > 0)`,
+		},
+	}
+
+	for _, item := range items {
+		res := DB.Exec(item.sql)
+		if res.Error != nil {
+			return fmt.Errorf("failed to migrate %s request-count limits: %w", item.name, res.Error)
+		}
+		if res.RowsAffected > 0 {
+			common.SysLog(fmt.Sprintf("migrated legacy periodic request-count rows for %s: %d", item.name, res.RowsAffected))
+		}
+	}
+	return nil
 }
 
 func closeDB(db *gorm.DB) error {

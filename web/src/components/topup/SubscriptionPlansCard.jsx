@@ -167,7 +167,14 @@ function getPlanBenefitDescription(plan, t) {
   const amountText = getPlanResourceAmountText(plan, t);
 
   if (usageSummary.unlimited) {
+    if (usageSummary.resourceType === 'request_count' && !usageSummary.periodUnlimited) {
+      return `${resetPeriod} ${usageSummary.periodTotal} ${t('次')} · ${t('有效期内不限总量')}`;
+    }
     return t('有效期内不限使用');
+  }
+
+  if (usageSummary.resourceType === 'request_count' && !usageSummary.periodUnlimited) {
+    return `${resetPeriod} ${usageSummary.periodTotal} ${t('次')} · ${t('总计')} ${amountText}`;
   }
 
   if (resetPeriod === t('不重置')) {

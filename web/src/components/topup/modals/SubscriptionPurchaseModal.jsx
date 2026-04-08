@@ -63,6 +63,8 @@ const SubscriptionPurchaseModal = ({
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
   const requestCountTotal = Number(plan?.request_count_total || 0);
+  const requestCountPeriodTotal = Number(plan?.request_count_period_total || 0);
+  const resetPeriodText = formatSubscriptionResetPeriod(plan, t);
   const { symbol, rate } = getCurrencyConfig();
   const price = plan ? getSubscriptionEffectivePrice(plan) : 0;
   const hasActiveDiscount = isSubscriptionDiscountActive(plan);
@@ -83,13 +85,18 @@ const SubscriptionPurchaseModal = ({
     purchaseLimit > 0 && purchaseCount >= purchaseLimit;
   const benefitItems = [];
 
+  if (requestCountPeriodTotal > 0) {
+    benefitItems.push({
+      key: 'request_count_period',
+      label: t('周期次数'),
+      value: `${resetPeriodText} ${requestCountPeriodTotal} ${t('次')}`,
+    });
+  }
+
   if (requestCountTotal > 0 || plan?.resource_type === 'request_count') {
     benefitItems.push({
       key: 'request_count',
-      label: formatSubscriptionResourceLabel(
-        { resource_type: 'request_count', quota_reset_period: plan?.quota_reset_period },
-        t,
-      ),
+      label: t('总次数'),
       value: requestCountTotal > 0 ? `${requestCountTotal} ${t('次')}` : t('不限'),
     });
   }
@@ -156,13 +163,13 @@ const SubscriptionPurchaseModal = ({
                   </Text>
                 </div>
               </div>
-              {formatSubscriptionResetPeriod(plan, t) !== t('不重置') && (
+              {resetPeriodText !== t('不重置') && (
                 <div className='flex justify-between items-center'>
                   <Text strong className='text-slate-700 dark:text-slate-200'>
                     {t('重置周期')}：
                   </Text>
                   <Text className='text-slate-900 dark:text-slate-100'>
-                    {formatSubscriptionResetPeriod(plan, t)}
+                    {resetPeriodText}
                   </Text>
                 </div>
               )}
@@ -183,9 +190,9 @@ const SubscriptionPurchaseModal = ({
                   </div>
                 </div>
               ))}
-              {formatSubscriptionResetPeriod(plan, t) !== t('不重置') ? (
+              {resetPeriodText !== t('不重置') ? (
                 <Text size='small' type='tertiary'>
-                  {t('带重置规则的套餐，这里的权益表示单个重置周期内可用值，不是整个有效期总量。')}
+                  {t('带重置规则的套餐同时受周期上限与有效期总量约束，任一限制达到后都将暂停服务。')}
                 </Text>
               ) : null}
               {plan?.upgrade_group ? (

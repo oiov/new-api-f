@@ -71,8 +71,23 @@ export function fmtDuration(plan: SubscriptionPlan, t: (k: string) => string): s
 
 export function fmtBenefit(plan: SubscriptionPlan, t: (k: string) => string): string {
   if (plan.resource_type === 'request_count') {
-    const n = Number(plan.request_count_total || 0);
-    return n > 0 ? `${n} ${t('次')}` : t('不限次数');
+    const periodLimit = Number(plan.request_count_period_total || 0);
+    const totalLimit = Number(plan.request_count_total || 0);
+    const resetPeriod = plan.quota_reset_period || 'never';
+    const resetLabelMap: Record<string, string> = {
+      daily: t('每天'),
+      weekly: t('每周'),
+      monthly: t('每月'),
+      yearly: t('每年'),
+    };
+    const parts: string[] = [];
+    if (resetPeriod !== 'never' && periodLimit > 0) {
+      parts.push(`${resetLabelMap[resetPeriod] || t('每周期')} ${periodLimit} ${t('次')}`);
+    }
+    if (totalLimit > 0) {
+      parts.push(`${t('总计')} ${totalLimit} ${t('次')}`);
+    }
+    return parts.length > 0 ? parts.join(' · ') : t('不限次数');
   }
   const total = Number(plan.amount_total ?? plan.total_amount ?? 0);
   return total > 0 ? renderQuota(total) : t('不限额度');
