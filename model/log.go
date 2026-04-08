@@ -545,6 +545,16 @@ func summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(userId int, subscrip
 		if resourceType == "" {
 			resourceType = SubscriptionResourceQuota
 		}
+		// Fallback for older records that lack subscription_consumed:
+		// derive from subscription_pre_consumed + subscription_post_delta.
+		if consumed <= 0 {
+			preConsumed := readInt64FromMap(otherMap, "subscription_pre_consumed")
+			postDelta := readInt64FromMap(otherMap, "subscription_post_delta")
+			fallback := preConsumed + postDelta
+			if fallback > 0 {
+				consumed = fallback
+			}
+		}
 		if consumed <= 0 {
 			continue
 		}

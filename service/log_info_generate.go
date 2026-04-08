@@ -184,6 +184,17 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 				other["subscription_consumed"] = consumed
 			}
 		}
+		// Fallback: if subscription_consumed still not set (e.g. AmountTotal/RequestCountTotal=0),
+		// derive from SubscriptionPreConsumed + SubscriptionPostDelta which are always populated.
+		if _, ok := other["subscription_consumed"]; !ok {
+			fallback := relayInfo.SubscriptionPreConsumed + relayInfo.SubscriptionPostDelta
+			if fallback < 0 {
+				fallback = 0
+			}
+			if fallback > 0 {
+				other["subscription_consumed"] = fallback
+			}
+		}
 		// Wallet quota is not deducted when billed from subscription.
 		other["wallet_quota_deducted"] = 0
 	}

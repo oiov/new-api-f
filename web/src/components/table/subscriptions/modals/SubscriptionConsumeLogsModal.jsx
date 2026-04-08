@@ -217,7 +217,14 @@ const SubscriptionConsumeLogsModal = ({
         width: 180,
         render: (_, record) => {
           const other = getLogOther(record?.other) || {};
-          const consumed = Number(other?.subscription_consumed || 0);
+          let consumed = Number(other?.subscription_consumed || 0);
+          // Fallback for older records: derive from pre_consumed + post_delta
+          if (consumed <= 0) {
+            const preConsumed = Number(other?.subscription_pre_consumed || 0);
+            const postDelta = Number(other?.subscription_post_delta || 0);
+            const fallback = preConsumed + postDelta;
+            if (fallback > 0) consumed = fallback;
+          }
           const remain = other?.subscription_remain;
           const total = other?.subscription_total;
           const planId = Number(other?.subscription_plan_id || 0);
