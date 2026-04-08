@@ -43,6 +43,7 @@ const PasswordResetConfirm = lazy(
 );
 const Channel = lazy(() => import('./pages/Channel'));
 const Token = lazy(() => import('./pages/Token'));
+const AdminToken = lazy(() => import('./pages/AdminToken'));
 const Redemption = lazy(() => import('./pages/Redemption'));
 const TopUp = lazy(() => import('./pages/TopUp'));
 const InvoicePage = lazy(() => import('./pages/Invoice'));
@@ -178,6 +179,14 @@ function App() {
               <PrivateRoute>
                 <Token />
               </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/token/admin'
+            element={
+              <AdminRoute>
+                <AdminToken />
+              </AdminRoute>
             }
           />
           <Route

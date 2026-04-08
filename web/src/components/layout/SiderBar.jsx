@@ -35,6 +35,7 @@ const routerMap = {
   channel: '/console/channel',
   package: '/console/package',
   token: '/console/token',
+  tokenAdmin: '/console/token/admin',
   redemption: '/console/redemption',
   topup: '/console/topup',
   invoice: '/console/invoice',
@@ -217,6 +218,12 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         text: t('兑换码管理'),
         itemKey: 'redemption',
         to: '/redemption',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('管理员令牌'),
+        itemKey: 'tokenAdmin',
+        to: '/console/token/admin',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {

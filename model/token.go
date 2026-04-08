@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -14,6 +15,7 @@ import (
 type Token struct {
 	Id                 int            `json:"id"`
 	UserId             int            `json:"user_id" gorm:"index"`
+	Username           string         `json:"username,omitempty" gorm:"column:username;->;-:migration"`
 	Key                string         `json:"key" gorm:"type:char(48);uniqueIndex"`
 	Status             int            `json:"status" gorm:"default:1"`
 	Name               string         `json:"name" gorm:"index" `
@@ -85,6 +87,39 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	return tokens, err
 }
 
+func qualifiedTokenKeyCol() string {
+	if commonKeyCol != "" {
+		return "tokens." + commonKeyCol
+	}
+	if common.UsingPostgreSQL {
+		return `tokens."key"`
+	}
+	return "tokens.`key`"
+}
+
+func GetAllTokensByAdmin(startIdx int, num int) ([]*Token, int64, error) {
+	var tokens []*Token
+	var total int64
+
+	baseQuery := DB.Model(&Token{}).
+		Select("tokens.*, users.username").
+		Joins("LEFT JOIN users ON users.id = tokens.user_id")
+
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if err := baseQuery.
+		Order("tokens.id desc").
+		Limit(num).
+		Offset(startIdx).
+		Find(&tokens).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return tokens, total, nil
+}
+
 func buildUserTokenSearchQuery(userId int, keyword string, token string) (*gorm.DB, error) {
 	if token != "" {
 		token = strings.TrimPrefix(token, "sk-")
@@ -116,7 +151,7 @@ func buildUserTokenSearchQuery(userId int, keyword string, token string) (*gorm.
 		if err != nil {
 			return nil, err
 		}
-		baseQuery = baseQuery.Where(commonKeyCol+" LIKE ? ESCAPE '!'", tokenPattern)
+		baseQuery = baseQuery.Where(qualifiedTokenKeyCol()+" LIKE ? ESCAPE '!'", tokenPattern)
 	}
 	return baseQuery, nil
 }
@@ -202,6 +237,56 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		common.SysError("failed to search tokens: " + err.Error())
 		return nil, 0, errors.New("搜索令牌失败")
 	}
+	return tokens, total, nil
+}
+
+func SearchTokensByAdmin(keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+	if limit <= 0 || limit > searchHardLimit {
+		limit = searchHardLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	baseQuery := DB.Model(&Token{}).
+		Select("tokens.*, users.username").
+		Joins("LEFT JOIN users ON users.id = tokens.user_id")
+
+	if keyword != "" {
+		keywordPattern, err := sanitizeLikePattern(keyword)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		keywordQuery := baseQuery.Where(
+			"tokens.name LIKE ? ESCAPE '!' OR users.username LIKE ? ESCAPE '!'",
+			keywordPattern,
+			keywordPattern,
+		)
+		if keywordInt, convErr := strconv.Atoi(strings.TrimSpace(keyword)); convErr == nil {
+			keywordQuery = keywordQuery.Or("tokens.user_id = ?", keywordInt)
+		}
+		baseQuery = keywordQuery
+	}
+
+	if token != "" {
+		tokenPattern, err := sanitizeLikePattern(strings.TrimPrefix(token, "sk-"))
+		if err != nil {
+			return nil, 0, err
+		}
+		baseQuery = baseQuery.Where(qualifiedTokenKeyCol()+" LIKE ? ESCAPE '!'", tokenPattern)
+	}
+
+	if err = baseQuery.Count(&total).Error; err != nil {
+		common.SysError("failed to count admin search tokens: " + err.Error())
+		return nil, 0, errors.New("搜索令牌失败")
+	}
+
+	if err = baseQuery.Order("tokens.id desc").Offset(offset).Limit(limit).Find(&tokens).Error; err != nil {
+		common.SysError("failed to search admin tokens: " + err.Error())
+		return nil, 0, errors.New("搜索令牌失败")
+	}
+
 	return tokens, total, nil
 }
 

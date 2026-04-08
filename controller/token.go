@@ -78,6 +78,33 @@ func SearchTokens(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+func GetAllTokensByAdmin(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	tokens, total, err := model.GetAllTokensByAdmin(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	common.ApiSuccess(c, pageInfo)
+}
+
+func SearchTokensByAdmin(c *gin.Context) {
+	keyword := c.Query("keyword")
+	token := c.Query("token")
+	pageInfo := common.GetPageQuery(c)
+
+	tokens, total, err := model.SearchTokensByAdmin(keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	common.ApiSuccess(c, pageInfo)
+}
+
 func GetToken(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")

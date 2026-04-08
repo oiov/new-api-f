@@ -116,11 +116,12 @@ const renderTokenKey = (
   loadingTokenKeys,
   toggleTokenVisibility,
   copyTokenKey,
+  allowSensitiveActions = true,
 ) => {
   const revealed = !!showKeys[record.id];
-  const loading = !!loadingTokenKeys[record.id];
+  const loading = allowSensitiveActions ? !!loadingTokenKeys[record.id] : false;
   const keyValue =
-    revealed && resolvedTokenKeys[record.id]
+    allowSensitiveActions && revealed && resolvedTokenKeys[record.id]
       ? resolvedTokenKeys[record.id]
       : record.key || '';
   const displayedKey = keyValue ? `sk-${keyValue}` : '';
@@ -132,32 +133,34 @@ const renderTokenKey = (
         value={displayedKey}
         size='small'
         suffix={
-          <div className='flex items-center'>
-            <Button
-              theme='borderless'
-              size='small'
-              type='tertiary'
-              icon={revealed ? <IconEyeClosed /> : <IconEyeOpened />}
-              loading={loading}
-              aria-label='toggle token visibility'
-              onClick={async (e) => {
-                e.stopPropagation();
-                await toggleTokenVisibility(record);
-              }}
-            />
-            <Button
-              theme='borderless'
-              size='small'
-              type='tertiary'
-              icon={<IconCopy />}
-              loading={loading}
-              aria-label='copy token key'
-              onClick={async (e) => {
-                e.stopPropagation();
-                await copyTokenKey(record);
-              }}
-            />
-          </div>
+          allowSensitiveActions ? (
+            <div className='flex items-center'>
+              <Button
+                theme='borderless'
+                size='small'
+                type='tertiary'
+                icon={revealed ? <IconEyeClosed /> : <IconEyeOpened />}
+                loading={loading}
+                aria-label='toggle token visibility'
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await toggleTokenVisibility(record);
+                }}
+              />
+              <Button
+                theme='borderless'
+                size='small'
+                type='tertiary'
+                icon={<IconCopy />}
+                loading={loading}
+                aria-label='copy token key'
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await copyTokenKey(record);
+                }}
+              />
+            </div>
+          ) : null
         }
       />
     </div>
@@ -449,8 +452,11 @@ export const getTokensColumns = ({
   setEditingToken,
   setShowEdit,
   refresh,
+  showUsernameColumn = false,
+  allowSensitiveActions = true,
+  readonly = false,
 }) => {
-  return [
+  const columns = [
     {
       title: t('名称'),
       dataIndex: 'name',
@@ -484,6 +490,7 @@ export const getTokensColumns = ({
           loadingTokenKeys,
           toggleTokenVisibility,
           copyTokenKey,
+          allowSensitiveActions,
         ),
     },
     {
@@ -531,4 +538,23 @@ export const getTokensColumns = ({
         ),
     },
   ];
+
+  if (showUsernameColumn) {
+    columns.unshift({
+      title: t('用户'),
+      key: 'username',
+      render: (text, record) => (
+        <div>
+          <div>{record.username || '-'}</div>
+          <div className='text-xs text-gray-500'>ID: {record.user_id}</div>
+        </div>
+      ),
+    });
+  }
+
+  if (readonly) {
+    return columns.filter((column) => column.dataIndex !== 'operate');
+  }
+
+  return columns;
 };

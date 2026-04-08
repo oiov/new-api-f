@@ -63,6 +63,7 @@ const createDefaultSidebarModulesAdmin = () => ({
     models: true,
     deployment: true,
     redemption: true,
+    tokenAdmin: true,
     user: true,
     subscription: true,
     setting: true,
@@ -274,6 +275,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'redemption',
           title: t('兑换码管理'),
           description: t('兑换码生成管理'),
+        },
+        {
+          key: 'tokenAdmin',
+          title: t('管理员令牌'),
+          description: t('查看所有用户令牌'),
         },
         { key: 'user', title: t('用户管理'), description: t('用户账户管理') },
         {

@@ -285,6 +285,8 @@ func SetApiRouter(router *gin.Engine) {
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{
+			tokenRoute.GET("/admin", middleware.AdminAuth(), controller.GetAllTokensByAdmin)
+			tokenRoute.GET("/admin/search", middleware.AdminAuth(), middleware.SearchRateLimit(), controller.SearchTokensByAdmin)
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id", controller.GetToken)

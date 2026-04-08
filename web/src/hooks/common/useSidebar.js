@@ -58,6 +58,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     models: true,
     deployment: true,
     redemption: true,
+    tokenAdmin: true,
     user: true,
     subscription: true,
     setting: true,
