@@ -29,6 +29,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { API } from '../../helpers/api';
 import { showError, getRelativeTime } from '../../helpers/utils';
+import defaultNoticeRaw from '../../assets/default-notice.md?raw';
 import {
   IllustrationNoContent,
   IllustrationNoContentDark,
@@ -94,17 +95,19 @@ const NoticeModal = ({
       const res = await API.get('/api/notice');
       const { success, message, data } = res.data;
       if (success) {
-        if (data !== '') {
-          const htmlNotice = await parseMarkdownToHtml(data);
-          setNoticeContent(htmlNotice);
-        } else {
-          setNoticeContent('');
-        }
+        const source = (data && data.trim() !== '') ? data : defaultNoticeRaw;
+        const htmlNotice = await parseMarkdownToHtml(source);
+        setNoticeContent(htmlNotice);
       } else {
         showError(message);
+        // 后台接口报错时也 fallback 到默认文件
+        const htmlNotice = await parseMarkdownToHtml(defaultNoticeRaw);
+        setNoticeContent(htmlNotice);
       }
     } catch (error) {
       showError(error.message);
+      const htmlNotice = await parseMarkdownToHtml(defaultNoticeRaw);
+      setNoticeContent(htmlNotice);
     } finally {
       setLoading(false);
     }

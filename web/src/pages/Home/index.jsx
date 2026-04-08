@@ -162,15 +162,13 @@ const Home = () => {
       const lastCloseDate = localStorage.getItem('notice_close_date');
       const today = new Date().toDateString();
       if (lastCloseDate !== today) {
+        // 后台为空时 NoticeModal 会自动 fallback 到默认文件，所以始终弹出
         try {
-          const res = await API.get('/api/notice');
-          const { success, data } = res.data;
-          if (success && data && data.trim() !== '') {
-            setNoticeVisible(true);
-          }
+          await API.get('/api/notice');
         } catch (error) {
           console.error('获取公告失败:', error);
         }
+        setNoticeVisible(true);
       }
     };
 
