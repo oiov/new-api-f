@@ -865,7 +865,11 @@ const reorderOperations = (
   return nextOperations;
 };
 
-const getOperationSummary = (operation = {}, index = 0) => {
+const getOperationSummary = (
+  operation = {},
+  index = 0,
+  operationModeLabelMap = {},
+) => {
   const mode = operation.mode || 'set';
   const modeLabel = operationModeLabelMap[mode] || mode;
   if (mode === 'sync_fields') {
@@ -2256,6 +2260,7 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                             {getOperationSummary(
                                               operation,
                                               index,
+                                              operationModeLabelMap,
                                             )}
                                           </Text>
                                           {String(
@@ -2337,6 +2342,7 @@ const ParamOverrideEditorModal = ({ visible, value, onSave, onCancel }) => {
                                     {getOperationSummary(
                                       selectedOperation,
                                       selectedOperationIndex,
+                                      operationModeLabelMap,
                                     )}
                                   </Text>
                                 </Space>

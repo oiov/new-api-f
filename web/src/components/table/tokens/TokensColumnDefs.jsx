@@ -419,6 +419,16 @@ const renderOperations = (
       </Button>
 
       <Button
+        type='tertiary'
+        size='small'
+        onClick={() => {
+          onOpenLink('ccswitch', 'ccswitch://import', record);
+        }}
+      >
+        {t('导入')}
+      </Button>
+
+      <Button
         type='danger'
         size='small'
         onClick={() => {

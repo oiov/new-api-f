@@ -66,6 +66,7 @@ function TokensPage() {
   const [prefillKey, setPrefillKey] = useState('');
   const [ccSwitchVisible, setCCSwitchVisible] = useState(false);
   const [ccSwitchKey, setCCSwitchKey] = useState('');
+  const [ccSwitchToken, setCCSwitchToken] = useState(null);
 
   // Keep latest data for handlers inside notifications
   useEffect(() => {
@@ -191,11 +192,12 @@ function TokensPage() {
   // assign after definition so hook callback can call it safely
   openFluentNotificationRef.current = openFluentNotification;
 
-  function openCCSwitchModal(key) {
+  function openCCSwitchModal(key, record) {
     if (modelOptions.length === 0) {
       loadModels();
     }
     setCCSwitchKey(key || '');
+    setCCSwitchToken(record || null);
     setCCSwitchVisible(true);
   }
   openCCSwitchModalRef.current = openCCSwitchModal;
@@ -386,8 +388,13 @@ function TokensPage() {
 
       <CCSwitchModal
         visible={ccSwitchVisible}
-        onClose={() => setCCSwitchVisible(false)}
+        onClose={() => {
+          setCCSwitchVisible(false);
+          setCCSwitchKey('');
+          setCCSwitchToken(null);
+        }}
         tokenKey={ccSwitchKey}
+        tokenRecord={ccSwitchToken}
         modelOptions={modelOptions}
       />
 

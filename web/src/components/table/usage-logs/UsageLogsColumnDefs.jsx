@@ -356,6 +356,17 @@ function getUsageLogGroupSummary(groupRatio, userGroupRatio, t) {
   return `${useUserGroupRatio ? t('专属倍率') : t('分组')} ${formatRatio(ratio)}x`;
 }
 
+function getLogGroupName(record) {
+  const directGroup = String(record?.group || '').trim();
+  if (directGroup) {
+    return directGroup;
+  }
+
+  const other = getLogOther(record?.other);
+  const fallbackGroup = String(other?.group || '').trim();
+  return fallbackGroup;
+}
+
 function renderCompactDetailSummary(summarySegments) {
   const segments = Array.isArray(summarySegments)
     ? summarySegments.filter((segment) => segment?.text)
@@ -614,11 +625,12 @@ export const getLogsColumns = ({
       title: t('令牌'),
       dataIndex: 'token_name',
       render: (text, record, index) => {
+        const groupName = getLogGroupName(record);
         return record.type === 0 ||
           record.type === 2 ||
           record.type === 5 ||
           record.type === 6 ? (
-          <div>
+          <Space vertical align='start' spacing={4}>
             <Tag
               color='grey'
               shape='circle'
@@ -629,7 +641,10 @@ export const getLogsColumns = ({
               {' '}
               {t(text)}{' '}
             </Tag>
-          </div>
+            {groupName ? (
+              <div>{renderGroup(groupName)}</div>
+            ) : null}
+          </Space>
         ) : (
           <></>
         );
@@ -640,33 +655,14 @@ export const getLogsColumns = ({
       title: t('分组'),
       dataIndex: 'group',
       render: (text, record, index) => {
+        const groupName = getLogGroupName(record);
         if (
           record.type === 0 ||
           record.type === 2 ||
           record.type === 5 ||
           record.type === 6
         ) {
-          if (record.group) {
-            return <>{renderGroup(record.group)}</>;
-          } else {
-            let other = null;
-            try {
-              other = JSON.parse(record.other);
-            } catch (e) {
-              console.error(
-                `Failed to parse record.other: "${record.other}".`,
-                e,
-              );
-            }
-            if (other === null) {
-              return <></>;
-            }
-            if (other.group !== undefined) {
-              return <>{renderGroup(other.group)}</>;
-            } else {
-              return <></>;
-            }
-          }
+          return groupName ? <>{renderGroup(groupName)}</> : <></>;
         } else {
           return <></>;
         }

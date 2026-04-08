@@ -27,12 +27,12 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
-import { selectFilter } from '../../../../helpers';
+import { encodeToBase64, selectFilter } from '../../../../helpers';
 
 const APP_CONFIGS = {
   claude: {
     label: 'Claude',
-    defaultName: 'My Claude',
+    defaultName: 'Claude Provider',
     modelFields: [
       { key: 'model', label: '主模型' },
       { key: 'haikuModel', label: 'Haiku 模型' },
@@ -42,14 +42,30 @@ const APP_CONFIGS = {
   },
   codex: {
     label: 'Codex',
-    defaultName: 'My Codex',
+    defaultName: 'Codex Provider',
     modelFields: [{ key: 'model', label: '主模型' }],
   },
-  gemini: {
-    label: 'Gemini',
-    defaultName: 'My Gemini',
-    modelFields: [{ key: 'model', label: '主模型' }],
+};
+
+const DEFAULT_MODELS = {
+  claude: {
+    model: 'claude-opus-4-6',
+    haikuModel: 'claude-haiku-4-5',
+    sonnetModel: 'claude-sonnet-4-6',
+    opusModel: 'claude-opus-4-6',
   },
+  codex: {
+    model: 'gpt-5.4',
+  },
+};
+
+const RECOMMENDED_MODELS = {
+  claude: [
+    'claude-opus-4-6',
+    'claude-sonnet-4-6',
+    'claude-haiku-4-5',
+  ],
+  codex: ['gpt-5.4', 'gpt-5', 'gpt-5-mini', 'gpt-5.2'],
 };
 
 function getServerAddress() {
@@ -59,52 +75,132 @@ function getServerAddress() {
       const status = JSON.parse(raw);
       if (status.server_address) return status.server_address;
     }
-  } catch (_) {}
+  } catch (_) { }
   return window.location.origin;
+}
+
+function inferAppFromGroup(group) {
+  const normalizedGroup = String(group || '')
+    .trim()
+    .toLowerCase();
+  if (!normalizedGroup) return '';
+  if (normalizedGroup.includes('claude')) return 'claude';
+  if (normalizedGroup.includes('codex')) return 'codex';
+  return '';
+}
+
+function buildClaudeConfig(apiKey, baseUrl, models) {
+  return {
+    env: {
+      ANTHROPIC_AUTH_TOKEN: apiKey,
+      ANTHROPIC_BASE_URL: `${baseUrl}/v1`,
+      ANTHROPIC_MODEL: models.model,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: models.haikuModel,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: models.sonnetModel,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: models.opusModel,
+    },
+  };
+}
+
+function buildCodexConfig(apiKey, baseUrl, models) {
+  const tomlConfig = `[model_providers.openai]
+base_url = "${baseUrl}/v1"
+
+[general]
+model = "${models.model}"`;
+
+  return {
+    auth: {
+      OPENAI_API_KEY: apiKey,
+    },
+    config: tomlConfig,
+  };
 }
 
 function buildCCSwitchURL(app, name, models, apiKey) {
   const serverAddress = getServerAddress();
-  const endpoint = app === 'codex' ? serverAddress + '/v1' : serverAddress;
+  const normalizedBaseUrl = serverAddress.replace(/\/$/, '');
   const params = new URLSearchParams();
+  const config =
+    app === 'codex'
+      ? buildCodexConfig(apiKey, normalizedBaseUrl, models)
+      : buildClaudeConfig(apiKey, normalizedBaseUrl, models);
+
   params.set('resource', 'provider');
   params.set('app', app);
   params.set('name', name);
-  params.set('endpoint', endpoint);
-  params.set('apiKey', apiKey);
-  for (const [k, v] of Object.entries(models)) {
-    if (v) params.set(k, v);
-  }
-  params.set('homepage', serverAddress);
+  params.set('configFormat', 'json');
+  params.set('config', encodeToBase64(JSON.stringify(config)));
   params.set('enabled', 'true');
   return `ccswitch://v1/import?${params.toString()}`;
+}
+
+function buildProviderName(group, fallbackLabel) {
+  const normalizedGroup = String(group || '').trim();
+  if (normalizedGroup) {
+    return `FishXCode (${normalizedGroup})`;
+  }
+  return fallbackLabel;
 }
 
 export default function CCSwitchModal({
   visible,
   onClose,
   tokenKey,
+  tokenRecord,
   modelOptions,
 }) {
   const { t } = useTranslation();
-  const [app, setApp] = useState('claude');
+  const inferredApp = useMemo(
+    () => inferAppFromGroup(tokenRecord?.group),
+    [tokenRecord?.group],
+  );
+  const [app, setApp] = useState(inferredApp || 'claude');
   const [name, setName] = useState(APP_CONFIGS.claude.defaultName);
-  const [models, setModels] = useState({});
+  const [models, setModels] = useState(DEFAULT_MODELS.claude);
 
-  const currentConfig = APP_CONFIGS[app];
+  const currentConfig = APP_CONFIGS[app] || APP_CONFIGS.claude;
+  const currentDefaults = DEFAULT_MODELS[app] || DEFAULT_MODELS.claude;
+  const recommendedModels = RECOMMENDED_MODELS[app] || [];
+  const mergedModelOptions = useMemo(() => {
+    const existingValues = new Set(
+      (modelOptions || []).map((item) => item?.value).filter(Boolean),
+    );
+    const nextOptions = [...(modelOptions || [])];
+    [
+      ...Object.values(DEFAULT_MODELS).flatMap((value) => Object.values(value)),
+      ...Object.values(RECOMMENDED_MODELS).flatMap((value) => value),
+    ]
+      .forEach((model) => {
+        if (!existingValues.has(model)) {
+          nextOptions.unshift({
+            label: model,
+            value: model,
+          });
+          existingValues.add(model);
+        }
+      });
+    return nextOptions;
+  }, [modelOptions]);
 
   useEffect(() => {
     if (visible) {
-      setModels({});
-      setApp('claude');
-      setName(APP_CONFIGS.claude.defaultName);
+      const nextApp = inferredApp || 'claude';
+      setApp(nextApp);
+      setModels(DEFAULT_MODELS[nextApp] || DEFAULT_MODELS.claude);
+      setName(
+        buildProviderName(
+          tokenRecord?.group,
+          APP_CONFIGS[nextApp].defaultName,
+        ),
+      );
     }
-  }, [visible]);
+  }, [visible, inferredApp, tokenRecord]);
 
   const handleAppChange = (val) => {
     setApp(val);
-    setName(APP_CONFIGS[val].defaultName);
-    setModels({});
+    setName(buildProviderName(tokenRecord?.group, APP_CONFIGS[val].defaultName));
+    setModels(DEFAULT_MODELS[val] || {});
   };
 
   const handleModelChange = (field, value) => {
@@ -142,21 +238,36 @@ export default function CCSwitchModal({
       width={480}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div>
-          <div style={fieldLabelStyle}>{t('应用')}</div>
-          <RadioGroup
-            type='button'
-            value={app}
-            onChange={(e) => handleAppChange(e.target.value)}
-            style={{ width: '100%' }}
-          >
-            {Object.entries(APP_CONFIGS).map(([key, cfg]) => (
-              <Radio key={key} value={key}>
-                {cfg.label}
-              </Radio>
-            ))}
-          </RadioGroup>
-        </div>
+        {inferredApp ? (
+          <div>
+            <div style={fieldLabelStyle}>{t('导入类型')}</div>
+            <Typography.Text>
+              {t('已根据分组自动识别为')} {APP_CONFIGS[inferredApp].label}
+            </Typography.Text>
+            <Typography.Text type='tertiary' style={{ display: 'block' }}>
+              {t('当前令牌分组')}: {tokenRecord?.group || '-'}
+            </Typography.Text>
+          </div>
+        ) : (
+          <div>
+            <div style={fieldLabelStyle}>{t('导入类型')}</div>
+            <RadioGroup
+              type='button'
+              value={app}
+              onChange={(e) => handleAppChange(e.target.value)}
+              style={{ width: '100%' }}
+            >
+              {Object.entries(APP_CONFIGS).map(([key, cfg]) => (
+                <Radio key={key} value={key}>
+                  {cfg.label}
+                </Radio>
+              ))}
+            </RadioGroup>
+            <Typography.Text type='tertiary' style={{ display: 'block', marginTop: 6 }}>
+              {t('当前分组未明确指向 Claude 或 Codex，请手动选择导入类型')}
+            </Typography.Text>
+          </div>
+        )}
 
         <div>
           <div style={fieldLabelStyle}>{t('名称')}</div>
@@ -165,6 +276,9 @@ export default function CCSwitchModal({
             onChange={setName}
             placeholder={currentConfig.defaultName}
           />
+          <Typography.Text type='tertiary' style={{ display: 'block', marginTop: 6 }}>
+            {t('建议使用供应商名来区分来源，例如 FishXCode (claude)')}
+          </Typography.Text>
         </div>
 
         {currentConfig.modelFields.map((field) => (
@@ -177,8 +291,8 @@ export default function CCSwitchModal({
             </div>
             <Select
               placeholder={t('请选择模型')}
-              optionList={modelOptions}
-              value={models[field.key] || undefined}
+              optionList={mergedModelOptions}
+              value={models[field.key] || currentDefaults[field.key] || undefined}
               onChange={(val) => handleModelChange(field.key, val)}
               filter={selectFilter}
               style={{ width: '100%' }}
@@ -186,6 +300,14 @@ export default function CCSwitchModal({
               searchable
               emptyContent={t('暂无数据')}
             />
+            {field.key === 'model' && recommendedModels.length > 0 ? (
+              <Typography.Text
+                type='tertiary'
+                style={{ display: 'block', marginTop: 6 }}
+              >
+                {t('推荐模型')}: {recommendedModels.join(' / ')}
+              </Typography.Text>
+            ) : null}
           </div>
         ))}
       </div>
