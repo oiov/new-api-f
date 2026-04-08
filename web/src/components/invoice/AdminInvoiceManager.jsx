@@ -422,7 +422,10 @@ const AdminInvoiceManager = () => {
               <Button
                 type='primary'
                 size='small'
-                onClick={() => setIssueModal({ visible: true, record })}
+                onClick={() => {
+                  setUploadedUrl(record.file_url || '');
+                  setIssueModal({ visible: true, record });
+                }}
               >
                 {t('开具')}
               </Button>
@@ -601,7 +604,14 @@ const AdminInvoiceManager = () => {
             {t('发票抬头')}：{issueModal.record.title}　{t('金额')}：¥{Number(issueModal.record.amount).toFixed(2)}
           </div>
         )}
-        <Form getFormApi={(api) => (issueFormApi.current = api)} layout='vertical'>
+        <Form
+          getFormApi={(api) => (issueFormApi.current = api)}
+          layout='vertical'
+          initValues={{
+            file_url: issueModal.record?.file_url || '',
+            remark: issueModal.record?.remark || '',
+          }}
+        >
           <div style={{ marginBottom: 16 }}>
             <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 14 }}>{t('上传发票文件')}</div>
             <Upload {...buildUploadProps(issueFormApi, setUploadedUrl, setUploading)}>
