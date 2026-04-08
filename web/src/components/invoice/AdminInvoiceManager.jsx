@@ -38,7 +38,15 @@ import {
   Pagination,
 } from '@douyinfe/semi-ui';
 import { IllustrationNoResult, IllustrationNoResultDark } from '@douyinfe/semi-illustrations';
-import { IconSearch, IconDownload, IconMail, IconList, IconEyeOpened, IconUpload } from '@douyinfe/semi-icons';
+import {
+  IconSearch,
+  IconDownload,
+  IconMail,
+  IconList,
+  IconEyeOpened,
+  IconUpload,
+  IconEdit,
+} from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { API, timestamp2string } from '../../helpers';
 import { createCardProPagination } from '../../helpers/utils';
@@ -59,7 +67,6 @@ const STATUS_CONFIG = {
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
 const PDF_EXTENSION = /\.pdf(\?.*)?$/i;
 
-// 修复 mixed-content：HTTPS 页面强制 HTTPS 资源
 function resolveUrl(url) {
   if (!url) return url;
   if (window.location.protocol === 'https:' && url.startsWith('http:')) {
@@ -79,7 +86,6 @@ const AdminInvoiceManager = () => {
   const [page, setPage] = useState(1);
   const pageSize = 15;
 
-  // Filters
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -89,6 +95,13 @@ const AdminInvoiceManager = () => {
   const [uploadedUrl, setUploadedUrl] = useState('');
   const [uploading, setUploading] = useState(false);
   const issueFormApi = React.useRef(null);
+
+  // Edit modal
+  const [editModal, setEditModal] = useState({ visible: false, record: null });
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editUploadedUrl, setEditUploadedUrl] = useState('');
+  const [editUploading, setEditUploading] = useState(false);
+  const editFormApi = React.useRef(null);
 
   // Reject modal
   const [rejectModal, setRejectModal] = useState({ visible: false, record: null });
@@ -100,7 +113,7 @@ const AdminInvoiceManager = () => {
   const [sendSubmitting, setSendSubmitting] = useState(false);
   const sendFormApi = React.useRef(null);
 
-  // Detail SideSheet (associated topups)
+  // Detail SideSheet
   const [detailSheet, setDetailSheet] = useState({
     visible: false,
     record: null,
@@ -109,8 +122,8 @@ const AdminInvoiceManager = () => {
     topupPage: 1,
   });
 
-  // Preview SideSheet
-  const [previewSheet, setPreviewSheet] = useState({ visible: false, url: '', isPdf: false });
+  // Preview modal
+  const [previewModal, setPreviewModal] = useState({ visible: false, url: '', isPdf: false });
 
   const PAYMENT_METHOD_MAP = {
     stripe: 'Stripe',
@@ -140,7 +153,7 @@ const AdminInvoiceManager = () => {
     const safe = resolveUrl(fileUrl);
     const isPdf = PDF_EXTENSION.test(safe);
     if (isPdf || IMAGE_EXTENSIONS.test(safe)) {
-      setPreviewSheet({ visible: true, url: safe, isPdf });
+      setPreviewModal({ visible: true, url: safe, isPdf });
     } else {
       window.open(safe, '_blank');
     }
@@ -151,18 +164,21 @@ const AdminInvoiceManager = () => {
       title: t('充值时间'),
       dataIndex: 'complete_time',
       key: 'complete_time',
-      render: (v) => timestamp2string(v),
+      width: 160,
+      render: (v) => <span style={{ whiteSpace: 'nowrap' }}>{timestamp2string(v)}</span>,
     },
     {
       title: t('支付方式'),
       dataIndex: 'payment_method',
       key: 'payment_method',
+      width: 100,
       render: (v) => PAYMENT_METHOD_MAP[v] || v || '—',
     },
     {
       title: t('金额（元）'),
       dataIndex: 'money',
       key: 'money',
+      width: 110,
       render: (v) => <Text strong>¥{Number(v).toFixed(2)}</Text>,
     },
     {
@@ -170,7 +186,7 @@ const AdminInvoiceManager = () => {
       dataIndex: 'trade_no',
       key: 'trade_no',
       render: (v) => (
-        <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 200 }} copyable>
+        <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 220 }} copyable>
           {v || '—'}
         </Text>
       ),
@@ -198,14 +214,9 @@ const AdminInvoiceManager = () => {
     fetchInvoices(page);
   }, [page, fetchInvoices]);
 
-  // Issue invoice
   const handleIssueSubmit = async () => {
     let values;
-    try {
-      values = await issueFormApi.current.validate();
-    } catch {
-      return;
-    }
+    try { values = await issueFormApi.current.validate(); } catch { return; }
     setIssueSubmitting(true);
     try {
       const res = await API.put(
@@ -215,6 +226,7 @@ const AdminInvoiceManager = () => {
       if (res.data.success === true) {
         Toast.success(t('发票已开具，系统将自动发送邮件通知用户'));
         setIssueModal({ visible: false, record: null });
+        setUploadedUrl('');
         fetchInvoices(page);
       } else {
         Toast.error(res.data.data || t('操作失败'));
@@ -226,14 +238,40 @@ const AdminInvoiceManager = () => {
     }
   };
 
-  // Reject invoice
+  const handleEditSubmit = async () => {
+    let values;
+    try { values = await editFormApi.current.validate(); } catch { return; }
+    setEditSubmitting(true);
+    try {
+      const res = await API.put(
+        `/api/invoice/admin/${editModal.record.id}`,
+        {
+          title: values.title,
+          tax_id: values.tax_id || '',
+          email: values.email,
+          file_url: values.file_url || '',
+          remark: values.remark || '',
+          status: values.status,
+        },
+      );
+      if (res.data.success === true) {
+        Toast.success(t('发票信息已更新'));
+        setEditModal({ visible: false, record: null });
+        setEditUploadedUrl('');
+        fetchInvoices(page);
+      } else {
+        Toast.error(res.data.data || res.data.message || t('操作失败'));
+      }
+    } catch {
+      Toast.error(t('操作失败，请稍后重试'));
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   const handleRejectSubmit = async () => {
     let values;
-    try {
-      values = await rejectFormApi.current.validate();
-    } catch {
-      return;
-    }
+    try { values = await rejectFormApi.current.validate(); } catch { return; }
     setRejectSubmitting(true);
     try {
       const res = await API.put(
@@ -254,14 +292,9 @@ const AdminInvoiceManager = () => {
     }
   };
 
-  // Send email
   const handleSendEmail = async () => {
     let values;
-    try {
-      values = await sendFormApi.current.validate();
-    } catch {
-      return;
-    }
+    try { values = await sendFormApi.current.validate(); } catch { return; }
     setSendSubmitting(true);
     try {
       const res = await API.post(
@@ -289,46 +322,69 @@ const AdminInvoiceManager = () => {
       title: 'ID',
       dataIndex: 'id',
       key: 'id',
-      width: 64,
+      width: 60,
     },
     {
       title: t('申请时间'),
       dataIndex: 'create_time',
       key: 'create_time',
-      render: (v) => timestamp2string(v),
+      width: 150,
+      render: (v) => <span style={{ whiteSpace: 'nowrap' }}>{timestamp2string(v)}</span>,
     },
     {
       title: t('用户'),
       dataIndex: 'username',
       key: 'username',
-      render: (v, r) => <span>{v || r.user_id}</span>,
+      width: 100,
+      render: (v, r) => (
+        <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 96 }}>
+          {v || r.user_id}
+        </Text>
+      ),
     },
     {
       title: t('发票抬头'),
       dataIndex: 'title',
       key: 'title',
+      width: 160,
+      render: (v) => (
+        <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 156 }}>
+          {v}
+        </Text>
+      ),
     },
     {
       title: t('税号'),
       dataIndex: 'tax_id',
       key: 'tax_id',
-      render: (v) => v || <Text type='tertiary'>—</Text>,
+      width: 160,
+      render: (v) => v
+        ? <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 156 }}>{v}</Text>
+        : <Text type='tertiary'>—</Text>,
     },
     {
       title: t('金额（元）'),
       dataIndex: 'amount',
       key: 'amount',
-      render: (v) => <Text strong>¥{Number(v).toFixed(2)}</Text>,
+      width: 100,
+      render: (v) => <span style={{ whiteSpace: 'nowrap' }}><Text strong>¥{Number(v).toFixed(2)}</Text></span>,
     },
     {
       title: t('邮箱'),
       dataIndex: 'email',
       key: 'email',
+      width: 180,
+      render: (v) => (
+        <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 176 }}>
+          {v}
+        </Text>
+      ),
     },
     {
       title: t('状态'),
       dataIndex: 'status',
       key: 'status',
+      width: 80,
       render: (status, record) => {
         const cfg = STATUS_CONFIG[status] || { color: 'grey', label: status };
         const tag = <Tag color={cfg.color}>{t(cfg.label)}</Tag>;
@@ -341,14 +397,20 @@ const AdminInvoiceManager = () => {
     {
       title: t('操作'),
       key: 'action',
-      width: 200,
+      width: 230,
       render: (_, record) => (
-        <Space>
+        <Space spacing={4}>
           <Tooltip content={t('关联订单')}>
+            <Button icon={<IconList />} size='small' onClick={() => openDetail(record)} />
+          </Tooltip>
+          <Tooltip content={t('编辑发票')}>
             <Button
-              icon={<IconList />}
+              icon={<IconEdit />}
               size='small'
-              onClick={() => openDetail(record)}
+              onClick={() => {
+                setEditUploadedUrl('');
+                setEditModal({ visible: true, record });
+              }}
             />
           </Tooltip>
           {record.status === 'pending' && (
@@ -369,34 +431,32 @@ const AdminInvoiceManager = () => {
               </Button>
             </>
           )}
-          {(record.status === 'issued' || record.status === 'sent') && (
+          {(record.status === 'issued' || record.status === 'sent') && record.file_url && (
             <>
-              {record.file_url && (
-                <>
-                  <Tooltip content={t('预览发票')}>
-                    <Button
-                      icon={<IconEyeOpened />}
-                      size='small'
-                      onClick={() => handlePreview(record.file_url)}
-                    />
-                  </Tooltip>
-                  <Tooltip content={t('下载发票')}>
-                    <Button
-                      icon={<IconDownload />}
-                      size='small'
-                      onClick={() => window.open(resolveUrl(record.file_url), '_blank')}
-                    />
-                  </Tooltip>
-                </>
-              )}
-              <Tooltip content={t('发送邮件')}>
+              <Tooltip content={t('预览')}>
                 <Button
-                  icon={<IconMail />}
+                  icon={<IconEyeOpened />}
                   size='small'
-                  onClick={() => setSendModal({ visible: true, record })}
+                  onClick={() => handlePreview(record.file_url)}
+                />
+              </Tooltip>
+              <Tooltip content={t('下载')}>
+                <Button
+                  icon={<IconDownload />}
+                  size='small'
+                  onClick={() => window.open(resolveUrl(record.file_url), '_blank')}
                 />
               </Tooltip>
             </>
+          )}
+          {(record.status === 'issued' || record.status === 'sent') && (
+            <Tooltip content={t('发送邮件')}>
+              <Button
+                icon={<IconMail />}
+                size='small'
+                onClick={() => setSendModal({ visible: true, record })}
+              />
+            </Tooltip>
           )}
         </Space>
       ),
@@ -440,12 +500,47 @@ const AdminInvoiceManager = () => {
     </div>
   );
 
-  // 关联订单抽屉分页计算
   const topupTotal = detailSheet.topups.length;
   const topupPageData = detailSheet.topups.slice(
     (detailSheet.topupPage - 1) * TOPUP_PAGE_SIZE,
     detailSheet.topupPage * TOPUP_PAGE_SIZE,
   );
+
+  // 文件上传 helper（复用于开具/编辑两个 modal）
+  const buildUploadProps = (formApiRef, setUploaded, setIsUploading) => ({
+    accept: '.pdf,.png,.jpg,.jpeg,.webp',
+    limit: 1,
+    showUploadList: false,
+    customRequest: async ({ file, onSuccess, onError }) => {
+      setIsUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', file.fileInstance);
+        const res = await API.post('/api/invoice/admin/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        if (res.data.success === true) {
+          const url = res.data.data?.url || '';
+          setUploaded(url);
+          formApiRef.current?.setValue('file_url', url);
+          Toast.success(t('文件上传成功'));
+          onSuccess();
+        } else {
+          Toast.error(res.data.message || t('上传失败'));
+          onError();
+        }
+      } catch {
+        Toast.error(t('上传失败，请稍后重试'));
+        onError();
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    draggable: true,
+    dragMainText: t('点击或拖拽发票文件到此区域'),
+    dragSubText: t('支持 PDF、PNG、JPG、WEBP，最大 20MB'),
+    style: { width: '100%' },
+  });
 
   return (
     <>
@@ -468,7 +563,7 @@ const AdminInvoiceManager = () => {
           dataSource={invoices}
           rowKey='id'
           loading={loading}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1240 }}
           empty={
             <Empty
               image={<IllustrationNoResult />}
@@ -504,66 +599,26 @@ const AdminInvoiceManager = () => {
         )}
         <Form getFormApi={(api) => (issueFormApi.current = api)} layout='vertical'>
           <div style={{ marginBottom: 16 }}>
-            <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 14 }}>
-              {t('上传发票文件')}
-            </div>
-            <Upload
-              accept='.pdf,.png,.jpg,.jpeg,.webp'
-              limit={1}
-              showUploadList={false}
-              customRequest={async ({ file, onSuccess, onError }) => {
-                setUploading(true);
-                try {
-                  const formData = new FormData();
-                  formData.append('file', file.fileInstance);
-                  const res = await API.post('/api/invoice/admin/upload', formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' },
-                  });
-                  if (res.data.success === true) {
-                    const url = res.data.data?.url || '';
-                    setUploadedUrl(url);
-                    issueFormApi.current?.setValue('file_url', url);
-                    Toast.success(t('文件上传成功'));
-                    onSuccess();
-                  } else {
-                    Toast.error(res.data.message || t('上传失败'));
-                    onError();
-                  }
-                } catch {
-                  Toast.error(t('上传失败，请稍后重试'));
-                  onError();
-                } finally {
-                  setUploading(false);
-                }
-              }}
-              draggable
-              dragMainText={t('点击或拖拽发票文件到此区域')}
-              dragSubText={t('支持 PDF、PNG、JPG、WEBP，最大 20MB')}
-              style={{ width: '100%' }}
-            >
+            <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 14 }}>{t('上传发票文件')}</div>
+            <Upload {...buildUploadProps(issueFormApi, setUploadedUrl, setUploading)}>
               <Button icon={<IconUpload />} loading={uploading} disabled={uploading}>
                 {uploading ? t('上传中...') : t('选择文件')}
               </Button>
             </Upload>
             {uploadedUrl && (
               <div style={{
-                marginTop: 8,
-                padding: '6px 10px',
+                marginTop: 8, padding: '6px 10px',
                 background: 'var(--semi-color-success-light-default)',
-                borderRadius: 4,
-                fontSize: 12,
-                color: 'var(--semi-color-success)',
-                wordBreak: 'break-all',
+                borderRadius: 4, fontSize: 12,
+                color: 'var(--semi-color-success)', wordBreak: 'break-all',
               }}>
                 ✓ {uploadedUrl}
               </div>
             )}
           </div>
-
           <Divider style={{ margin: '12px 0', fontSize: 12, color: 'var(--semi-color-text-2)' }}>
             {t('或手动填写链接')}
           </Divider>
-
           <Form.Input
             field='file_url'
             label={t('发票文件链接')}
@@ -577,6 +632,87 @@ const AdminInvoiceManager = () => {
             rows={2}
           />
         </Form>
+      </Modal>
+
+      {/* 编辑发票 Modal */}
+      <Modal
+        title={t('编辑发票信息')}
+        visible={editModal.visible}
+        onCancel={() => { setEditModal({ visible: false, record: null }); setEditUploadedUrl(''); }}
+        onOk={handleEditSubmit}
+        okText={t('保存')}
+        cancelText={t('取消')}
+        confirmLoading={editSubmitting}
+        width={580}
+      >
+        {editModal.record && (
+          <Form
+            getFormApi={(api) => (editFormApi.current = api)}
+            layout='vertical'
+            initValues={{
+              title: editModal.record.title,
+              tax_id: editModal.record.tax_id || '',
+              email: editModal.record.email,
+              file_url: editModal.record.file_url || '',
+              remark: editModal.record.remark || '',
+              status: editModal.record.status,
+            }}
+          >
+            <Form.Input
+              field='title'
+              label={t('发票抬头')}
+              rules={[{ required: true, message: t('请填写发票抬头') }]}
+            />
+            <Form.Input
+              field='tax_id'
+              label={t('税号（选填）')}
+              placeholder={t('企业纳税人识别号')}
+            />
+            <Form.Input
+              field='email'
+              label={t('接收邮箱')}
+              rules={[
+                { required: true, message: t('请填写邮箱') },
+                { type: 'email', message: t('请输入有效邮箱') },
+              ]}
+            />
+            <Form.Select field='status' label={t('状态')}>
+              <Option value='pending'>{t('审核中')}</Option>
+              <Option value='issued'>{t('已开具')}</Option>
+              <Option value='sent'>{t('已发送')}</Option>
+              <Option value='rejected'>{t('已拒绝')}</Option>
+            </Form.Select>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 14 }}>{t('更换发票文件（选填）')}</div>
+              <Upload {...buildUploadProps(editFormApi, setEditUploadedUrl, setEditUploading)}>
+                <Button icon={<IconUpload />} loading={editUploading} disabled={editUploading}>
+                  {editUploading ? t('上传中...') : t('选择文件')}
+                </Button>
+              </Upload>
+              {editUploadedUrl && (
+                <div style={{
+                  marginTop: 8, padding: '6px 10px',
+                  background: 'var(--semi-color-success-light-default)',
+                  borderRadius: 4, fontSize: 12,
+                  color: 'var(--semi-color-success)', wordBreak: 'break-all',
+                }}>
+                  ✓ {editUploadedUrl}
+                </div>
+              )}
+            </div>
+            <Form.Input
+              field='file_url'
+              label={t('发票文件链接')}
+              placeholder={t('上传后自动填入，也可直接粘贴链接')}
+            />
+            <Form.TextArea
+              field='remark'
+              label={t('备注（选填）')}
+              placeholder={t('可填写发票号、修改原因等')}
+              rows={2}
+            />
+          </Form>
+        )}
       </Modal>
 
       {/* 拒绝发票 Modal */}
@@ -630,7 +766,7 @@ const AdminInvoiceManager = () => {
         </Form>
       </Modal>
 
-      {/* 关联充值订单 — SideSheet 抽屉 */}
+      {/* 关联充值订单 SideSheet */}
       <SideSheet
         title={
           detailSheet.record ? (
@@ -643,9 +779,7 @@ const AdminInvoiceManager = () => {
                 <span style={{ marginRight: 16 }}>
                   {t('金额')}：<strong>¥{Number(detailSheet.record.amount).toFixed(2)}</strong>
                 </span>
-                <span>
-                  {t('用户')}：{detailSheet.record.username || detailSheet.record.user_id}
-                </span>
+                <span>{t('用户')}：{detailSheet.record.username || detailSheet.record.user_id}</span>
               </div>
             </div>
           ) : t('关联充值订单')
@@ -658,11 +792,8 @@ const AdminInvoiceManager = () => {
         bodyStyle={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 0 }}
         footer={
           <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '12px 16px',
-            borderTop: '1px solid var(--semi-color-border)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '12px 16px', borderTop: '1px solid var(--semi-color-border)',
           }}>
             {topupTotal > TOPUP_PAGE_SIZE ? (
               <Pagination
@@ -705,12 +836,12 @@ const AdminInvoiceManager = () => {
       {/* 发票预览 Modal */}
       <Modal
         title={t('发票预览')}
-        visible={previewSheet.visible}
-        onCancel={() => setPreviewSheet({ visible: false, url: '', isPdf: false })}
+        visible={previewModal.visible}
+        onCancel={() => setPreviewModal({ visible: false, url: '', isPdf: false })}
         footer={
           <Button
             icon={<IconDownload />}
-            onClick={() => window.open(previewSheet.url, '_blank')}
+            onClick={() => window.open(previewModal.url, '_blank')}
           >
             {t('下载发票')}
           </Button>
@@ -719,15 +850,15 @@ const AdminInvoiceManager = () => {
         style={{ maxWidth: '95vw' }}
       >
         <div style={{ textAlign: 'center' }}>
-          {previewSheet.isPdf ? (
+          {previewModal.isPdf ? (
             <iframe
-              src={previewSheet.url}
+              src={previewModal.url}
               title='invoice-pdf'
               style={{ width: '100%', height: '70vh', border: 'none' }}
             />
           ) : (
             <img
-              src={previewSheet.url}
+              src={previewModal.url}
               alt='invoice'
               style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
             />
