@@ -31,7 +31,6 @@ export const useNavigation = (
       home: true,
       console: true,
       pricing: true,
-      package: true,
       docs: true,
       about: true,
       contact: true,
@@ -58,11 +57,6 @@ export const useNavigation = (
         text: t('价格方案'),
         itemKey: 'pricing',
         to: '/pricing',
-      },
-      {
-        text: t('服务套餐'),
-        itemKey: 'package',
-        to: '/console/package#package-pricing',
       },
       ...(docsLink
         ? [
@@ -95,12 +89,6 @@ export const useNavigation = (
         return typeof modules.pricing === 'object'
           ? modules.pricing.enabled
           : modules.pricing;
-      }
-      if (link.itemKey === 'package') {
-        // 支持新的package配置格式
-        return typeof modules.package === 'object'
-          ? modules.package.enabled
-          : modules.package;
       }
       return modules[link.itemKey] === true;
     });

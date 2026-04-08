@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { renderQuota } from './render';
+
 export function formatSubscriptionDuration(plan, t) {
   const unit = plan?.duration_unit || 'month';
   const value = plan?.duration_value || 1;
