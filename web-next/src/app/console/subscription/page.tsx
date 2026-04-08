@@ -134,6 +134,7 @@ function formatResetPeriod(plan: SubscriptionPlan | UserSubscription, t: (k: str
   if (period === 'daily') return t('每天');
   if (period === 'weekly') return t('每周');
   if (period === 'monthly') return t('每月');
+  if (period === 'yearly') return t('每年');
   if (period === 'custom') {
     const s = Number(
       (plan as UserSubscription).reset_period === 'custom'
@@ -313,7 +314,7 @@ function GuideSection({ t }: { t: (k: string) => string }) {
       content: [
         t('如果你启用了订阅扣费，请求会优先尝试使用可用订阅；如果当前订阅不足，再按你的扣费偏好决定是否回退到钱包余额。'),
         t('按额度套餐会扣减额度余额；按次套餐会在请求成功后扣减成功次数。两种资源类型彼此独立，不会混算。'),
-        t('带有日/周/月重置规则的套餐，重置的是"当前周期可用权益"；不重置的套餐会持续累计使用，直到到期或耗尽。'),
+        t('带有重置周期的套餐，重置的是"当前周期可用权益"；重置周期从购买生效时间开始按 24 小时、7 天、1 个月、1 年等规则滚动计算；不重置的套餐会持续累计使用，直到到期或耗尽。'),
       ],
     },
     {

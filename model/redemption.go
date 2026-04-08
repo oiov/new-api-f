@@ -12,8 +12,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrRedeemFailed is returned when redemption fails due to database error
+// ErrRedeemFailed is returned when redemption fails due to a database/system error
 var ErrRedeemFailed = errors.New("redeem.failed")
+
+// User-facing redemption errors — returned directly to the caller without wrapping
+var (
+	ErrInvalidCode  = errors.New("redeem.invalid_code")
+	ErrCodeUsed     = errors.New("redeem.code_used")
+	ErrCodeExpired  = errors.New("redeem.code_expired")
+)
 
 type Redemption struct {
 	Id                    int            `json:"id"`
@@ -216,13 +223,13 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
-			return errors.New("无效的兑换码")
+			return ErrInvalidCode
 		}
 		if redemption.Status != common.RedemptionCodeStatusEnabled {
-			return errors.New("该兑换码已被使用")
+			return ErrCodeUsed
 		}
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
-			return errors.New("该兑换码已过期")
+			return ErrCodeExpired
 		}
 		redemption.RedemptionType = NormalizeRedemptionType(redemption.RedemptionType)
 		result.RedemptionType = redemption.RedemptionType
@@ -256,6 +263,10 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 		return err
 	})
 	if err != nil {
+		// User-facing errors are passed through directly; system/DB errors are wrapped
+		if errors.Is(err, ErrInvalidCode) || errors.Is(err, ErrCodeUsed) || errors.Is(err, ErrCodeExpired) {
+			return nil, err
+		}
 		common.SysError("redemption failed: " + err.Error())
 		return nil, ErrRedeemFailed
 	}

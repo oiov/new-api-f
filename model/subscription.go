@@ -59,6 +59,7 @@ const (
 	SubscriptionResetDaily   = "daily"
 	SubscriptionResetWeekly  = "weekly"
 	SubscriptionResetMonthly = "monthly"
+	SubscriptionResetYearly  = "yearly"
 	SubscriptionResetCustom  = "custom"
 )
 
@@ -544,7 +545,7 @@ func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 
 func NormalizeResetPeriod(period string) string {
 	switch strings.TrimSpace(period) {
-	case SubscriptionResetDaily, SubscriptionResetWeekly, SubscriptionResetMonthly, SubscriptionResetCustom:
+	case SubscriptionResetDaily, SubscriptionResetWeekly, SubscriptionResetMonthly, SubscriptionResetYearly, SubscriptionResetCustom:
 		return strings.TrimSpace(period)
 	default:
 		return SubscriptionResetNever
@@ -568,26 +569,16 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 	if period == SubscriptionResetNever {
 		return 0
 	}
-	base = subscriptionResetTime(base)
 	var next time.Time
 	switch period {
 	case SubscriptionResetDaily:
-		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
-			AddDate(0, 0, 1)
+		next = base.Add(24 * time.Hour)
 	case SubscriptionResetWeekly:
-		// Align to next Monday 00:00
-		weekday := int(base.Weekday()) // Sunday=0
-		// Convert to Monday=1..Sunday=7
-		if weekday == 0 {
-			weekday = 7
-		}
-		daysUntil := 8 - weekday
-		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
-			AddDate(0, 0, daysUntil)
+		next = base.AddDate(0, 0, 7)
 	case SubscriptionResetMonthly:
-		// Align to first day of next month 00:00
-		next = time.Date(base.Year(), base.Month(), 1, 0, 0, 0, 0, base.Location()).
-			AddDate(0, 1, 0)
+		next = base.AddDate(0, 1, 0)
+	case SubscriptionResetYearly:
+		next = base.AddDate(1, 0, 0)
 	case SubscriptionResetCustom:
 		if plan.QuotaResetCustomSeconds <= 0 {
 			return 0
@@ -662,6 +653,99 @@ func recalculateSubscriptionResetWindow(sub *UserSubscription, now int64) bool {
 	sub.LastResetTime = base.Unix()
 	sub.NextResetTime = next
 	return sub.LastResetTime != oldLastResetTime || sub.NextResetTime != oldNextResetTime
+}
+
+func getSubscriptionUsageWindowStart(sub *UserSubscription) int64 {
+	if sub == nil {
+		return 0
+	}
+	if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever {
+		return sub.StartTime
+	}
+	if sub.LastResetTime > 0 {
+		return sub.LastResetTime
+	}
+	return sub.StartTime
+}
+
+func hasUserSubscriptionRemainingEntitlement(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) == SubscriptionResourceRequestCount {
+		if sub.RequestCountTotal <= 0 {
+			return true
+		}
+		return sub.RequestCountUsed < sub.RequestCountTotal
+	}
+	if sub.AmountTotal <= 0 {
+		return true
+	}
+	return sub.AmountUsed < sub.AmountTotal
+}
+
+func isUserSubscriptionUsableNow(sub *UserSubscription, now int64) bool {
+	if sub == nil {
+		return false
+	}
+	if sub.Status != "active" {
+		return false
+	}
+	if sub.EndTime > 0 && sub.EndTime <= now {
+		return false
+	}
+	return hasUserSubscriptionRemainingEntitlement(sub)
+}
+
+func deriveUserSubscriptionStatus(sub *UserSubscription, now int64) string {
+	if sub == nil {
+		return "expired"
+	}
+	if sub.Status == "cancelled" {
+		return "cancelled"
+	}
+	if sub.EndTime > 0 && sub.EndTime <= now {
+		return "expired"
+	}
+	if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever && !hasUserSubscriptionRemainingEntitlement(sub) {
+		return "expired"
+	}
+	return "active"
+}
+
+func reconcileUserSubscriptionUsageFromLogs(sub *UserSubscription, now int64) (bool, error) {
+	if sub == nil {
+		return false, nil
+	}
+	windowStart := getSubscriptionUsageWindowStart(sub)
+	if windowStart <= 0 {
+		windowStart = sub.StartTime
+	}
+	if windowStart <= 0 {
+		windowStart = now
+	}
+	summary, err := summarizeSubscriptionConsumeLogs(0, sub.Id, 0, sub.UserId, windowStart, now)
+	if err != nil {
+		return false, err
+	}
+	expectedAmountUsed := summary.TotalQuotaConsumed
+	expectedCountUsed := summary.TotalRequestConsumed
+	if sub.AmountTotal > 0 && expectedAmountUsed > sub.AmountTotal {
+		expectedAmountUsed = sub.AmountTotal
+	}
+	if sub.RequestCountTotal > 0 && expectedCountUsed > sub.RequestCountTotal {
+		expectedCountUsed = sub.RequestCountTotal
+	}
+	changed := false
+	if sub.AmountUsed != expectedAmountUsed {
+		sub.AmountUsed = expectedAmountUsed
+		changed = true
+	}
+	if sub.RequestCountUsed != expectedCountUsed {
+		sub.RequestCountUsed = expectedCountUsed
+		changed = true
+	}
+	return changed, nil
 }
 
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {
@@ -1015,23 +1099,40 @@ func RefreshActiveSubscriptionResetWindows(batchSize int) (int, error) {
 		for i := range subs {
 			sub := subs[i]
 			lastID = sub.Id
+			originalStatus := sub.Status
 			baseUnix := sub.LastResetTime
 			if baseUnix <= 0 {
 				baseUnix = sub.StartTime
 			}
-			if !recalculateSubscriptionResetWindow(&sub, now) {
-				continue
-			}
-			updates := map[string]interface{}{
-				"last_reset_time": sub.LastResetTime,
-				"next_reset_time": sub.NextResetTime,
-				"updated_at":      common.GetTimestamp(),
-			}
+			updates := map[string]interface{}{}
+			windowChanged := recalculateSubscriptionResetWindow(&sub, now)
 			advanced := sub.LastResetTime > baseUnix && sub.LastResetTime <= now
 			if advanced {
-				updates["amount_used"] = 0
-				updates["request_count_used"] = 0
+				sub.AmountUsed = 0
+				sub.RequestCountUsed = 0
 			}
+			usageChanged, err := reconcileUserSubscriptionUsageFromLogs(&sub, now)
+			if err != nil {
+				return totalUpdated, err
+			}
+			nextStatus := deriveUserSubscriptionStatus(&sub, now)
+			statusChanged := nextStatus != originalStatus
+			sub.Status = nextStatus
+			if !windowChanged && !advanced && !usageChanged && !statusChanged {
+				continue
+			}
+			if windowChanged {
+				updates["last_reset_time"] = sub.LastResetTime
+				updates["next_reset_time"] = sub.NextResetTime
+			}
+			if advanced || usageChanged {
+				updates["amount_used"] = sub.AmountUsed
+				updates["request_count_used"] = sub.RequestCountUsed
+			}
+			if statusChanged {
+				updates["status"] = sub.Status
+			}
+			updates["updated_at"] = common.GetTimestamp()
 			if err := DB.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(updates).Error; err != nil {
 				return totalUpdated, err
 			}
@@ -1165,6 +1266,26 @@ func HasActiveUserSubscription(userId int) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func HasUsableUserSubscription(userId int) (bool, error) {
+	if userId <= 0 {
+		return false, errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	var subs []UserSubscription
+	if err := DB.Select("id, status, end_time, resource_type, request_count_total, request_count_used, amount_total, amount_used").
+		Where("user_id = ? AND status = ? AND (end_time = 0 OR end_time > ?)", userId, "active", now).
+		Order("end_time asc, id asc").
+		Find(&subs).Error; err != nil {
+		return false, err
+	}
+	for i := range subs {
+		if isUserSubscriptionUsableNow(&subs[i], now) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // GetAllUserSubscriptions returns all subscriptions (active and expired) for a user.

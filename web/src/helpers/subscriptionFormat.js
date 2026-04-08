@@ -138,6 +138,7 @@ export function formatSubscriptionResetPeriod(plan, t) {
   if (period === 'daily') return t('每天');
   if (period === 'weekly') return t('每周');
   if (period === 'monthly') return t('每月');
+  if (period === 'yearly') return t('每年');
   if (period === 'custom') {
     const seconds = Number(
       plan?.reset_custom_seconds ?? plan?.quota_reset_custom_seconds ?? 0,

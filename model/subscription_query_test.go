@@ -2,6 +2,7 @@ package model
 
 import (
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
@@ -57,6 +58,44 @@ func TestGetUserSubscriptionsByAdmin(t *testing.T) {
 		require.Equal(t, 101, items[0].Subscription.PlanId)
 		require.Equal(t, 10, items[0].Subscription.UserId)
 	})
+}
+
+func TestCalcPlanEndTime_UsesRollingDurations(t *testing.T) {
+	loc := time.FixedZone("UTC+8", 8*3600)
+	start := time.Date(2026, 4, 7, 11, 16, 46, 0, loc)
+
+	dayEnd, err := calcPlanEndTime(start, &SubscriptionPlan{DurationUnit: SubscriptionDurationDay, DurationValue: 1})
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, 4, 8, 11, 16, 46, 0, loc).Unix(), dayEnd)
+
+	weekEnd, err := calcPlanEndTime(start, &SubscriptionPlan{DurationUnit: SubscriptionDurationWeek, DurationValue: 1})
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, 4, 14, 11, 16, 46, 0, loc).Unix(), weekEnd)
+
+	monthEnd, err := calcPlanEndTime(start, &SubscriptionPlan{DurationUnit: SubscriptionDurationMonth, DurationValue: 1})
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, 5, 7, 11, 16, 46, 0, loc).Unix(), monthEnd)
+
+	yearEnd, err := calcPlanEndTime(start, &SubscriptionPlan{DurationUnit: SubscriptionDurationYear, DurationValue: 1})
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2027, 4, 7, 11, 16, 46, 0, loc).Unix(), yearEnd)
+}
+
+func TestCalcNextResetTime_UsesRollingResetPeriods(t *testing.T) {
+	loc := time.FixedZone("UTC+8", 8*3600)
+	base := time.Date(2026, 4, 7, 11, 16, 46, 0, loc)
+
+	daily := calcNextResetTime(base, &SubscriptionPlan{QuotaResetPeriod: SubscriptionResetDaily}, 0)
+	require.Equal(t, time.Date(2026, 4, 8, 11, 16, 46, 0, loc).Unix(), daily)
+
+	weekly := calcNextResetTime(base, &SubscriptionPlan{QuotaResetPeriod: SubscriptionResetWeekly}, 0)
+	require.Equal(t, time.Date(2026, 4, 14, 11, 16, 46, 0, loc).Unix(), weekly)
+
+	monthly := calcNextResetTime(base, &SubscriptionPlan{QuotaResetPeriod: SubscriptionResetMonthly}, 0)
+	require.Equal(t, time.Date(2026, 5, 7, 11, 16, 46, 0, loc).Unix(), monthly)
+
+	yearly := calcNextResetTime(base, &SubscriptionPlan{QuotaResetPeriod: SubscriptionResetYearly}, 0)
+	require.Equal(t, time.Date(2027, 4, 7, 11, 16, 46, 0, loc).Unix(), yearly)
 }
 
 func TestSyncActiveSubscriptionsForPlanTx(t *testing.T) {
@@ -273,6 +312,136 @@ func TestResetDueSubscriptions_ResetsFinalCycleUsage(t *testing.T) {
 		require.EqualValues(t, 0, sub.AmountUsed)
 		require.Greater(t, sub.LastResetTime, lastResetTime)
 		require.EqualValues(t, 0, sub.NextResetTime)
+	})
+}
+
+func TestRefreshActiveSubscriptionResetWindows_ReconcilesNonResetRequestCountAndExpiresExhausted(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{Id: 88, Username: "reconcile_non_reset", AffCode: "aff_reconcile_non_reset", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                801,
+			UserId:            88,
+			PlanId:            701,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 3,
+			RequestCountUsed:  0,
+			ResetPeriod:       SubscriptionResetNever,
+			Status:            "active",
+			StartTime:         now - 3600,
+			EndTime:           now + 3600,
+		}).Error)
+
+		for i := 0; i < 3; i++ {
+			other := `{"billing_source":"subscription","subscription_id":801,"subscription_plan_id":701,"subscription_consumed":1,"subscription_resource_type":"request_count"}`
+			require.NoError(t, DB.Create(&Log{
+				Id:        900 + i,
+				UserId:    88,
+				Type:      LogTypeConsume,
+				CreatedAt: now - int64(180-i*30),
+				Other:     other,
+			}).Error)
+		}
+
+		updated, err := RefreshActiveSubscriptionResetWindows(50)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, updated)
+
+		var sub UserSubscription
+		require.NoError(t, DB.Where("id = ?", 801).First(&sub).Error)
+		require.EqualValues(t, 3, sub.RequestCountUsed)
+		require.Equal(t, "expired", sub.Status)
+	})
+}
+
+func TestRefreshActiveSubscriptionResetWindows_ReconcilesCurrentCycleUsageWithoutExpiringResettableSubscription(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		lastReset := now - 1800
+
+		require.NoError(t, DB.Create(&User{Id: 89, Username: "reconcile_resettable", AffCode: "aff_reconcile_resettable", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                802,
+			UserId:            89,
+			PlanId:            702,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 2,
+			RequestCountUsed:  0,
+			ResetPeriod:       SubscriptionResetDaily,
+			Status:            "active",
+			StartTime:         now - 86400,
+			EndTime:           now + 86400,
+			LastResetTime:     lastReset,
+			NextResetTime:     now + 1800,
+		}).Error)
+
+		other := `{"billing_source":"subscription","subscription_id":802,"subscription_plan_id":702,"subscription_consumed":1,"subscription_resource_type":"request_count"}`
+		require.NoError(t, DB.Create(&Log{
+			Id:        950,
+			UserId:    89,
+			Type:      LogTypeConsume,
+			CreatedAt: now - 600,
+			Other:     other,
+		}).Error)
+
+		updated, err := RefreshActiveSubscriptionResetWindows(50)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, updated)
+
+		var sub UserSubscription
+		require.NoError(t, DB.Where("id = ?", 802).First(&sub).Error)
+		require.EqualValues(t, 1, sub.RequestCountUsed)
+		require.Equal(t, "active", sub.Status)
+	})
+}
+
+func TestHasUsableUserSubscription_IgnoresExhaustedSubscriptions(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{Id: 90, Username: "usable_sub_user", AffCode: "aff_usable_sub_user", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                803,
+			UserId:            90,
+			PlanId:            703,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 1,
+			RequestCountUsed:  1,
+			ResetPeriod:       SubscriptionResetNever,
+			Status:            "active",
+			StartTime:         now - 300,
+			EndTime:           now + 3600,
+		}).Error)
+
+		hasUsable, err := HasUsableUserSubscription(90)
+		require.NoError(t, err)
+		require.False(t, hasUsable)
+	})
+}
+
+func TestHasUsableUserSubscription_RecognizesNoExpirySubscription(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{Id: 91, Username: "no_expiry_sub_user", AffCode: "aff_no_expiry_sub_user", Status: common.UserStatusEnabled}).Error)
+		// end_time = 0 means "never expires"
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                804,
+			UserId:            91,
+			PlanId:            704,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 10,
+			RequestCountUsed:  3,
+			ResetPeriod:       SubscriptionResetNever,
+			Status:            "active",
+			StartTime:         now - 300,
+			EndTime:           0, // never expires
+		}).Error)
+
+		hasUsable, err := HasUsableUserSubscription(91)
+		require.NoError(t, err)
+		require.True(t, hasUsable)
 	})
 }
 

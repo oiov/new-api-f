@@ -136,12 +136,11 @@ function PersonalContent() {
   };
 
   const handleChangePassword = async () => {
-    if (!passwords.old) { toast.error(t('请输入当前密码')); return; }
     if (!passwords.new) { toast.error(t('请输入新密码')); return; }
     if (passwords.new !== passwords.confirm) { toast.error(t('两次密码不一致')); return; }
     setLoading(true);
     try {
-      const res = await API.put('/api/user/self', { password: passwords.new, old_password: passwords.old });
+      const res = await API.put('/api/user/self', { password: passwords.new, original_password: passwords.old });
       const data = res.data as { success: boolean; message?: string };
       if (data.success) {
         toast.success(t('密码修改成功'));
@@ -357,7 +356,10 @@ function PersonalContent() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">{t('当前密码')}</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">{t('当前密码')}</Label>
+                    <span className="text-xs text-muted-foreground">{t('第三方登录用户可留空')}</span>
+                  </div>
                   <Input
                     type="password"
                     value={passwords.old}

@@ -641,6 +641,8 @@
     "兑换失败": "Redemption failed",
     "兑换成功": "Redeemed successfully",
     "兑换成功！": "Redemption successful!",
+    "兑换成功！获得 {{amount}} 额度": "Redeemed successfully! Got {{amount}} credits",
+    "兑换成功！已激活套餐：{{plan}}": "Redeemed successfully! Activated plan: {{plan}}",
     "兑换时间": "Redeemed at",
     "兑换码": "Redemption Code",
     "兑换码ID": "Redemption ID",

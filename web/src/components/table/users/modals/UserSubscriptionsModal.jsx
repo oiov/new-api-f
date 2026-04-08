@@ -432,7 +432,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
                     sub?.id,
                     'reset_usage_now',
                     t('确认重置当前周期用量'),
-                    t('将立即清空当前日/周/月周期已用额度或次数，并重算下次重置时间。是否继续？'),
+                    t('将立即清空当前重置周期已用额度或次数，并按该订阅的滚动周期重算下次重置时间。是否继续？'),
                   )
                 }
               >

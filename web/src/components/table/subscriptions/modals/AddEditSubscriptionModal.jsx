@@ -72,6 +72,7 @@ const resetPeriodOptions = [
   { value: 'daily', label: '每天' },
   { value: 'weekly', label: '每周' },
   { value: 'monthly', label: '每月' },
+  { value: 'yearly', label: '每年' },
   { value: 'custom', label: '自定义(秒)' },
 ];
 
@@ -596,7 +597,7 @@ const AddEditSubscriptionModal = ({
                         field='quota_reset_period'
                         label={t('重置周期')}
                         extraText={t(
-                          '设置日/周/月/自定义重置后，上面的次数/额度表示单个重置周期内可用值，不是整个有效期总量。',
+                          '设置每天/每周/每月/每年/自定义重置后，上面的次数/额度表示单个重置周期内可用值，并按购买生效时间滚动重置，不是整个有效期总量。',
                         )}
                       >
                         {resetPeriodOptions.map((o) => (

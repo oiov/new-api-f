@@ -168,6 +168,7 @@ function fmtReset(plan: SubscriptionPlan, t: (k: string) => string): string {
   if (p === 'daily') return t('每天');
   if (p === 'weekly') return t('每周');
   if (p === 'monthly') return t('每月');
+  if (p === 'yearly') return t('每年');
   if (p === 'custom') {
     const s = Number(plan.quota_reset_custom_seconds || 0);
     if (s >= 86400) return `${Math.floor(s / 86400)}${t('天')}`;
@@ -764,6 +765,7 @@ function PlanFormSheet({ open, onClose, initial, onSaved }: PlanFormSheetProps) 
                       <SelectItem value="daily">{t('每天')}</SelectItem>
                       <SelectItem value="weekly">{t('每周')}</SelectItem>
                       <SelectItem value="monthly">{t('每月')}</SelectItem>
+                      <SelectItem value="yearly">{t('每年')}</SelectItem>
                       <SelectItem value="custom">{t('自定义（秒）')}</SelectItem>
                     </SelectContent>
                   </Select>

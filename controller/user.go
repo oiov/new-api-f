@@ -1126,11 +1126,16 @@ func TopUp(c *gin.Context) {
 	}
 	redeemResult, err := model.Redeem(req.Key, id)
 	if err != nil {
-		if errors.Is(err, model.ErrRedeemFailed) {
+		switch {
+		case errors.Is(err, model.ErrInvalidCode):
+			common.ApiErrorI18n(c, i18n.MsgRedeemInvalidCode)
+		case errors.Is(err, model.ErrCodeUsed):
+			common.ApiErrorI18n(c, i18n.MsgRedeemCodeUsed)
+		case errors.Is(err, model.ErrCodeExpired):
+			common.ApiErrorI18n(c, i18n.MsgRedeemCodeExpired)
+		default:
 			common.ApiErrorI18n(c, i18n.MsgRedeemFailed)
-			return
 		}
-		common.ApiError(c, err)
 		return
 	}
 	responseData := any(redeemResult)

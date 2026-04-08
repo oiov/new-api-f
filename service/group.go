@@ -77,7 +77,7 @@ func resolveUserBillingCapabilities(userId int, hasQuotaBalance bool) (bool, boo
 		return false, hasQuotaBalance
 	}
 	isSubscriptionUser := false
-	if has, err := model.HasActiveUserSubscription(userId); err == nil {
+	if has, err := model.HasUsableUserSubscription(userId); err == nil {
 		isSubscriptionUser = has
 	}
 	return isSubscriptionUser, hasQuotaBalance
