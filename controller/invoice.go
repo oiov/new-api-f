@@ -153,6 +153,68 @@ func CreateInvoice(c *gin.Context) {
 // 管理员端接口
 // ─────────────────────────────────────────────────────────────────
 
+type AdminUpdateInvoiceRequest struct {
+	Title   string `json:"title"`
+	TaxId   string `json:"tax_id"`
+	Email   string `json:"email"`
+	Status  string `json:"status"`
+	FileUrl string `json:"file_url"`
+	Remark  string `json:"remark"`
+}
+
+// UpdateInvoice 管理员编辑发票信息（标题、税号、邮箱、状态、文件URL、备注）
+func UpdateInvoice(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "无效的发票ID")
+		return
+	}
+
+	var req AdminUpdateInvoiceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误："+err.Error())
+		return
+	}
+
+	inv, err := model.GetInvoiceById(id)
+	if err != nil {
+		common.ApiErrorMsg(c, "发票不存在")
+		return
+	}
+
+	if req.Title != "" {
+		inv.Title = strings.TrimSpace(req.Title)
+	}
+	inv.TaxId = strings.TrimSpace(req.TaxId)
+	if req.Email != "" {
+		inv.Email = strings.TrimSpace(req.Email)
+	}
+	if req.Status != "" {
+		switch req.Status {
+		case model.InvoiceStatusPending, model.InvoiceStatusIssued,
+			model.InvoiceStatusRejected, model.InvoiceStatusSent:
+			inv.Status = req.Status
+		default:
+			common.ApiErrorMsg(c, "无效的发票状态")
+			return
+		}
+	}
+	if inv.Status == model.InvoiceStatusRejected && strings.TrimSpace(req.Remark) == "" {
+		common.ApiErrorMsg(c, "拒绝发票时必须填写拒绝原因")
+		return
+	}
+	if req.FileUrl != "" {
+		inv.FileUrl = strings.TrimSpace(req.FileUrl)
+	}
+	inv.Remark = req.Remark
+
+	if err := inv.Update(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, inv)
+}
+
 // GetAllInvoices 管理员获取所有发票申请
 func GetAllInvoices(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)

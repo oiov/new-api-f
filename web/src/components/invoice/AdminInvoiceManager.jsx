@@ -241,6 +241,10 @@ const AdminInvoiceManager = () => {
   const handleEditSubmit = async () => {
     let values;
     try { values = await editFormApi.current.validate(); } catch { return; }
+    if (values.status === 'rejected' && !values.remark?.trim()) {
+      Toast.error(t('拒绝状态时必须填写拒绝原因'));
+      return;
+    }
     setEditSubmitting(true);
     try {
       const res = await API.put(
