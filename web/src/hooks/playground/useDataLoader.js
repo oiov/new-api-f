@@ -19,7 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { API, processModelsData, processGroupsData } from '../../helpers';
+import {
+  API,
+  getUserData,
+  processModelsData,
+  processGroupsData,
+} from '../../helpers';
 import { API_ENDPOINTS } from '../../constants/playground.constants';
 
 export const useDataLoader = (
@@ -60,9 +65,12 @@ export const useDataLoader = (
       const { success, message, data } = res.data;
 
       if (success) {
+        const cachedUser = getUserData();
         const userGroup =
+          userState?.user?.effective_group ||
           userState?.user?.group ||
-          JSON.parse(localStorage.getItem('user'))?.group;
+          cachedUser?.effective_group ||
+          cachedUser?.group;
         const groupOptions = processGroupsData(data, userGroup);
         setGroups(groupOptions);
 

@@ -60,8 +60,20 @@ func getSubscriptionCoveredGroups(subscriptionGroups []string) map[string]struct
 			continue
 		}
 		covered[groupName] = struct{}{}
-		for name := range GetUserUsableGroups(groupName) {
-			covered[name] = struct{}{}
+		specialSettings, ok := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(groupName)
+		if !ok {
+			continue
+		}
+		for specialGroup := range specialSettings {
+			if strings.HasPrefix(specialGroup, "-:") {
+				delete(covered, strings.TrimPrefix(specialGroup, "-:"))
+				continue
+			}
+			if strings.HasPrefix(specialGroup, "+:") {
+				covered[strings.TrimPrefix(specialGroup, "+:")] = struct{}{}
+				continue
+			}
+			covered[specialGroup] = struct{}{}
 		}
 	}
 	return covered
@@ -153,6 +165,36 @@ func resolveUserBillingCapabilities(userId int, hasQuotaBalance bool) (bool, boo
 func GetUserUsableGroupsForUser(userId int, userGroup string, hasQuotaBalance bool) map[string]string {
 	_, canUseQuota := resolveUserBillingCapabilities(userId, hasQuotaBalance)
 	return GetUserUsableGroupsWithBillingFilter(userGroup, getUserSubscriptionGroups(userId), canUseQuota)
+}
+
+func ResolveEffectiveUserGroupForUser(userId int, userGroup string, hasQuotaBalance bool) string {
+	userGroup = strings.TrimSpace(userGroup)
+	subscriptionGroups := getUserSubscriptionGroups(userId)
+	usableGroups := GetUserUsableGroupsWithBillingFilter(userGroup, subscriptionGroups, hasQuotaBalance)
+	coveredSubscriptionGroups := getSubscriptionCoveredGroups(subscriptionGroups)
+	if userGroup != "" {
+		if _, ok := usableGroups[userGroup]; ok {
+			if len(subscriptionGroups) == 0 {
+				return userGroup
+			}
+			if _, ok := coveredSubscriptionGroups[userGroup]; ok {
+				return userGroup
+			}
+			if hasQuotaBalance && ratio_setting.ContainsGroupRatio(userGroup) {
+				return userGroup
+			}
+		}
+	}
+	for _, groupName := range subscriptionGroups {
+		groupName = strings.TrimSpace(groupName)
+		if groupName == "" {
+			continue
+		}
+		if _, ok := usableGroups[groupName]; ok {
+			return groupName
+		}
+	}
+	return userGroup
 }
 
 func GetUserUsableGroups(userGroup string) map[string]string {

@@ -27,22 +27,21 @@ import {
 } from '../constants/playground.constants';
 import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import { getUserData } from './data';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
 };
 export default HTMLToastContent;
 export function isAdmin() {
-  let user = localStorage.getItem('user');
+  const user = getUserData();
   if (!user) return false;
-  user = JSON.parse(user);
   return user.role >= 10;
 }
 
 export function isRoot() {
-  let user = localStorage.getItem('user');
+  const user = getUserData();
   if (!user) return false;
-  user = JSON.parse(user);
   return user.role >= 100;
 }
 
@@ -59,9 +58,8 @@ export function getLogo() {
 }
 
 export function getUserIdFromLocalStorage() {
-  let user = localStorage.getItem('user');
+  const user = getUserData();
   if (!user) return -1;
-  user = JSON.parse(user);
   return user.id;
 }
 

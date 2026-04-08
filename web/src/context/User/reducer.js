@@ -17,12 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { normalizeUserData } from '../../helpers/data';
+
 export const reducer = (state, action) => {
   switch (action.type) {
     case 'login':
       return {
         ...state,
-        user: action.payload,
+        user: normalizeUserData(action.payload),
       };
     case 'logout':
       return {

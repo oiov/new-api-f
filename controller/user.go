@@ -84,8 +84,23 @@ func Login(c *gin.Context) {
 	setupLogin(&user, c)
 }
 
+func resolveUserResponseGroups(userId int, configuredGroup string, fallbackQuota int) (string, string) {
+	configuredGroup = strings.TrimSpace(configuredGroup)
+	hasQuotaBalance := fallbackQuota > 0
+	userCache, err := model.GetUserCache(userId)
+	if err == nil {
+		configuredGroup = strings.TrimSpace(userCache.Group)
+		hasQuotaBalance = userCache.Quota > 0
+	} else if !setting.EnableGroupBillingFilter {
+		hasQuotaBalance = true
+	}
+	effectiveGroup := service.ResolveEffectiveUserGroupForUser(userId, configuredGroup, hasQuotaBalance)
+	return configuredGroup, effectiveGroup
+}
+
 // setup session & cookies and then return user info
 func setupLogin(user *model.User, c *gin.Context) {
+	configuredGroup, effectiveGroup := resolveUserResponseGroups(user.Id, user.Group, user.Quota)
 	session := sessions.Default(c)
 	session.Set("id", user.Id)
 	session.Set("username", user.Username)
@@ -101,12 +116,14 @@ func setupLogin(user *model.User, c *gin.Context) {
 		"message": "",
 		"success": true,
 		"data": map[string]any{
-			"id":           user.Id,
-			"username":     user.Username,
-			"display_name": user.DisplayName,
-			"role":         user.Role,
-			"status":       user.Status,
-			"group":        user.Group,
+			"id":               user.Id,
+			"username":         user.Username,
+			"display_name":     user.DisplayName,
+			"role":             user.Role,
+			"status":           user.Status,
+			"group":            user.Group,
+			"configured_group": configuredGroup,
+			"effective_group":  effectiveGroup,
 		},
 	})
 }
@@ -416,6 +433,7 @@ func GetSelf(c *gin.Context) {
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
+	configuredGroup, effectiveGroup := resolveUserResponseGroups(user.Id, user.Group, user.Quota)
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
@@ -432,6 +450,8 @@ func GetSelf(c *gin.Context) {
 		"wechat_id":         user.WeChatId,
 		"telegram_id":       user.TelegramId,
 		"group":             user.Group,
+		"configured_group":  configuredGroup,
+		"effective_group":   effectiveGroup,
 		"quota":             user.Quota,
 		"used_quota":        user.UsedQuota,
 		"request_count":     user.RequestCount,

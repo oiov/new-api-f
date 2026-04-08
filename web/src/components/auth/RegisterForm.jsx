@@ -259,7 +259,6 @@ const RegisterForm = () => {
       const { success, message, data } = res.data;
       if (success) {
         userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
         setUserData(data);
         updateAPI();
         navigate('/');
@@ -500,7 +499,6 @@ const RegisterForm = () => {
       const { success, message, data } = res.data;
       if (success) {
         userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
         showSuccess('注册成功！');
         setUserData(data);
         updateAPI();

@@ -20,10 +20,11 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { history } from './history';
+import { getUserData } from './data';
 
 export function authHeader() {
   // return authorization header with jwt token
-  let user = JSON.parse(localStorage.getItem('user'));
+  const user = getUserData();
 
   if (user && user.token) {
     return { Authorization: 'Bearer ' + user.token };
@@ -50,17 +51,12 @@ function PrivateRoute({ children }) {
 }
 
 export function AdminRoute({ children }) {
-  const raw = localStorage.getItem('user');
-  if (!raw) {
+  const user = getUserData();
+  if (!user) {
     return <Navigate to='/login' state={{ from: history.location }} />;
   }
-  try {
-    const user = JSON.parse(raw);
-    if (user && typeof user.role === 'number' && user.role >= 10) {
-      return children;
-    }
-  } catch (e) {
-    // ignore
+  if (typeof user.role === 'number' && user.role >= 10) {
+    return children;
   }
   return <Navigate to='/forbidden' replace />;
 }

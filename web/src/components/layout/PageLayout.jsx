@@ -26,7 +26,12 @@ import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useTranslation } from 'react-i18next';
 import { API } from '../../helpers/api';
 import { getLogo, getSystemName, showError } from '../../helpers/utils';
-import { getStatusCacheAge, readStatusData, setStatusData } from '../../helpers/data';
+import {
+  getStatusCacheAge,
+  getUserData,
+  readStatusData,
+  setStatusData,
+} from '../../helpers/data';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useLocation } from 'react-router-dom';
@@ -95,9 +100,8 @@ const PageLayout = () => {
   }, [isMobile, drawerOpen, collapsed, setCollapsed]);
 
   const loadUser = () => {
-    let user = localStorage.getItem('user');
-    if (user) {
-      let data = JSON.parse(user);
+    const data = getUserData();
+    if (data) {
       userDispatch({ type: 'login', payload: data });
     }
   };

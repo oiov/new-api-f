@@ -85,6 +85,33 @@ export function getStatusCacheAge() {
   return Date.now() - timestamp;
 }
 
+export function normalizeUserData(data) {
+  if (!data || typeof data !== 'object') {
+    return data;
+  }
+  const configuredGroup = data.configured_group ?? data.group ?? '';
+  const effectiveGroup = data.effective_group ?? data.group ?? configuredGroup;
+  return {
+    ...data,
+    configured_group: configuredGroup,
+    effective_group: effectiveGroup,
+    group: effectiveGroup,
+  };
+}
+
+export function getUserData() {
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) {
+      return null;
+    }
+    const data = JSON.parse(raw);
+    return normalizeUserData(data);
+  } catch {
+    return null;
+  }
+}
+
 export function setUserData(data) {
-  localStorage.setItem('user', JSON.stringify(data));
+  localStorage.setItem('user', JSON.stringify(normalizeUserData(data)));
 }

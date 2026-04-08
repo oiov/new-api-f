@@ -63,7 +63,6 @@ const OAuth2Callback = (props) => {
         const authIntent = localStorage.getItem('oauth_auth_intent');
         localStorage.removeItem('oauth_auth_intent');
         userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
         setUserData(data);
         updateAPI();
         showSuccess(
