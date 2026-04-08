@@ -26,7 +26,6 @@ import {
   Toast,
   Space,
   Tooltip,
-  Popover,
   Empty,
   Spin,
   Modal,
@@ -217,9 +216,16 @@ const InvoiceList = () => {
         const tag = <Tag color={cfg.type}>{t(cfg.label)}</Tag>;
         if (status === 'rejected' && record.remark) {
           return (
-            <Popover content={record.remark} position='top'>
+            <div>
               {tag}
-            </Popover>
+              <Text
+                type='danger'
+                size='small'
+                style={{ display: 'block', marginTop: 4, lineHeight: 1.4, maxWidth: 180 }}
+              >
+                {record.remark}
+              </Text>
+            </div>
           );
         }
         return tag;
