@@ -27,6 +27,7 @@ import {
   Space,
   Table,
   Tag,
+  TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
 import { API, renderQuota, showError, showSuccess, timestamp2string } from '../../../helpers';
@@ -349,7 +350,7 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
           </div>
           <div>
             <div className='mb-1 text-sm'>{t('管理员备注')}</div>
-            <Input.TextArea
+            <TextArea
               value={adminRemark}
               onChange={setAdminRemark}
               rows={4}
@@ -373,7 +374,7 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
           </Text>
           <div>
             <div className='mb-1 text-sm'>{t('拒绝原因')}</div>
-            <Input.TextArea
+            <TextArea
               value={rejectRemark}
               onChange={setRejectRemark}
               rows={4}

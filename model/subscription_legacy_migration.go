@@ -96,7 +96,7 @@ func defaultSelfServiceSubscriptionConversionCampaign() SelfServiceSubscriptionC
 	if loc == nil {
 		loc = time.FixedZone("UTC+8", 8*3600)
 	}
-	deadline := time.Date(2026, time.April, 9, 23, 0, 0, 0, loc).Unix()
+	deadline := time.Date(2026, time.April, 11, 23, 0, 0, 0, loc).Unix()
 	return SelfServiceSubscriptionConversionCampaign{
 		Enabled:             true,
 		Key:                 "default-self-service-subscription-conversion",
