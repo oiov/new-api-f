@@ -30,6 +30,7 @@ import {
   TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
+import { renderQuotaWithAmount } from '../../../helpers/render';
 import { API, renderQuota, showError, showSuccess, timestamp2string } from '../../../helpers';
 
 const { Text } = Typography;
@@ -47,12 +48,69 @@ const getStatusMeta = (status, t) => {
   }
 };
 
+const renderRequestSubscriptionItems = (items, t) => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return (
+      <Text type='tertiary' size='small'>
+        -
+      </Text>
+    );
+  }
+
+  return (
+    <div className='space-y-2'>
+      {items.map((item) => (
+        <div
+          key={item?.user_subscription_id}
+          className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'
+        >
+          <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
+            <div className='min-w-0'>
+              <div className='font-medium'>
+                {item?.plan_title || `#${item?.plan_id || '-'}`}
+              </div>
+              <Text type='tertiary' size='small'>
+                #{item?.user_subscription_id} · {t('来源')} {item?.source || '-'}
+              </Text>
+              <Text type='tertiary' size='small' className='block'>
+                {timestamp2string(item?.start_time)} ~ {timestamp2string(item?.end_time)}
+              </Text>
+            </div>
+            <div className='text-left sm:text-right text-xs text-gray-600'>
+              {item?.refund_order?.trade_no ? (
+                <>
+                  <div>
+                    {t('支付单')} #{item.refund_order.order_id || '-'}
+                  </div>
+                  <div className='break-all'>{item.refund_order.trade_no}</div>
+                  <div>
+                    {t('充值单')} #{item.refund_order.topup_id || '-'}
+                  </div>
+                  <div>
+                    {t('实付金额')} {renderQuotaWithAmount(Number(item.refund_order.money || 0))}
+                  </div>
+                  <div>
+                    {t('支付方式')} {item.refund_order.payment_method || '-'}
+                  </div>
+                </>
+              ) : (
+                <div>{t('未匹配到支付订单')}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const SubscriptionConversionRequestsPanel = ({ t }) => {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('pending');
   const [current, setCurrent] = useState(null);
+  const [detailVisible, setDetailVisible] = useState(false);
   const [approveVisible, setApproveVisible] = useState(false);
   const [rejectVisible, setRejectVisible] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -101,6 +159,11 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
     );
     setAdminRemark(item?.admin_remark || '');
     setApproveVisible(true);
+  };
+
+  const openDetail = (item) => {
+    setCurrent(item);
+    setDetailVisible(true);
   };
 
   const openReject = (item) => {
@@ -218,6 +281,9 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
             <Text type='tertiary' size='small'>
               x{Number(record?.requested_ratio || 1).toFixed(2)}
             </Text>
+            <Text type='tertiary' size='small' className='block'>
+              {(record?.subscription_items || []).length} {t('个套餐')}
+            </Text>
           </div>
         ),
       },
@@ -238,15 +304,25 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
       {
         title: t('申请时间'),
         dataIndex: 'create_time',
-        render: (value) => timestamp2string(value),
-        width: 170,
+        render: (value) => (
+          <div className='text-sm'>
+            <div>{timestamp2string(value).split(' ')[0] || '-'}</div>
+            <Text type='tertiary' size='small'>
+              {timestamp2string(value).split(' ')[1] || ''}
+            </Text>
+          </div>
+        ),
+        width: 150,
       },
       {
         title: t('操作'),
-        width: 220,
+        width: 260,
         render: (text, record) =>
           record?.status === 'pending' ? (
             <Space>
+              <Button size='small' theme='borderless' onClick={() => openDetail(record)}>
+                {t('查看')}
+              </Button>
               <Button size='small' type='primary' onClick={() => openApprove(record)}>
                 {t('批准')}
               </Button>
@@ -255,9 +331,14 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
               </Button>
             </Space>
           ) : (
-            <Text type='tertiary' size='small'>
-              {record?.admin_remark || '-'}
-            </Text>
+            <div className='space-y-1'>
+              <Button size='small' theme='borderless' onClick={() => openDetail(record)}>
+                {t('查看')}
+              </Button>
+              <Text type='tertiary' size='small' className='block'>
+                {record?.admin_remark || '-'}
+              </Text>
+            </div>
           ),
       },
     ],
@@ -312,6 +393,41 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
       </Card>
 
       <Modal
+        title={t('转余额申请详情')}
+        visible={detailVisible}
+        footer={null}
+        onCancel={() => setDetailVisible(false)}
+        width={720}
+      >
+        <div className='space-y-3'>
+          <div className='rounded-lg bg-semi-color-fill-0 p-3 text-sm'>
+            <div>
+              {t('申请用户')}：{current?.username || '-'}
+            </div>
+            <div>
+              {t('申请返还')}：{renderQuota(current?.requested_quota || 0)}
+            </div>
+            <div>
+              {t('状态')}：
+              {current?.status ? getStatusMeta(current.status, t).text : '-'}
+            </div>
+            <div>
+              {t('申请时间')}：{timestamp2string(current?.create_time)}
+            </div>
+            {current?.admin_remark ? (
+              <div>
+                {t('管理员备注')}：{current.admin_remark}
+              </div>
+            ) : null}
+          </div>
+          <div>
+            <div className='mb-1 text-sm font-medium'>{t('命中套餐与关联订单')}</div>
+            {renderRequestSubscriptionItems(current?.subscription_items, t)}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         title={t('批准转余额申请')}
         visible={approveVisible}
         onCancel={() => setApproveVisible(false)}
@@ -331,6 +447,10 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
             <div className='text-semi-color-text-2'>
               {t('批准后会直接增加余额，并保持原套餐作废状态。')}
             </div>
+          </div>
+          <div>
+            <div className='mb-1 text-sm font-medium'>{t('命中套餐与关联订单')}</div>
+            {renderRequestSubscriptionItems(current?.subscription_items, t)}
           </div>
           <div>
             <div className='mb-1 text-sm'>{t('批准比例')}</div>
@@ -372,6 +492,10 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
           <Text type='tertiary' size='small'>
             {t('拒绝后系统会恢复用户申请时被禁用的原套餐。')}
           </Text>
+          <div>
+            <div className='mb-1 text-sm font-medium'>{t('命中套餐与关联订单')}</div>
+            {renderRequestSubscriptionItems(current?.subscription_items, t)}
+          </div>
           <div>
             <div className='mb-1 text-sm'>{t('拒绝原因')}</div>
             <TextArea

@@ -62,8 +62,8 @@ const AdminTokensPage = () => {
         />
       }
       actionsArea={
-        <div className='flex flex-col md:flex-row justify-between items-center gap-2 w-full'>
-          <div className='flex items-center text-[var(--semi-color-text-2)] text-sm gap-2 w-full md:w-auto'>
+        <div className='flex flex-col gap-3 w-full'>
+          <div className='flex items-center text-[var(--semi-color-text-2)] text-sm gap-2 w-full'>
             <Key size={14} />
             <span>{tokensData.t('查看所有用户令牌的状态、额度和使用情况')}</span>
           </div>

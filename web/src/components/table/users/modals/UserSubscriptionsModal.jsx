@@ -34,7 +34,10 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { API, renderQuota, showError, showSuccess } from '../../../../helpers';
-import { convertUSDToCurrency } from '../../../../helpers/render';
+import {
+  convertUSDToCurrency,
+  renderQuotaWithAmount,
+} from '../../../../helpers/render';
 import {
   formatSubscriptionResourceLabel,
   getSubscriptionResourceType,
@@ -315,6 +318,32 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
         key: 'status',
         width: 90,
         render: (_, record) => renderStatusTag(record?.subscription, t),
+      },
+      {
+        title: t('关联充值订单'),
+        key: 'refund_order',
+        width: 250,
+        render: (_, record) => {
+          const refundOrder = record?.refund_order;
+          if (!refundOrder?.trade_no) {
+            return <Text type='tertiary' size='small'>-</Text>;
+          }
+          return (
+            <div className='text-xs text-gray-600 space-y-1'>
+              <div>
+                {t('支付单')} #{refundOrder.order_id || '-'}
+              </div>
+              <div className='break-all'>{refundOrder.trade_no}</div>
+              <div>
+                {t('充值单')} #{refundOrder.topup_id || '-'} ·{' '}
+                {t('实付金额')} {renderQuotaWithAmount(Number(refundOrder.money || 0))}
+              </div>
+              <div>
+                {t('支付方式')} {refundOrder.payment_method || '-'}
+              </div>
+            </div>
+          );
+        },
       },
       {
         title: t('有效期'),

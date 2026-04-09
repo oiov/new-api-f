@@ -68,6 +68,7 @@ const AdminUserSubscriptionsFilters = ({
                   { label: t('生效开始时间'), value: 'start_time' },
                   { label: t('到期时间'), value: 'end_time' },
                 ]}
+                pure
                 size='small'
               />
               <Form.DatePicker
@@ -117,6 +118,7 @@ const AdminUserSubscriptionsFilters = ({
               ]}
               showClear
               filter
+              pure
               size='small'
             />
           </div>
@@ -129,6 +131,7 @@ const AdminUserSubscriptionsFilters = ({
               renderOptionItem={renderGroupOption}
               showClear
               filter
+              pure
               size='small'
             />
           </div>
@@ -141,6 +144,7 @@ const AdminUserSubscriptionsFilters = ({
               renderOptionItem={renderGroupOption}
               showClear
               filter
+              pure
               size='small'
             />
           </div>
@@ -155,6 +159,7 @@ const AdminUserSubscriptionsFilters = ({
                 { label: t('已过期'), value: 'expired' },
                 { label: t('已作废'), value: 'cancelled' },
               ]}
+              pure
               size='small'
             />
           </div>
@@ -169,6 +174,7 @@ const AdminUserSubscriptionsFilters = ({
                 { label: t('按次数'), value: 'request_count' },
               ]}
               showClear
+              pure
               size='small'
             />
           </div>
@@ -185,6 +191,7 @@ const AdminUserSubscriptionsFilters = ({
                 { label: t('邀请奖励'), value: 'invite_reward' },
               ]}
               showClear
+              pure
               size='small'
             />
           </div>

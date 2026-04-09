@@ -103,8 +103,8 @@ const SubscriptionsPage = () => {
               />
             }
             actionsArea={
-              <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-2 w-full'>
-                <div className='order-1 md:order-0 w-full md:w-auto'>
+              <div className='flex flex-col gap-3 w-full'>
+                <div className='flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 w-full'>
                   <SubscriptionsActions
                     openCreate={openCreate}
                     openMigration={() => setShowMigration(true)}
@@ -116,16 +116,18 @@ const SubscriptionsPage = () => {
                     batchUpdatingPlans={subscriptionsData.batchUpdatingPlans}
                     t={t}
                   />
+                  <div className='w-full lg:w-auto lg:max-w-[520px]'>
+                    <Banner
+                      type='info'
+                      description={t(
+                        'Stripe/Creem 需在第三方平台创建商品并填入 ID',
+                      )}
+                      closeIcon={null}
+                      className='!rounded-lg'
+                      style={{ maxWidth: '100%' }}
+                    />
+                  </div>
                 </div>
-                <Banner
-                  type='info'
-                  description={t(
-                    'Stripe/Creem 需在第三方平台创建商品并填入 ID',
-                  )}
-                  closeIcon={null}
-                  className='!rounded-lg order-2 md:order-1'
-                  style={{ maxWidth: '100%' }}
-                />
               </div>
             }
             searchArea={
@@ -172,13 +174,15 @@ const SubscriptionsPage = () => {
               />
             }
             actionsArea={
-              <div className='flex items-center justify-between gap-2 w-full'>
+              <div className='flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 w-full'>
                 <div className='text-sm text-gray-500'>
                   {t('可筛选全部订阅记录，并重点识别兑换码兑换来源')}
                 </div>
-                <Button size='small' onClick={() => setConsumeLogsFilter({})}>
-                  {t('全部订阅消耗')}
-                </Button>
+                <div className='w-full lg:w-auto flex justify-start lg:justify-end'>
+                  <Button size='small' onClick={() => setConsumeLogsFilter({})}>
+                    {t('全部订阅消耗')}
+                  </Button>
+                </div>
               </div>
             }
             searchArea={

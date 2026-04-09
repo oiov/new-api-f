@@ -73,6 +73,7 @@ const SubscriptionsPlanFilters = ({
               { label: t('仅看启用'), value: 'enabled' },
               { label: t('仅看禁用'), value: 'disabled' },
             ]}
+            pure
             size='small'
           />
 
@@ -84,6 +85,7 @@ const SubscriptionsPlanFilters = ({
               { label: t('按额度'), value: 'quota' },
               { label: t('按次数'), value: 'request_count' },
             ]}
+            pure
             size='small'
           />
 
@@ -99,6 +101,7 @@ const SubscriptionsPlanFilters = ({
               { label: t('每年'), value: 'yearly' },
               { label: t('自定义'), value: 'custom' },
             ]}
+            pure
             size='small'
           />
 
@@ -111,6 +114,7 @@ const SubscriptionsPlanFilters = ({
             ]}
             renderOptionItem={renderGroupOption}
             filter
+            pure
             size='small'
           />
 
@@ -123,6 +127,7 @@ const SubscriptionsPlanFilters = ({
               { label: t('已售罄'), value: 'sold_out' },
               { label: t('不限量'), value: 'unlimited' },
             ]}
+            pure
             size='small'
           />
         </div>

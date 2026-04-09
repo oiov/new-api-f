@@ -466,6 +466,11 @@ type UserSubscription struct {
 
 	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin
 
+	SourceOrderId            int     `json:"source_order_id" gorm:"type:int;not null;default:0"`
+	SourceOrderTradeNo       string  `json:"source_order_trade_no" gorm:"type:varchar(255);default:'';index"`
+	SourceOrderPaymentMethod string  `json:"source_order_payment_method" gorm:"type:varchar(50);default:''"`
+	SourceOrderMoney         float64 `json:"source_order_money" gorm:"type:decimal(12,2);not null;default:0"`
+
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
 	NextResetTime int64 `json:"next_reset_time" gorm:"type:bigint;default:0;index"`
 
@@ -489,13 +494,24 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 }
 
 type SubscriptionSummary struct {
-	Subscription *UserSubscription `json:"subscription"`
+	Subscription *UserSubscription               `json:"subscription"`
+	RefundOrder  *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+}
+
+type SubscriptionRefundOrderSummary struct {
+	OrderId       int     `json:"order_id"`
+	TradeNo       string  `json:"trade_no"`
+	TopUpId       int     `json:"topup_id"`
+	PaymentMethod string  `json:"payment_method"`
+	Money         float64 `json:"money"`
+	CompleteTime  int64   `json:"complete_time"`
 }
 
 type AdminUserSubscriptionSummary struct {
-	Subscription *UserSubscription `json:"subscription"`
-	Username     string            `json:"username"`
-	UserGroup    string            `json:"user_group"`
+	Subscription *UserSubscription               `json:"subscription"`
+	Username     string                          `json:"username"`
+	UserGroup    string                          `json:"user_group"`
+	RefundOrder  *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
 }
 
 type SubscriptionMigrationFilter struct {
@@ -1414,9 +1430,23 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 			}
 		}
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
-		if _, planErr = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order"); planErr != nil {
+		sub, planErr := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+		if planErr != nil {
 			return planErr
 		}
+		if err := tx.Model(sub).Updates(map[string]any{
+			"source_order_id":             order.Id,
+			"source_order_trade_no":       order.TradeNo,
+			"source_order_payment_method": order.PaymentMethod,
+			"source_order_money":          order.Money,
+			"updated_at":                  common.GetTimestamp(),
+		}).Error; err != nil {
+			return err
+		}
+		sub.SourceOrderId = order.Id
+		sub.SourceOrderTradeNo = order.TradeNo
+		sub.SourceOrderPaymentMethod = order.PaymentMethod
+		sub.SourceOrderMoney = order.Money
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
 		}
@@ -1823,17 +1853,75 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
+		refundOrder, _ := buildSubscriptionRefundOrderSummaryFromSubscription(&subCopy, nil)
 		result = append(result, SubscriptionSummary{
 			Subscription: &subCopy,
+			RefundOrder:  refundOrder,
 		})
 	}
 	return result
+}
+
+func buildSubscriptionRefundOrderSummaryFromSubscription(sub *UserSubscription, tx *gorm.DB) (*SubscriptionRefundOrderSummary, error) {
+	if sub == nil || sub.Source != "order" || strings.TrimSpace(sub.SourceOrderTradeNo) == "" {
+		return nil, nil
+	}
+	summary := &SubscriptionRefundOrderSummary{
+		OrderId:       sub.SourceOrderId,
+		TradeNo:       strings.TrimSpace(sub.SourceOrderTradeNo),
+		PaymentMethod: strings.TrimSpace(sub.SourceOrderPaymentMethod),
+		Money:         sub.SourceOrderMoney,
+	}
+	topUpMap, err := buildTopUpMapByTradeNo([]string{summary.TradeNo}, tx)
+	if err != nil {
+		return nil, err
+	}
+	if topUp := topUpMap[summary.TradeNo]; topUp != nil {
+		summary.TopUpId = topUp.Id
+		summary.CompleteTime = topUp.CompleteTime
+		if summary.PaymentMethod == "" {
+			summary.PaymentMethod = topUp.PaymentMethod
+		}
+		if summary.Money <= 0 {
+			summary.Money = topUp.Money
+		}
+	} else if summary.OrderId > 0 {
+		db := DB
+		if tx != nil {
+			db = tx
+		}
+		var order SubscriptionOrder
+		if err := db.Select("complete_time").Where("id = ?", summary.OrderId).First(&order).Error; err == nil {
+			summary.CompleteTime = order.CompleteTime
+		}
+	}
+	return summary, nil
 }
 
 type adminUserSubscriptionListRow struct {
 	UserSubscription
 	Username  string `gorm:"column:username"`
 	UserGroup string `gorm:"column:user_group"`
+}
+
+func buildTopUpMapByTradeNo(tradeNos []string, tx *gorm.DB) (map[string]*TopUp, error) {
+	if len(tradeNos) == 0 {
+		return map[string]*TopUp{}, nil
+	}
+	db := DB
+	if tx != nil {
+		db = tx
+	}
+	var topUps []TopUp
+	if err := db.Where("trade_no IN ?", tradeNos).Find(&topUps).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[string]*TopUp, len(topUps))
+	for i := range topUps {
+		topUpCopy := topUps[i]
+		result[topUpCopy.TradeNo] = &topUpCopy
+	}
+	return result, nil
 }
 
 func GetAdminUserSubscriptions(
@@ -1934,10 +2022,15 @@ func GetAdminUserSubscriptions(
 	items := make([]AdminUserSubscriptionSummary, 0, len(rows))
 	for _, row := range rows {
 		subCopy := row.UserSubscription
+		refundOrder, err := buildSubscriptionRefundOrderSummaryFromSubscription(&subCopy, nil)
+		if err != nil {
+			return nil, 0, err
+		}
 		items = append(items, AdminUserSubscriptionSummary{
 			Subscription: &subCopy,
 			Username:     row.Username,
 			UserGroup:    row.UserGroup,
+			RefundOrder:  refundOrder,
 		})
 	}
 	return items, total, nil

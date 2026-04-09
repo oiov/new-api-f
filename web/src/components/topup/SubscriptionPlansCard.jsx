@@ -1009,11 +1009,38 @@ const SubscriptionPlansCard = ({
   const shouldShowConversionCampaign = useMemo(() => {
     if (!conversionPreview) return false;
     return (
-      !!conversionPreview?.campaign?.enabled ||
       (conversionPreview?.items || []).length > 0 ||
       !!conversionPreview?.latest_request
     );
   }, [conversionPreview]);
+
+  const latestConversionRequest = conversionPreview?.latest_request || null;
+  const latestConversionRequestStatusMeta = useMemo(() => {
+    if (!latestConversionRequest) return null;
+    return getConversionRequestStatusMeta(latestConversionRequest.status, t);
+  }, [latestConversionRequest, t]);
+
+  const conversionCampaignSummary = useMemo(() => {
+    const count = (conversionPreview?.items || []).length;
+    const amount = renderQuota(
+      Number(conversionPreview?.total_convertible_quota || 0),
+    );
+
+    if (latestConversionRequest?.status === 'pending') {
+      return t(
+        '申请已提交，相关套餐已暂停使用。审核完成后会自动处理余额或恢复套餐。',
+      );
+    }
+
+    if (count > 0) {
+      return t('当前有 {{count}} 个套餐可申请转换，预计返还 {{amount}}。', {
+        count,
+        amount,
+      });
+    }
+
+    return t('你最近提交过转换申请，可在这里查看处理进度。');
+  }, [conversionPreview, latestConversionRequest, t]);
 
   const renderSubscriptionHeader = (item) => {
     const stateTag =
@@ -2001,21 +2028,23 @@ const SubscriptionPlansCard = ({
                               <Space wrap>
                                 <Text strong>
                                   {conversionPreview?.campaign?.title ||
-                                    t('套餐转余额活动')}
+                                    t('套餐转余额')}
                                 </Text>
                                 <Tag
                                   color={
-                                    conversionPreview?.can_execute
+                                    latestConversionRequestStatusMeta?.color ||
+                                    (conversionPreview?.can_execute
                                       ? 'green'
-                                      : 'grey'
+                                      : 'grey')
                                   }
                                   shape='circle'
                                   size='small'
                                 >
-                                  {conversionPreview?.can_execute
-                                    ? t('当前可申请')
-                                    : conversionPreview?.closed_reason ||
-                                      t('仅展示说明')}
+                                  {latestConversionRequestStatusMeta?.text ||
+                                    (conversionPreview?.can_execute
+                                      ? t('可申请')
+                                      : conversionPreview?.closed_reason ||
+                                        t('仅展示记录'))}
                                 </Tag>
                                 {conversionLoading && (
                                   <Tag color='white' shape='circle' size='small'>
@@ -2023,18 +2052,11 @@ const SubscriptionPlansCard = ({
                                   </Tag>
                                 )}
                               </Space>
-                              {conversionPreview?.campaign?.subtitle ? (
-                                <Text type='tertiary' size='small'>
-                                  {conversionPreview.campaign.subtitle}
-                                </Text>
-                              ) : null}
-                              {conversionPreview?.campaign?.description ? (
-                                <div className='text-sm text-semi-color-text-1'>
-                                  {conversionPreview.campaign.description}
-                                </div>
-                              ) : null}
+                              <Text type='tertiary' size='small'>
+                                {conversionCampaignSummary}
+                              </Text>
                             </div>
-                            <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
+                            <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
                               <div className='rounded-lg bg-white/80 p-3'>
                                 <div className='text-xs text-gray-500'>
                                   {t('活动截止')}
@@ -2056,45 +2078,74 @@ const SubscriptionPlansCard = ({
                                   )}
                                 </div>
                               </div>
+                              <div className='rounded-lg bg-white/80 p-3'>
+                                <div className='text-xs text-gray-500'>
+                                  {t('可申请套餐')}
+                                </div>
+                                <div className='mt-1 font-medium'>
+                                  {(conversionPreview?.items || []).length} {t('个')}
+                                </div>
+                              </div>
                             </div>
                           </div>
 
                           <Banner
                             type='warning'
                             closeIcon={null}
-                            description={t(
-                              '提交申请后会先禁用当前命中的套餐；批准后增加余额并正式作废，拒绝后恢复原套餐。',
-                            )}
+                            description={
+                              <div className='space-y-1 text-sm'>
+                                <div>
+                                  {t('提交申请后，相关套餐会暂停使用。')}
+                                </div>
+                                <div>
+                                  {t(
+                                    '审核通过后，剩余额度将按规则转换为账户余额，原套餐失效。',
+                                  )}
+                                </div>
+                                <div>
+                                  {t('审核拒绝后，套餐会恢复使用。')}
+                                </div>
+                              </div>
+                            }
                           />
 
-                          {(conversionPreview?.campaign?.billing_rules || [])
-                            .length > 0 && (
-                            <div className='rounded-xl bg-white/70 p-3'>
-                              <Text strong>{t('计费与折算规则')}</Text>
-                              <div className='mt-2 space-y-1 text-sm text-semi-color-text-1'>
-                                {conversionPreview?.campaign?.conversion_rule ? (
-                                  <div>
-                                    {conversionPreview.campaign.conversion_rule}
-                                  </div>
-                                ) : null}
-                                {(conversionPreview?.campaign?.billing_rules ||
-                                  []
-                                ).map((rule) => (
-                                  <div key={rule}>• {rule}</div>
-                                ))}
-                                {(conversionPreview?.campaign?.charge_rules ||
-                                  []
-                                ).map((rule) => (
-                                  <div key={rule}>• {rule}</div>
-                                ))}
-                              </div>
-                            </div>
+                          {(conversionPreview?.campaign?.conversion_rule ||
+                            (conversionPreview?.campaign?.billing_rules || [])
+                              .length > 0 ||
+                            (conversionPreview?.campaign?.charge_rules || [])
+                              .length > 0) && (
+                            <Collapse>
+                              <Collapse.Panel
+                                itemKey='conversion-rules'
+                                header={t('详细规则与计算方式')}
+                              >
+                                <div className='space-y-2 text-sm text-semi-color-text-1'>
+                                  {conversionPreview?.campaign?.conversion_rule ? (
+                                    <div>
+                                      {conversionPreview.campaign.conversion_rule}
+                                    </div>
+                                  ) : null}
+                                  {(
+                                    conversionPreview?.campaign?.billing_rules ||
+                                    []
+                                  ).map((rule) => (
+                                    <div key={rule}>• {rule}</div>
+                                  ))}
+                                  {(
+                                    conversionPreview?.campaign?.charge_rules ||
+                                    []
+                                  ).map((rule) => (
+                                    <div key={rule}>• {rule}</div>
+                                  ))}
+                                </div>
+                              </Collapse.Panel>
+                            </Collapse>
                           )}
 
                           {(conversionPreview?.items || []).length > 0 && (
                             <div className='rounded-xl bg-white/70 p-3'>
                               <div className='mb-2 flex items-center justify-between'>
-                                <Text strong>{t('命中的可折算套餐')}</Text>
+                                <Text strong>{t('本次可申请转换的套餐')}</Text>
                                 <Text type='tertiary' size='small'>
                                   {(conversionPreview?.items || []).length} {t('个')}
                                 </Text>
@@ -2122,7 +2173,7 @@ const SubscriptionPlansCard = ({
                                           {t('购买价格')} {renderQuotaWithAmount(
                                             Number(item.price_basis_amount || 0),
                                           )}{' '}
-                                          · {t('订单实付')}
+                                          · {t('仅统计有支付订单的套餐')}
                                         </Text>
                                       </div>
                                       <div className='text-left lg:text-right'>
@@ -2164,23 +2215,13 @@ const SubscriptionPlansCard = ({
                           {conversionPreview?.latest_request && (
                             <div className='rounded-xl bg-white/70 p-3'>
                               <Space wrap align='center'>
-                                <Text strong>{t('最近申请')}</Text>
+                                <Text strong>{t('申请进度')}</Text>
                                 <Tag
-                                  color={
-                                    getConversionRequestStatusMeta(
-                                      conversionPreview.latest_request.status,
-                                      t,
-                                    ).color
-                                  }
+                                  color={latestConversionRequestStatusMeta?.color}
                                   shape='circle'
                                   size='small'
                                 >
-                                  {
-                                    getConversionRequestStatusMeta(
-                                      conversionPreview.latest_request.status,
-                                      t,
-                                    ).text
-                                  }
+                                  {latestConversionRequestStatusMeta?.text}
                                 </Tag>
                               </Space>
                               <div className='mt-2 grid grid-cols-1 gap-2 text-sm lg:grid-cols-2'>
@@ -2209,6 +2250,25 @@ const SubscriptionPlansCard = ({
                                   </div>
                                 ) : null}
                               </div>
+                              <Text
+                                type='tertiary'
+                                size='small'
+                                className='mt-2 block'
+                              >
+                                {conversionPreview.latest_request.status ===
+                                'pending'
+                                  ? t(
+                                      '申请提交后，相关套餐会暂停使用，直到审核通过或拒绝。',
+                                    )
+                                  : conversionPreview.latest_request.status ===
+                                      'approved'
+                                    ? t(
+                                        '申请已通过，系统会把核准后的额度转入账户余额，原套餐失效。',
+                                      )
+                                    : t(
+                                        '申请未通过，系统会恢复原套餐，你可以继续使用。',
+                                      )}
+                              </Text>
                             </div>
                           )}
 
@@ -2231,7 +2291,7 @@ const SubscriptionPlansCard = ({
                             >
                               {conversionPreview?.latest_request?.status ===
                               'pending'
-                                ? t('已有待审核申请，套餐已禁用')
+                                ? t('申请审核中')
                                 : t('提交套餐转余额申请')}
                             </Button>
                           </div>

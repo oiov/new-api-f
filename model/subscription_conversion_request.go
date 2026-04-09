@@ -47,12 +47,29 @@ type SubscriptionConversionRequest struct {
 	DisabledAt int64 `json:"disabled_at" gorm:"bigint;default:0"`
 	CreateTime int64 `json:"create_time" gorm:"bigint;autoCreateTime"`
 	UpdateTime int64 `json:"update_time" gorm:"bigint;autoUpdateTime"`
+
+	SubscriptionItems []*SubscriptionConversionRequestItem `json:"subscription_items,omitempty" gorm:"-"`
+}
+
+type SubscriptionConversionRequestItem struct {
+	UserSubscriptionId int                             `json:"user_subscription_id"`
+	PlanId             int                             `json:"plan_id"`
+	PlanTitle          string                          `json:"plan_title"`
+	Source             string                          `json:"source"`
+	StartTime          int64                           `json:"start_time"`
+	EndTime            int64                           `json:"end_time"`
+	RefundOrder        *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
 }
 
 type subscriptionConversionRequestSnapshot struct {
-	UserSubscriptionId int   `json:"user_subscription_id"`
-	EndTime            int64 `json:"end_time"`
-	NextResetTime      int64 `json:"next_reset_time"`
+	UserSubscriptionId int                             `json:"user_subscription_id"`
+	PlanId             int                             `json:"plan_id"`
+	PlanTitle          string                          `json:"plan_title"`
+	Source             string                          `json:"source"`
+	StartTime          int64                           `json:"start_time"`
+	EndTime            int64                           `json:"end_time"`
+	NextResetTime      int64                           `json:"next_reset_time"`
+	RefundOrder        *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
 }
 
 type SubscriptionConversionAdminFilters struct {
@@ -153,6 +170,35 @@ func getSubscriptionConversionDisabledAt(request *SubscriptionConversionRequest)
 		return request.CreateTime
 	}
 	return common.GetTimestamp()
+}
+
+func buildSubscriptionRefundOrderSnapshotForConversion(sub *UserSubscription, tx *gorm.DB) (*SubscriptionRefundOrderSummary, error) {
+	summary, err := buildSubscriptionRefundOrderSummaryFromSubscription(sub, tx)
+	if err != nil || summary != nil || sub == nil {
+		return summary, err
+	}
+	order := findMatchedSuccessfulSubscriptionOrder(sub.UserId, sub.PlanId, sub.CreatedAt, tx)
+	if order == nil {
+		return nil, nil
+	}
+	summary = &SubscriptionRefundOrderSummary{
+		OrderId:       order.Id,
+		TradeNo:       order.TradeNo,
+		PaymentMethod: order.PaymentMethod,
+		Money:         order.Money,
+		CompleteTime:  order.CompleteTime,
+	}
+	topUpMap, err := buildTopUpMapByTradeNo([]string{order.TradeNo}, tx)
+	if err != nil {
+		return nil, err
+	}
+	if topUp := topUpMap[order.TradeNo]; topUp != nil {
+		summary.TopUpId = topUp.Id
+		if summary.CompleteTime <= 0 {
+			summary.CompleteTime = topUp.CompleteTime
+		}
+	}
+	return summary, nil
 }
 
 func lockSubscriptionConversionTargetsTx(tx *gorm.DB, userId int, subscriptionIDs []int) ([]UserSubscription, error) {
@@ -326,10 +372,19 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 			if subs[i].Status != "active" || subs[i].EndTime <= now {
 				return fmt.Errorf("申请中的套餐已过期或失效，请刷新后重试")
 			}
+			refundOrder, err := buildSubscriptionRefundOrderSnapshotForConversion(&subs[i], tx)
+			if err != nil {
+				return err
+			}
 			snapshots = append(snapshots, subscriptionConversionRequestSnapshot{
 				UserSubscriptionId: subs[i].Id,
+				PlanId:             subs[i].PlanId,
+				PlanTitle:          strings.TrimSpace(preview.Items[i].PlanTitle),
+				Source:             strings.TrimSpace(subs[i].Source),
+				StartTime:          subs[i].StartTime,
 				EndTime:            subs[i].EndTime,
 				NextResetTime:      subs[i].NextResetTime,
+				RefundOrder:        refundOrder,
 			})
 		}
 		snapshotsJSON, err := encodeSubscriptionConversionSnapshots(snapshots)
@@ -396,7 +451,105 @@ func GetSubscriptionConversionRequestsByAdmin(pageInfo *common.PageInfo, filters
 	if err := query.Order("scr.id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&items).Error; err != nil {
 		return nil, 0, err
 	}
+	if err := attachSubscriptionConversionRequestItems(items); err != nil {
+		return nil, 0, err
+	}
 	return items, total, nil
+}
+
+func attachSubscriptionConversionRequestItems(items []*SubscriptionConversionRequest) error {
+	if len(items) == 0 {
+		return nil
+	}
+	subscriptionIDSet := make(map[int]struct{})
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		ids, err := decodeSubscriptionIDList(item.SubscriptionIdsJSON)
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if id > 0 {
+				subscriptionIDSet[id] = struct{}{}
+			}
+		}
+	}
+	if len(subscriptionIDSet) == 0 {
+		return nil
+	}
+	subscriptionIDs := make([]int, 0, len(subscriptionIDSet))
+	for id := range subscriptionIDSet {
+		subscriptionIDs = append(subscriptionIDs, id)
+	}
+
+	var subs []UserSubscription
+	if err := DB.Where("id IN ?", subscriptionIDs).Find(&subs).Error; err != nil {
+		return err
+	}
+	subByID := make(map[int]UserSubscription, len(subs))
+	for _, sub := range subs {
+		subByID[sub.Id] = sub
+	}
+
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		snapshotMap := make(map[int]subscriptionConversionRequestSnapshot)
+		snapshots, err := decodeSubscriptionConversionSnapshots(item.SubscriptionSnapshotsJSON)
+		if err != nil {
+			return err
+		}
+		for _, snapshot := range snapshots {
+			snapshotMap[snapshot.UserSubscriptionId] = snapshot
+		}
+		ids, err := decodeSubscriptionIDList(item.SubscriptionIdsJSON)
+		if err != nil {
+			return err
+		}
+		details := make([]*SubscriptionConversionRequestItem, 0, len(ids))
+		for _, id := range ids {
+			snapshot, hasSnapshot := snapshotMap[id]
+			if hasSnapshot {
+				detail := &SubscriptionConversionRequestItem{
+					UserSubscriptionId: snapshot.UserSubscriptionId,
+					PlanId:             snapshot.PlanId,
+					PlanTitle:          strings.TrimSpace(snapshot.PlanTitle),
+					Source:             strings.TrimSpace(snapshot.Source),
+					StartTime:          snapshot.StartTime,
+					EndTime:            snapshot.EndTime,
+					RefundOrder:        snapshot.RefundOrder,
+				}
+				if detail.PlanTitle == "" && detail.PlanId > 0 {
+					detail.PlanTitle = fmt.Sprintf("#%d", detail.PlanId)
+				}
+				details = append(details, detail)
+				continue
+			}
+			sub, ok := subByID[id]
+			if !ok {
+				continue
+			}
+			refundOrder, err := buildSubscriptionRefundOrderSummaryFromSubscription(&sub, nil)
+			if err != nil {
+				return err
+			}
+			detail := &SubscriptionConversionRequestItem{
+				UserSubscriptionId: sub.Id,
+				PlanId:             sub.PlanId,
+				PlanTitle:          fmt.Sprintf("#%d", sub.PlanId),
+				Source:             strings.TrimSpace(sub.Source),
+				StartTime:          sub.StartTime,
+				EndTime:            sub.EndTime,
+				RefundOrder:        refundOrder,
+			}
+			details = append(details, detail)
+		}
+		item.SubscriptionItems = details
+	}
+	return nil
 }
 
 func executeSubscriptionConversionRequestTx(tx *gorm.DB, request *SubscriptionConversionRequest, approvedQuota int, approvedAmount float64) (string, error) {

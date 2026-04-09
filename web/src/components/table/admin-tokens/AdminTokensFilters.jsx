@@ -100,6 +100,7 @@ const AdminTokensFilters = ({
               renderOptionItem={renderGroupOption}
               showClear
               filter
+              pure
               size='small'
             />
           </div>
@@ -115,6 +116,7 @@ const AdminTokensFilters = ({
                 { label: t('已过期'), value: '3' },
                 { label: t('已耗尽'), value: '4' },
               ]}
+              pure
               size='small'
             />
           </div>
@@ -128,6 +130,7 @@ const AdminTokensFilters = ({
                 { label: t('已过期'), value: 'expired' },
                 { label: t('未过期'), value: 'not_expired' },
               ]}
+              pure
               size='small'
             />
           </div>

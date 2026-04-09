@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import {
+  Activity,
   LayoutDashboard,
   TerminalSquare,
   MessageSquare,
@@ -26,15 +27,18 @@ import {
   BarChart3,
   Image as ImageIcon,
   CheckSquare,
-  CreditCard,
   Layers,
-  Gift,
   User,
   Settings,
   CircleUser,
-  Package,
   Server,
   CalendarClock,
+  Wallet,
+  ReceiptText,
+  Users,
+  ContactRound,
+  BadgePercent,
+  Boxes,
 } from 'lucide-react';
 
 export function getLucideIcon(key, selected = false) {
@@ -65,20 +69,29 @@ export function getLucideIcon(key, selected = false) {
     case 'task':
       return <CheckSquare {...commonProps} color={iconColor} />;
     case 'topup':
-      return <CreditCard {...commonProps} color={iconColor} />;
+      return <Wallet {...commonProps} color={iconColor} />;
+    case 'invoice':
+    case 'invoiceAdmin':
+      return <ReceiptText {...commonProps} color={iconColor} />;
+    case 'invite':
+      return <Users {...commonProps} color={iconColor} />;
     case 'channel':
       return <Layers {...commonProps} color={iconColor} />;
     case 'redemption':
-      return <Gift {...commonProps} color={iconColor} />;
+      return <BadgePercent {...commonProps} color={iconColor} />;
     case 'user':
     case 'personal':
       return <User {...commonProps} color={iconColor} />;
     case 'models':
-      return <Package {...commonProps} color={iconColor} />;
+      return <Boxes {...commonProps} color={iconColor} />;
     case 'deployment':
       return <Server {...commonProps} color={iconColor} />;
     case 'subscription':
       return <CalendarClock {...commonProps} color={iconColor} />;
+    case 'about':
+      return <Activity {...commonProps} color={iconColor} />;
+    case 'contact':
+      return <ContactRound {...commonProps} color={iconColor} />;
     case 'setting':
       return <Settings {...commonProps} color={iconColor} />;
     default:

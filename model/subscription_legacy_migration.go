@@ -294,6 +294,9 @@ func resolveSelfServiceSubscriptionConversionPriceBasis(sub *UserSubscription, p
 	if sub == nil || plan == nil {
 		return 0, ""
 	}
+	if summary, err := buildSubscriptionRefundOrderSummaryFromSubscription(sub, tx); err == nil && summary != nil && summary.Money > 0 {
+		return summary.Money, "order"
+	}
 	if order := findMatchedSuccessfulSubscriptionOrder(sub.UserId, sub.PlanId, sub.CreatedAt, tx); order != nil && order.Money > 0 {
 		return order.Money, "order"
 	}
