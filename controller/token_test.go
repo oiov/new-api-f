@@ -211,6 +211,83 @@ func TestSearchTokensMasksKeyInResponse(t *testing.T) {
 	}
 }
 
+func TestSearchTokensSupportsCompositeFilters(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+
+	target := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-key", common.TokenStatusEnabled)
+	target.Group = "claude"
+	target.UnlimitedQuota = false
+	target.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(target).Error; err != nil {
+		t.Fatalf("failed to update target token: %v", err)
+	}
+
+	otherStatus := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-disabled-key", common.TokenStatusDisabled)
+	otherStatus.Group = "claude"
+	otherStatus.UnlimitedQuota = false
+	otherStatus.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(otherStatus).Error; err != nil {
+		t.Fatalf("failed to update status token: %v", err)
+	}
+
+	otherGroup := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-default-key", common.TokenStatusEnabled)
+	otherGroup.Group = "default"
+	otherGroup.UnlimitedQuota = false
+	otherGroup.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(otherGroup).Error; err != nil {
+		t.Fatalf("failed to update group token: %v", err)
+	}
+
+	expiredToken := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-expired-key", common.TokenStatusEnabled)
+	expiredToken.Group = "claude"
+	expiredToken.UnlimitedQuota = false
+	expiredToken.ExpiredTime = common.GetTimestamp() - 3600
+	if err := db.Save(expiredToken).Error; err != nil {
+		t.Fatalf("failed to update expired token: %v", err)
+	}
+
+	unlimitedToken := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-unlimited-key", common.TokenStatusEnabled)
+	unlimitedToken.Group = "claude"
+	unlimitedToken.UnlimitedQuota = true
+	unlimitedToken.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(unlimitedToken).Error; err != nil {
+		t.Fatalf("failed to update unlimited token: %v", err)
+	}
+
+	otherUser := seedTokenWithStatus(t, db, 2, "claude-status", "other-user-key", common.TokenStatusEnabled)
+	otherUser.Group = "claude"
+	otherUser.UnlimitedQuota = false
+	otherUser.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(otherUser).Error; err != nil {
+		t.Fatalf("failed to update other user token: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/token/search?keyword=claude-status&status=1&group=claude&expired_state=not_expired&unlimited_state=limited&p=1&size=10",
+		nil,
+		1,
+	)
+	SearchTokens(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var page tokenPageResponse
+	if err := common.Unmarshal(response.Data, &page); err != nil {
+		t.Fatalf("failed to decode composite search response: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("expected exactly one composite search result, got total=%d items=%d", page.Total, len(page.Items))
+	}
+	if page.Items[0].ID != target.Id {
+		t.Fatalf("expected target token, got %+v", page.Items[0])
+	}
+}
+
 func TestGetTokenMasksKeyInResponse(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "detail-token", "qrst1234uvwx5678")
@@ -326,8 +403,10 @@ func TestDeleteInvalidTokenBatchDeletesAllFilteredInvalidTokens(t *testing.T) {
 	seedTokenWithStatus(t, db, 2, "expired-a", "other-user-expired-key", common.TokenStatusExpired)
 
 	body := map[string]any{
-		"keyword": "expired%",
-		"token":   "",
+		"keyword":         "expired%",
+		"token":           "",
+		"group":           "default",
+		"unlimited_state": "limited",
 	}
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/batch/invalid", body, 1)
 	DeleteInvalidTokenBatch(ctx)
@@ -341,19 +420,19 @@ func TestDeleteInvalidTokenBatchDeletesAllFilteredInvalidTokens(t *testing.T) {
 	if err := common.Unmarshal(response.Data, &deletedCount); err != nil {
 		t.Fatalf("failed to decode delete count: %v", err)
 	}
-	if deletedCount != 4 {
-		t.Fatalf("expected 4 deleted tokens, got %d", deletedCount)
+	if deletedCount != 1 {
+		t.Fatalf("expected 1 deleted token, got %d", deletedCount)
 	}
 
 	var remaining []model.Token
 	if err := db.Order("id asc").Find(&remaining).Error; err != nil {
 		t.Fatalf("failed to query remaining tokens: %v", err)
 	}
-	if len(remaining) != 3 {
-		t.Fatalf("expected 3 remaining tokens, got %d", len(remaining))
+	if len(remaining) != 6 {
+		t.Fatalf("expected 6 remaining tokens, got %d", len(remaining))
 	}
 	for _, token := range remaining {
-		if token.UserId == 1 && strings.HasPrefix(token.Name, "expired") {
+		if token.UserId == 1 && token.Name == "expired-d" {
 			t.Fatalf("filtered invalid token should have been deleted: %+v", token)
 		}
 	}

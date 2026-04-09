@@ -36,6 +36,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const emptyFilters = {
     searchKeyword: '',
     searchToken: '',
+    status: '',
+    group: '',
+    expiredState: '',
+    unlimitedState: '',
   };
 
   // Basic state
@@ -74,6 +78,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     return {
       searchKeyword: formValues.searchKeyword || '',
       searchToken: formValues.searchToken || '',
+      status: formValues.status || '',
+      group: formValues.group || '',
+      expiredState: formValues.expiredState || '',
+      unlimitedState: formValues.unlimitedState || '',
     };
   };
 
@@ -296,8 +304,19 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     const {
       searchKeyword = '',
       searchToken = '',
+      status = '',
+      group = '',
+      expiredState = '',
+      unlimitedState = '',
     } = filters || getFormValues();
-    if (searchKeyword === '' && searchToken === '') {
+    if (
+      searchKeyword === '' &&
+      searchToken === '' &&
+      status === '' &&
+      group === '' &&
+      expiredState === '' &&
+      unlimitedState === ''
+    ) {
       setSearchMode(false);
       setAppliedFilters(emptyFilters);
       await loadTokens(1, normalizedSize);
@@ -305,7 +324,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     }
     setSearching(true);
     const res = await API.get(
-      `/api/token/search?keyword=${encodeURIComponent(searchKeyword)}&token=${encodeURIComponent(searchToken)}&p=${normalizedPage}&size=${normalizedSize}`,
+      `/api/token/search?keyword=${encodeURIComponent(searchKeyword)}&token=${encodeURIComponent(searchToken)}&status=${encodeURIComponent(status)}&group=${encodeURIComponent(group)}&expired_state=${encodeURIComponent(expiredState)}&unlimited_state=${encodeURIComponent(unlimitedState)}&p=${normalizedPage}&size=${normalizedSize}`,
     );
     const { success, message, data } = res.data;
     if (success) {
@@ -313,6 +332,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       setAppliedFilters({
         searchKeyword,
         searchToken,
+        status,
+        group,
+        expiredState,
+        unlimitedState,
       });
       syncPageData(data);
     } else {
@@ -416,12 +439,23 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   };
 
   const batchDeleteInvalidTokens = async () => {
-    const { searchKeyword, searchToken } = appliedFilters;
+    const {
+      searchKeyword,
+      searchToken,
+      status,
+      group,
+      expiredState,
+      unlimitedState,
+    } = appliedFilters;
     setLoading(true);
     try {
       const res = await API.post('/api/token/batch/invalid', {
         keyword: searchKeyword,
         token: searchToken,
+        status,
+        group,
+        expired_state: expiredState,
+        unlimited_state: unlimitedState,
       });
       if (res?.data?.success) {
         const count = res.data.data || 0;

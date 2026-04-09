@@ -63,12 +63,17 @@ func GetAllTokens(c *gin.Context) {
 
 func SearchTokens(c *gin.Context) {
 	userId := c.GetInt("id")
-	keyword := c.Query("keyword")
-	token := c.Query("token")
-
 	pageInfo := common.GetPageQuery(c)
+	filters := model.UserTokenSearchFilters{
+		Keyword:        c.Query("keyword"),
+		Token:          c.Query("token"),
+		Status:         c.Query("status"),
+		Group:          c.Query("group"),
+		ExpiredState:   c.Query("expired_state"),
+		UnlimitedState: c.Query("unlimited_state"),
+	}
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, total, err := model.SearchUserTokens(userId, filters, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -401,8 +406,12 @@ type TokenBatch struct {
 }
 
 type DeleteInvalidTokensRequest struct {
-	Keyword string `json:"keyword"`
-	Token   string `json:"token"`
+	Keyword        string `json:"keyword"`
+	Token          string `json:"token"`
+	Status         string `json:"status"`
+	Group          string `json:"group"`
+	ExpiredState   string `json:"expired_state"`
+	UnlimitedState string `json:"unlimited_state"`
 }
 
 func DeleteTokenBatch(c *gin.Context) {
@@ -431,7 +440,15 @@ func DeleteInvalidTokenBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	count, err := model.BatchDeleteInvalidTokensByFilter(userId, req.Keyword, req.Token)
+	filters := model.UserTokenSearchFilters{
+		Keyword:        req.Keyword,
+		Token:          req.Token,
+		Status:         req.Status,
+		Group:          req.Group,
+		ExpiredState:   req.ExpiredState,
+		UnlimitedState: req.UnlimitedState,
+	}
+	count, err := model.BatchDeleteInvalidTokensByFilter(userId, filters)
 	if err != nil {
 		common.ApiError(c, err)
 		return

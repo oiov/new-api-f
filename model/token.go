@@ -44,6 +44,15 @@ type AdminTokenSearchFilters struct {
 	EndTime      int64
 }
 
+type UserTokenSearchFilters struct {
+	Keyword        string
+	Token          string
+	Status         string
+	Group          string
+	ExpiredState   string
+	UnlimitedState string
+}
+
 func (token *Token) Clean() {
 	token.Key = ""
 }
@@ -204,7 +213,10 @@ func buildAdminTokenSearchQuery(filters AdminTokenSearchFilters) (*gorm.DB, erro
 	return baseQuery, nil
 }
 
-func buildUserTokenSearchQuery(userId int, keyword string, token string) (*gorm.DB, error) {
+func buildUserTokenSearchQuery(userId int, filters UserTokenSearchFilters) (*gorm.DB, error) {
+	keyword := strings.TrimSpace(filters.Keyword)
+	token := strings.TrimPrefix(strings.TrimSpace(filters.Token), "sk-")
+
 	if token != "" {
 		token = strings.TrimPrefix(token, "sk-")
 	}
@@ -237,6 +249,34 @@ func buildUserTokenSearchQuery(userId int, keyword string, token string) (*gorm.
 		}
 		baseQuery = baseQuery.Where(qualifiedTokenKeyCol()+" LIKE ? ESCAPE '!'", tokenPattern)
 	}
+
+	if filters.Status != "" {
+		status, err := strconv.Atoi(strings.TrimSpace(filters.Status))
+		if err != nil {
+			return nil, errors.New("状态参数无效")
+		}
+		baseQuery = baseQuery.Where("status = ?", status)
+	}
+
+	if group := strings.TrimSpace(filters.Group); group != "" {
+		baseQuery = baseQuery.Where(qualifiedTokenGroupCol()+" = ?", group)
+	}
+
+	now := common.GetTimestamp()
+	switch strings.TrimSpace(filters.ExpiredState) {
+	case "expired":
+		baseQuery = baseQuery.Where("expired_time <> ? AND expired_time < ?", -1, now)
+	case "not_expired":
+		baseQuery = baseQuery.Where("(expired_time = ? OR expired_time >= ?)", -1, now)
+	}
+
+	switch strings.TrimSpace(filters.UnlimitedState) {
+	case "unlimited":
+		baseQuery = baseQuery.Where("unlimited_quota = ?", true)
+	case "limited":
+		baseQuery = baseQuery.Where("unlimited_quota = ?", false)
+	}
+
 	return baseQuery, nil
 }
 
@@ -293,7 +333,7 @@ func sanitizeLikePattern(input string) (string, error) {
 
 const searchHardLimit = 100
 
-func SearchUserTokens(userId int, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+func SearchUserTokens(userId int, filters UserTokenSearchFilters, offset int, limit int) (tokens []*Token, total int64, err error) {
 	// model 层强制截断
 	if limit <= 0 || limit > searchHardLimit {
 		limit = searchHardLimit
@@ -302,7 +342,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		offset = 0
 	}
 
-	baseQuery, err := buildUserTokenSearchQuery(userId, keyword, token)
+	baseQuery, err := buildUserTokenSearchQuery(userId, filters)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -350,8 +390,8 @@ func SearchTokensByAdmin(filters AdminTokenSearchFilters, offset int, limit int)
 	return tokens, total, nil
 }
 
-func BatchDeleteInvalidTokensByFilter(userId int, keyword string, token string) (int, error) {
-	baseQuery, err := buildUserTokenSearchQuery(userId, keyword, token)
+func BatchDeleteInvalidTokensByFilter(userId int, filters UserTokenSearchFilters) (int, error) {
+	baseQuery, err := buildUserTokenSearchQuery(userId, filters)
 	if err != nil {
 		return 0, err
 	}

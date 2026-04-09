@@ -24,12 +24,20 @@ import CompactModeToggle from '../../common/ui/CompactModeToggle';
 
 const { Text } = Typography;
 
-const TokensDescription = ({ compactMode, setCompactMode, t }) => {
+const TokensDescription = ({ compactMode, setCompactMode, zcfDocUrl, t }) => {
   return (
     <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-2 w-full'>
-      <div className='flex items-center text-blue-500'>
-        <Key size={16} className='mr-2' />
-        <Text>{t('令牌管理')}</Text>
+      <div className='flex flex-col gap-1'>
+        <div className='flex items-center text-blue-500'>
+          <Key size={16} className='mr-2' />
+          <Text>{t('令牌管理')}</Text>
+        </div>
+        <Text type='tertiary' size='small'>
+          {t('支持通过 ZCF 接入')}{' '}
+          <a href={zcfDocUrl} target='_blank' rel='noreferrer'>
+            {t('查看接入文档')}
+          </a>
+        </Text>
       </div>
 
       <CompactModeToggle
