@@ -23,6 +23,7 @@ import {
   Radio,
   Select,
   Input,
+  TextArea,
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
@@ -94,7 +95,7 @@ function buildClaudeConfig(apiKey, baseUrl, models) {
   return {
     env: {
       ANTHROPIC_AUTH_TOKEN: apiKey,
-      ANTHROPIC_BASE_URL: `${baseUrl}/v1`,
+      ANTHROPIC_BASE_URL: baseUrl,
       ANTHROPIC_MODEL: models.model,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: models.haikuModel,
       ANTHROPIC_DEFAULT_SONNET_MODEL: models.sonnetModel,
@@ -159,6 +160,7 @@ export default function CCSwitchModal({
   const [name, setName] = useState(APP_CONFIGS.claude.defaultName);
   const [models, setModels] = useState(DEFAULT_MODELS.claude);
   const [submitting, setSubmitting] = useState(false);
+  const [serverAddress, setServerAddress] = useState('');
 
   const currentConfig = APP_CONFIGS[app] || APP_CONFIGS.claude;
   const currentDefaults = DEFAULT_MODELS[app] || DEFAULT_MODELS.claude;
@@ -189,6 +191,7 @@ export default function CCSwitchModal({
       const nextApp = inferredApp || 'claude';
       setApp(nextApp);
       setModels(DEFAULT_MODELS[nextApp] || DEFAULT_MODELS.claude);
+      setServerAddress(getServerAddress().replace(/\/$/, ''));
       setName(
         buildProviderName(
           tokenRecord?.group,
@@ -208,6 +211,44 @@ export default function CCSwitchModal({
     setModels((prev) => ({ ...prev, [field]: value }));
   };
 
+  const previewConfig = useMemo(() => {
+    const previewApiKey = 'sk-your-token-key';
+    return app === 'codex'
+      ? buildCodexConfig(previewApiKey, serverAddress, {
+        ...currentDefaults,
+        ...models,
+      })
+      : buildClaudeConfig(previewApiKey, serverAddress, {
+        ...currentDefaults,
+        ...models,
+      });
+  }, [
+    app,
+    currentDefaults,
+    models,
+    serverAddress,
+  ]);
+
+  const deepLinkPreview = useMemo(
+    () => JSON.stringify(
+      {
+        resource: 'provider',
+        app,
+        name: name || buildProviderName(tokenRecord?.group, currentConfig.defaultName),
+        configFormat: 'json',
+        enabled: true,
+      },
+      null,
+      2,
+    ),
+    [app, currentConfig.defaultName, name, tokenRecord?.group],
+  );
+
+  const configPreview = useMemo(
+    () => JSON.stringify(previewConfig, null, 2),
+    [previewConfig],
+  );
+
   const handleSubmit = () => {
     if (!models.model) {
       Toast.warning(t('请选择主模型'));
@@ -221,6 +262,7 @@ export default function CCSwitchModal({
       setSubmitting(true);
       try {
         const tokenKey = await fetchTokenKeyById(tokenRecord.id);
+        setServerAddress(getServerAddress().replace(/\/$/, ''));
         const url = buildCCSwitchURL(app, name, models, `sk-${tokenKey}`);
         window.open(url, '_blank');
         onClose();
@@ -327,6 +369,40 @@ export default function CCSwitchModal({
             ) : null}
           </div>
         ))}
+
+        <div>
+          <div style={fieldLabelStyle}>{t('导入预览')}</div>
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 12,
+              background: 'var(--semi-color-fill-0)',
+              border: '1px solid var(--semi-color-border)',
+            }}
+          >
+            <Typography.Text type='tertiary' style={{ display: 'block', marginBottom: 8 }}>
+              {t('下面分开展示 Deep Link 参数和实际写入 config 的内容。Claude 使用当前站点地址，不额外追加 /v1；Codex 保持 OpenAI 兼容地址。')}
+            </Typography.Text>
+            <div style={{ marginBottom: 12 }}>
+              <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
+                {t('Deep Link 参数')}
+              </Typography.Text>
+              <TextArea
+                value={deepLinkPreview}
+                autosize={{ minRows: 4, maxRows: 8 }}
+                readOnly
+              />
+            </div>
+            <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
+              {t('Config 内容')}
+            </Typography.Text>
+            <TextArea
+              value={configPreview}
+              autosize={{ minRows: 10, maxRows: 18 }}
+              readOnly
+            />
+          </div>
+        </div>
       </div>
     </Modal>
   );
