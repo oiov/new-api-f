@@ -23,6 +23,7 @@ import { Key } from 'lucide-react';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
 
 const { Text } = Typography;
+const API_KEY_TOOL_URL = 'https://api-key-tool.fishxcode.com/';
 
 const TokensDescription = ({ compactMode, setCompactMode, zcfDocUrl, t }) => {
   return (
@@ -36,6 +37,12 @@ const TokensDescription = ({ compactMode, setCompactMode, zcfDocUrl, t }) => {
           {t('支持通过 ZCF 接入')}{' '}
           <a href={zcfDocUrl} target='_blank' rel='noreferrer'>
             {t('查看接入文档')}
+          </a>
+        </Text>
+        <Text type='tertiary' size='small'>
+          {t('需要查询 API Key 消耗信息日志时可使用')}{' '}
+          <a href={API_KEY_TOOL_URL} target='_blank' rel='noreferrer'>
+            {t('API Key 消耗日志查询')}
           </a>
         </Text>
       </div>

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { renderQuota } from './render';
+import { getCurrencyConfig, renderQuota } from './render';
 
 export function formatSubscriptionDuration(plan, t) {
   const unit = plan?.duration_unit || 'month';
@@ -77,6 +77,76 @@ export function getSubscriptionEffectivePrice(plan, now = Date.now() / 1000) {
   return isSubscriptionDiscountActive(plan, now)
     ? Number(plan?.discount_price_amount || 0)
     : Number(plan?.price_amount || 0);
+}
+
+function getSubscriptionCurrencyStatus() {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  try {
+    return JSON.parse(localStorage.getItem('status') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function convertSubscriptionPrice(amount, sourceCurrency, targetCurrency, rates) {
+  const value = Number(amount || 0);
+  const source = String(sourceCurrency || 'USD').toUpperCase();
+  const target = String(targetCurrency || 'USD').toUpperCase();
+  if (source === target) return value;
+
+  const usdExchangeRate = Number(rates?.usdExchangeRate || 7) || 7;
+  const customRate = Number(rates?.customRate || 1) || 1;
+
+  let usdValue = value;
+  if (source === 'CNY') {
+    usdValue = value / usdExchangeRate;
+  } else if (source === 'CUSTOM') {
+    usdValue = value / customRate;
+  }
+
+  if (target === 'CNY') {
+    return usdValue * usdExchangeRate;
+  }
+  if (target === 'CUSTOM') {
+    return usdValue * customRate;
+  }
+  return usdValue;
+}
+
+export function getSubscriptionPriceDisplay(plan) {
+  const displayConfig = getCurrencyConfig();
+  const status = getSubscriptionCurrencyStatus();
+  const sourceCurrency = String(plan?.currency || 'USD').toUpperCase();
+  const displayCurrency = displayConfig?.type || 'USD';
+  const symbol =
+    displayCurrency === 'CNY'
+      ? '¥'
+      : displayCurrency === 'CUSTOM'
+        ? status?.custom_currency_symbol || displayConfig?.symbol || '¤'
+        : '$';
+  const rates = {
+    usdExchangeRate: status?.usd_exchange_rate || 7,
+    customRate: status?.custom_currency_exchange_rate || 1,
+  };
+
+  return {
+    symbol,
+    currency: displayCurrency,
+    effectivePrice: convertSubscriptionPrice(
+      getSubscriptionEffectivePrice(plan),
+      sourceCurrency,
+      displayCurrency,
+      rates,
+    ),
+    originalPrice: convertSubscriptionPrice(
+      Number(plan?.price_amount || 0),
+      sourceCurrency,
+      displayCurrency,
+      rates,
+    ),
+  };
 }
 
 export function formatSubscriptionResourceLabel(plan, t) {

@@ -32,14 +32,14 @@ import { Crown, CalendarClock, Package } from 'lucide-react';
 import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
 import { renderQuota } from '../../../helpers';
-import { getCurrencyConfig } from '../../../helpers/render';
 import {
   formatSubscriptionResourceLabel,
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
+  getSubscriptionPriceDisplay,
   getSubscriptionPlanMetricItems,
-  getSubscriptionEffectivePrice,
   getSubscriptionRestrictionSummary,
+  getSubscriptionResourceType,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
 
@@ -66,12 +66,11 @@ const SubscriptionPurchaseModal = ({
   const totalAmount = Number(plan?.total_amount || 0);
   const resetPeriodText = formatSubscriptionResetPeriod(plan, t);
   const restrictionSummary = getSubscriptionRestrictionSummary(plan);
-  const { symbol, rate } = getCurrencyConfig();
-  const price = plan ? getSubscriptionEffectivePrice(plan) : 0;
+  const { symbol, effectivePrice, originalPrice } =
+    getSubscriptionPriceDisplay(plan);
   const hasActiveDiscount = isSubscriptionDiscountActive(plan);
-  const convertedPrice = price * rate;
-  const displayPrice = convertedPrice.toFixed(
-    Number.isInteger(convertedPrice) ? 0 : 2,
+  const displayPrice = effectivePrice.toFixed(
+    Number.isInteger(effectivePrice) ? 0 : 2,
   );
   // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
   const hasStripe =
@@ -85,6 +84,20 @@ const SubscriptionPurchaseModal = ({
   const purchaseLimitReached =
     purchaseLimit > 0 && purchaseCount >= purchaseLimit;
   const metricItems = getSubscriptionPlanMetricItems(plan, t);
+  const planText = [
+    plan?.title,
+    plan?.subtitle,
+    plan?.upgrade_group,
+    ...(Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : []),
+    ...(Array.isArray(plan?.allowed_models) ? plan.allowed_models : []),
+    ...(Array.isArray(plan?.allowed_vendor_names) ? plan.allowed_vendor_names : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const isClaudePlan =
+    (planText.includes('claude') || planText.includes('anthropic')) &&
+    !planText.includes('codex');
 
   return (
     <Modal
@@ -102,6 +115,17 @@ const SubscriptionPurchaseModal = ({
     >
       {plan ? (
         <div className='space-y-4 pb-10'>
+          {isClaudePlan && (
+            <Banner
+              type='warning'
+              description={t(
+                'Claude 系列套餐付款完成后会自动生效；如需协助可联系管理员。',
+              )}
+              className='!rounded-xl'
+              closeIcon={null}
+            />
+          )}
+
           {/* 套餐信息 */}
           <Card className='!rounded-xl !border-0 bg-slate-50 dark:bg-slate-800'>
             <div className='space-y-3'>
@@ -154,7 +178,10 @@ const SubscriptionPurchaseModal = ({
               <div className='flex justify-between items-center'>
                 <Text strong className='text-slate-700 dark:text-slate-200'>
                   {formatSubscriptionResourceLabel(
-                    { resource_type: 'quota', quota_reset_period: plan?.quota_reset_period },
+                    {
+                      resource_type: getSubscriptionResourceType(plan),
+                      quota_reset_period: plan?.quota_reset_period,
+                    },
                     t,
                   )}：
                 </Text>
@@ -226,10 +253,8 @@ const SubscriptionPurchaseModal = ({
                       className='block text-sm'
                     >
                       {symbol}
-                      {(Number(plan?.price_amount || 0) * rate).toFixed(
-                        Number.isInteger(Number(plan?.price_amount || 0) * rate)
-                          ? 0
-                          : 2,
+                      {originalPrice.toFixed(
+                        Number.isInteger(originalPrice) ? 0 : 2,
                       )}
                     </Text>
                   ) : null}

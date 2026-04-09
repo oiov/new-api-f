@@ -69,6 +69,7 @@ import SubscriptionConsumeLogsModal from '../table/subscriptions/modals/Subscrip
 import CardTable from '../common/ui/CardTable';
 import {
   formatSubscriptionDuration,
+  getSubscriptionPriceDisplay,
   formatSubscriptionResetPeriod,
   formatSubscriptionResourceLabel,
   getSubscriptionEffectivePrice,
@@ -265,6 +266,7 @@ const SubscriptionPlansCard = ({
   uiVariant = 'subscription',
   showUserSubscriptions = true,
 }) => {
+  const isPackageVariant = uiVariant === 'package';
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [paying, setPaying] = useState(false);
@@ -272,8 +274,12 @@ const SubscriptionPlansCard = ({
   const [refreshing, setRefreshing] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState(initialMainTab);
   const [subscriptionView, setSubscriptionView] = useState('active');
-  const [planSort, setPlanSort] = useState('price_asc');
-  const [planSeriesFilter, setPlanSeriesFilter] = useState('all');
+  const [planSort, setPlanSort] = useState(
+    isPackageVariant ? 'recommended' : 'price_asc',
+  );
+  const [planSeriesFilter, setPlanSeriesFilter] = useState(
+    isPackageVariant ? 'claude' : 'all',
+  );
   const [expandedSubscriptionKeys, setExpandedSubscriptionKeys] = useState([]);
   const [consumeLogsFilter, setConsumeLogsFilter] = useState(null);
   const [planPage, setPlanPage] = useState(1);
@@ -289,7 +295,6 @@ const SubscriptionPlansCard = ({
     useState(false);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
-  const isPackageVariant = uiVariant === 'package';
   const [planViewMode, setPlanViewMode] = useState(
     isPackageVariant ? 'card' : 'table',
   );
@@ -740,6 +745,12 @@ const SubscriptionPlansCard = ({
         return getPlanValueScore(planB) - getPlanValueScore(planA);
       }
 
+      if (planSort === 'recommended') {
+        const sortOrderDiff =
+          Number(planB.sort_order || 0) - Number(planA.sort_order || 0);
+        if (sortOrderDiff !== 0) return sortOrderDiff;
+      }
+
       const purchaseDiff =
         getPlanPurchaseCount(planB.id) - getPlanPurchaseCount(planA.id);
       if (purchaseDiff !== 0) return purchaseDiff;
@@ -748,6 +759,21 @@ const SubscriptionPlansCard = ({
     });
     return result;
   }, [filteredPlans, planSort, getPlanPurchaseCount]);
+
+  const claudePlanCount = useMemo(
+    () =>
+      (plans || []).filter(
+        (item) => inferSubscriptionPlanSeries(item?.plan || {}) === 'claude',
+      ).length,
+    [plans],
+  );
+
+  useEffect(() => {
+    if (!isPackageVariant) return;
+    if (planSeriesFilter === 'claude' && claudePlanCount === 0) {
+      setPlanSeriesFilter('all');
+    }
+  }, [claudePlanCount, isPackageVariant, planSeriesFilter]);
 
   useEffect(() => {
     setPlanPage(1);
@@ -1421,9 +1447,11 @@ const SubscriptionPlansCard = ({
         width: 140,
         render: (text, record) => {
           const plan = record?.plan || {};
-          const { symbol, rate } = getCurrencyConfig();
-          const price = getSubscriptionEffectivePrice(plan) * rate;
-          const displayPrice = price.toFixed(Number.isInteger(price) ? 0 : 2);
+          const { symbol, effectivePrice, originalPrice } =
+            getSubscriptionPriceDisplay(plan);
+          const displayPrice = effectivePrice.toFixed(
+            Number.isInteger(effectivePrice) ? 0 : 2,
+          );
           const activeDiscount = isSubscriptionDiscountActive(plan);
           return (
             <div className='inline-flex flex-col items-start'>
@@ -1434,10 +1462,8 @@ const SubscriptionPlansCard = ({
               {activeDiscount ? (
                 <Text type='tertiary' size='small' delete>
                   {symbol}
-                  {(Number(plan?.price_amount || 0) * rate).toFixed(
-                    Number.isInteger(Number(plan?.price_amount || 0) * rate)
-                      ? 0
-                      : 2,
+                  {originalPrice.toFixed(
+                    Number.isInteger(originalPrice) ? 0 : 2,
                   )}
                 </Text>
               ) : null}
@@ -1596,6 +1622,7 @@ const SubscriptionPlansCard = ({
 
   const renderPackagePlanCard = (record, index) => {
     const plan = record?.plan || {};
+    const isClaudePlan = inferSubscriptionPlanSeries(plan) === 'claude';
     const count = getPlanPurchaseCount(plan?.id);
     const limit = Number(plan?.max_purchase_per_user || 0);
     const reached = limit > 0 && count >= limit;
@@ -1606,9 +1633,11 @@ const SubscriptionPlansCard = ({
       planSort === 'recommended' &&
       sortedPlans.length > 1 &&
       sortedPlans[0]?.plan?.id === plan?.id;
-    const { symbol, rate } = getCurrencyConfig();
-    const price = getSubscriptionEffectivePrice(plan) * rate;
-    const displayPrice = price.toFixed(Number.isInteger(price) ? 0 : 2);
+    const { symbol, effectivePrice, originalPrice } =
+      getSubscriptionPriceDisplay(plan);
+    const displayPrice = effectivePrice.toFixed(
+      Number.isInteger(effectivePrice) ? 0 : 2,
+    );
     const activeDiscount = isSubscriptionDiscountActive(plan);
     const disabled = reached || saleSummary.soldOut;
     const tip = reached
@@ -1651,6 +1680,11 @@ const SubscriptionPlansCard = ({
                   <Text strong className='text-base'>
                     {plan?.title || t('订阅套餐')}
                   </Text>
+                  {isClaudePlan && (
+                    <Tag color='violet' shape='circle' size='small'>
+                      {t('Claude 系列')}
+                    </Tag>
+                  )}
                   {isPopular && (
                     <Tag color='blue' shape='circle' size='small'>
                       <Sparkles size={10} className='mr-1' />
@@ -1675,6 +1709,11 @@ const SubscriptionPlansCard = ({
                 >
                   {plan?.subtitle || t('暂无说明')}
                 </Text>
+                {isClaudePlan && (
+                  <Text type='secondary' size='small' className='mt-2 block leading-5'>
+                    {t('付款完成后套餐会自动生效；如需协助可联系管理员。')}
+                  </Text>
+                )}
               </div>
               <div className='rounded-2xl bg-white/80 p-2 shadow-sm dark:bg-white/10'>
                 <Package
@@ -1700,10 +1739,8 @@ const SubscriptionPlansCard = ({
                 {activeDiscount ? (
                   <Text type='tertiary' size='small' delete>
                     {symbol}
-                    {(Number(plan?.price_amount || 0) * rate).toFixed(
-                      Number.isInteger(Number(plan?.price_amount || 0) * rate)
-                        ? 0
-                        : 2,
+                    {originalPrice.toFixed(
+                      Number.isInteger(originalPrice) ? 0 : 2,
                     )}
                   </Text>
                 ) : null}
@@ -2388,9 +2425,11 @@ const SubscriptionPlansCard = ({
                             size='small'
                             className='subscription-plan-selling-toolbar__desc'
                           >
-                            {planSort === 'price_asc'
-                              ? t('当前默认按金额从低到高排序，适合快速横向比价')
-                              : t('先看定位与价格，再进入购买弹窗查看完整支付方式')}
+                            {planSeriesFilter === 'claude'
+                              ? t('当前优先展示最新 Claude 系列套餐，支付完成后会自动生效。')
+                              : planSort === 'price_asc'
+                                ? t('当前默认按金额从低到高排序，适合快速横向比价')
+                                : t('先看定位与价格，再进入购买弹窗查看完整支付方式')}
                           </Text>
                         </div>
                       </div>
@@ -2471,6 +2510,17 @@ const SubscriptionPlansCard = ({
                   </div>
 
                   <Divider margin={8} />
+
+                  {isPackageVariant && planSeriesFilter === 'claude' && (
+                    <Banner
+                      type='info'
+                      className='!rounded-2xl'
+                      closeIcon={null}
+                      description={t(
+                        '这里展示的是当前对外售卖的 Claude 系列套餐。支付完成后会自动生效，你可以在“我的订阅”查看套餐状态与消耗记录。',
+                      )}
+                    />
+                  )}
 
                   {sortedPlans.length > 0 ? (
                     planViewMode === 'card' ? (
