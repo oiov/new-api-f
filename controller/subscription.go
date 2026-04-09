@@ -111,6 +111,98 @@ func GetSubscriptionSelf(c *gin.Context) {
 	})
 }
 
+func GetSelfServiceSubscriptionConversion(c *gin.Context) {
+	userId := c.GetInt("id")
+	preview, err := model.PreviewSelfServiceSubscriptionConversion(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, preview)
+}
+
+type CreateSubscriptionConversionRequest struct {
+	RequestRemark string `json:"request_remark"`
+}
+
+func CreateSelfServiceSubscriptionConversionRequest(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req CreateSubscriptionConversionRequest
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.CreateSubscriptionConversionRequest(userId, req.RequestRemark)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+type AdminApproveSubscriptionConversionPayload struct {
+	ApprovedRatio float64 `json:"approved_ratio"`
+	ApprovedQuota int     `json:"approved_quota"`
+	AdminRemark   string  `json:"admin_remark"`
+}
+
+type AdminRejectSubscriptionConversionPayload struct {
+	AdminRemark string `json:"admin_remark"`
+}
+
+func AdminListSubscriptionConversionRequests(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	items, total, err := model.GetSubscriptionConversionRequestsByAdmin(pageInfo, model.SubscriptionConversionAdminFilters{
+		Keyword: c.Query("keyword"),
+		Status:  c.Query("status"),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func AdminApproveSubscriptionConversionRequest(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的申请ID")
+		return
+	}
+	var req AdminApproveSubscriptionConversionPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.ApproveSubscriptionConversionRequest(id, req.ApprovedRatio, req.ApprovedQuota, req.AdminRemark)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminRejectSubscriptionConversionRequest(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的申请ID")
+		return
+	}
+	var req AdminRejectSubscriptionConversionPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.RejectSubscriptionConversionRequest(id, req.AdminRemark)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
 func GetSubscriptionSelfConsumeLogs(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)

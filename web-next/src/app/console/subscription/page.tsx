@@ -27,7 +27,7 @@ import { Separator } from '@/components/ui/separator';
 import { AuthGuard } from '@/components/common/auth-guard';
 import { ConsumeLogsSheet } from '@/components/subscription/consume-logs-sheet';
 import { API } from '@/lib/api';
-import { renderQuota, getCurrencySymbol, formatTimestamp, cn } from '@/lib/utils';
+import { renderQuota, getCurrencySymbol, formatQuota, formatTimestamp, cn } from '@/lib/utils';
 import { useSystemStatus } from '@/context/status-context';
 import { toast } from 'sonner';
 import type { SystemStatus } from '@/types';
@@ -108,6 +108,59 @@ interface SubWrapper { subscription: UserSubscription }
 interface PlanWrapper { plan: SubscriptionPlan }
 
 interface PayMethod { type: string; name?: string }
+
+interface ConversionCampaign {
+  enabled: boolean;
+  key: string;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  deadline: number;
+  timezone?: string;
+  conversion_rule?: string;
+  billing_rules?: string[];
+  charge_rules?: string[];
+}
+
+interface ConversionPreviewItem {
+  user_subscription_id: number;
+  plan_id: number;
+  plan_title: string;
+  source?: string;
+  start_time: number;
+  end_time: number;
+  remaining_ratio: number;
+  price_basis_amount: number;
+  price_basis_source?: string;
+  convertible_amount: number;
+  convertible_quota: number;
+}
+
+interface ConversionPreview {
+  campaign: ConversionCampaign;
+  now: number;
+  current_quota: number;
+  estimated_quota_after: number;
+  total_convertible_quota: number;
+  total_convertible_amount: number;
+  can_execute: boolean;
+  closed_reason?: string;
+  latest_request?: {
+    id: number;
+    status: string;
+    requested_ratio: number;
+    requested_amount: number;
+    requested_quota: number;
+    approved_ratio: number;
+    approved_amount: number;
+    approved_quota: number;
+    admin_remark?: string;
+    request_remark?: string;
+    create_time: number;
+    update_time: number;
+  } | null;
+  items: ConversionPreviewItem[];
+}
 
 // ── Format utilities ─────────────────────────────────────────────────────────
 
@@ -697,6 +750,10 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatPercent(value: number): string {
+  return `${(Number(value || 0) * 100).toFixed(2).replace(/\.?0+$/, '')}%`;
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 function SubscriptionContent() {
@@ -705,9 +762,11 @@ function SubscriptionContent() {
 
   const [plans, setPlans] = useState<PlanWrapper[]>([]);
   const [allSubs, setAllSubs] = useState<SubWrapper[]>([]);
+  const [conversionPreview, setConversionPreview] = useState<ConversionPreview | null>(null);
   const [billingPref, setBillingPref] = useState('subscription_first');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [submittingConversionRequest, setSubmittingConversionRequest] = useState(false);
 
   // Payment config
   const [enableStripe, setEnableStripe] = useState(false);
@@ -730,10 +789,11 @@ function SubscriptionContent() {
   const loadAll = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [plansRes, selfRes, infoRes] = await Promise.all([
+      const [plansRes, selfRes, infoRes, migrationRes] = await Promise.all([
         API.get('/api/subscription/plans'),
         API.get('/api/subscription/self'),
         API.get('/api/user/topup/info'),
+        API.get('/api/subscription/self/conversion_campaign', { skipErrorHandler: true } as never),
       ]);
 
       if (plansRes.data?.success) setPlans(plansRes.data.data || []);
@@ -756,6 +816,12 @@ function SubscriptionContent() {
         setEpayMethods(methods);
         if (methods.length > 0) setSelectedEpay(methods[0].type);
       }
+
+      if (migrationRes?.data?.success) {
+        setConversionPreview(migrationRes.data.data || null);
+      } else {
+        setConversionPreview(null);
+      }
     } catch {
       if (!silent) toast.error(t('加载失败'));
     } finally {
@@ -769,6 +835,33 @@ function SubscriptionContent() {
     setRefreshing(true);
     await loadAll(true);
     setRefreshing(false);
+  };
+
+  const handleSubmitConversionRequest = async () => {
+    if (!conversionPreview?.can_execute || submittingConversionRequest) return;
+    const confirmText = [
+      t('确认提交套餐转余额申请？'),
+      t('提交后需要等待管理员审核，审核通过后才会返还余额并失效对应套餐。'),
+      `${t('申请预计返还')} ${formatQuota(conversionPreview.total_convertible_quota, status)}`,
+      `${t('命中套餐')} ${conversionPreview.items.length} ${t('个')}`,
+      t('该操作不可撤销。'),
+    ].join('\n');
+    if (!window.confirm(confirmText)) return;
+
+    setSubmittingConversionRequest(true);
+    try {
+      const res = await API.post('/api/subscription/self/conversion_campaign/request', {});
+      if (res.data?.success) {
+        toast.success(t('申请已提交，等待管理员审核'));
+        await loadAll(true);
+      } else {
+        toast.error(res.data?.message || t('提交申请失败'));
+      }
+    } catch {
+      toast.error(t('提交申请失败'));
+    } finally {
+      setSubmittingConversionRequest(false);
+    }
   };
 
   const updateBillingPref = async (pref: string) => {
@@ -1053,6 +1146,193 @@ function SubscriptionContent() {
               <StatCard {...item} />
             </motion.div>
           ))}
+        </motion.div>
+      )}
+
+      {!loading && conversionPreview && (conversionPreview.items.length > 0 || conversionPreview.campaign?.enabled) && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.06 }}
+        >
+          <Card className="overflow-hidden border-amber-200/80 bg-gradient-to-br from-amber-50/90 via-background to-orange-50/70 shadow-card dark:border-amber-900/50 dark:from-amber-950/30 dark:to-orange-950/20">
+            <div className="border-b border-amber-200/70 bg-amber-100/60 px-5 py-4 dark:border-amber-900/40 dark:bg-amber-950/30">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="rounded-lg bg-amber-500/15 p-1.5">
+                      <Sparkles className="size-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {conversionPreview.campaign.title || t('套餐自助折算活动')}
+                    </p>
+                    <Badge variant="secondary" className="border-amber-300/80 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                      {conversionPreview.can_execute ? t('限时可操作') : (conversionPreview.closed_reason || t('仅展示说明'))}
+                    </Badge>
+                  </div>
+                  {conversionPreview.campaign.subtitle && (
+                    <p className="text-sm text-muted-foreground">{conversionPreview.campaign.subtitle}</p>
+                  )}
+                  {conversionPreview.campaign.description && (
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      {conversionPreview.campaign.description}
+                    </p>
+                  )}
+                </div>
+                <div className="grid min-w-[280px] grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-xl border border-amber-200/80 bg-background/80 px-3 py-2 dark:border-amber-900/40">
+                    <p className="text-xs text-muted-foreground">{t('活动截止')}</p>
+                    <p className="mt-1 font-medium">{formatTimestamp(conversionPreview.campaign.deadline, 'YYYY-MM-DD HH:mm')}</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200/80 bg-background/80 px-3 py-2 dark:border-amber-900/40">
+                    <p className="text-xs text-muted-foreground">{t('预计返还余额')}</p>
+                    <p className="mt-1 font-medium">{formatQuota(conversionPreview.total_convertible_quota, status)}</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200/80 bg-background/80 px-3 py-2 dark:border-amber-900/40">
+                    <p className="text-xs text-muted-foreground">{t('当前余额')}</p>
+                    <p className="mt-1 font-medium">{formatQuota(conversionPreview.current_quota, status)}</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200/80 bg-background/80 px-3 py-2 dark:border-amber-900/40">
+                    <p className="text-xs text-muted-foreground">{t('折算后余额')}</p>
+                    <p className="mt-1 font-medium">{formatQuota(conversionPreview.estimated_quota_after, status)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-border/60 bg-background/85 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <FileText className="size-4 text-primary" />
+                    <p className="text-sm font-semibold">{t('计费与折算规则')}</p>
+                  </div>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p className="leading-relaxed">{conversionPreview.campaign.conversion_rule}</p>
+                    {(conversionPreview.campaign.billing_rules || []).map((rule) => (
+                      <p key={rule} className="leading-relaxed">• {rule}</p>
+                    ))}
+                    {(conversionPreview.campaign.charge_rules || []).map((rule) => (
+                      <p key={rule} className="leading-relaxed">• {rule}</p>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border/60 bg-background/85">
+                  <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold">{t('命中的可折算套餐')}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {conversionPreview.items.length > 0
+                          ? `${t('共')} ${conversionPreview.items.length} ${t('个可折算套餐')}`
+                          : t('当前没有命中可折算的套餐')}
+                      </p>
+                    </div>
+                  </div>
+                  {conversionPreview.items.length > 0 ? (
+                    <ScrollArea className="max-h-[360px]">
+                      <div className="divide-y divide-border/50">
+                        {conversionPreview.items.map((item) => (
+                          <div key={item.user_subscription_id} className="space-y-3 px-4 py-4">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="font-medium text-foreground">{item.plan_title}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  #{item.user_subscription_id} · {t('来源')} {item.source || '--'}
+                                </p>
+                              </div>
+                              <div className="text-left sm:text-right">
+                                <p className="text-sm font-semibold text-foreground">
+                                  {formatQuota(item.convertible_quota, status)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {getCurrencySymbol(status)}
+                                  {Number(item.convertible_amount || 0).toFixed(2)} · {t('剩余占比')} {formatPercent(item.remaining_ratio)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                              <div className="rounded-lg bg-muted/40 px-3 py-2">
+                                <p>{t('有效期')}</p>
+                                <p className="mt-1 font-medium text-foreground">
+                                  {formatTimestamp(item.start_time, 'YYYY-MM-DD HH:mm')} → {formatTimestamp(item.end_time, 'YYYY-MM-DD HH:mm')}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-muted/40 px-3 py-2">
+                                <p>{t('折算基价')}</p>
+                                <p className="mt-1 font-medium text-foreground">
+                                  {getCurrencySymbol(status)}
+                                  {Number(item.price_basis_amount || 0).toFixed(2)}
+                                  {item.price_basis_source === 'order' ? ` · ${t('订单实付')}` : ` · ${t('套餐基价')}`}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-muted/40 px-3 py-2">
+                                <p>{t('执行结果')}</p>
+                                <p className="mt-1 font-medium text-foreground">{t('返余额并失效套餐')}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="px-4 py-6 text-sm text-muted-foreground">{conversionPreview.closed_reason || t('当前没有可折算的套餐')}</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <Card className="border-border/60 bg-background/90 shadow-none">
+                  <CardContent className="space-y-4 p-4">
+                    <div className="flex items-center gap-2">
+                      <Clock className="size-4 text-primary" />
+                      <p className="text-sm font-semibold">{t('申请说明')}</p>
+                    </div>
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <p>{t('你提交申请后，管理员需要先审核，再决定是否批准执行。')}</p>
+                      <p>{t('管理员审核时可以调整折算比例，也可以直接调整最终增加的余额额度。')}</p>
+                      <p>{t('只有审核通过后，系统才会返还余额并失效对应套餐。')}</p>
+                    </div>
+                    <Separator />
+                    <div className="space-y-2 text-sm">
+                      <Row label={t('命中套餐')} value={`${conversionPreview.items.length} ${t('个')}`} />
+                      <Row label={t('申请预计返还')} value={formatQuota(conversionPreview.total_convertible_quota, status)} />
+                      <Row label={t('审核后余额参考')} value={formatQuota(conversionPreview.estimated_quota_after, status)} />
+                    </div>
+                    {conversionPreview.latest_request && (
+                      <>
+                        <Separator />
+                        <div className="space-y-2 text-sm">
+                          <Row label={t('最近申请')} value={`#${conversionPreview.latest_request.id}`} />
+                          <Row label={t('申请状态')} value={conversionPreview.latest_request.status} />
+                          <Row label={t('申请时间')} value={formatTimestamp(conversionPreview.latest_request.create_time, 'YYYY-MM-DD HH:mm')} />
+                          {conversionPreview.latest_request.admin_remark && (
+                            <Row label={t('管理员备注')} value={conversionPreview.latest_request.admin_remark} />
+                          )}
+                        </div>
+                      </>
+                    )}
+                    <Button
+                      className="w-full"
+                      disabled={!conversionPreview.can_execute || submittingConversionRequest || conversionPreview.latest_request?.status === 'pending'}
+                      onClick={handleSubmitConversionRequest}
+                    >
+                      {submittingConversionRequest
+                        ? t('提交中...')
+                        : conversionPreview.latest_request?.status === 'pending'
+                          ? t('已有待审核申请')
+                          : t('提交套餐转余额申请')}
+                    </Button>
+                    {!conversionPreview.can_execute && (
+                      <p className="text-xs text-muted-foreground">
+                        {conversionPreview.closed_reason || t('当前不可执行该操作')}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </Card>
         </motion.div>
       )}
 

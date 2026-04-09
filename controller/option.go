@@ -305,6 +305,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "SelfServiceSubscriptionConversionCampaign":
+		err = model.ValidateSelfServiceSubscriptionConversionCampaign(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "SubscriptionPlanForNewUser", "SubscriptionPlanForInviter", "SubscriptionPlanForInvitee":
 		planId, parseErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
 		if parseErr != nil || planId < 0 {

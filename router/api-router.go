@@ -150,6 +150,8 @@ func SetApiRouter(router *gin.Engine) {
 		subscriptionRoute.Use(middleware.UserAuth())
 		{
 			subscriptionRoute.GET("/self", controller.GetSubscriptionSelf)
+			subscriptionRoute.GET("/self/conversion_campaign", controller.GetSelfServiceSubscriptionConversion)
+			subscriptionRoute.POST("/self/conversion_campaign/request", controller.CreateSelfServiceSubscriptionConversionRequest)
 			subscriptionRoute.GET("/self/consume_logs", controller.GetSubscriptionSelfConsumeLogs)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
@@ -168,6 +170,9 @@ func SetApiRouter(router *gin.Engine) {
 			// User subscription management (admin)
 			subscriptionAdminRoute.GET("/user_subscriptions", controller.AdminListAllUserSubscriptions)
 			subscriptionAdminRoute.GET("/consume_logs", controller.AdminListSubscriptionConsumeLogs)
+			subscriptionAdminRoute.GET("/conversion_requests", controller.AdminListSubscriptionConversionRequests)
+			subscriptionAdminRoute.POST("/conversion_requests/:id/approve", controller.AdminApproveSubscriptionConversionRequest)
+			subscriptionAdminRoute.POST("/conversion_requests/:id/reject", controller.AdminRejectSubscriptionConversionRequest)
 			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)
 			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
 			subscriptionAdminRoute.POST("/migrations/preview", controller.AdminPreviewSubscriptionMigration)
