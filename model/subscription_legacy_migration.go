@@ -42,6 +42,9 @@ type SelfServiceSubscriptionConversionPreviewItem struct {
 	TotalSeconds            int64   `json:"total_seconds"`
 	RemainingSeconds        int64   `json:"remaining_seconds"`
 	RemainingRatio          float64 `json:"remaining_ratio"`
+	DurationDays            float64 `json:"duration_days"`
+	UsedDays                int64   `json:"used_days"`
+	BillableUsedDays        float64 `json:"billable_used_days"`
 	PriceBasisAmount        float64 `json:"price_basis_amount"`
 	PriceBasisSource        string  `json:"price_basis_source"`
 	ConvertibleAmount       float64 `json:"convertible_amount"`
@@ -109,11 +112,12 @@ func defaultSelfServiceSubscriptionConversionCampaign() SelfServiceSubscriptionC
 			"Claude",
 			"claude",
 		},
-		ConversionRule: "返还余额 = 套餐折算基价 × 剩余有效期占比；其中剩余有效期占比 = (到期时间 - 当前时间) / (到期时间 - 生效时间)。返还结果再按系统额度汇率转换为账户余额。",
+		ConversionRule: "返还余额 = 套餐折算基价 - 套餐折算基价 / 周期天数 × 计费天数；其中计费天数 = 已使用整天数 + 0.5 天。月卡按 30 天/月、周卡按 7 天/周、天卡按套餐天数计算；结果最低为 0，再按系统额度汇率转换为账户余额。",
 		BillingRules: []string{
 			"仅处理当前仍在有效期内且命中活动范围的套餐；已过期、已作废、未命中的套餐不会进入折算。",
 			"按订单购买的套餐，优先按历史成功订单的实付金额作为折算基价；无法匹配到订单时，回退到套餐快照价格。",
-			"折算只看剩余有效期占比，不按当日已用次数、未来重置次数单独补偿，避免周卡/月卡在不同重置周期下口径不一致。",
+			"已使用整天数从购买生效时间开始计算；折算时会额外加 0.5 天作为固定服务扣减。",
+			"月卡统一按 30 天/月换算，周卡按 7 天/周换算；多月、多周套餐按对应倍数累计。",
 		},
 		ChargeRules: []string{
 			"提交申请后，命中的旧套餐会立即暂时禁用，等待管理员审核期间将无法继续使用这些套餐权益。",
@@ -300,6 +304,48 @@ func resolveSelfServiceSubscriptionConversionPriceBasis(sub *UserSubscription, p
 	return 0, ""
 }
 
+func resolveSelfServiceSubscriptionConversionDurationDays(sub *UserSubscription, plan *SubscriptionPlan) float64 {
+	if sub == nil && plan == nil {
+		return 1
+	}
+	unit := ""
+	value := 0
+	customSeconds := int64(0)
+	if sub != nil {
+		unit = strings.TrimSpace(sub.DurationUnit)
+		value = sub.DurationValue
+		customSeconds = sub.CustomSeconds
+	}
+	if unit == "" && plan != nil {
+		unit = strings.TrimSpace(plan.DurationUnit)
+		value = plan.DurationValue
+		customSeconds = plan.CustomSeconds
+	}
+	if value <= 0 && unit != SubscriptionDurationCustom {
+		value = 1
+	}
+	switch unit {
+	case SubscriptionDurationYear:
+		return float64(value * 365)
+	case SubscriptionDurationMonth:
+		return float64(value * 30)
+	case SubscriptionDurationWeek:
+		return float64(value * 7)
+	case SubscriptionDurationDay:
+		return float64(value)
+	case SubscriptionDurationHour:
+		return math.Max(float64(value)/24, 1.0/24)
+	case SubscriptionDurationCustom:
+		if customSeconds > 0 {
+			return math.Max(float64(customSeconds)/86400, 1.0/24)
+		}
+	}
+	if sub != nil && sub.EndTime > sub.StartTime {
+		return math.Max(float64(sub.EndTime-sub.StartTime)/86400, 1.0/24)
+	}
+	return 1
+}
+
 func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, plan *SubscriptionPlan, campaign SelfServiceSubscriptionConversionCampaign, now int64, tx *gorm.DB) (*SelfServiceSubscriptionConversionPreviewItem, error) {
 	if sub == nil || plan == nil {
 		return nil, fmt.Errorf("invalid legacy migration subscription")
@@ -318,7 +364,23 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 	if remainingSeconds < 0 {
 		remainingSeconds = 0
 	}
-	ratio := float64(remainingSeconds) / float64(totalSeconds)
+	durationDays := resolveSelfServiceSubscriptionConversionDurationDays(sub, plan)
+	if durationDays <= 0 {
+		durationDays = 1
+	}
+	elapsedSeconds := now - sub.StartTime
+	if elapsedSeconds < 0 {
+		elapsedSeconds = 0
+	}
+	usedDays := int64(elapsedSeconds / 86400)
+	billableUsedDays := float64(usedDays) + 0.5
+	if billableUsedDays < 0 {
+		billableUsedDays = 0
+	}
+	if billableUsedDays > durationDays {
+		billableUsedDays = durationDays
+	}
+	ratio := (durationDays - billableUsedDays) / durationDays
 	if ratio < 0 {
 		ratio = 0
 	}
@@ -342,6 +404,9 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 		TotalSeconds:            totalSeconds,
 		RemainingSeconds:        remainingSeconds,
 		RemainingRatio:          math.Round(ratio*10000) / 10000,
+		DurationDays:            math.Round(durationDays*100) / 100,
+		UsedDays:                usedDays,
+		BillableUsedDays:        math.Round(billableUsedDays*100) / 100,
 		PriceBasisAmount:        priceBasis,
 		PriceBasisSource:        priceBasisSource,
 		ConvertibleAmount:       convertibleAmount,

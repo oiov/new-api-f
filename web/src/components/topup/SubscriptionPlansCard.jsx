@@ -2122,11 +2122,26 @@ const SubscriptionPlansCard = ({
                                           )}
                                         </div>
                                         <Text type='tertiary' size='small'>
-                                          {t('剩余占比')} {Math.round(
+                                          {t('折算比例')} {Math.round(
                                             Number(item.remaining_ratio || 0) *
                                               10000,
                                           ) / 100}
                                           %
+                                        </Text>
+                                        <Text
+                                          type='tertiary'
+                                          size='small'
+                                          className='block'
+                                        >
+                                          {t(
+                                            '已使用 {{days}} 天，计费 {{billableDays}} 天',
+                                            {
+                                              days: Number(item.used_days || 0),
+                                              billableDays: Number(
+                                                item.billable_used_days || 0,
+                                              ),
+                                            },
+                                          )}
                                         </Text>
                                       </div>
                                     </div>

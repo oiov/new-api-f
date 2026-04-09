@@ -226,3 +226,69 @@ func TestApproveSubscriptionConversionRequest_FailsWhenSubscriptionStateChanged(
 		require.Equal(t, 500, user.Quota)
 	})
 }
+
+func TestPreviewSelfServiceSubscriptionConversion_UsesDurationDayFormula(t *testing.T) {
+	withSubscriptionConversionRequestTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       2,
+			Username: "duration_formula_user",
+			Group:    "claude_sub",
+			Quota:    0,
+			Status:   common.UserStatusEnabled,
+			AffCode:  "duration_formula_aff",
+		}).Error)
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:            9110,
+			Title:         "Claude Month Plan",
+			PriceAmount:   30,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   1000,
+			UpgradeGroup:  "claude_sub",
+		}).Error)
+		require.NoError(t, DB.Model(&SubscriptionPlan{}).Where("id = ?", 9110).Update("enabled", false).Error)
+		InvalidateSubscriptionPlanCache(9110)
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:           9310,
+			UserId:       2,
+			PlanId:       9110,
+			TradeNo:      "conversion-order-2",
+			Money:        30,
+			Status:       common.TopUpStatusSuccess,
+			CompleteTime: now - 4*86400,
+			CreateTime:   now - 4*86400,
+		}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:            9210,
+			UserId:        2,
+			PlanId:        9110,
+			Status:        "active",
+			StartTime:     now - 3*86400 - 3600,
+			EndTime:       now + 26*86400,
+			ResourceType:  SubscriptionResourceQuota,
+			AmountTotal:   1000,
+			UpgradeGroup:  "claude_sub",
+			PrevUserGroup: "default",
+			Source:        "order",
+			CreatedAt:     now - 4*86400,
+			UpdatedAt:     now - 4*86400,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+		}).Error)
+
+		preview, err := PreviewSelfServiceSubscriptionConversion(2)
+		require.NoError(t, err)
+		require.Len(t, preview.Items, 1)
+
+		item := preview.Items[0]
+		require.Equal(t, int64(3), item.UsedDays)
+		require.InDelta(t, 3.5, item.BillableUsedDays, 0.001)
+		require.InDelta(t, 30, item.DurationDays, 0.001)
+		require.InDelta(t, 0.8833, item.RemainingRatio, 0.0001)
+		require.InDelta(t, 26.5, item.ConvertibleAmount, 0.001)
+		require.Equal(t, 2650, item.ConvertibleQuota)
+	})
+}

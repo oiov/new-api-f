@@ -130,6 +130,9 @@ interface ConversionPreviewItem {
   start_time: number;
   end_time: number;
   remaining_ratio: number;
+  duration_days: number;
+  used_days: number;
+  billable_used_days: number;
   price_basis_amount: number;
   price_basis_source?: string;
   convertible_amount: number;
@@ -1262,7 +1265,13 @@ function SubscriptionContent() {
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   {getCurrencySymbol(status)}
-                                  {Number(item.convertible_amount || 0).toFixed(2)} · {t('剩余占比')} {formatPercent(item.remaining_ratio)}
+                                  {Number(item.convertible_amount || 0).toFixed(2)} · {t('折算比例')} {formatPercent(item.remaining_ratio)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {t('已使用 {{days}} 天，计费 {{billableDays}} 天', {
+                                    days: Number(item.used_days || 0),
+                                    billableDays: Number(item.billable_used_days || 0),
+                                  })}
                                 </p>
                               </div>
                             </div>
