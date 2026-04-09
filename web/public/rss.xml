@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>FishXCode AI</title>
+    <link>https://fishxcode.com/</link>
+    <description>FishXCode AI public site updates for pricing, Claude integration docs, service status, and contact channels.</description>
+    <language>zh-CN</language>
+    <lastBuildDate>Thu, 09 Apr 2026 00:00:00 GMT</lastBuildDate>
+    <ttl>1440</ttl>
+    <atom:link href="https://fishxcode.com/rss.xml" rel="self" type="application/rss+xml" />
+    <image>
+      <url>https://fishxcode.com/logo.png</url>
+      <title>FishXCode AI</title>
+      <link>https://fishxcode.com/</link>
+    </image>
+    <item>
+      <title>FishXCode AI Home</title>
+      <link>https://fishxcode.com/</link>
+      <guid>https://fishxcode.com/</guid>
+      <pubDate>Thu, 09 Apr 2026 00:00:00 GMT</pubDate>
+      <description>Enterprise Claude API gateway through official channels, with cache-based cost reduction and enterprise-ready billing support.</description>
+    </item>
+    <item>
+      <title>Pricing Plans</title>
+      <link>https://fishxcode.com/pricing</link>
+      <guid>https://fishxcode.com/pricing</guid>
+      <pubDate>Thu, 09 Apr 2026 00:00:00 GMT</pubDate>
+      <description>Browse current subscription plans and pricing options for Claude and related services.</description>
+    </item>
+    <item>
+      <title>Claude Integration Docs</title>
+      <link>https://fishxcode.com/docs</link>
+      <guid>https://fishxcode.com/docs</guid>
+      <pubDate>Thu, 09 Apr 2026 00:00:00 GMT</pubDate>
+      <description>Read the Claude integration guides and setup documentation for the official-compatible API.</description>
+    </item>
+    <item>
+      <title>Service Status</title>
+      <link>https://fishxcode.com/status</link>
+      <guid>https://fishxcode.com/status</guid>
+      <pubDate>Thu, 09 Apr 2026 00:00:00 GMT</pubDate>
+      <description>Check current service availability, announcements, and platform status information.</description>
+    </item>
+    <item>
+      <title>Contact and Support</title>
+      <link>https://fishxcode.com/contact</link>
+      <guid>https://fishxcode.com/contact</guid>
+      <pubDate>Thu, 09 Apr 2026 00:00:00 GMT</pubDate>
+      <description>Reach official FishXCode support and public contact channels for presales and onboarding.</description>
+    </item>
+  </channel>
+</rss>

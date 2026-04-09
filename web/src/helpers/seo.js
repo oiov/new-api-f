@@ -4,7 +4,9 @@ const SITE_URL =
     '',
   );
 const SITE_NAME = 'FishXCode AI';
-const DEFAULT_IMAGE = `${SITE_URL}/cover-4.webp`;
+function getDefaultImage(language) {
+  return `${SITE_URL}/${isChineseLanguage(language) ? 'og-home-zh.svg' : 'og-home-en.svg'}`;
+}
 
 function isChineseLanguage(language) {
   return language?.startsWith('zh');
@@ -34,7 +36,7 @@ function buildSeoPayload({
     canonicalPath: path,
     locale: getSeoLocale(language),
     robots,
-    image: DEFAULT_IMAGE,
+    image: getDefaultImage(language),
     jsonLd,
   };
 }
@@ -46,7 +48,7 @@ export function buildOrganizationJsonLd() {
     name: SITE_NAME,
     url: SITE_URL,
     logo: `${SITE_URL}/logo.png`,
-    image: DEFAULT_IMAGE,
+    image: `${SITE_URL}/og-home-zh.svg`,
     contactPoint: [
       {
         '@type': 'ContactPoint',
@@ -68,8 +70,8 @@ export function buildWebsiteJsonLd(language) {
     url: SITE_URL,
     inLanguage: zh ? 'zh-CN' : 'en-US',
     description: zh
-      ? 'FishXCode AI 提供 Claude、Codex 等 AI Coding 国际中转订阅服务。'
-      : 'FishXCode AI provides Claude and Codex subscription access for AI Coding workflows.',
+      ? 'FishXCode AI 提供企业级 Claude API 官方通道中转服务，优先提供稳定的 Claude 官方通道接入，同时兼容 GPT、Gemini 等常用模型。'
+      : 'FishXCode AI provides an enterprise Claude API gateway through official Anthropic channels, prioritizing stable Claude access while remaining compatible with common models such as GPT and Gemini.',
   };
 }
 
@@ -78,10 +80,10 @@ export function buildServiceJsonLd(language) {
   return {
     '@context': 'https://schema.org',
     '@type': 'Service',
-    serviceType: 'AI Coding Subscription Service',
+    serviceType: 'Enterprise Claude API Gateway Service',
     name: zh
-      ? 'Claude Codex AI Coding 国际中转订阅'
-      : 'Claude Codex AI Coding subscription access',
+      ? '企业级 Claude API 官方通道中转服务'
+      : 'Enterprise Claude API gateway service',
     provider: {
       '@type': 'Organization',
       name: SITE_NAME,
@@ -91,14 +93,14 @@ export function buildServiceJsonLd(language) {
     audience: {
       '@type': 'Audience',
       audienceType: zh
-        ? '个人开发者、学生、团队用户'
-        : 'Individual developers, students, and teams',
+        ? '企业团队、开发者与专业用户'
+        : 'Teams, developers, and professional users',
     },
     url: SITE_URL,
-    image: DEFAULT_IMAGE,
+    image: getDefaultImage(language),
     description: zh
-      ? '支持包月、周卡、天卡的 Claude 与 Codex 国际中转订阅服务。'
-      : 'Claude and Codex subscription access with monthly, weekly, and daily plans.',
+      ? '仅接 Anthropic 官方通道，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。'
+      : 'Official Anthropic-only Claude API gateway with cache-based cost reduction, enterprise invoice support, and compatibility with common models such as GPT and Gemini.',
   };
 }
 
@@ -106,16 +108,16 @@ export function getHomeSeo(language) {
   return buildSeoPayload({
     language,
     path: '/',
-    titleZh: 'AI Coding 国际中转订阅站 | FishXCode AI',
-    titleEn: 'AI Coding Subscription Hub | FishXCode AI',
+    titleZh: '企业级 Claude API 官方通道中转 | FishXCode AI',
+    titleEn: 'Enterprise Claude API Gateway | FishXCode AI',
     descriptionZh:
-      'FishXCode AI 提供 Claude、Codex 等 AI Coding 国际中转订阅服务，主打包月订阅，同时支持周卡、天卡，覆盖个人开发者、学生与团队协作的稳定接入需求。',
+      'FishXCode AI 提供企业级 Claude API 官方通道中转，优先提供稳定的 Claude 官方通道接入，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。',
     descriptionEn:
-      'FishXCode AI provides Claude and Codex subscription access for AI Coding, with monthly, weekly, and daily plans for developers, students, and teams.',
+      'FishXCode AI provides an enterprise Claude API gateway through official Anthropic channels, prioritizing stable Claude access with cache-based cost reduction, enterprise invoice support, and compatibility with common models such as GPT and Gemini.',
     keywordsZh:
-      'AI Coding,Claude订阅,Codex订阅,Claude中转,Codex中转,包月订阅,周卡,天卡,团队订阅,学生订阅',
+      'Claude API,Claude中转,Anthropic官方通道,企业级Claude API,AI中转服务,智能缓存,企业采购,增值税发票,GPT,Gemini',
     keywordsEn:
-      'AI Coding, Claude subscription, Codex subscription, monthly plan, weekly pass, daily pass, team subscription, student plan',
+      'Claude API, Anthropic gateway, enterprise Claude API, AI gateway service, cache optimization, enterprise invoice support, GPT, Gemini',
   });
 }
 
@@ -173,13 +175,13 @@ export function getDocsSeo(language) {
     language,
     path: '/docs',
     titleZh: '接入文档与使用指南 | FishXCode AI',
-    titleEn: 'Documentation and Usage Guide | FishXCode AI',
+    titleEn: 'Claude Integration Docs | FishXCode AI',
     descriptionZh:
-      '查看 FishXCode AI 接入文档、使用说明与配置指南，快速完成 Claude、Codex 等 AI Coding 服务接入。',
+      '查看 FishXCode AI 的 Claude 接入文档、使用说明与配置指南，快速完成官方兼容 API 接入与调用配置。',
     descriptionEn:
-      'Read FishXCode AI docs and setup guides to start using Claude and Codex for AI Coding workflows.',
-    keywordsZh: '接入文档,使用指南,Claude文档,Codex文档,API接入,AI Coding教程',
-    keywordsEn: 'documentation, setup guide, Claude docs, Codex docs, API access, AI Coding guide',
+      'Read FishXCode AI Claude integration docs and setup guides to start using the official-compatible API quickly.',
+    keywordsZh: 'Claude接入文档,Claude文档,API接入,使用指南,配置教程,Claude API',
+    keywordsEn: 'Claude integration docs, Claude docs, API integration, setup guide, Claude API',
   });
 }
 

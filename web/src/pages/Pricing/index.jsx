@@ -19,7 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
+import { useSearchParams } from 'react-router-dom';
+import { Tag } from '@douyinfe/semi-ui';
 import SeoMeta from '../../components/common/seo/SeoMeta';
 import ModelPricingPage from '../../components/table/model-pricing/layout/PricingPage';
 import SubscriptionPlansCard from '../../components/topup/SubscriptionPlansCard';
@@ -27,8 +28,6 @@ import { API, getUserData } from '../../helpers';
 import { getPricingSeo } from '../../helpers/seo';
 import { StatusContext } from '../../context/Status';
 
-const { Text } = Typography;
-const { TabPane } = Tabs;
 const PLAN_LIST_TAB = ['plan', 'list'].join('_');
 const PACKAGE_VARIANT = ['pack', 'age'].join('');
 
@@ -183,7 +182,7 @@ const SubscriptionPricingTab = ({ t }) => {
         initialMainTab={PLAN_LIST_TAB}
         uiVariant={PACKAGE_VARIANT}
         showUserSubscriptions={false}
-        withCard
+        withCard={false}
       />
     </div>
   );
@@ -193,54 +192,98 @@ const Pricing = () => {
   const { i18n } = useTranslation();
   const { t } = useTranslation();
   const seo = getPricingSeo(i18n.language);
-  const [activeTab, setActiveTab] = useState('model-pricing');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get('tab') || 'model-pricing',
+  );
+
+  const handleTabChange = (key) => {
+    setActiveTab(key);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (key === 'model-pricing') next.delete('tab');
+        else next.set('tab', key);
+        return next;
+      },
+      { replace: true },
+    );
+  };
 
   return (
     <>
       <SeoMeta {...seo} />
-      <div className='pricing-landing-page mx-auto mt-[60px] w-full max-w-[1440px] px-3 py-5 md:px-5 md:py-8'>
-        <Card className='!overflow-hidden !rounded-[30px] border-0 shadow-[0_22px_60px_rgba(15,23,42,0.08)]'>
-          <Tabs
-            type='card'
-            keepDOM={false}
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            className='pricing-landing-tabs'
-          >
-            <TabPane
-              tab={
-                <div className='pricing-tab-label flex items-center gap-2'>
-                  <span>{t('模型价格')}</span>
-                  <Tag color='white' shape='circle' size='small'>
-                    {t('透明')}
-                  </Tag>
-                </div>
-              }
-              itemKey='model-pricing'
-            >
-              <div className='space-y-3 px-1 pb-1'>
-                <div className='pricing-landing-model-panel'>
-                  <ModelPricingPage />
-                </div>
-              </div>
-            </TabPane>
-            <TabPane
-              tab={
-                <div className='pricing-tab-label flex items-center gap-2'>
-                  <span>{t('订阅套餐')}</span>
-                  <Tag color='green' shape='circle' size='small'>
-                    {t('可售卖')}
-                  </Tag>
-                </div>
-              }
-              itemKey='subscription-plans'
-            >
-              <div className='space-y-3 px-1 pb-1'>
-                <SubscriptionPricingTab t={t} />
-              </div>
-            </TabPane>
-          </Tabs>
-        </Card>
+      <div className='pricing-landing-page mx-auto mt-[60px] w-full max-w-[1440px] px-3 pb-8 md:px-6'>
+        {/* Tab 导航栏 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '16px 0 0',
+            marginBottom: 0,
+            borderBottom: '1px solid var(--semi-color-border)',
+          }}
+        >
+          {[
+            {
+              key: 'model-pricing',
+              label: t('模型价格'),
+              badge: { color: 'blue', text: t('透明') },
+            },
+            {
+              key: 'subscription-plans',
+              label: t('订阅套餐'),
+              badge: { color: 'green', text: t('可售卖') },
+            },
+          ].map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => handleTabChange(tab.key)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '10px 16px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: isActive
+                    ? '2px solid var(--semi-color-primary)'
+                    : '2px solid transparent',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive
+                    ? 'var(--semi-color-primary)'
+                    : 'var(--semi-color-text-1)',
+                  marginBottom: -1,
+                  transition: 'all 0.2s',
+                  outline: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span>{tab.label}</span>
+                <Tag color={tab.badge.color} shape='circle' size='small'>
+                  {tab.badge.text}
+                </Tag>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 内容区域 */}
+        <div style={{ paddingTop: 16 }}>
+          {activeTab === 'model-pricing' && (
+            <div className='pricing-landing-model-panel'>
+              <ModelPricingPage />
+            </div>
+          )}
+          {activeTab === 'subscription-plans' && (
+            <SubscriptionPricingTab t={t} />
+          )}
+        </div>
       </div>
     </>
   );

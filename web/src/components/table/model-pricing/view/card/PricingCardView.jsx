@@ -195,7 +195,7 @@ const PriceBlock = ({ priceData, siteDisplayType, t }) => {
             style={{
               color: PRICE_COLORS[item.key] || 'var(--semi-color-text-2)',
               fontWeight: 600,
-              fontSize: 11,
+              fontSize: 12,
               letterSpacing: '-0.01em',
             }}
           >
@@ -302,22 +302,22 @@ const PricingCardView = ({
             quotaDisplayType: siteDisplayType,
           });
 
+          const hue = model?.model_name
+            ? [...model.model_name].reduce((s, c) => s + c.charCodeAt(0), 0) % 360
+            : 220;
+
+          const accentColor = `hsl(${hue}, 65%, 52%)`;
+
           return (
             <Card
               key={modelKey || index}
-              className='pricing-model-card'
+              className={`pricing-model-card${isSelected ? ' pricing-model-card--selected' : ''}`}
               style={{
-                borderColor: isSelected
+                '--card-accent': isSelected
                   ? 'var(--semi-color-primary)'
-                  : 'color-mix(in srgb, var(--semi-color-border) 75%, transparent 25%)',
-                background: isSelected
-                  ? 'linear-gradient(180deg, var(--semi-color-primary-light-default) 0%, color-mix(in srgb, var(--semi-color-bg-0) 88%, #ffffff 12%) 100%)'
-                  : 'linear-gradient(180deg, color-mix(in srgb, var(--semi-color-bg-0) 94%, #ffffff 6%) 0%, color-mix(in srgb, var(--semi-color-fill-0) 88%, #ffffff 12%) 100%)',
-                boxShadow: isSelected
-                  ? '0 18px 36px rgba(59, 130, 246, 0.12)'
-                  : '0 14px 34px rgba(15, 23, 42, 0.06)',
+                  : accentColor,
               }}
-              bodyStyle={{ padding: 18 }}
+              bodyStyle={{ padding: '16px 18px' }}
               onClick={() => openModelDetail && openModelDetail(model)}
             >
               <div
@@ -325,7 +325,7 @@ const PricingCardView = ({
                   display: 'flex',
                   flexDirection: 'column',
                   height: '100%',
-                  gap: 14,
+                  gap: 12,
                 }}
               >
                 <div
@@ -423,19 +423,19 @@ const PricingCardView = ({
                   <div
                     className='pricing-model-card__meta-item'
                     style={{
-                      borderRadius: 14,
-                      padding: '10px 12px',
+                      borderRadius: 12,
+                      padding: '8px 10px',
                       background:
                         'color-mix(in srgb, var(--semi-color-fill-0) 82%, #ffffff 18%)',
                       border:
                         '1px solid color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%)',
                     }}
                   >
-                    <div className='pricing-price-label'>{t('计费类型')}</div>
+                    <div style={{ fontSize: 11, color: 'var(--semi-color-text-3)' }}>{t('计费类型')}</div>
                     <div
                       style={{
-                        marginTop: 4,
-                        fontSize: 13,
+                        marginTop: 3,
+                        fontSize: 12,
                         fontWeight: 700,
                         color: 'var(--semi-color-text-0)',
                       }}
@@ -446,19 +446,19 @@ const PricingCardView = ({
                   <div
                     className='pricing-model-card__meta-item'
                     style={{
-                      borderRadius: 14,
-                      padding: '10px 12px',
+                      borderRadius: 12,
+                      padding: '8px 10px',
                       background:
                         'color-mix(in srgb, var(--semi-color-fill-0) 82%, #ffffff 18%)',
                       border:
                         '1px solid color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%)',
                     }}
                   >
-                    <div className='pricing-price-label'>{t('访问范围')}</div>
+                    <div style={{ fontSize: 11, color: 'var(--semi-color-text-3)' }}>{t('访问范围')}</div>
                     <div
                       style={{
-                        marginTop: 4,
-                        fontSize: 13,
+                        marginTop: 3,
+                        fontSize: 12,
                         fontWeight: 700,
                         color: 'var(--semi-color-text-0)',
                         wordBreak: 'break-word',

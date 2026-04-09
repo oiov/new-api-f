@@ -1,0 +1,49 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FBFF"/>
+      <stop offset="0.58" stop-color="#EEF4FF"/>
+      <stop offset="1" stop-color="#F7FBF8"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(310 180) rotate(18) scale(310 220)">
+      <stop stop-color="#5B8CFF" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#5B8CFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(930 110) rotate(12) scale(250 180)">
+      <stop stop-color="#8C62FF" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#8C62FF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" rx="32" fill="url(#bg)"/>
+  <circle cx="310" cy="180" r="250" fill="url(#glowA)"/>
+  <circle cx="930" cy="110" r="210" fill="url(#glowB)"/>
+
+  <g>
+    <rect x="88" y="80" width="220" height="54" rx="27" fill="#FFFFFF" fill-opacity="0.82" stroke="#D9E3F0"/>
+    <image href="/logo.png" x="104" y="91" width="32" height="32"/>
+    <text x="148" y="113" fill="#1F2329" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="800">FishXCode</text>
+  </g>
+
+  <text x="88" y="206" fill="#1F2329" font-size="68" font-family="Arial, Helvetica, sans-serif" font-weight="800">企业级 Claude API</text>
+  <text x="88" y="278" fill="#4F73E6" font-size="68" font-family="Arial, Helvetica, sans-serif" font-weight="800">官方通道中转</text>
+
+  <text x="88" y="360" fill="#4E5969" font-size="30" font-family="Arial, Helvetica, sans-serif" font-weight="500">仅接 Anthropic 官方通道，不走逆向，智能缓存命中超 80%。</text>
+  <text x="88" y="408" fill="#4E5969" font-size="30" font-family="Arial, Helvetica, sans-serif" font-weight="500">兼容官方 API 接入方式，支持企业开具正规增值税发票。</text>
+
+  <g opacity="0.98">
+    <rect x="88" y="476" width="220" height="54" rx="27" fill="#FFFFFF" stroke="#D9E3F0"/>
+    <circle cx="116" cy="503" r="8" fill="#4AB96C"/>
+    <text x="136" y="511" fill="#2F3A4B" font-size="21" font-family="Arial, Helvetica, sans-serif" font-weight="700">仅接官方，不做逆向</text>
+
+    <rect x="326" y="476" width="248" height="54" rx="27" fill="#FFFFFF" stroke="#D9E3F0"/>
+    <circle cx="354" cy="503" r="8" fill="#5B8CFF"/>
+    <text x="374" y="511" fill="#2F3A4B" font-size="21" font-family="Arial, Helvetica, sans-serif" font-weight="700">兼容官方 API，零代码迁移</text>
+
+    <rect x="592" y="476" width="210" height="54" rx="27" fill="#FFFFFF" stroke="#D9E3F0"/>
+    <circle cx="620" cy="503" r="8" fill="#F08C47"/>
+    <text x="640" y="511" fill="#2F3A4B" font-size="21" font-family="Arial, Helvetica, sans-serif" font-weight="700">正规增值税发票</text>
+  </g>
+
+  <text x="88" y="572" fill="#6B7280" font-size="22" font-family="Arial, Helvetica, sans-serif" font-weight="700">fishxcode.com</text>
+</svg>

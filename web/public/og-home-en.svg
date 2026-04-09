@@ -1,0 +1,49 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FBFF"/>
+      <stop offset="0.58" stop-color="#EEF4FF"/>
+      <stop offset="1" stop-color="#F7FBF8"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(310 180) rotate(18) scale(310 220)">
+      <stop stop-color="#5B8CFF" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#5B8CFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(930 110) rotate(12) scale(250 180)">
+      <stop stop-color="#8C62FF" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#8C62FF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" rx="32" fill="url(#bg)"/>
+  <circle cx="310" cy="180" r="250" fill="url(#glowA)"/>
+  <circle cx="930" cy="110" r="210" fill="url(#glowB)"/>
+
+  <g>
+    <rect x="88" y="80" width="220" height="54" rx="27" fill="#FFFFFF" fill-opacity="0.82" stroke="#D9E3F0"/>
+    <image href="/logo.png" x="104" y="91" width="32" height="32"/>
+    <text x="148" y="113" fill="#1F2329" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="800">FishXCode</text>
+  </g>
+
+  <text x="88" y="202" fill="#1F2329" font-size="62" font-family="Arial, Helvetica, sans-serif" font-weight="800">Enterprise Claude API</text>
+  <text x="88" y="270" fill="#4F73E6" font-size="62" font-family="Arial, Helvetica, sans-serif" font-weight="800">Official Channel Gateway</text>
+
+  <text x="88" y="352" fill="#4E5969" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="500">Official Anthropic only. No reverse proxy. 80%+ cache hit rate.</text>
+  <text x="88" y="398" fill="#4E5969" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="500">API-compatible access with formal enterprise invoicing support.</text>
+
+  <g opacity="0.98">
+    <rect x="88" y="476" width="238" height="54" rx="27" fill="#FFFFFF" stroke="#D9E3F0"/>
+    <circle cx="116" cy="503" r="8" fill="#4AB96C"/>
+    <text x="136" y="511" fill="#2F3A4B" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="700">Official Anthropic only</text>
+
+    <rect x="344" y="476" width="316" height="54" rx="27" fill="#FFFFFF" stroke="#D9E3F0"/>
+    <circle cx="372" cy="503" r="8" fill="#5B8CFF"/>
+    <text x="392" y="511" fill="#2F3A4B" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="700">API-compatible, zero-code migration</text>
+
+    <rect x="678" y="476" width="228" height="54" rx="27" fill="#FFFFFF" stroke="#D9E3F0"/>
+    <circle cx="706" cy="503" r="8" fill="#F08C47"/>
+    <text x="726" y="511" fill="#2F3A4B" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="700">Enterprise invoicing</text>
+  </g>
+
+  <text x="88" y="572" fill="#6B7280" font-size="22" font-family="Arial, Helvetica, sans-serif" font-weight="700">fishxcode.com</text>
+</svg>

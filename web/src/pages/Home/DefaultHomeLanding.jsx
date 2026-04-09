@@ -115,36 +115,36 @@ const DefaultHomeLanding = ({
   const trustItems = [
     {
       icon: <IconShield size='large' />,
-      title: t('100% 官方 Anthropic 通道'),
-      description: t('直连 Anthropic 官方 API，绝不使用逆向。每次请求均走官方链路，数据安全，服务稳定无忧。'),
+      title: t('仅接 Anthropic 官方通道'),
+      description: t('每次请求均走 Anthropic 官方链路，不提供逆向，不混用第三方号池，适合对合规、稳定和数据路径有要求的团队。'),
     },
     {
       icon: <IconBolt size='large' />,
-      title: t('智能缓存，节省 60%+ 成本'),
-      description: t('缓存命中率超 80%，命中部分按缓存价格计费，有效降低 Token 费用，无需任何额外配置。'),
+      title: t('智能缓存降本，但仍是官方计费逻辑'),
+      description: t('缓存命中率可达 80% 以上，命中部分按缓存价格计费，帮助高频调用场景显著降低 Token 开销。'),
     },
     {
       icon: <IconBriefcase size='large' />,
-      title: t('支持开具增值税发票'),
-      description: t('满足企业财务合规需求，支持正规采购流程与对账协同，B2B 合作无障碍。'),
+      title: t('支持企业采购与正规增值税发票'),
+      description: t('支持标准采购、对账与开票流程，便于研发团队、业务团队和财务团队统一落地。'),
     },
   ];
 
   const featureItems = [
     {
       icon: <IconServer size='large' />,
-      title: t('零代码迁移，3 步完成接入'),
-      description: t('完全兼容官方 API 格式，更换 Base URL、设置 API Key 即可开始使用，无需改动任何业务代码。'),
+      title: t('兼容官方 API，分钟级完成迁移'),
+      description: t('保持官方接口格式和调用方式，只需替换 Base URL 与 API Key，现有业务代码基本无需重写。'),
     },
     {
       icon: <IconActivity size='large' />,
-      title: t('企业级高可用 SLA'),
-      description: t('高可用服务保障，专属技术支持通道，确保业务连续性不受影响。'),
+      title: t('面向生产环境的稳定接入能力'),
+      description: t('针对企业与高频调用场景提供持续可用的接入能力和技术支持，降低业务切换与上线风险。'),
     },
     {
       icon: <IconSafe size='large' />,
-      title: t('透明计费，用量越大折扣越高'),
-      description: t('计费模式与官方完全一致，企业专属折扣价格，用量越大优惠越多，账单清晰可查。'),
+      title: t('账单透明，适合持续规模化使用'),
+      description: t('延续官方模型计费逻辑，叠加缓存优化与企业折扣，既方便成本核算，也适合长期扩容。'),
     },
   ];
 
@@ -171,13 +171,13 @@ const DefaultHomeLanding = ({
               >
                 <Tag color='cyan' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
                   <span className='hl-pulse-dot' />
-                  {t('100% 官方通道')}
+                  {t('Anthropic 官方通道')}
                 </Tag>
                 <Tag color='green' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
-                  {t('缓存命中 >80%')}
+                  {t('智能缓存降本')}
                 </Tag>
                 <Tag color='orange' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
-                  {t('可开增值税发票')}
+                  {t('支持企业采购')}
                 </Tag>
               </div>
 
@@ -188,7 +188,7 @@ const DefaultHomeLanding = ({
                   className={`!mb-5 !text-2xl !font-black !leading-[1.05] sm:!text-4xl md:!text-5xl lg:!text-6xl ${isChinese ? 'tracking-[-0.03em]' : ''}`}
                 >
                   <span className='hl-gradient-text'>
-                    {t('官方 Claude API · 成本降低 60%+')}
+                    {t('企业级 Claude API 官方通道中转')}
                   </span>
                 </Title>
               </div>
@@ -196,7 +196,7 @@ const DefaultHomeLanding = ({
               {/* 副标题 */}
               <div style={anim('hl-fade-up 0.7s ease', 0.32)}>
                 <Paragraph className='!mb-0 max-w-3xl !text-base !leading-7 !text-semi-color-text-1 md:!text-lg'>
-                  {t('仅接 Anthropic 官方通道，不走逆向。智能缓存命中超 80%，比直连官方节省 60%+ Token 费用，支持企业开具正规增值税发票。')}
+                  {t('仅接 Anthropic 官方通道，不走逆向。智能缓存命中超 80%，比直连官方节省 60%+ Token 成本，兼容官方 API 接入方式，并支持企业开具正规增值税发票。')}
                 </Paragraph>
               </div>
 
@@ -206,9 +206,9 @@ const DefaultHomeLanding = ({
                 style={anim('hl-fade-up 0.6s ease', 0.44)}
               >
                 {[
-                  t('仅接官方，不做逆向'),
-                  t('节省 60%+ Token 成本'),
-                  t('支持开具正规增值税发票'),
+                  t('仅接 Anthropic 官方通道'),
+                  t('兼容官方 API，零代码迁移'),
+                  t('支持正规增值税发票'),
                 ].map((text) => (
                   <span
                     key={text}
@@ -233,7 +233,7 @@ const DefaultHomeLanding = ({
                     className='!rounded-full !px-7'
                     icon={<IconPlay />}
                   >
-                    {t('查看接入方案')}
+                    {t('价格方案')}
                   </Button>
                 </Link>
                 <Link to='/console'>
@@ -242,7 +242,7 @@ const DefaultHomeLanding = ({
                     className='!rounded-full !px-7'
                     icon={<IconBolt />}
                   >
-                    {t('立即获取密钥')}
+                    {t('立即获取 API 地址')}
                   </Button>
                 </Link>
                 {isDemoSiteMode && version ? (
@@ -263,7 +263,7 @@ const DefaultHomeLanding = ({
                       icon={<IconFile />}
                       onClick={() => window.open(docsLink + '/start', '_blank')}
                     >
-                      {t('开发文档')}
+                      {t('Claude 接入文档')}
                     </Button>
                   )
                 )}
@@ -300,16 +300,16 @@ const DefaultHomeLanding = ({
                       {t('Base URL')}
                     </Text>
                     <Title heading={4} className='!mb-0 !mt-2'>
-                      {t('10 分钟完成接入切换')}
+                      {t('保留官方调用方式，快速切到生产环境')}
                     </Title>
                   </div>
                   <div className='rounded-2xl bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-700 dark:text-cyan-200'>
-                    {t('生产可用')}
+                    {t('企业级可用')}
                   </div>
                 </div>
 
                 <Paragraph className='!mb-5 !text-sm !leading-6 !text-semi-color-text-1'>
-                  {t('完全兼容官方 API，仅需更换 Base URL，零代码改动即可接入。')}
+                  {t('无需重写业务逻辑，保留原有官方 SDK 和请求格式，替换 Base URL 与 Key 后即可开始调用。')}
                 </Paragraph>
 
                 <Input
@@ -403,13 +403,13 @@ const DefaultHomeLanding = ({
             className={`hl-reveal mx-auto max-w-3xl text-center ${providerInView ? 'hl-in' : ''}`}
           >
             <Text className='!text-xs !font-semibold !uppercase !tracking-[0.24em] !text-cyan-600 dark:!text-cyan-300'>
-              {t('多模型接入')}
+              {t('Claude 官方通道')}
             </Text>
             <Title heading={2} className='!mb-3 !mt-4'>
-              {t('以 Claude 为核心，同时支持接入主流模型生态')}
+              {t('企业级 Claude API 为核心，兼容常用模型生态')}
             </Title>
             <Paragraph className='!mb-0 !text-base !leading-7 !text-semi-color-text-1'>
-              {t('一套平台统一管理所有模型 API，无缝接入 GPT、Gemini 等主流模型，无需多个账号和密钥。')}
+              {t('优先提供稳定的 Claude 官方通道接入，同时兼容 GPT、Gemini 等常用模型，满足团队在一个平台内统一管理多模型调用的需求。')}
             </Paragraph>
           </div>
 

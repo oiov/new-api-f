@@ -718,43 +718,62 @@ html.dark .sbg-variant-green {
 }
 
 .subscription-plan-selling-card {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--semi-color-bg-0) 95%, #ffffff 5%) 0%,
-    color-mix(in srgb, var(--semi-color-fill-0) 90%, #ffffff 10%) 100%
-  );
+  border-radius: 20px !important;
+  border: 1px solid var(--semi-color-border) !important;
+  overflow: hidden;
+  background: var(--semi-color-bg-0) !important;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06) !important;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+
+.subscription-plan-selling-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.12) !important;
+  border-color: var(--semi-color-primary-light-hover) !important;
 }
 
 .subscription-plan-selling-card-featured {
+  border-color: rgba(59, 130, 246, 0.45) !important;
   box-shadow:
-    0 22px 44px rgba(59, 130, 246, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    0 0 0 2px rgba(59, 130, 246, 0.18),
+    0 20px 48px rgba(59, 130, 246, 0.16) !important;
+}
+
+.subscription-plan-selling-card-featured:hover {
+  border-color: rgba(59, 130, 246, 0.7) !important;
+  box-shadow:
+    0 0 0 2px rgba(59, 130, 246, 0.3),
+    0 24px 56px rgba(59, 130, 246, 0.22) !important;
 }
 
 .subscription-plan-selling-card__inner {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
   height: 100%;
-  padding: 18px;
+  padding: 0;
 }
 
 .subscription-plan-selling-card__top {
-  padding: 18px;
-  border-radius: 24px;
+  padding: 20px 20px 18px;
   background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--semi-color-primary-light-default) 54%, #ffffff 46%)
-      0%,
-    color-mix(in srgb, var(--semi-color-fill-0) 70%, #ffffff 30%) 100%
+    145deg,
+    color-mix(in srgb, var(--semi-color-primary-light-default) 28%, var(--semi-color-bg-0) 72%) 0%,
+    var(--semi-color-bg-0) 100%
   );
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.subscription-plan-selling-card-featured .subscription-plan-selling-card__top {
+  background: linear-gradient(145deg, #1d4ed8 0%, #4f46e5 55%, #7c3aed 100%);
+  border-bottom-color: transparent;
 }
 
 .subscription-plan-selling-card__price {
-  font-size: 32px;
+  font-size: 34px;
   line-height: 1;
   font-weight: 800;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.05em;
   color: var(--semi-color-text-0);
 }
 
@@ -765,33 +784,51 @@ html.dark .sbg-variant-green {
   color: var(--semi-color-text-2);
 }
 
+.subscription-plan-selling-card-featured .subscription-plan-selling-card__price {
+  color: #ffffff;
+}
+
+.subscription-plan-selling-card-featured .subscription-plan-selling-card__duration {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* featured 卡片内所有小字变白 */
+.subscription-plan-selling-card-featured .subscription-plan-selling-card__top .semi-typography,
+.subscription-plan-selling-card-featured .subscription-plan-selling-card__top p,
+.subscription-plan-selling-card-featured .subscription-plan-selling-card__top span {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.subscription-plan-selling-card-featured .subscription-plan-selling-card__top strong,
+.subscription-plan-selling-card-featured .subscription-plan-selling-card__top b {
+  color: #ffffff !important;
+}
+
 .subscription-plan-selling-card__metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
+  padding: 0 16px;
 }
 
 .subscription-plan-selling-card__metric {
-  border-radius: 18px;
-  padding: 12px 14px;
-  border: 1px solid
-    color-mix(in srgb, var(--semi-color-border) 74%, transparent 26%);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--semi-color-fill-0) 78%, #ffffff 22%) 0%,
-    color-mix(in srgb, var(--semi-color-bg-0) 88%, #ffffff 12%) 100%
-  );
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 70%, transparent 30%);
+  background: var(--semi-color-fill-0);
 }
 
 .subscription-plan-selling-card__metric-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--semi-color-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .subscription-plan-selling-card__metric-value {
-  margin-top: 6px;
-  font-size: 14px;
-  line-height: 1.5;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.4;
   font-weight: 700;
   color: var(--semi-color-text-0);
 }
@@ -800,7 +837,8 @@ html.dark .sbg-variant-green {
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  padding: 0 16px 16px;
 }
 
 .subscription-plan-selling-pagination {
@@ -868,19 +906,33 @@ html.dark .package-page-shell .semi-table-wrapper {
 }
 
 html.dark .subscription-plan-selling-card {
-  background: linear-gradient(
-    180deg,
-    rgba(17, 24, 39, 0.96) 0%,
-    rgba(15, 23, 42, 0.98) 100%
-  );
+  background: rgba(15, 23, 42, 0.98) !important;
+  border-color: color-mix(in srgb, var(--semi-color-border) 55%, transparent 45%) !important;
+}
+
+html.dark .subscription-plan-selling-card:hover {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35) !important;
+}
+
+html.dark .subscription-plan-selling-card-featured {
+  border-color: rgba(59, 130, 246, 0.45) !important;
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.2),
+    0 24px 48px rgba(59, 130, 246, 0.18) !important;
 }
 
 html.dark .subscription-plan-selling-card__top {
   background: linear-gradient(
-    135deg,
-    rgba(30, 41, 59, 0.9) 0%,
-    rgba(51, 65, 85, 0.82) 100%
+    145deg,
+    rgba(37, 99, 235, 0.14) 0%,
+    rgba(30, 41, 59, 0.55) 100%
   );
+  border-bottom-color: color-mix(in srgb, var(--semi-color-border) 50%, transparent 50%);
+}
+
+html.dark .subscription-plan-selling-card-featured .subscription-plan-selling-card__top {
+  background: linear-gradient(145deg, #1e3a8a 0%, #3730a3 55%, #5b21b6 100%);
+  border-bottom-color: transparent;
 }
 
 html.dark .subscription-plan-selling-card__metric {
@@ -889,11 +941,7 @@ html.dark .subscription-plan-selling-card__metric {
     var(--semi-color-border) 44%,
     transparent 56%
   );
-  background: linear-gradient(
-    180deg,
-    rgba(30, 41, 59, 0.72) 0%,
-    rgba(15, 23, 42, 0.76) 100%
-  );
+  background: rgba(30, 41, 59, 0.72);
 }
 
 .semi-tabs-content {
@@ -1742,12 +1790,29 @@ html.dark .with-pastel-balls::before {
 
 .pricing-landing-model-panel .pricing-layout {
   margin-top: 0;
-  height: min(960px, calc(100vh - 240px));
+  height: min(960px, calc(100vh - 180px));
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
 }
 
 .pricing-landing-model-panel .pricing-sidebar,
 .pricing-landing-model-panel .pricing-content {
-  height: min(960px, calc(100vh - 240px));
+  height: min(960px, calc(100vh - 180px));
+}
+
+.pricing-landing-model-panel .pricing-sidebar {
+  border-right: 1px solid var(--semi-color-border);
+  background: var(--semi-color-bg-0);
+}
+
+.pricing-landing-model-panel .pricing-content {
+  background: var(--semi-color-bg-0);
+}
+
+.pricing-landing-model-panel .pricing-search-header {
+  background: var(--semi-color-bg-0);
 }
 
 html.dark .pricing-layout {
@@ -1919,24 +1984,63 @@ html.dark .pricing-landing-tabs > .semi-tabs-bar .semi-tabs-tab-active {
 
 /* 单张模型卡片 */
 .pricing-model-card {
-  border-radius: 16px !important;
-  border: 1px solid var(--semi-color-border) !important;
+  --card-accent: var(--semi-color-primary);
+  --card-bg-tint: var(--semi-color-bg-0);
+  border-radius: 18px !important;
+  /* top border 用 CSS 变量，允许每张卡片 override */
+  border-top: 3px solid var(--card-accent) !important;
+  border-right: 1px solid var(--semi-color-border) !important;
+  border-bottom: 1px solid var(--semi-color-border) !important;
+  border-left: 1px solid var(--semi-color-border) !important;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-accent) 5%, var(--semi-color-bg-0) 95%) 0%,
+    var(--semi-color-bg-0) 100%
+  ) !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06) !important;
   cursor: pointer;
   transition:
-    box-shadow 0.2s ease,
-    border-color 0.2s ease,
-    transform 0.18s ease;
+    transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.18s ease !important;
   overflow: hidden;
 }
 
 .pricing-model-card:hover {
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1) !important;
-  border-color: var(--semi-color-primary-light-hover) !important;
-  transform: translateY(-2px);
+  box-shadow: 0 10px 32px color-mix(in srgb, var(--card-accent) 20%, rgba(15,23,42,0.08) 80%) !important;
+  border-top-color: color-mix(in srgb, var(--card-accent) 85%, transparent 15%) !important;
+  transform: translateY(-4px);
+}
+
+html.dark .pricing-model-card {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-accent) 8%, var(--semi-color-bg-1) 92%) 0%,
+    var(--semi-color-bg-1) 100%
+  ) !important;
+  border-right-color: color-mix(in srgb, var(--semi-color-border) 55%, transparent 45%) !important;
+  border-bottom-color: color-mix(in srgb, var(--semi-color-border) 55%, transparent 45%) !important;
+  border-left-color: color-mix(in srgb, var(--semi-color-border) 55%, transparent 45%) !important;
 }
 
 html.dark .pricing-model-card:hover {
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.42) !important;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38) !important;
+}
+
+.pricing-model-card--selected {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-accent) 10%, var(--semi-color-bg-0) 90%) 0%,
+    var(--semi-color-bg-0) 100%
+  ) !important;
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--card-accent) 28%, transparent 72%) !important;
+}
+
+html.dark .pricing-model-card--selected {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-accent) 14%, var(--semi-color-bg-1) 86%) 0%,
+    var(--semi-color-bg-1) 100%
+  ) !important;
 }
 
 /* 价格行 */

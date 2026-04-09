@@ -1,5 +1,14 @@
-# https://www.robotstxt.org/robotstxt.html
+# FishXCode public site crawler rules
 User-agent: *
 Allow: /
-Disallow:
+Disallow: /console/
+Disallow: /api/
+Disallow: /oauth/
+Disallow: /reset
+Disallow: /setup
+Disallow: /chat2link
+Disallow: /forbidden
+
+Host: https://fishxcode.com
 Sitemap: https://fishxcode.com/sitemap.xml
+Sitemap: https://fishxcode.com/rss.xml
