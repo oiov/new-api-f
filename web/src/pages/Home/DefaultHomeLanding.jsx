@@ -41,16 +41,24 @@ const { Text, Title, Paragraph } = Typography;
 function useCountUp(target, duration = 1200, trigger = false) {
   const [val, setVal] = useState(0);
   useEffect(() => {
-    if (!trigger) return;
+    if (!trigger || typeof window === 'undefined') return;
     let startTime = null;
+    let frameId = null;
     const step = (ts) => {
       if (!startTime) startTime = ts;
       const progress = Math.min((ts - startTime) / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
       setVal(Math.round(eased * target));
-      if (progress < 1) requestAnimationFrame(step);
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(step);
+      }
     };
-    requestAnimationFrame(step);
+    frameId = window.requestAnimationFrame(step);
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
   }, [trigger, target, duration]);
   return val;
 }
@@ -62,6 +70,13 @@ function useInView(threshold = 0.12) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    if (
+      typeof window === 'undefined' ||
+      typeof window.IntersectionObserver !== 'function'
+    ) {
+      setInView(true);
+      return;
+    }
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -77,7 +92,43 @@ function useInView(threshold = 0.12) {
   return [ref, inView];
 }
 
-const DefaultHomeLanding = ({
+const trustItems = (t) => [
+  {
+    icon: <IconShield size='large' />,
+    title: t('仅接 Anthropic 官方通道'),
+    description: t('每次请求均走 Anthropic 官方链路，不提供逆向，不混用第三方号池，适合对合规、稳定和数据路径有要求的团队。'),
+  },
+  {
+    icon: <IconBolt size='large' />,
+    title: t('智能缓存降本，但仍是官方计费逻辑'),
+    description: t('缓存命中率可达 80% 以上，命中部分按缓存价格计费，帮助高频调用场景显著降低 Token 开销。'),
+  },
+  {
+    icon: <IconBriefcase size='large' />,
+    title: t('支持企业采购与正规增值税发票'),
+    description: t('支持标准采购、对账与开票流程，便于研发团队、业务团队和财务团队统一落地。'),
+  },
+];
+
+const featureItems = (t) => [
+  {
+    icon: <IconServer size='large' />,
+    title: t('兼容官方 API，分钟级完成迁移'),
+    description: t('保持官方接口格式和调用方式，只需替换 Base URL 与 API Key，现有业务代码基本无需重写。'),
+  },
+  {
+    icon: <IconActivity size='large' />,
+    title: t('面向生产环境的稳定接入能力'),
+    description: t('针对企业与高频调用场景提供持续可用的接入能力和技术支持，降低业务切换与上线风险。'),
+  },
+  {
+    icon: <IconSafe size='large' />,
+    title: t('账单透明，适合持续规模化使用'),
+    description: t('延续官方模型计费逻辑，叠加缓存优化与企业折扣，既方便成本核算，也适合长期扩容。'),
+  },
+];
+
+const DesktopHomeLanding = ({
   t,
   isMobile,
   isChinese,
@@ -90,69 +141,29 @@ const DefaultHomeLanding = ({
   isDemoSiteMode,
   version,
 }) => {
-  // Hero 入场动画触发（50ms 延迟确保首次 paint 后开始）
   const [heroReady, setHeroReady] = useState(false);
   useEffect(() => {
     const id = setTimeout(() => setHeroReady(true), 50);
     return () => clearTimeout(id);
   }, []);
 
-  // 统计数字递增
   const count1 = useCountUp(100, 1200, heroReady);
   const count2 = useCountUp(80, 1500, heroReady);
   const count3 = useCountUp(60, 1800, heroReady);
-
-  // 滚动显示 ref
   const [featRef, featInView] = useInView(0.1);
   const [providerRef, providerInView] = useInView(0.1);
-
-  // 入场动画 helper
-  const anim = (name, delay) =>
-    heroReady
-      ? { animation: `${name} both`, animationDelay: `${delay}s` }
-      : { opacity: 0 };
-
-  const trustItems = [
-    {
-      icon: <IconShield size='large' />,
-      title: t('仅接 Anthropic 官方通道'),
-      description: t('每次请求均走 Anthropic 官方链路，不提供逆向，不混用第三方号池，适合对合规、稳定和数据路径有要求的团队。'),
-    },
-    {
-      icon: <IconBolt size='large' />,
-      title: t('智能缓存降本，但仍是官方计费逻辑'),
-      description: t('缓存命中率可达 80% 以上，命中部分按缓存价格计费，帮助高频调用场景显著降低 Token 开销。'),
-    },
-    {
-      icon: <IconBriefcase size='large' />,
-      title: t('支持企业采购与正规增值税发票'),
-      description: t('支持标准采购、对账与开票流程，便于研发团队、业务团队和财务团队统一落地。'),
-    },
-  ];
-
-  const featureItems = [
-    {
-      icon: <IconServer size='large' />,
-      title: t('兼容官方 API，分钟级完成迁移'),
-      description: t('保持官方接口格式和调用方式，只需替换 Base URL 与 API Key，现有业务代码基本无需重写。'),
-    },
-    {
-      icon: <IconActivity size='large' />,
-      title: t('面向生产环境的稳定接入能力'),
-      description: t('针对企业与高频调用场景提供持续可用的接入能力和技术支持，降低业务切换与上线风险。'),
-    },
-    {
-      icon: <IconSafe size='large' />,
-      title: t('账单透明，适合持续规模化使用'),
-      description: t('延续官方模型计费逻辑，叠加缓存优化与企业折扣，既方便成本核算，也适合长期扩容。'),
-    },
-  ];
-
+  const trustCardItems = trustItems(t);
+  const featureCardItems = featureItems(t);
   const stats = [
     { value: `${count1}%`, label: t('官方 API 通道') },
     { value: `>${count2}%`, label: t('缓存命中率') },
     { value: `${count3}%+`, label: t('Token 成本节省') },
   ];
+
+  const anim = (name, delay) =>
+    heroReady
+      ? { animation: `${name} both`, animationDelay: `${delay}s` }
+      : { opacity: 0 };
 
   return (
     <div className='w-full overflow-x-hidden'>
@@ -345,7 +356,7 @@ const DefaultHomeLanding = ({
                 />
 
                 <div className='mt-6 space-y-3'>
-                  {trustItems.map((item) => (
+                  {trustCardItems.map((item) => (
                     <div
                       key={item.title}
                       className='hl-trust-hover rounded-2xl border border-semi-color-border bg-semi-color-bg-0/80 p-4 dark:bg-white/[0.03]'
@@ -373,7 +384,7 @@ const DefaultHomeLanding = ({
       {/* ── Feature cards（滚动显示 + 悬停浮起） ── */}
       <section className='mx-auto w-full max-w-[1280px] px-4 py-10 md:px-6 md:py-16 lg:px-8'>
         <div ref={featRef} className='grid gap-5 md:grid-cols-3'>
-          {featureItems.map((item, i) => (
+          {featureCardItems.map((item, i) => (
             <div
               key={item.title}
               className={`hl-card-hover hl-reveal rounded-[20px] border border-semi-color-border bg-semi-color-bg-0 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.05)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.25)] sm:rounded-[28px] sm:p-6 ${featInView ? 'hl-in' : ''}`}
@@ -427,4 +438,4 @@ const DefaultHomeLanding = ({
   );
 };
 
-export default DefaultHomeLanding;
+export default DesktopHomeLanding;

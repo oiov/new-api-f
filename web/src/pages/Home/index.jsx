@@ -27,7 +27,7 @@ import React, {
 } from 'react';
 import { API } from '../../helpers/api';
 import { showError, copy, showSuccess } from '../../helpers/utils';
-import { useIsMobile } from '../../hooks/common/useIsMobile';
+import { MOBILE_BREAKPOINT, useIsMobile } from '../../hooks/common/useIsMobile';
 import { API_ENDPOINTS } from '../../constants/common.constant';
 import { StatusContext } from '../../context/Status';
 import { useActualTheme } from '../../context/Theme';
@@ -42,6 +42,7 @@ import {
 } from '../../helpers/seo';
 const NoticeModal = lazy(() => import('../../components/layout/NoticeModal'));
 const DefaultHomeLanding = lazy(() => import('./DefaultHomeLanding'));
+const MobileHomeLanding = lazy(() => import('./MobileHomeLanding'));
 const HOME_PAGE_CACHE_KEY = 'home_page_content_cache_v2';
 const HOME_PAGE_CACHE_TTL = 5 * 60 * 1000;
 
@@ -86,6 +87,11 @@ const Home = () => {
   const [homePageContent, setHomePageContent] = useState('');
   const [noticeVisible, setNoticeVisible] = useState(false);
   const isMobile = useIsMobile();
+  const [landingIsMobile] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`).matches
+      : false,
+  );
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
   const docsLink = statusState?.status?.docs_link || '';
   const serverAddress =
@@ -206,19 +212,31 @@ const Home = () => {
       )}
       {homePageContentLoaded && homePageContent === '' ? (
         <Suspense fallback={null}>
-          <DefaultHomeLanding
-            t={t}
-            isMobile={isMobile}
-            isChinese={i18n.language.startsWith('zh')}
-            serverAddress={serverAddress}
-            endpointItems={endpointItems}
-            endpointIndex={endpointIndex}
-            setEndpointIndex={setEndpointIndex}
-            handleCopyBaseURL={handleCopyBaseURL}
-            docsLink={docsLink}
-            isDemoSiteMode={isDemoSiteMode}
-            version={statusState?.status?.version}
-          />
+          {landingIsMobile ? (
+            <MobileHomeLanding
+              t={t}
+              isChinese={i18n.language.startsWith('zh')}
+              serverAddress={serverAddress}
+              handleCopyBaseURL={handleCopyBaseURL}
+              docsLink={docsLink}
+              isDemoSiteMode={isDemoSiteMode}
+              version={statusState?.status?.version}
+            />
+          ) : (
+            <DefaultHomeLanding
+              t={t}
+              isMobile={landingIsMobile}
+              isChinese={i18n.language.startsWith('zh')}
+              serverAddress={serverAddress}
+              endpointItems={endpointItems}
+              endpointIndex={endpointIndex}
+              setEndpointIndex={setEndpointIndex}
+              handleCopyBaseURL={handleCopyBaseURL}
+              docsLink={docsLink}
+              isDemoSiteMode={isDemoSiteMode}
+              version={statusState?.status?.version}
+            />
+          )}
         </Suspense>
       ) : (
         <div className='overflow-x-hidden w-full'>
