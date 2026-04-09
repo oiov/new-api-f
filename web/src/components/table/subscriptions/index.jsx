@@ -29,6 +29,7 @@ import AdminUserSubscriptionsTable from './AdminUserSubscriptionsTable';
 import AddEditSubscriptionModal from './modals/AddEditSubscriptionModal';
 import SubscriptionMigrationModal from './modals/SubscriptionMigrationModal';
 import SubscriptionConsumeLogsModal from './modals/SubscriptionConsumeLogsModal';
+import SubscriptionConversionRequestsPanel from './SubscriptionConversionRequestsPanel';
 import { useSubscriptionsData } from '../../../hooks/subscriptions/useSubscriptionsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -216,6 +217,10 @@ const SubscriptionsPage = () => {
               t={t}
             />
           </CardPro>
+        </TabPane>
+
+        <TabPane tab={t('套餐转余额审核')} itemKey='conversion-requests'>
+          <SubscriptionConversionRequestsPanel t={t} />
         </TabPane>
       </Tabs>
     </>

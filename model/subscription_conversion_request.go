@@ -28,9 +28,10 @@ type SubscriptionConversionRequest struct {
 	CampaignTitle string `json:"campaign_title" gorm:"type:varchar(255);not null;default:''"`
 	Status        string `json:"status" gorm:"type:varchar(32);not null;default:'pending';index"`
 
-	SubscriptionIdsJSON string `json:"subscription_ids_json" gorm:"type:text;not null"`
-	RequestRemark       string `json:"request_remark" gorm:"type:text;default:''"`
-	AdminRemark         string `json:"admin_remark" gorm:"type:text;default:''"`
+	SubscriptionIdsJSON       string `json:"subscription_ids_json" gorm:"type:text;not null"`
+	SubscriptionSnapshotsJSON string `json:"-" gorm:"type:text;not null;default:''"`
+	RequestRemark             string `json:"request_remark" gorm:"type:text;default:''"`
+	AdminRemark               string `json:"admin_remark" gorm:"type:text;default:''"`
 
 	RequestedRatio  float64 `json:"requested_ratio" gorm:"type:decimal(12,6);not null;default:1"`
 	RequestedAmount float64 `json:"requested_amount" gorm:"type:decimal(12,2);not null;default:0"`
@@ -43,8 +44,15 @@ type SubscriptionConversionRequest struct {
 	ApprovedAt int64 `json:"approved_at" gorm:"bigint;default:0"`
 	RejectedAt int64 `json:"rejected_at" gorm:"bigint;default:0"`
 	ExecutedAt int64 `json:"executed_at" gorm:"bigint;default:0"`
+	DisabledAt int64 `json:"disabled_at" gorm:"bigint;default:0"`
 	CreateTime int64 `json:"create_time" gorm:"bigint;autoCreateTime"`
 	UpdateTime int64 `json:"update_time" gorm:"bigint;autoUpdateTime"`
+}
+
+type subscriptionConversionRequestSnapshot struct {
+	UserSubscriptionId int   `json:"user_subscription_id"`
+	EndTime            int64 `json:"end_time"`
+	NextResetTime      int64 `json:"next_reset_time"`
 }
 
 type SubscriptionConversionAdminFilters struct {
@@ -103,6 +111,137 @@ func decodeSubscriptionIDList(raw string) ([]int, error) {
 	return normalizeSubscriptionIntList(ids), nil
 }
 
+func encodeSubscriptionConversionSnapshots(items []subscriptionConversionRequestSnapshot) (string, error) {
+	data, err := common.Marshal(items)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeSubscriptionConversionSnapshots(raw string) ([]subscriptionConversionRequestSnapshot, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var items []subscriptionConversionRequestSnapshot
+	if err := common.UnmarshalJsonStr(raw, &items); err != nil {
+		return nil, err
+	}
+	result := make([]subscriptionConversionRequestSnapshot, 0, len(items))
+	seen := make(map[int]struct{}, len(items))
+	for _, item := range items {
+		if item.UserSubscriptionId <= 0 {
+			continue
+		}
+		if _, ok := seen[item.UserSubscriptionId]; ok {
+			continue
+		}
+		seen[item.UserSubscriptionId] = struct{}{}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+func getSubscriptionConversionDisabledAt(request *SubscriptionConversionRequest) int64 {
+	if request == nil {
+		return 0
+	}
+	if request.DisabledAt > 0 {
+		return request.DisabledAt
+	}
+	if request.CreateTime > 0 {
+		return request.CreateTime
+	}
+	return common.GetTimestamp()
+}
+
+func lockSubscriptionConversionTargetsTx(tx *gorm.DB, userId int, subscriptionIDs []int) ([]UserSubscription, error) {
+	if tx == nil {
+		return nil, fmt.Errorf("invalid tx")
+	}
+	if userId <= 0 || len(subscriptionIDs) == 0 {
+		return nil, fmt.Errorf("invalid subscription conversion targets")
+	}
+	var subs []UserSubscription
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("user_id = ? AND id IN ?", userId, subscriptionIDs).
+		Order("end_time asc, id asc").
+		Find(&subs).Error; err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, fmt.Errorf("申请中的套餐已不存在")
+	}
+	if len(subs) != len(subscriptionIDs) {
+		return nil, fmt.Errorf("申请中的部分套餐已不存在或不可用，请让用户重新提交申请")
+	}
+	subIndex := make(map[int]UserSubscription, len(subs))
+	for i := range subs {
+		subIndex[subs[i].Id] = subs[i]
+	}
+	orderedSubs := make([]UserSubscription, 0, len(subscriptionIDs))
+	for _, subID := range subscriptionIDs {
+		sub, ok := subIndex[subID]
+		if !ok {
+			return nil, fmt.Errorf("申请中的部分套餐已不存在或不可用，请让用户重新提交申请")
+		}
+		orderedSubs = append(orderedSubs, sub)
+	}
+	return orderedSubs, nil
+}
+
+func downgradeUserGroupsForSubscriptionListTx(tx *gorm.DB, subs []UserSubscription, now int64) (string, error) {
+	cacheGroup := ""
+	for i := range subs {
+		if err := tx.Model(&subs[i]).Updates(map[string]any{
+			"status":     "cancelled",
+			"end_time":   now,
+			"updated_at": now,
+		}).Error; err != nil {
+			return "", err
+		}
+		targetGroup, err := downgradeUserGroupForSubscriptionTx(tx, &subs[i], now)
+		if err != nil {
+			return "", err
+		}
+		if targetGroup != "" {
+			cacheGroup = targetGroup
+		}
+	}
+	return cacheGroup, nil
+}
+
+func restoreUserGroupForPendingConversionTx(tx *gorm.DB, userId int, now int64) (string, error) {
+	if tx == nil || userId <= 0 {
+		return "", fmt.Errorf("invalid restore group args")
+	}
+	var activeSub UserSubscription
+	activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group <> ''",
+		userId, "active", now).
+		Order("end_time desc, id desc").
+		Limit(1).
+		Find(&activeSub)
+	if activeQuery.Error != nil || activeQuery.RowsAffected == 0 {
+		return "", activeQuery.Error
+	}
+	targetGroup := strings.TrimSpace(activeSub.UpgradeGroup)
+	if targetGroup == "" {
+		return "", nil
+	}
+	currentGroup, err := getUserGroupByIdTx(tx, userId)
+	if err != nil {
+		return "", err
+	}
+	if currentGroup == targetGroup {
+		return "", nil
+	}
+	if err := tx.Model(&User{}).Where("id = ?", userId).
+		Update("group", targetGroup).Error; err != nil {
+		return "", err
+	}
+	return targetGroup, nil
+}
+
 func GetLatestSubscriptionConversionRequestByUser(userId int) (*SubscriptionConversionRequest, error) {
 	if userId <= 0 {
 		return nil, fmt.Errorf("invalid user id")
@@ -157,6 +296,7 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 	}
 	requestRemark = strings.TrimSpace(requestRemark)
 	var created SubscriptionConversionRequest
+	cacheGroup := ""
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		var lockedUser User
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").
@@ -176,18 +316,44 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 		if err != nil && err != gorm.ErrRecordNotFound {
 			return err
 		}
+		now := GetDBTimestampWithTx(tx)
+		subs, err := lockSubscriptionConversionTargetsTx(tx, userId, subscriptionIDs)
+		if err != nil {
+			return err
+		}
+		snapshots := make([]subscriptionConversionRequestSnapshot, 0, len(subs))
+		for i := range subs {
+			if subs[i].Status != "active" || subs[i].EndTime <= now {
+				return fmt.Errorf("申请中的套餐已过期或失效，请刷新后重试")
+			}
+			snapshots = append(snapshots, subscriptionConversionRequestSnapshot{
+				UserSubscriptionId: subs[i].Id,
+				EndTime:            subs[i].EndTime,
+				NextResetTime:      subs[i].NextResetTime,
+			})
+		}
+		snapshotsJSON, err := encodeSubscriptionConversionSnapshots(snapshots)
+		if err != nil {
+			return err
+		}
 		request := SubscriptionConversionRequest{
-			UserId:              userId,
-			CampaignKey:         strings.TrimSpace(preview.Campaign.Key),
-			CampaignTitle:       strings.TrimSpace(preview.Campaign.Title),
-			Status:              SubscriptionConversionRequestStatusPending,
-			SubscriptionIdsJSON: subscriptionIDsJSON,
-			RequestRemark:       requestRemark,
-			RequestedRatio:      1,
-			RequestedAmount:     math.Round(preview.TotalConvertibleAmount*100) / 100,
-			RequestedQuota:      preview.TotalConvertibleQuota,
+			UserId:                    userId,
+			CampaignKey:               strings.TrimSpace(preview.Campaign.Key),
+			CampaignTitle:             strings.TrimSpace(preview.Campaign.Title),
+			Status:                    SubscriptionConversionRequestStatusPending,
+			SubscriptionIdsJSON:       subscriptionIDsJSON,
+			SubscriptionSnapshotsJSON: snapshotsJSON,
+			RequestRemark:             requestRemark,
+			RequestedRatio:            1,
+			RequestedAmount:           math.Round(preview.TotalConvertibleAmount*100) / 100,
+			RequestedQuota:            preview.TotalConvertibleQuota,
+			DisabledAt:                now,
 		}
 		if err := tx.Create(&request).Error; err != nil {
+			return err
+		}
+		cacheGroup, err = downgradeUserGroupsForSubscriptionListTx(tx, subs, now)
+		if err != nil {
 			return err
 		}
 		created = request
@@ -196,7 +362,10 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 	if err != nil {
 		return nil, err
 	}
-	RecordLog(userId, LogTypeSystem, fmt.Sprintf("已提交套餐转余额申请，预计返还 %s", logger.LogQuota(created.RequestedQuota)))
+	if cacheGroup != "" {
+		_ = UpdateUserGroupCache(userId, cacheGroup)
+	}
+	RecordLog(userId, LogTypeSystem, fmt.Sprintf("已提交套餐转余额申请，原套餐已暂时禁用，预计返还 %s", logger.LogQuota(created.RequestedQuota)))
 	return &created, nil
 }
 
@@ -241,31 +410,22 @@ func executeSubscriptionConversionRequestTx(tx *gorm.DB, request *SubscriptionCo
 	if len(subscriptionIDs) == 0 {
 		return "", fmt.Errorf("申请中没有可执行的套餐")
 	}
-	var subs []UserSubscription
 	now := GetDBTimestampWithTx(tx)
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").
-		Where("user_id = ? AND id IN ?", request.UserId, subscriptionIDs).
-		Order("end_time asc, id asc").
-		Find(&subs).Error; err != nil {
+	subs, err := lockSubscriptionConversionTargetsTx(tx, request.UserId, subscriptionIDs)
+	if err != nil {
 		return "", err
 	}
-	if len(subs) == 0 {
-		return "", fmt.Errorf("申请中的套餐已不存在")
-	}
-	if len(subs) != len(subscriptionIDs) {
-		return "", fmt.Errorf("申请中的部分套餐已不存在或不可用，请让用户重新提交申请")
-	}
-	subIndex := make(map[int]UserSubscription, len(subs))
-	for i := range subs {
-		subIndex[subs[i].Id] = subs[i]
-	}
-	for _, subID := range subscriptionIDs {
-		sub, ok := subIndex[subID]
-		if !ok {
-			return "", fmt.Errorf("申请中的部分套餐已不存在或不可用，请让用户重新提交申请")
+	if request.DisabledAt <= 0 {
+		for i := range subs {
+			if subs[i].Status != "active" || subs[i].EndTime <= now {
+				return "", fmt.Errorf("申请中的套餐已过期或失效，请让用户重新提交申请")
+			}
 		}
-		if sub.Status != "active" || sub.EndTime <= now {
-			return "", fmt.Errorf("申请中的套餐已过期或失效，请让用户重新提交申请")
+	} else {
+		for i := range subs {
+			if subs[i].Status != "cancelled" || subs[i].EndTime != request.DisabledAt {
+				return "", fmt.Errorf("申请中的套餐状态已发生变化，请先重新核对后再处理")
+			}
 		}
 	}
 	if approvedQuota <= 0 {
@@ -276,20 +436,10 @@ func executeSubscriptionConversionRequestTx(tx *gorm.DB, request *SubscriptionCo
 		return "", err
 	}
 	cacheGroup := ""
-	for i := range subs {
-		if err := tx.Model(&subs[i]).Updates(map[string]any{
-			"status":     "cancelled",
-			"end_time":   now,
-			"updated_at": now,
-		}).Error; err != nil {
-			return "", err
-		}
-		targetGroup, err := downgradeUserGroupForSubscriptionTx(tx, &subs[i], now)
+	if request.DisabledAt <= 0 {
+		cacheGroup, err = downgradeUserGroupsForSubscriptionListTx(tx, subs, now)
 		if err != nil {
 			return "", err
-		}
-		if targetGroup != "" {
-			cacheGroup = targetGroup
 		}
 	}
 	request.Status = SubscriptionConversionRequestStatusApproved
@@ -372,6 +522,7 @@ func RejectSubscriptionConversionRequest(requestId int, adminRemark string) (*Su
 		return nil, fmt.Errorf("拒绝原因不能为空")
 	}
 	var request SubscriptionConversionRequest
+	cacheGroup := ""
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", requestId).First(&request).Error; err != nil {
 			return err
@@ -380,6 +531,54 @@ func RejectSubscriptionConversionRequest(requestId int, adminRemark string) (*Su
 			return fmt.Errorf("仅可拒绝待审核申请")
 		}
 		now := GetDBTimestampWithTx(tx)
+		if request.DisabledAt > 0 {
+			snapshots, err := decodeSubscriptionConversionSnapshots(request.SubscriptionSnapshotsJSON)
+			if err != nil {
+				return err
+			}
+			subscriptionIDs, err := decodeSubscriptionIDList(request.SubscriptionIdsJSON)
+			if err != nil {
+				return err
+			}
+			subs, err := lockSubscriptionConversionTargetsTx(tx, request.UserId, subscriptionIDs)
+			if err != nil {
+				return err
+			}
+			snapshotIndex := make(map[int]subscriptionConversionRequestSnapshot, len(snapshots))
+			for _, item := range snapshots {
+				snapshotIndex[item.UserSubscriptionId] = item
+			}
+			suspendedSeconds := now - getSubscriptionConversionDisabledAt(&request)
+			if suspendedSeconds < 0 {
+				suspendedSeconds = 0
+			}
+			for i := range subs {
+				snapshot, ok := snapshotIndex[subs[i].Id]
+				if !ok {
+					return fmt.Errorf("申请快照缺失，无法恢复原套餐")
+				}
+				restoreEndTime := snapshot.EndTime
+				if restoreEndTime > 0 {
+					restoreEndTime += suspendedSeconds
+				}
+				restoreNextResetTime := snapshot.NextResetTime
+				if restoreNextResetTime > 0 {
+					restoreNextResetTime += suspendedSeconds
+				}
+				if err := tx.Model(&subs[i]).Updates(map[string]any{
+					"status":          "active",
+					"end_time":        restoreEndTime,
+					"next_reset_time": restoreNextResetTime,
+					"updated_at":      now,
+				}).Error; err != nil {
+					return err
+				}
+			}
+			cacheGroup, err = restoreUserGroupForPendingConversionTx(tx, request.UserId, now)
+			if err != nil {
+				return err
+			}
+		}
 		request.Status = SubscriptionConversionRequestStatusRejected
 		request.RejectedAt = now
 		request.AdminRemark = adminRemark
@@ -387,6 +586,9 @@ func RejectSubscriptionConversionRequest(requestId int, adminRemark string) (*Su
 	})
 	if err != nil {
 		return nil, err
+	}
+	if cacheGroup != "" {
+		_ = UpdateUserGroupCache(request.UserId, cacheGroup)
 	}
 	RecordLog(request.UserId, LogTypeSystem, fmt.Sprintf("套餐转余额申请已被拒绝：%s", adminRemark))
 	return &request, nil

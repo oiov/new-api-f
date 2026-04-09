@@ -20,12 +20,14 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Badge,
+  Banner,
   Button,
   Card,
   Collapse,
   Divider,
   Empty,
   Input,
+  Modal,
   Pagination,
   Progress,
   Select,
@@ -232,6 +234,19 @@ function inferSubscriptionPlanSeries(plan) {
   return 'other';
 }
 
+function getConversionRequestStatusMeta(status, t) {
+  switch (status) {
+    case 'approved':
+      return { color: 'green', text: t('已批准') };
+    case 'rejected':
+      return { color: 'red', text: t('已拒绝') };
+    case 'pending':
+      return { color: 'orange', text: t('待审核') };
+    default:
+      return { color: 'grey', text: status || '--' };
+  }
+}
+
 const SubscriptionPlansCard = ({
   t,
   loading = false,
@@ -268,6 +283,10 @@ const SubscriptionPlansCard = ({
   const [subscriptionResourceFilter, setSubscriptionResourceFilter] =
     useState('all');
   const [subscriptionResetFilter, setSubscriptionResetFilter] = useState('all');
+  const [conversionPreview, setConversionPreview] = useState(null);
+  const [conversionLoading, setConversionLoading] = useState(false);
+  const [submittingConversionRequest, setSubmittingConversionRequest] =
+    useState(false);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
   const isPackageVariant = uiVariant === 'package';
@@ -291,9 +310,91 @@ const SubscriptionPlansCard = ({
     setRefreshing(true);
     try {
       await reloadSubscriptionSelf?.();
+      await loadConversionPreview();
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const loadConversionPreview = async () => {
+    if (!showUserSubscriptions) {
+      setConversionPreview(null);
+      return;
+    }
+    setConversionLoading(true);
+    try {
+      const res = await API.get('/api/subscription/self/conversion_campaign', {
+        skipErrorHandler: true,
+      });
+      if (res.data?.success) {
+        setConversionPreview(res.data.data || null);
+      } else {
+        setConversionPreview(null);
+      }
+    } catch {
+      setConversionPreview(null);
+    } finally {
+      setConversionLoading(false);
+    }
+  };
+
+  const handleSubmitConversionRequest = async () => {
+    if (
+      !conversionPreview?.can_execute ||
+      submittingConversionRequest ||
+      !conversionPreview
+    ) {
+      return;
+    }
+
+    Modal.confirm({
+      title: t('确认提交套餐转余额申请？'),
+      content: (
+        <div className='space-y-2 text-sm text-semi-color-text-1'>
+          <div>
+            {t(
+              '提交后会先暂时禁用命中的当前订阅，待审核期间这些套餐将无法继续使用。',
+            )}
+          </div>
+          <div>
+            {t(
+              '管理员审核通过后才会返还余额并正式作废对应套餐；如果审核拒绝，系统会恢复原套餐。',
+            )}
+          </div>
+          <div>
+            {t('申请预计返还')}：
+            {renderQuota(conversionPreview.total_convertible_quota || 0)}
+          </div>
+          <div>
+            {t('命中套餐')}：
+            {conversionPreview.items?.length || 0} {t('个')}
+          </div>
+          <div>{t('该操作提交后不可自行撤销。')}</div>
+        </div>
+      ),
+      okText: t('确认提交'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        setSubmittingConversionRequest(true);
+        try {
+          const res = await API.post(
+            '/api/subscription/self/conversion_campaign/request',
+            {},
+          );
+          if (res.data?.success) {
+            showSuccess(t('申请已提交，等待管理员审核'));
+            await reloadSubscriptionSelf?.();
+            await loadConversionPreview();
+          } else {
+            showError(res.data?.message || t('提交申请失败'));
+          }
+        } catch {
+          showError(t('提交申请失败'));
+        } finally {
+          setSubmittingConversionRequest(false);
+        }
+      },
+    });
   };
 
   const payStripe = async () => {
@@ -395,6 +496,10 @@ const SubscriptionPlansCard = ({
   useEffect(() => {
     setPlanViewMode(isPackageVariant ? 'card' : 'table');
   }, [isPackageVariant]);
+
+  useEffect(() => {
+    loadConversionPreview();
+  }, [showUserSubscriptions]);
 
   const isSubscriptionPreference =
     billingPreference === 'subscription_first' ||
@@ -900,6 +1005,15 @@ const SubscriptionPlansCard = ({
     ],
     [t],
   );
+
+  const shouldShowConversionCampaign = useMemo(() => {
+    if (!conversionPreview) return false;
+    return (
+      !!conversionPreview?.campaign?.enabled ||
+      (conversionPreview?.items || []).length > 0 ||
+      !!conversionPreview?.latest_request
+    );
+  }, [conversionPreview]);
 
   const renderSubscriptionHeader = (item) => {
     const stateTag =
@@ -1876,6 +1990,230 @@ const SubscriptionPlansCard = ({
                         </Text>
                       )}
 
+                    {shouldShowConversionCampaign && (
+                      <Card
+                        className='!rounded-2xl border border-amber-200 bg-amber-50/70 shadow-none'
+                        bodyStyle={{ padding: '16px' }}
+                      >
+                        <div className='space-y-3'>
+                          <div className='flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
+                            <div className='min-w-0 space-y-1'>
+                              <Space wrap>
+                                <Text strong>
+                                  {conversionPreview?.campaign?.title ||
+                                    t('套餐转余额活动')}
+                                </Text>
+                                <Tag
+                                  color={
+                                    conversionPreview?.can_execute
+                                      ? 'green'
+                                      : 'grey'
+                                  }
+                                  shape='circle'
+                                  size='small'
+                                >
+                                  {conversionPreview?.can_execute
+                                    ? t('当前可申请')
+                                    : conversionPreview?.closed_reason ||
+                                      t('仅展示说明')}
+                                </Tag>
+                                {conversionLoading && (
+                                  <Tag color='white' shape='circle' size='small'>
+                                    {t('加载中')}
+                                  </Tag>
+                                )}
+                              </Space>
+                              {conversionPreview?.campaign?.subtitle ? (
+                                <Text type='tertiary' size='small'>
+                                  {conversionPreview.campaign.subtitle}
+                                </Text>
+                              ) : null}
+                              {conversionPreview?.campaign?.description ? (
+                                <div className='text-sm text-semi-color-text-1'>
+                                  {conversionPreview.campaign.description}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
+                              <div className='rounded-lg bg-white/80 p-3'>
+                                <div className='text-xs text-gray-500'>
+                                  {t('活动截止')}
+                                </div>
+                                <div className='mt-1 font-medium'>
+                                  {formatDateTime(
+                                    conversionPreview?.campaign?.deadline,
+                                  )}
+                                </div>
+                              </div>
+                              <div className='rounded-lg bg-white/80 p-3'>
+                                <div className='text-xs text-gray-500'>
+                                  {t('申请预计返还')}
+                                </div>
+                                <div className='mt-1 font-medium'>
+                                  {renderQuota(
+                                    conversionPreview?.total_convertible_quota ||
+                                      0,
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <Banner
+                            type='warning'
+                            closeIcon={null}
+                            description={t(
+                              '提交申请后会先禁用当前命中的套餐；批准后增加余额并正式作废，拒绝后恢复原套餐。',
+                            )}
+                          />
+
+                          {(conversionPreview?.campaign?.billing_rules || [])
+                            .length > 0 && (
+                            <div className='rounded-xl bg-white/70 p-3'>
+                              <Text strong>{t('计费与折算规则')}</Text>
+                              <div className='mt-2 space-y-1 text-sm text-semi-color-text-1'>
+                                {conversionPreview?.campaign?.conversion_rule ? (
+                                  <div>
+                                    {conversionPreview.campaign.conversion_rule}
+                                  </div>
+                                ) : null}
+                                {(conversionPreview?.campaign?.billing_rules ||
+                                  []
+                                ).map((rule) => (
+                                  <div key={rule}>• {rule}</div>
+                                ))}
+                                {(conversionPreview?.campaign?.charge_rules ||
+                                  []
+                                ).map((rule) => (
+                                  <div key={rule}>• {rule}</div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {(conversionPreview?.items || []).length > 0 && (
+                            <div className='rounded-xl bg-white/70 p-3'>
+                              <div className='mb-2 flex items-center justify-between'>
+                                <Text strong>{t('命中的可折算套餐')}</Text>
+                                <Text type='tertiary' size='small'>
+                                  {(conversionPreview?.items || []).length} {t('个')}
+                                </Text>
+                              </div>
+                              <div className='space-y-2'>
+                                {(conversionPreview?.items || []).map((item) => (
+                                  <div
+                                    key={item.user_subscription_id}
+                                    className='rounded-lg border border-semi-color-border bg-semi-color-bg-0 p-3'
+                                  >
+                                    <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+                                      <div>
+                                        <div className='font-medium'>
+                                          {item.plan_title}
+                                        </div>
+                                        <Text type='tertiary' size='small'>
+                                          #{item.user_subscription_id} · {t('来源')}{' '}
+                                          {item.source || '--'}
+                                        </Text>
+                                      </div>
+                                      <div className='text-left lg:text-right'>
+                                        <div className='font-semibold'>
+                                          {renderQuota(
+                                            item.convertible_quota || 0,
+                                          )}
+                                        </div>
+                                        <Text type='tertiary' size='small'>
+                                          {t('剩余占比')} {Math.round(
+                                            Number(item.remaining_ratio || 0) *
+                                              10000,
+                                          ) / 100}
+                                          %
+                                        </Text>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {conversionPreview?.latest_request && (
+                            <div className='rounded-xl bg-white/70 p-3'>
+                              <Space wrap align='center'>
+                                <Text strong>{t('最近申请')}</Text>
+                                <Tag
+                                  color={
+                                    getConversionRequestStatusMeta(
+                                      conversionPreview.latest_request.status,
+                                      t,
+                                    ).color
+                                  }
+                                  shape='circle'
+                                  size='small'
+                                >
+                                  {
+                                    getConversionRequestStatusMeta(
+                                      conversionPreview.latest_request.status,
+                                      t,
+                                    ).text
+                                  }
+                                </Tag>
+                              </Space>
+                              <div className='mt-2 grid grid-cols-1 gap-2 text-sm lg:grid-cols-2'>
+                                <div>
+                                  {t('申请单')} #{conversionPreview.latest_request.id}
+                                </div>
+                                <div>
+                                  {t('申请时间')}：
+                                  {formatDateTime(
+                                    conversionPreview.latest_request.create_time,
+                                  )}
+                                </div>
+                                {conversionPreview.latest_request.disabled_at ? (
+                                  <div>
+                                    {t('禁用时间')}：
+                                    {formatDateTime(
+                                      conversionPreview.latest_request
+                                        .disabled_at,
+                                    )}
+                                  </div>
+                                ) : null}
+                                {conversionPreview.latest_request.admin_remark ? (
+                                  <div>
+                                    {t('管理员备注')}：
+                                    {conversionPreview.latest_request.admin_remark}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+                            <Text type='tertiary' size='small'>
+                              {conversionPreview?.closed_reason ||
+                                t('管理员可审核并调整最终返还比例或额度。')}
+                            </Text>
+                            <Button
+                              theme='solid'
+                              type='warning'
+                              loading={submittingConversionRequest}
+                              disabled={
+                                !conversionPreview?.can_execute ||
+                                submittingConversionRequest ||
+                                conversionPreview?.latest_request?.status ===
+                                  'pending'
+                              }
+                              onClick={handleSubmitConversionRequest}
+                            >
+                              {conversionPreview?.latest_request?.status ===
+                              'pending'
+                                ? t('已有待审核申请，套餐已禁用')
+                                : t('提交套餐转余额申请')}
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+
                     <Divider margin={8} />
 
                     {hasAnySubscription ? (
@@ -2092,7 +2430,7 @@ const SubscriptionPlansCard = ({
                         <div className='flex flex-col gap-3 border-t border-semi-color-border pt-4 lg:flex-row lg:items-center lg:justify-between'>
                           <Text type='tertiary' size='small'>
                             {t(
-                              '卡片视图更适合直接售卖，点击购买后仍会进入完整支付流程。',
+                              '卡片视图方便快速浏览套餐，购买时仍会进入支付确认。',
                             )}
                           </Text>
                           <Pagination

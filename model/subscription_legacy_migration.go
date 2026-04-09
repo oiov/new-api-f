@@ -97,8 +97,8 @@ func defaultSelfServiceSubscriptionConversionCampaign() SelfServiceSubscriptionC
 		Enabled:             true,
 		Key:                 "default-self-service-subscription-conversion",
 		Title:               "套餐自助折算活动",
-		Subtitle:            "将命中的有效套餐折算为账户余额并立即失效",
-		Description:         "管理员可通过配置决定哪些有效套餐可参与自助折算，以及折算展示文案、截止时间和执行开关。用户执行后，命中的套餐会按统一规则返还到账户余额，并立即失效。",
+		Subtitle:            "提交申请后先禁用原套餐，审核通过后折算为账户余额",
+		Description:         "管理员可通过配置决定哪些有效套餐可参与自助折算，以及折算展示文案、截止时间和执行开关。用户提交申请后，命中的套餐会先被暂时禁用；审核通过后按统一规则返还到账户余额并正式失效，审核拒绝则恢复原套餐。",
 		Deadline:            deadline,
 		Timezone:            "Asia/Shanghai",
 		RequireDisabledPlan: true,
@@ -116,9 +116,10 @@ func defaultSelfServiceSubscriptionConversionCampaign() SelfServiceSubscriptionC
 			"折算只看剩余有效期占比，不按当日已用次数、未来重置次数单独补偿，避免周卡/月卡在不同重置周期下口径不一致。",
 		},
 		ChargeRules: []string{
-			"执行后系统会先返还账户余额，再立即作废对应旧套餐，后续请求将不再命中这些旧套餐。",
+			"提交申请后，命中的旧套餐会立即暂时禁用，等待管理员审核期间将无法继续使用这些套餐权益。",
+			"审核通过后系统会增加账户余额，并将这些旧套餐正式作废；审核拒绝则恢复原套餐的可用状态。",
 			"账户余额仍按你当前系统的标准钱包计费规则扣减，和普通充值余额一致。",
-			"该操作不可撤销；如果你仍想继续使用旧套餐权益，请不要执行折算。",
+			"该操作提交后不可自行撤销；如果你仍想继续使用旧套餐权益，请不要提交申请。",
 		},
 	}
 }
@@ -404,7 +405,10 @@ func PreviewSelfServiceSubscriptionConversion(userId int) (*SelfServiceSubscript
 	}
 	latestRequest, _ := GetLatestSubscriptionConversionRequestByUser(userId)
 	preview.LatestRequest = latestRequest
-	if !campaign.Enabled {
+	if latestRequest != nil && latestRequest.Status == SubscriptionConversionRequestStatusPending {
+		preview.CanExecute = false
+		preview.ClosedReason = "你已有待审核申请，命中套餐已暂时禁用"
+	} else if !campaign.Enabled {
 		preview.ClosedReason = "当前活动未开启"
 	} else if now >= campaign.Deadline {
 		preview.ClosedReason = "当前活动已截止"
