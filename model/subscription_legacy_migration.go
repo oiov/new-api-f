@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"gorm.io/gorm"
 )
 
@@ -115,7 +116,8 @@ func defaultSelfServiceSubscriptionConversionCampaign() SelfServiceSubscriptionC
 		ConversionRule: "返还余额 = 套餐折算基价 - 套餐折算基价 / 周期天数 × 计费天数；其中计费天数 = 已使用整天数 + 0.5 天。月卡按 30 天/月、周卡按 7 天/周、天卡按套餐天数计算；结果最低为 0，再按系统额度汇率转换为账户余额。",
 		BillingRules: []string{
 			"仅处理当前仍在有效期内且命中活动范围的套餐；已过期、已作废、未命中的套餐不会进入折算。",
-			"按订单购买的套餐，优先按历史成功订单的实付金额作为折算基价；无法匹配到订单时，回退到套餐快照价格。",
+			"只有能关联到历史成功支付订单的购买套餐才可申请折算；赠送、兑换、后台补发等没有支付订单的套餐不参与折算。",
+			"每个可折算套餐都会展示对应支付订单的实付价格，折算基价以该订单实付金额为准。",
 			"已使用整天数从购买生效时间开始计算；折算时会额外加 0.5 天作为固定服务扣减。",
 			"月卡统一按 30 天/月换算，周卡按 7 天/周换算；多月、多周套餐按对应倍数累计。",
 		},
@@ -292,16 +294,34 @@ func resolveSelfServiceSubscriptionConversionPriceBasis(sub *UserSubscription, p
 	if sub == nil || plan == nil {
 		return 0, ""
 	}
-	if strings.TrimSpace(sub.Source) == "order" {
-		if order := findMatchedSuccessfulSubscriptionOrder(sub.UserId, sub.PlanId, sub.CreatedAt, tx); order != nil && order.Money > 0 {
-			return order.Money, "order"
-		}
-	}
-	price := plan.GetEffectivePriceAmount(sub.StartTime)
-	if price > 0 {
-		return price, "plan"
+	if order := findMatchedSuccessfulSubscriptionOrder(sub.UserId, sub.PlanId, sub.CreatedAt, tx); order != nil && order.Money > 0 {
+		return order.Money, "order"
 	}
 	return 0, ""
+}
+
+func convertSubscriptionConversionAmountToQuota(amount float64) int {
+	if amount <= 0 || common.QuotaPerUnit <= 0 {
+		return 0
+	}
+	usdAmount := amount
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeCNY:
+		if operation_setting.USDExchangeRate > 0 {
+			usdAmount = amount / operation_setting.USDExchangeRate
+		}
+	case operation_setting.QuotaDisplayTypeCustom:
+		rate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+		if rate > 0 {
+			usdAmount = amount / rate
+		}
+	case operation_setting.QuotaDisplayTypeTokens:
+		return int(math.Floor(amount + 1e-9))
+	}
+	if usdAmount <= 0 {
+		return 0
+	}
+	return int(math.Floor(usdAmount*common.QuotaPerUnit + 1e-9))
 }
 
 func resolveSelfServiceSubscriptionConversionDurationDays(sub *UserSubscription, plan *SubscriptionPlan) float64 {
@@ -388,11 +408,11 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 		ratio = 1
 	}
 	priceBasis, priceBasisSource := resolveSelfServiceSubscriptionConversionPriceBasis(sub, plan, tx)
-	convertibleAmount := math.Round(priceBasis*ratio*100) / 100
-	convertibleQuota := 0
-	if convertibleAmount > 0 && common.QuotaPerUnit > 0 {
-		convertibleQuota = int(math.Floor(convertibleAmount*common.QuotaPerUnit + 1e-9))
+	if priceBasis <= 0 || priceBasisSource != "order" {
+		return nil, nil
 	}
+	convertibleAmount := math.Round(priceBasis*ratio*100) / 100
+	convertibleQuota := convertSubscriptionConversionAmountToQuota(convertibleAmount)
 	item := &SelfServiceSubscriptionConversionPreviewItem{
 		UserSubscriptionId:      sub.Id,
 		PlanId:                  sub.PlanId,
@@ -478,7 +498,7 @@ func PreviewSelfServiceSubscriptionConversion(userId int) (*SelfServiceSubscript
 	} else if now >= campaign.Deadline {
 		preview.ClosedReason = "当前活动已截止"
 	} else if len(items) == 0 {
-		preview.ClosedReason = "当前没有可折算的套餐"
+		preview.ClosedReason = "当前没有可折算的套餐，只有关联成功支付订单的购买套餐才支持申请"
 	}
 	return preview, nil
 }

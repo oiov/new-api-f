@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -17,6 +18,9 @@ func withSubscriptionConversionRequestTestDB(t *testing.T, run func()) {
 	oldLogDB := LOG_DB
 	oldUsingSQLite := common.UsingSQLite
 	oldQuotaPerUnit := common.QuotaPerUnit
+	oldQuotaDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	oldCustomCurrencyExchangeRate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+	oldUSDExchangeRate := operation_setting.USDExchangeRate
 
 	common.OptionMapRWMutex.Lock()
 	oldCampaignRaw := common.OptionMap[selfServiceSubscriptionConversionCampaignOptionKey]
@@ -33,6 +37,9 @@ func withSubscriptionConversionRequestTestDB(t *testing.T, run func()) {
 	LOG_DB = db
 	common.UsingSQLite = true
 	common.QuotaPerUnit = 100
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = 1
+	operation_setting.USDExchangeRate = 7
 
 	require.NoError(t, db.AutoMigrate(
 		&User{},
@@ -64,6 +71,9 @@ func withSubscriptionConversionRequestTestDB(t *testing.T, run func()) {
 		LOG_DB = oldLogDB
 		common.UsingSQLite = oldUsingSQLite
 		common.QuotaPerUnit = oldQuotaPerUnit
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldQuotaDisplayType
+		operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = oldCustomCurrencyExchangeRate
+		operation_setting.USDExchangeRate = oldUSDExchangeRate
 		common.OptionMapRWMutex.Lock()
 		if oldCampaignRaw == "" {
 			delete(common.OptionMap, selfServiceSubscriptionConversionCampaignOptionKey)
@@ -290,5 +300,117 @@ func TestPreviewSelfServiceSubscriptionConversion_UsesDurationDayFormula(t *test
 		require.InDelta(t, 0.8833, item.RemainingRatio, 0.0001)
 		require.InDelta(t, 26.5, item.ConvertibleAmount, 0.001)
 		require.Equal(t, 2650, item.ConvertibleQuota)
+	})
+}
+
+func TestPreviewSelfServiceSubscriptionConversion_ExcludesSubscriptionsWithoutSuccessfulOrder(t *testing.T) {
+	withSubscriptionConversionRequestTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       3,
+			Username: "gift_subscription_user",
+			Group:    "claude_sub",
+			Quota:    0,
+			Status:   common.UserStatusEnabled,
+			AffCode:  "gift_subscription_aff",
+		}).Error)
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:            9120,
+			Title:         "Claude Gift Plan",
+			PriceAmount:   30,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   1000,
+			UpgradeGroup:  "claude_sub",
+		}).Error)
+		require.NoError(t, DB.Model(&SubscriptionPlan{}).Where("id = ?", 9120).Update("enabled", false).Error)
+		InvalidateSubscriptionPlanCache(9120)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:            9220,
+			UserId:        3,
+			PlanId:        9120,
+			Status:        "active",
+			StartTime:     now - 86400,
+			EndTime:       now + 20*86400,
+			ResourceType:  SubscriptionResourceQuota,
+			AmountTotal:   1000,
+			UpgradeGroup:  "claude_sub",
+			PrevUserGroup: "default",
+			Source:        "redemption",
+			CreatedAt:     now - 86400,
+			UpdatedAt:     now - 86400,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+		}).Error)
+
+		preview, err := PreviewSelfServiceSubscriptionConversion(3)
+		require.NoError(t, err)
+		require.Empty(t, preview.Items)
+		require.Contains(t, preview.ClosedReason, "只有关联成功支付订单的购买套餐才支持申请")
+	})
+}
+
+func TestPreviewSelfServiceSubscriptionConversion_UsesCNYDisplayAmountToQuota(t *testing.T) {
+	withSubscriptionConversionRequestTestDB(t, func() {
+		operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeCNY
+		operation_setting.USDExchangeRate = 7
+
+		now := common.GetTimestamp()
+		require.NoError(t, DB.Create(&User{
+			Id:       4,
+			Username: "cny_formula_user",
+			Group:    "claude_sub",
+			Quota:    0,
+			Status:   common.UserStatusEnabled,
+			AffCode:  "cny_formula_aff",
+		}).Error)
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:            9130,
+			Title:         "Claude CNY Plan",
+			PriceAmount:   30,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   1000,
+			UpgradeGroup:  "claude_sub",
+		}).Error)
+		require.NoError(t, DB.Model(&SubscriptionPlan{}).Where("id = ?", 9130).Update("enabled", false).Error)
+		InvalidateSubscriptionPlanCache(9130)
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:           9330,
+			UserId:       4,
+			PlanId:       9130,
+			TradeNo:      "conversion-order-cny",
+			Money:        30,
+			Status:       common.TopUpStatusSuccess,
+			CompleteTime: now - 4*86400,
+			CreateTime:   now - 4*86400,
+		}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:            9230,
+			UserId:        4,
+			PlanId:        9130,
+			Status:        "active",
+			StartTime:     now - 3*86400 - 3600,
+			EndTime:       now + 26*86400,
+			ResourceType:  SubscriptionResourceQuota,
+			AmountTotal:   1000,
+			UpgradeGroup:  "claude_sub",
+			PrevUserGroup: "default",
+			Source:        "order",
+			CreatedAt:     now - 4*86400,
+			UpdatedAt:     now - 4*86400,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+		}).Error)
+
+		preview, err := PreviewSelfServiceSubscriptionConversion(4)
+		require.NoError(t, err)
+		require.Len(t, preview.Items, 1)
+		item := preview.Items[0]
+		require.InDelta(t, 26.5, item.ConvertibleAmount, 0.001)
+		require.Equal(t, 378, item.ConvertibleQuota)
 	})
 }

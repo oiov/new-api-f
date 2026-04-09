@@ -3589,6 +3589,7 @@
     "计费类型": "Type de facturation",
     "计费过程": "Processus de mise en lots",
     "订单号": "N° de commande",
+    "订单实付": "",
     "订阅": "Abonnement",
     "订阅ID": "",
     "订阅ID / 套餐ID / 来源": "",
@@ -3991,6 +3992,7 @@
     "货币": "Devise",
     "货币单位": "Unité monétaire",
     "购买上限": "Limite d'achat",
+    "购买价格": "Purchase price",
     "购买兑换码": "Acheter un code d'échange",
     "购买套餐后即可享受模型权益": "Profitez des avantages du modèle après l'achat d'un plan",
     "购买情况": "",
@@ -4482,6 +4484,9 @@
     "默认测试模型": "Modèle de test par défaut",
     "默认用户消息": "Bonjour",
     "默认补全倍率": "Taux de complétion par défaut",
-    "默认跟随当前使用的套餐": ""
+    "默认跟随当前使用的套餐": "",
+    "只有能关联到历史成功支付订单的购买套餐才可申请折算；赠送、兑换、后台补发等没有支付订单的套餐不参与折算。": "Only subscriptions linked to a historical successful payment order can be converted. Gifted, redeemed, or manually granted subscriptions without a payment order are excluded.",
+    "每个可折算套餐都会展示对应支付订单的实付价格，折算基价以该订单实付金额为准。": "Each convertible subscription shows the paid order price, and that paid amount is used as the conversion basis.",
+    "当前没有可折算的套餐，只有关联成功支付订单的购买套餐才支持申请": "No convertible subscriptions are available. Only purchased subscriptions linked to a successful payment order can be requested."
   }
 }

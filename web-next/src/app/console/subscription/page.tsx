@@ -1283,11 +1283,11 @@ function SubscriptionContent() {
                                 </p>
                               </div>
                               <div className="rounded-lg bg-muted/40 px-3 py-2">
-                                <p>{t('折算基价')}</p>
+                                <p>{t('购买价格')}</p>
                                 <p className="mt-1 font-medium text-foreground">
                                   {getCurrencySymbol(status)}
                                   {Number(item.price_basis_amount || 0).toFixed(2)}
-                                  {item.price_basis_source === 'order' ? ` · ${t('订单实付')}` : ` · ${t('套餐基价')}`}
+                                  {` · ${t('订单实付')}`}
                                 </p>
                               </div>
                               <div className="rounded-lg bg-muted/40 px-3 py-2">

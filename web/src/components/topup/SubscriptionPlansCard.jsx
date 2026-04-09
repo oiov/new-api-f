@@ -47,7 +47,7 @@ import {
   renderGroupTextWithDescription,
   renderQuota,
 } from '../../helpers';
-import { getCurrencyConfig } from '../../helpers/render';
+import { getCurrencyConfig, renderQuotaWithAmount } from '../../helpers/render';
 import {
   BarChart3,
   BookOpen,
@@ -2113,6 +2113,16 @@ const SubscriptionPlansCard = ({
                                         <Text type='tertiary' size='small'>
                                           #{item.user_subscription_id} · {t('来源')}{' '}
                                           {item.source || '--'}
+                                        </Text>
+                                        <Text
+                                          type='tertiary'
+                                          size='small'
+                                          className='block'
+                                        >
+                                          {t('购买价格')} {renderQuotaWithAmount(
+                                            Number(item.price_basis_amount || 0),
+                                          )}{' '}
+                                          · {t('订单实付')}
                                         </Text>
                                       </div>
                                       <div className='text-left lg:text-right'>
