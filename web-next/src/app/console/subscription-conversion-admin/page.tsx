@@ -110,11 +110,26 @@ function AdminContent() {
 
   const handleApprove = async () => {
     if (!current) return;
+    const ratioValue = Number(approvedRatio);
+    if (!Number.isFinite(ratioValue) || ratioValue <= 0) {
+      toast.error(t('批准比例必须大于 0'));
+      return;
+    }
+
+    const quotaValue =
+      approvedQuota === ''
+        ? Number(current.requested_quota || 0)
+        : Number(approvedQuota);
+    if (!Number.isFinite(quotaValue) || quotaValue < 0) {
+      toast.error(t('最终增加余额额度不能小于 0'));
+      return;
+    }
+
     setApproving(true);
     try {
       const res = await API.post(`/api/subscription/admin/conversion_requests/${current.id}/approve`, {
-        approved_ratio: Number(approvedRatio || 0),
-        approved_quota: Number(approvedQuota || 0),
+        approved_ratio: ratioValue,
+        approved_quota: quotaValue,
         admin_remark: adminRemark,
       });
       if (res.data?.success) {
@@ -162,7 +177,7 @@ function AdminContent() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">{t('套餐转余额审核')}</h1>
-          <p className="text-sm text-muted-foreground">{t('审核用户提交的套餐转余额申请，并可调整折算比例与最终到账余额。')}</p>
+          <p className="text-sm text-muted-foreground">{t('用户提交后原套餐会先被禁用；管理员批准后增加余额，拒绝后恢复原套餐。')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
           <RefreshCw className={`mr-2 size-4 ${loading ? 'animate-spin' : ''}`} />
@@ -195,7 +210,7 @@ function AdminContent() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
+                  <TableHead>{t('ID')}</TableHead>
                   <TableHead>{t('用户')}</TableHead>
                   <TableHead>{t('状态')}</TableHead>
                   <TableHead>{t('申请返还')}</TableHead>
@@ -213,7 +228,7 @@ function AdminContent() {
                       <TableCell>
                         <div className="space-y-1">
                           <p className="font-medium">{item.username || '-'}</p>
-                          <p className="text-xs text-muted-foreground">UID {item.user_id}</p>
+                          <p className="text-xs text-muted-foreground">{t('用户 ID')} {item.user_id}</p>
                         </div>
                       </TableCell>
                       <TableCell><Badge variant={meta.variant}>{t(meta.label)}</Badge></TableCell>
@@ -273,6 +288,7 @@ function AdminContent() {
             <div className="rounded-lg bg-muted/40 p-3 text-sm">
               <p>{t('申请用户')}：{current?.username || '-'}</p>
               <p>{t('申请返还')}：{current ? formatQuota(current.requested_quota, status) : '—'}</p>
+              <p className="text-muted-foreground">{t('批准后会直接增加余额，并保持原套餐作废状态。')}</p>
             </div>
             <div className="space-y-2">
               <Label>{t('批准比例')}</Label>
@@ -300,6 +316,7 @@ function AdminContent() {
             <DialogTitle>{t('拒绝转余额申请')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{t('拒绝后系统会恢复用户申请时被禁用的原套餐。')}</p>
             <Label>{t('拒绝原因')}</Label>
             <Textarea value={rejectRemark} onChange={(e) => setRejectRemark(e.target.value)} rows={5} />
           </div>

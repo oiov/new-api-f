@@ -156,10 +156,24 @@ interface ConversionPreview {
     approved_quota: number;
     admin_remark?: string;
     request_remark?: string;
+    disabled_at?: number;
     create_time: number;
     update_time: number;
   } | null;
   items: ConversionPreviewItem[];
+}
+
+function getConversionRequestStatusLabel(status: string, t: (key: string) => string) {
+  switch (status) {
+    case 'approved':
+      return t('已批准');
+    case 'rejected':
+      return t('已拒绝');
+    case 'pending':
+      return t('待审核');
+    default:
+      return status || '--';
+  }
 }
 
 // ── Format utilities ─────────────────────────────────────────────────────────
@@ -841,10 +855,11 @@ function SubscriptionContent() {
     if (!conversionPreview?.can_execute || submittingConversionRequest) return;
     const confirmText = [
       t('确认提交套餐转余额申请？'),
-      t('提交后需要等待管理员审核，审核通过后才会返还余额并失效对应套餐。'),
+      t('提交后会先暂时禁用命中的当前订阅，待审核期间这些套餐将无法继续使用。'),
+      t('管理员审核通过后才会返还余额并正式作废对应套餐；如果审核拒绝，系统会恢复原套餐。'),
       `${t('申请预计返还')} ${formatQuota(conversionPreview.total_convertible_quota, status)}`,
       `${t('命中套餐')} ${conversionPreview.items.length} ${t('个')}`,
-      t('该操作不可撤销。'),
+      t('该操作提交后不可自行撤销。'),
     ].join('\n');
     if (!window.confirm(confirmText)) return;
 
@@ -1268,7 +1283,7 @@ function SubscriptionContent() {
                               </div>
                               <div className="rounded-lg bg-muted/40 px-3 py-2">
                                 <p>{t('执行结果')}</p>
-                                <p className="mt-1 font-medium text-foreground">{t('返余额并失效套餐')}</p>
+                                <p className="mt-1 font-medium text-foreground">{t('提交后先禁用，批准后返余额并作废')}</p>
                               </div>
                             </div>
                           </div>
@@ -1289,23 +1304,25 @@ function SubscriptionContent() {
                       <p className="text-sm font-semibold">{t('申请说明')}</p>
                     </div>
                     <div className="space-y-2 text-sm text-muted-foreground">
-                      <p>{t('你提交申请后，管理员需要先审核，再决定是否批准执行。')}</p>
-                      <p>{t('管理员审核时可以调整折算比例，也可以直接调整最终增加的余额额度。')}</p>
-                      <p>{t('只有审核通过后，系统才会返还余额并失效对应套餐。')}</p>
+                      <p>{t('提交后会先暂时禁用命中的当前订阅，待审核期间这些套餐将无法继续使用。')}</p>
+                      <p>{t('管理员可审核并调整最终返还比例或额度。')}</p>
+                      <p>{t('管理员审核通过后才会返还余额并正式作废对应套餐；如果审核拒绝，系统会恢复原套餐。')}</p>
                     </div>
                     <Separator />
                     <div className="space-y-2 text-sm">
                       <Row label={t('命中套餐')} value={`${conversionPreview.items.length} ${t('个')}`} />
                       <Row label={t('申请预计返还')} value={formatQuota(conversionPreview.total_convertible_quota, status)} />
-                      <Row label={t('审核后余额参考')} value={formatQuota(conversionPreview.estimated_quota_after, status)} />
                     </div>
                     {conversionPreview.latest_request && (
                       <>
                         <Separator />
                         <div className="space-y-2 text-sm">
                           <Row label={t('最近申请')} value={`#${conversionPreview.latest_request.id}`} />
-                          <Row label={t('申请状态')} value={conversionPreview.latest_request.status} />
+                          <Row label={t('申请状态')} value={getConversionRequestStatusLabel(conversionPreview.latest_request.status, t)} />
                           <Row label={t('申请时间')} value={formatTimestamp(conversionPreview.latest_request.create_time, 'YYYY-MM-DD HH:mm')} />
+                          {conversionPreview.latest_request.disabled_at ? (
+                            <Row label={t('禁用时间')} value={formatTimestamp(conversionPreview.latest_request.disabled_at, 'YYYY-MM-DD HH:mm')} />
+                          ) : null}
                           {conversionPreview.latest_request.admin_remark && (
                             <Row label={t('管理员备注')} value={conversionPreview.latest_request.admin_remark} />
                           )}
@@ -1320,12 +1337,17 @@ function SubscriptionContent() {
                       {submittingConversionRequest
                         ? t('提交中...')
                         : conversionPreview.latest_request?.status === 'pending'
-                          ? t('已有待审核申请')
+                          ? t('已有待审核申请，套餐已禁用')
                           : t('提交套餐转余额申请')}
                     </Button>
                     {!conversionPreview.can_execute && (
                       <p className="text-xs text-muted-foreground">
                         {conversionPreview.closed_reason || t('当前不可执行该操作')}
+                      </p>
+                    )}
+                    {conversionPreview.can_execute && (
+                      <p className="text-xs text-muted-foreground">
+                        {t('管理员可审核并调整最终返还比例或额度。')}
                       </p>
                     )}
                   </CardContent>
