@@ -55,6 +55,9 @@ const Chat = lazy(() => import('./pages/Chat'));
 const Chat2Link = lazy(() => import('./pages/Chat2Link'));
 const Midjourney = lazy(() => import('./pages/Midjourney'));
 const Pricing = lazy(() => import('./pages/Pricing'));
+const SubscriptionPlanDetail = lazy(
+  () => import('./pages/Pricing/SubscriptionPlanDetail'),
+);
 const Task = lazy(() => import('./pages/Task'));
 const ModelPage = lazy(() => import('./pages/Model'));
 const ModelDeploymentPage = lazy(() => import('./pages/ModelDeployment'));
@@ -428,6 +431,25 @@ function App() {
               ) : (
                 <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                   <Pricing />
+                </Suspense>
+              )
+            }
+          />
+          <Route
+            path='/pricing/subscription-plans/:planId'
+            element={
+              pricingRequireAuth ? (
+                <PrivateRoute>
+                  <Suspense
+                    fallback={<Loading></Loading>}
+                    key={location.pathname}
+                  >
+                    <SubscriptionPlanDetail />
+                  </Suspense>
+                </PrivateRoute>
+              ) : (
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <SubscriptionPlanDetail />
                 </Suspense>
               )
             }

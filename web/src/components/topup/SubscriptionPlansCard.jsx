@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Badge,
   Banner,
@@ -87,6 +88,17 @@ function getEpayMethods(payMethods = []) {
   return (payMethods || []).filter(
     (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem',
   );
+}
+
+function getSubscriptionPlanDetailPath(planId) {
+  if (!planId) return '/pricing?tab=subscription-plans';
+  if (typeof window === 'undefined') {
+    return `/pricing/subscription-plans/${planId}`;
+  }
+  const params = new URLSearchParams(window.location.search || '');
+  params.delete('tab');
+  const query = params.toString();
+  return `/pricing/subscription-plans/${planId}${query ? `?${query}` : ''}`;
 }
 
 function submitEpayForm({ url, params }) {
@@ -266,6 +278,7 @@ const SubscriptionPlansCard = ({
   uiVariant = 'subscription',
   showUserSubscriptions = true,
 }) => {
+  const navigate = useNavigate();
   const isPackageVariant = uiVariant === 'package';
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -303,6 +316,10 @@ const SubscriptionPlansCard = ({
     setSelectedPlan(p);
     setSelectedEpayMethod(epayMethods?.[0]?.type || '');
     setOpen(true);
+  };
+
+  const openPlanDetail = (planId) => {
+    navigate(getSubscriptionPlanDetailPath(planId));
   };
 
   const closeBuy = () => {
@@ -1604,15 +1621,26 @@ const SubscriptionPlansCard = ({
           }
 
           return (
-            <Button
-              theme='solid'
-              type='primary'
-              onClick={() => openBuy(record)}
-              icon={<ChevronRight size={14} />}
-              iconPosition='right'
-            >
-              {t('立即订阅')}
-            </Button>
+            <div className='flex flex-col gap-2'>
+              <Button
+                theme='outline'
+                type='tertiary'
+                block
+                onClick={() => openPlanDetail(plan?.id)}
+              >
+                {t('查看详情')}
+              </Button>
+              <Button
+                theme='solid'
+                type='primary'
+                onClick={() => openBuy(record)}
+                icon={<ChevronRight size={14} />}
+                iconPosition='right'
+                block
+              >
+                {t('立即订阅')}
+              </Button>
+            </div>
           );
         },
       },
@@ -1800,16 +1828,26 @@ const SubscriptionPlansCard = ({
                 </Button>
               </Tooltip>
             ) : (
-              <Button
-                theme='solid'
-                type='primary'
-                block
-                onClick={() => openBuy(record)}
-                icon={<ChevronRight size={14} />}
-                iconPosition='right'
-              >
-                {t('立即订阅')}
-              </Button>
+              <div className='grid grid-cols-2 gap-2'>
+                <Button
+                  theme='outline'
+                  type='tertiary'
+                  block
+                  onClick={() => openPlanDetail(plan?.id)}
+                >
+                  {t('查看详情')}
+                </Button>
+                <Button
+                  theme='solid'
+                  type='primary'
+                  block
+                  onClick={() => openBuy(record)}
+                  icon={<ChevronRight size={14} />}
+                  iconPosition='right'
+                >
+                  {t('立即订阅')}
+                </Button>
+              </div>
             )}
           </div>
         </div>
