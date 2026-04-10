@@ -89,6 +89,7 @@ type SubscriptionDeliveryField struct {
 	Copyable    bool   `json:"copyable"`
 	SortOrder   int    `json:"sort_order"`
 	Placeholder string `json:"placeholder"`
+	DefaultValue string `json:"default_value,omitempty"`
 }
 
 type SubscriptionDeliveryPayloadItem struct {
@@ -904,6 +905,7 @@ func normalizeSubscriptionDeliveryFields(fields []SubscriptionDeliveryField) []S
 			Copyable:    field.Copyable,
 			SortOrder:   field.SortOrder,
 			Placeholder: strings.TrimSpace(field.Placeholder),
+			DefaultValue: strings.TrimSpace(field.DefaultValue),
 		})
 		if result[len(result)-1].SortOrder == 0 {
 			result[len(result)-1].SortOrder = index + 1

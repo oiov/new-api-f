@@ -70,8 +70,8 @@ export function buildWebsiteJsonLd(language) {
     url: SITE_URL,
     inLanguage: zh ? 'zh-CN' : 'en-US',
     description: zh
-      ? 'FishXCode AI 提供企业级 Claude API 官方通道中转服务，优先提供稳定的 Claude 官方通道接入，同时兼容 GPT、Gemini 等常用模型。'
-      : 'FishXCode AI provides an enterprise Claude API gateway through official Anthropic channels, prioritizing stable Claude access while remaining compatible with common models such as GPT and Gemini.',
+      ? 'FishXCode AI 提供企业级 Claude API 官方通道中转服务，支持套餐制与企业采购，并兼容 GPT、Gemini 等常用模型。'
+      : 'FishXCode AI provides an enterprise Claude API gateway through official Anthropic channels, with subscription plans, enterprise purchasing support, and compatibility with common models such as GPT and Gemini.',
   };
 }
 
@@ -99,8 +99,8 @@ export function buildServiceJsonLd(language) {
     url: SITE_URL,
     image: getDefaultImage(language),
     description: zh
-      ? '仅接 Anthropic 官方通道，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。'
-      : 'Official Anthropic-only Claude API gateway with cache-based cost reduction, enterprise invoice support, and compatibility with common models such as GPT and Gemini.',
+      ? '仅接 Anthropic 官方通道，不走逆向，支持包月套餐、企业采购与增值税发票，并兼容 GPT、Gemini 等常用模型。'
+      : 'Official Anthropic-only Claude API gateway with monthly subscription plans, enterprise purchasing support, VAT invoices, and compatibility with common models such as GPT and Gemini.',
   };
 }
 
@@ -111,7 +111,7 @@ export function getHomeSeo(language) {
     titleZh: '企业级 Claude API 官方通道中转 | FishXCode AI',
     titleEn: 'Enterprise Claude API Gateway | FishXCode AI',
     descriptionZh:
-      'FishXCode AI 提供企业级 Claude API 官方通道中转，优先提供稳定的 Claude 官方通道接入，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。',
+      'FishXCode AI 提供企业级 Claude API 官方通道中转，不走逆向，支持包月套餐、企业采购和增值税发票，并兼容 GPT、Gemini 等常用模型。',
     descriptionEn:
       'FishXCode AI provides an enterprise Claude API gateway through official Anthropic channels, prioritizing stable Claude access with cache-based cost reduction, enterprise invoice support, and compatibility with common models such as GPT and Gemini.',
     keywordsZh:
@@ -128,7 +128,7 @@ export function getPricingSeo(language) {
     titleZh: 'Claude Codex 订阅价格与套餐 | FishXCode AI',
     titleEn: 'Claude Codex Pricing Plans | FishXCode AI',
     descriptionZh:
-      '查看 FishXCode AI 的 Claude、Codex 国际中转套餐，支持包月、周卡与天卡，适合个人开发者、学生用户和团队采购。',
+      '查看 FishXCode AI 的 Claude、Codex 套餐，支持包月、周卡、天卡和企业采购。',
     descriptionEn:
       'Compare Claude and Codex pricing plans from FishXCode AI, including monthly, weekly, and daily options for individuals, students, and teams.',
     keywordsZh:
@@ -145,7 +145,7 @@ export function getContactSeo(language) {
     titleZh: '联系我们与官方客服渠道 | FishXCode AI',
     titleEn: 'Contact and Support Channels | FishXCode AI',
     descriptionZh:
-      '查看 FishXCode AI 官方联系渠道，包括 QQ 群、微信号、微信群与 QQ 客服，适合售前咨询、团队合作、学生使用和售后支持。',
+      '查看 FishXCode AI 官方联系渠道，包括 QQ 群、微信号、微信群与 QQ 客服，支持售前咨询、企业采购和售后沟通。',
     descriptionEn:
       'Reach FishXCode AI through official QQ groups, WeChat, and support channels for presales, onboarding, student use, and team collaboration.',
     keywordsZh:
@@ -177,7 +177,7 @@ export function getDocsSeo(language) {
     titleZh: '接入文档与使用指南 | FishXCode AI',
     titleEn: 'Claude Integration Docs | FishXCode AI',
     descriptionZh:
-      '查看 FishXCode AI 的 Claude 接入文档、使用说明与配置指南，快速完成官方兼容 API 接入与调用配置。',
+      '查看 FishXCode AI 的 Claude 接入文档、使用说明与配置指南，了解套餐制接入与企业合作支持。',
     descriptionEn:
       'Read FishXCode AI Claude integration docs and setup guides to start using the official-compatible API quickly.',
     keywordsZh: 'Claude接入文档,Claude文档,API接入,使用指南,配置教程,Claude API',

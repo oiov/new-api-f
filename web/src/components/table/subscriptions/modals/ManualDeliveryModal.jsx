@@ -39,9 +39,17 @@ const ManualDeliveryModal = ({
     payload.forEach((item) => {
       nextValues[item.key] = item.value || '';
     });
+    deliveryFields.forEach((field) => {
+      if (
+        typeof nextValues[field.key] === 'undefined' &&
+        String(field.default_value || '').trim() !== ''
+      ) {
+        nextValues[field.key] = String(field.default_value || '').trim();
+      }
+    });
     nextValues.admin_remark = record?.order?.delivery_admin_remark || '';
     formApi.setValues(nextValues);
-  }, [visible, formApi, record]);
+  }, [visible, formApi, record, deliveryFields]);
 
   const handleSubmit = async () => {
     if (!record?.order?.id) {

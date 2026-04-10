@@ -113,7 +113,49 @@ function normalizeDeliveryField(field = {}, index = 0) {
     copyable: field.copyable !== false,
     sort_order: Number(field.sort_order || index + 1),
     placeholder: String(field.placeholder || '').trim(),
+    default_value: String(field.default_value || '').trim(),
   };
+}
+
+const CLAUDE_MANUAL_DELIVERY_QUERY_URL =
+  'https://api-key-tool.fishxcode.com/';
+
+function buildClaudeManualDeliveryTemplate(t) {
+  return [
+    {
+      key: 'base_url',
+      label: t('Base URL'),
+      type: 'url',
+      required: true,
+      masked: false,
+      copyable: true,
+      sort_order: 1,
+      placeholder: t('例如：https://你的站点地址'),
+      default_value: '',
+    },
+    {
+      key: 'api_key',
+      label: t('API Key'),
+      type: 'password',
+      required: true,
+      masked: false,
+      copyable: true,
+      sort_order: 2,
+      placeholder: t('请输入要发放给用户的 API Key'),
+      default_value: '',
+    },
+    {
+      key: 'usage_query_url',
+      label: t('额度使用查询地址'),
+      type: 'url',
+      required: true,
+      masked: false,
+      copyable: true,
+      sort_order: 3,
+      placeholder: CLAUDE_MANUAL_DELIVERY_QUERY_URL,
+      default_value: CLAUDE_MANUAL_DELIVERY_QUERY_URL,
+    },
+  ];
 }
 
 const AddEditSubscriptionModal = ({
@@ -1134,31 +1176,49 @@ const AddEditSubscriptionModal = ({
                               '购买此套餐后不会自动开通站内订阅，支付成功后会进入待人工发放队列。',
                             )}
                           </span>
-                          <Button
-                            theme='light'
-                            type='primary'
-                            size='small'
-                            icon={<IconPlus />}
-                            onClick={() => {
-                              const currentFields = Array.isArray(
-                                values.delivery_field_schema,
-                              )
-                                ? values.delivery_field_schema
-                                : [];
-                              formApiRef.current?.setValue(
-                                'delivery_field_schema',
-                                [
-                                  ...currentFields,
-                                  normalizeDeliveryField(
-                                    {},
-                                    currentFields.length,
+                          <Space spacing={8}>
+                            <Button
+                              theme='light'
+                              type='secondary'
+                              size='small'
+                              onClick={() => {
+                                formApiRef.current?.setValue(
+                                  'delivery_field_schema',
+                                  buildClaudeManualDeliveryTemplate(t).map(
+                                    (item, index) =>
+                                      normalizeDeliveryField(item, index),
                                   ),
-                                ],
-                              );
-                            }}
-                          >
-                            {t('新增字段')}
-                          </Button>
+                                );
+                              }}
+                            >
+                              {t('套用 Claude 模板')}
+                            </Button>
+                            <Button
+                              theme='light'
+                              type='primary'
+                              size='small'
+                              icon={<IconPlus />}
+                              onClick={() => {
+                                const currentFields = Array.isArray(
+                                  values.delivery_field_schema,
+                                )
+                                  ? values.delivery_field_schema
+                                  : [];
+                                formApiRef.current?.setValue(
+                                  'delivery_field_schema',
+                                  [
+                                    ...currentFields,
+                                    normalizeDeliveryField(
+                                      {},
+                                      currentFields.length,
+                                    ),
+                                  ],
+                                );
+                              }}
+                            >
+                              {t('新增字段')}
+                            </Button>
+                          </Space>
                         </div>
 
                         {(Array.isArray(values.delivery_field_schema)
@@ -1231,6 +1291,13 @@ const AddEditSubscriptionModal = ({
                                   field={`delivery_field_schema[${index}].placeholder`}
                                   label={t('占位提示')}
                                   placeholder={t('例如：请输入发放内容')}
+                                />
+                              </Col>
+                              <Col span={16}>
+                                <Form.Input
+                                  field={`delivery_field_schema[${index}].default_value`}
+                                  label={t('默认值')}
+                                  placeholder={t('可选，发放时将自动带入')}
                                 />
                               </Col>
                               <Col span={8}>
