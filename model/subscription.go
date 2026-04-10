@@ -526,6 +526,29 @@ func buildSubscriptionPlanSnapshot(plan *SubscriptionPlan, planId int) *Subscrip
 	}
 }
 
+func mergeManualDeliveryEffectivePlan(snapshotPlan, currentPlan *SubscriptionPlan, planId int) *SubscriptionPlan {
+	if currentPlan == nil && snapshotPlan == nil {
+		return nil
+	}
+	if snapshotPlan == nil {
+		return buildSubscriptionPlanSnapshot(currentPlan, planId)
+	}
+	merged := buildSubscriptionPlanSnapshot(snapshotPlan, planId)
+	if merged == nil {
+		return buildSubscriptionPlanSnapshot(currentPlan, planId)
+	}
+	if currentPlan == nil {
+		return merged
+	}
+	merged.UpgradeGroup = strings.TrimSpace(currentPlan.UpgradeGroup)
+	merged.AllowedGroupsJSON = strings.TrimSpace(currentPlan.AllowedGroupsJSON)
+	merged.AllowedModelsJSON = strings.TrimSpace(currentPlan.AllowedModelsJSON)
+	merged.AllowedVendorIDsJSON = strings.TrimSpace(currentPlan.AllowedVendorIDsJSON)
+	merged.DeliveryMode = normalizeSubscriptionDeliveryMode(currentPlan.DeliveryMode)
+	merged.DeliveryFieldSchemaJSON = strings.TrimSpace(currentPlan.DeliveryFieldSchemaJSON)
+	return merged
+}
+
 func buildManualDeliveryTradeNo(prefix string) (string, error) {
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
@@ -2668,9 +2691,7 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 		if order.Status != common.TopUpStatusSuccess {
 			return errors.New("仅已支付成功的订单可发放")
 		}
-		if normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus) == SubscriptionFulfillmentDelivered {
-			return errors.New("该订单已发放")
-		}
+		alreadyDelivered := normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus) == SubscriptionFulfillmentDelivered
 		schema := decodeSubscriptionDeliveryFields(order.PlanDeliveryFieldSchemaJSON)
 		if len(schema) == 0 {
 			plan := order.SnapshotPlan()
@@ -2682,94 +2703,119 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 		if err != nil {
 			return err
 		}
+		existingPayload := decodeSubscriptionDeliveryPayload(order.DeliveryPayloadJSON)
 		now := common.GetTimestamp()
 
 		// Only the standard Claude manual-delivery template should trigger
 		// automatic channel-pool allocation and token issuance.
 		if isAutoIssuedSubscriptionDeliverySchema(schema) {
-			if resolveSubscriptionDeliveryBaseURL() == "" {
+			baseURL := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "base_url"))
+			if baseURL == "" {
+				baseURL = strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "base_url"))
+			}
+			if baseURL == "" {
+				baseURL = resolveSubscriptionDeliveryBaseURL()
+			}
+			usageQueryURL := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "usage_query_url"))
+			if usageQueryURL == "" {
+				usageQueryURL = strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "usage_query_url"))
+			}
+			if usageQueryURL == "" {
+				usageQueryURL = "https://api-key-tool.fishxcode.com/"
+			}
+			if baseURL == "" {
 				return errors.New("当前未配置站点地址(ServerAddress)，无法自动发放套餐")
 			}
-			planTag := subscriptionPlanChannelPoolTag(order.PlanId)
-			if planTag == "" {
-				return errors.New("无效的套餐ID，无法分配渠道池")
-			}
-			channel, keyIndex, err := allocateSubscriptionPlanChannelFromPoolTx(tx, planTag)
-			if err != nil {
-				return err
-			}
-			if channel == nil || channel.Id <= 0 {
-				return errors.New("渠道池暂无可用 Key，请先补充渠道或释放占用")
-			}
-
-			plan := order.SnapshotPlan()
-			if plan == nil {
-				plan, err = getSubscriptionPlanByIdTx(tx, order.PlanId)
+			if !alreadyDelivered {
+				planTag := subscriptionPlanChannelPoolTag(order.PlanId)
+				if planTag == "" {
+					return errors.New("无效的套餐ID，无法分配渠道池")
+				}
+				channel, keyIndex, err := allocateSubscriptionPlanChannelFromPoolTx(tx, planTag)
 				if err != nil {
 					return err
 				}
-			}
-			targetUserId = order.UserId
-			if plan != nil {
+				if channel == nil || channel.Id <= 0 {
+					return errors.New("渠道池暂无可用 Key，请先补充渠道或释放占用")
+				}
+
+				snapshotPlan := order.SnapshotPlan()
+				currentPlan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
+				if err != nil {
+					return err
+				}
+				plan := mergeManualDeliveryEffectivePlan(snapshotPlan, currentPlan, order.PlanId)
+				if plan == nil {
+					return errors.New("套餐不存在，无法完成人工发放")
+				}
+				targetUserId = order.UserId
 				upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+
+				sub, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+				if err != nil {
+					return err
+				}
+				if err := tx.Model(sub).Updates(map[string]any{
+					"source_order_id":             order.Id,
+					"source_order_trade_no":       order.TradeNo,
+					"source_order_payment_method": order.PaymentMethod,
+					"source_order_money":          order.Money,
+					"updated_at":                  common.GetTimestamp(),
+				}).Error; err != nil {
+					return err
+				}
+				if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
+					return err
+				}
+
+				allowedGroups := decodeSubscriptionStringList(plan.AllowedGroupsJSON)
+				allowedModels := decodeSubscriptionStringList(plan.AllowedModelsJSON)
+
+				key, err := common.GenerateKey()
+				if err != nil {
+					return err
+				}
+				tokenGroup := "default"
+				if upgradeGroup != "" {
+					tokenGroup = upgradeGroup
+				} else if len(allowedGroups) == 1 {
+					tokenGroup = strings.TrimSpace(allowedGroups[0])
+				}
+				token := Token{
+					UserId:                  order.UserId,
+					Name:                    fmt.Sprintf("%s #%d", strings.TrimSpace(order.PlanTitle), order.Id),
+					Key:                     key,
+					SpecificChannelId:       channel.Id,
+					SpecificChannelKeyIndex: keyIndex,
+					CreatedTime:             now,
+					AccessedTime:            now,
+					ExpiredTime:             sub.EndTime,
+					UnlimitedQuota:          true,
+					Group:                   tokenGroup,
+				}
+				if len(allowedModels) > 0 {
+					token.ModelLimitsEnabled = true
+					token.ModelLimits = strings.Join(allowedModels, ",")
+				}
+				if err := tx.Create(&token).Error; err != nil {
+					return err
+				}
+				if common.RedisEnabled {
+					gopool.Go(func() {
+						_ = cacheSetToken(token)
+					})
+				}
+				normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", "sk-"+token.Key)
+			} else {
+				apiKey := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "api_key"))
+				if apiKey != "" {
+					normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", apiKey)
+				}
 			}
 
-			sub, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
-			if err != nil {
-				return err
-			}
-			if err := tx.Model(sub).Updates(map[string]any{
-				"source_order_id":             order.Id,
-				"source_order_trade_no":       order.TradeNo,
-				"source_order_payment_method": order.PaymentMethod,
-				"source_order_money":          order.Money,
-				"updated_at":                  common.GetTimestamp(),
-			}).Error; err != nil {
-				return err
-			}
-			if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
-				return err
-			}
-
-			allowedModels := decodeSubscriptionStringList(order.PlanAllowedModelsJSON)
-			if len(allowedModels) == 0 && plan != nil {
-				allowedModels = decodeSubscriptionStringList(plan.AllowedModelsJSON)
-			}
-
-			key, err := common.GenerateKey()
-			if err != nil {
-				return err
-			}
-			token := Token{
-				UserId:                  order.UserId,
-				Name:                    fmt.Sprintf("%s #%d", strings.TrimSpace(order.PlanTitle), order.Id),
-				Key:                     key,
-				SpecificChannelId:       channel.Id,
-				SpecificChannelKeyIndex: keyIndex,
-				CreatedTime:             now,
-				AccessedTime:            now,
-				ExpiredTime:             sub.EndTime,
-				UnlimitedQuota:          true,
-				Group:                   "default",
-			}
-			if len(allowedModels) > 0 {
-				token.ModelLimitsEnabled = true
-				token.ModelLimits = strings.Join(allowedModels, ",")
-			}
-			if err := tx.Create(&token).Error; err != nil {
-				return err
-			}
-			if common.RedisEnabled {
-				gopool.Go(func() {
-					_ = cacheSetToken(token)
-				})
-			}
-
-			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", "sk-"+token.Key)
+			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "base_url", baseURL)
+			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "usage_query_url", usageQueryURL)
 		}
-
-		normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "base_url", resolveSubscriptionDeliveryBaseURL())
-		normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "usage_query_url", "https://api-key-tool.fishxcode.com/")
 
 		payloadJSON, err := encodeSubscriptionDeliveryPayload(normalizedPayload)
 		if err != nil {
@@ -2948,6 +2994,19 @@ func upsertSubscriptionDeliveryPayloadValue(payload []SubscriptionDeliveryPayloa
 		Copyable: copyable,
 	}
 	return append(payload, item)
+}
+
+func getSubscriptionDeliveryPayloadValue(payload []SubscriptionDeliveryPayloadItem, key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	for _, item := range payload {
+		if strings.TrimSpace(item.Key) == key {
+			return strings.TrimSpace(item.Value)
+		}
+	}
+	return ""
 }
 
 func resolveSubscriptionDeliveryBaseURL() string {

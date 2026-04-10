@@ -853,16 +853,24 @@ export const getChannelsColumns = ({
                     type='tertiary'
                     size='small'
                     onClick={() => {
-                      setEditingChannel(record);
-                      setShowEdit(true);
+                      setCurrentMultiKeyChannel(record);
+                      setShowMultiKeyManageModal(true);
                     }}
                   >
-                    {t('编辑')}
+                    {t('多密钥')}
                   </Button>
                   <Dropdown
                     trigger='click'
                     position='bottomRight'
                     menu={[
+                      {
+                        node: 'item',
+                        name: t('编辑渠道'),
+                        onClick: () => {
+                          setEditingChannel(record);
+                          setShowEdit(true);
+                        },
+                      },
                       {
                         node: 'item',
                         name: t('多密钥管理'),

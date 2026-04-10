@@ -210,7 +210,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, modelName, relayInfo.FinalPreConsumedQuota))
 	} else {
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
+		model.UpdateChannelUsedQuotaByKey(relayInfo.ChannelId, relayInfo.ChannelMultiKeyIndex, quota)
 		model.UpdateChannelRequestCountByKey(relayInfo.ChannelId, relayInfo.ChannelMultiKeyIndex, 1)
 	}
 
@@ -312,7 +312,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, relayInfo.OriginModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
+		model.UpdateChannelUsedQuotaByKey(relayInfo.ChannelId, relayInfo.ChannelMultiKeyIndex, quota)
 		model.UpdateChannelRequestCountByKey(relayInfo.ChannelId, relayInfo.ChannelMultiKeyIndex, 1)
 	}
 

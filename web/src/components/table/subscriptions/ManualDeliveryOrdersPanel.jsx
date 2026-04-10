@@ -201,10 +201,13 @@ const ManualDeliveryOrdersPanel = ({ t }) => {
                 size='small'
                 type='primary'
                 theme='solid'
-                disabled={delivered}
                 onClick={() => setEditingRecord(record)}
               >
-                {delivered ? t('已发放') : rejected ? t('重新发放') : t('去发放')}
+                {delivered
+                  ? t('查看发放')
+                  : rejected
+                    ? t('重新发放')
+                    : t('去发放')}
               </Button>
               <Button
                 size='small'

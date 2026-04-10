@@ -44,6 +44,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import {
   API,
+  renderQuota,
   showError,
   showSuccess,
   timestamp2string,
@@ -391,6 +392,83 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
     }
   };
 
+  const renderGroupTags = (groups = []) => {
+    if (!Array.isArray(groups) || groups.length === 0) {
+      return <Text type='quaternary'>-</Text>;
+    }
+    const content = (
+      <div className='flex flex-wrap gap-1 max-w-xs'>
+        {groups.map((group) => (
+          <Tag key={group} size='small' color='blue' shape='circle'>
+            {group}
+          </Tag>
+        ))}
+      </div>
+    );
+    return (
+      <Tooltip content={content} position='top'>
+        <div className='flex flex-wrap gap-1 max-w-[220px]'>
+          {groups.slice(0, 2).map((group) => (
+            <Tag key={group} size='small' color='blue' shape='circle'>
+              {group}
+            </Tag>
+          ))}
+          {groups.length > 2 && (
+            <Tag size='small' color='grey' shape='circle'>
+              +{groups.length - 2}
+            </Tag>
+          )}
+        </div>
+      </Tooltip>
+    );
+  };
+
+  const renderUsageGroups = (groups = []) => {
+    if (!Array.isArray(groups) || groups.length === 0) {
+      return <Text type='quaternary'>-</Text>;
+    }
+    const tooltipContent = (
+      <div className='flex flex-col gap-2 min-w-[220px]'>
+        {groups.map((item) => (
+          <div
+            key={item.group}
+            className='flex items-center justify-between gap-3'
+          >
+            <Tag size='small' color='cyan' shape='circle'>
+              {item.group}
+            </Tag>
+            <div className='text-right'>
+              <div>{t('{{count}} 次', { count: Number(item.success_count || 0).toLocaleString() })}</div>
+              <div className='text-xs text-gray-500'>
+                {renderQuota(Number(item.used_quota || 0))}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+    const topGroup = groups[0];
+    return (
+      <Tooltip content={tooltipContent} position='left'>
+        <div className='flex items-center gap-1 flex-wrap max-w-[220px]'>
+          <Tag size='small' color='cyan' shape='circle'>
+            {topGroup.group}
+          </Tag>
+          <Text size='small' type='secondary'>
+            {t('{{count}} 次', {
+              count: Number(topGroup.success_count || 0).toLocaleString(),
+            })}
+          </Text>
+          {groups.length > 1 && (
+            <Tag size='small' color='grey' shape='circle'>
+              +{groups.length - 1}
+            </Tag>
+          )}
+        </div>
+      </Tooltip>
+    );
+  };
+
   // Table columns definition
   const columns = [
     {
@@ -416,6 +494,44 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       title: t('已用成功次数'),
       dataIndex: 'used_count',
       render: (value) => <Text>{Number(value || 0).toLocaleString()}</Text>,
+    },
+    {
+      title: t('已用额度'),
+      dataIndex: 'used_quota',
+      render: (value) => <Text>{renderQuota(Number(value || 0))}</Text>,
+    },
+    {
+      title: t('绑定套餐分组'),
+      dataIndex: 'binding_groups',
+      width: 220,
+      render: (groups, record) => (
+        <Space spacing={6}>
+          <Tag color='white' shape='circle' type='ghost'>
+            {t('{{count}} 个绑定', {
+              count: Number(record.binding_count || 0).toLocaleString(),
+            })}
+          </Tag>
+          {renderGroupTags(groups)}
+        </Space>
+      ),
+    },
+    {
+      title: t('分组消耗'),
+      dataIndex: 'usage_groups',
+      width: 240,
+      render: (groups) => renderUsageGroups(groups),
+    },
+    {
+      title: t('最近使用'),
+      dataIndex: 'last_used_at',
+      render: (value) =>
+        value ? (
+          <Tooltip content={timestamp2string(value)}>
+            <Text style={{ fontSize: '12px' }}>{timestamp2string(value)}</Text>
+          </Tooltip>
+        ) : (
+          <Text type='quaternary'>-</Text>
+        ),
     },
     {
       title: t('成功次数上限'),
@@ -546,7 +662,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       }
       visible={visible}
       onCancel={onCancel}
-      width={900}
+      width={1120}
       footer={null}
     >
       <div className='flex flex-col mb-5'>

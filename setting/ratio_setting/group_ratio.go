@@ -10,9 +10,16 @@ import (
 )
 
 var defaultGroupRatio = map[string]float64{
-	"default": 1,
-	"vip":     1,
-	"svip":    1,
+	"default":                      1,
+	"vip":                          1,
+	"svip":                         1,
+	"sub_plan_claude_lite":         1,
+	"sub_plan_claude_mini_plus":    1,
+	"sub_plan_claude_mini_max":     1,
+	"sub_plan_claude_premium":      1,
+	"sub_plan_claude_premium_plus": 1,
+	"sub_plan_claude_nano":         1,
+	"sub_plan_claude_micro":        1,
 }
 
 var groupRatioMap = types.NewRWMap[string, float64]()

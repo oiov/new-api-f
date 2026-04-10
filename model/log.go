@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,27 @@ type SubscriptionConsumeSummary struct {
 	TotalQuotaConsumed      int64 `json:"total_quota_consumed"`
 	TodayQuotaConsumed      int64 `json:"today_quota_consumed"`
 	SevenDayQuotaConsumed   int64 `json:"seven_day_quota_consumed"`
+}
+
+type ChannelMultiKeyGroupUsage struct {
+	Group        string `json:"group"`
+	SuccessCount int64  `json:"success_count"`
+	UsedQuota    int64  `json:"used_quota"`
+}
+
+type ChannelMultiKeyUsageDetail struct {
+	KeyIndex     int                         `json:"key_index"`
+	SuccessCount int64                       `json:"success_count"`
+	UsedQuota    int64                       `json:"used_quota"`
+	LastUsedAt   int64                       `json:"last_used_at"`
+	Groups       []ChannelMultiKeyGroupUsage `json:"groups,omitempty"`
+}
+
+type channelMultiKeyUsageRow struct {
+	CreatedAt int64  `gorm:"column:created_at"`
+	Quota     int    `gorm:"column:quota"`
+	Group     string `gorm:"column:group"`
+	Other     string `gorm:"column:other"`
 }
 
 type subscriptionConsumeSummaryRow struct {
@@ -134,6 +156,97 @@ func GetChannelSuccessRequestCountMapSince(channelIds []int, since int64) (map[i
 		result[row.ChannelId] = row.Count
 	}
 	return result, nil
+}
+
+func GetChannelMultiKeyUsageDetailMap(channelId int) (map[int]ChannelMultiKeyUsageDetail, error) {
+	result := make(map[int]ChannelMultiKeyUsageDetail)
+	if channelId <= 0 {
+		return result, nil
+	}
+	var rows []channelMultiKeyUsageRow
+	err := LOG_DB.Model(&Log{}).
+		Select("created_at, quota, "+logGroupCol+" as group, other").
+		Where("type = ? AND channel_id = ? AND token_name <> ?", LogTypeConsume, channelId, "模型测试").
+		Order("created_at desc").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	groupMaps := make(map[int]map[string]*ChannelMultiKeyGroupUsage)
+	for _, row := range rows {
+		otherMap, err := common.StrToMap(row.Other)
+		if err != nil || otherMap == nil {
+			continue
+		}
+		adminInfo, ok := otherMap["admin_info"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		keyIndex := readIntFromAny(adminInfo["multi_key_index"], -1)
+		if keyIndex < 0 {
+			continue
+		}
+		item := result[keyIndex]
+		item.KeyIndex = keyIndex
+		item.SuccessCount++
+		item.UsedQuota += int64(row.Quota)
+		if row.CreatedAt > item.LastUsedAt {
+			item.LastUsedAt = row.CreatedAt
+		}
+		if _, ok := groupMaps[keyIndex]; !ok {
+			groupMaps[keyIndex] = make(map[string]*ChannelMultiKeyGroupUsage)
+		}
+		groupName := strings.TrimSpace(row.Group)
+		if groupName == "" {
+			groupName = "default"
+		}
+		groupItem, ok := groupMaps[keyIndex][groupName]
+		if !ok {
+			groupItem = &ChannelMultiKeyGroupUsage{Group: groupName}
+			groupMaps[keyIndex][groupName] = groupItem
+		}
+		groupItem.SuccessCount++
+		groupItem.UsedQuota += int64(row.Quota)
+		result[keyIndex] = item
+	}
+	for keyIndex, item := range result {
+		groups := make([]ChannelMultiKeyGroupUsage, 0, len(groupMaps[keyIndex]))
+		for _, groupItem := range groupMaps[keyIndex] {
+			groups = append(groups, *groupItem)
+		}
+		sort.Slice(groups, func(i, j int) bool {
+			if groups[i].SuccessCount == groups[j].SuccessCount {
+				if groups[i].UsedQuota == groups[j].UsedQuota {
+					return groups[i].Group < groups[j].Group
+				}
+				return groups[i].UsedQuota > groups[j].UsedQuota
+			}
+			return groups[i].SuccessCount > groups[j].SuccessCount
+		})
+		item.Groups = groups
+		result[keyIndex] = item
+	}
+	return result, nil
+}
+
+func readIntFromAny(value interface{}, fallback int) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		if parsed, err := v.Int64(); err == nil {
+			return int(parsed)
+		}
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return parsed
+		}
+	}
+	return fallback
 }
 
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,

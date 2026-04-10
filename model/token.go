@@ -114,6 +114,18 @@ type activeSpecificChannelKeyBindingCount struct {
 	BindingCount            int64 `gorm:"column:binding_count"`
 }
 
+type ActiveSpecificChannelKeyBindingDetail struct {
+	KeyIndex      int      `json:"key_index"`
+	BindingCount  int64    `json:"binding_count"`
+	BindingGroups []string `json:"binding_groups,omitempty"`
+}
+
+type activeSpecificChannelKeyBindingDetailRow struct {
+	SpecificChannelKeyIndex int    `gorm:"column:specific_channel_key_index"`
+	Group                   string `gorm:"column:group_name"`
+	BindingCount            int64  `gorm:"column:binding_count"`
+}
+
 func GetActiveSpecificChannelKeyBindingCountMap(channelId int) (map[int]int64, error) {
 	var rows []activeSpecificChannelKeyBindingCount
 	err := DB.Model(&Token{}).
@@ -130,6 +142,50 @@ func GetActiveSpecificChannelKeyBindingCountMap(channelId int) (map[int]int64, e
 	result := make(map[int]int64, len(rows))
 	for _, row := range rows {
 		result[row.SpecificChannelKeyIndex] = row.BindingCount
+	}
+	return result, nil
+}
+
+func GetActiveSpecificChannelKeyBindingDetailMap(channelId int) (map[int]ActiveSpecificChannelKeyBindingDetail, error) {
+	var rows []activeSpecificChannelKeyBindingDetailRow
+	groupCol := commonGroupCol
+	if groupCol == "" {
+		if common.UsingPostgreSQL {
+			groupCol = `"group"`
+		} else {
+			groupCol = "`group`"
+		}
+	}
+	err := DB.Model(&Token{}).
+		Select("specific_channel_key_index, "+groupCol+" as group_name, COUNT(*) AS binding_count").
+		Where(
+			"specific_channel_id = ? AND specific_channel_key_index >= 0 AND deleted_at IS NULL",
+			channelId,
+		).
+		Group("specific_channel_key_index, " + groupCol).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int]ActiveSpecificChannelKeyBindingDetail)
+	for _, row := range rows {
+		item := result[row.SpecificChannelKeyIndex]
+		item.KeyIndex = row.SpecificChannelKeyIndex
+		item.BindingCount += row.BindingCount
+		groupName := strings.TrimSpace(row.Group)
+		if groupName != "" {
+			exists := false
+			for _, current := range item.BindingGroups {
+				if current == groupName {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				item.BindingGroups = append(item.BindingGroups, groupName)
+			}
+		}
+		result[row.SpecificChannelKeyIndex] = item
 	}
 	return result, nil
 }

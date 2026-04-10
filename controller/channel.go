@@ -1291,13 +1291,18 @@ type MultiKeyStatusResponse struct {
 }
 
 type KeyStatus struct {
-	Index           int    `json:"index"`
-	Status          int    `json:"status"` // 1: enabled, 2: disabled
-	DisabledTime    int64  `json:"disabled_time,omitempty"`
-	Reason          string `json:"reason,omitempty"`
-	KeyPreview      string `json:"key_preview"` // first 10 chars of key for identification
-	UsedCount       int64  `json:"used_count"`
-	MaxRequestCount int64  `json:"max_request_count"`
+	Index           int                               `json:"index"`
+	Status          int                               `json:"status"` // 1: enabled, 2: disabled
+	DisabledTime    int64                             `json:"disabled_time,omitempty"`
+	Reason          string                            `json:"reason,omitempty"`
+	KeyPreview      string                            `json:"key_preview"` // first 10 chars of key for identification
+	UsedCount       int64                             `json:"used_count"`
+	UsedQuota       int64                             `json:"used_quota"`
+	MaxRequestCount int64                             `json:"max_request_count"`
+	BindingCount    int64                             `json:"binding_count"`
+	BindingGroups   []string                          `json:"binding_groups,omitempty"`
+	LastUsedAt      int64                             `json:"last_used_at,omitempty"`
+	UsageGroups     []model.ChannelMultiKeyGroupUsage `json:"usage_groups,omitempty"`
 }
 
 // ManageMultiKeys handles multi-key management operations
@@ -1429,6 +1434,40 @@ func ManageMultiKeys(c *gin.Context) {
 		var pageKeyStatusList []KeyStatus
 		if start < filteredTotal {
 			pageKeyStatusList = filteredKeyStatusList[start:end]
+		}
+
+		bindingDetailMap, err := model.GetActiveSpecificChannelKeyBindingDetailMap(channel.Id)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "获取多密钥绑定信息失败",
+			})
+			return
+		}
+		usageDetailMap, err := model.GetChannelMultiKeyUsageDetailMap(channel.Id)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "获取多密钥消耗信息失败",
+			})
+			return
+		}
+		for i := range pageKeyStatusList {
+			if bindingDetail, ok := bindingDetailMap[pageKeyStatusList[i].Index]; ok {
+				pageKeyStatusList[i].BindingCount = bindingDetail.BindingCount
+				pageKeyStatusList[i].BindingGroups = bindingDetail.BindingGroups
+			}
+			if usageDetail, ok := usageDetailMap[pageKeyStatusList[i].Index]; ok {
+				if usageDetail.SuccessCount > 0 {
+					pageKeyStatusList[i].UsedCount = usageDetail.SuccessCount
+				}
+				pageKeyStatusList[i].UsedQuota = usageDetail.UsedQuota
+				pageKeyStatusList[i].LastUsedAt = usageDetail.LastUsedAt
+				pageKeyStatusList[i].UsageGroups = usageDetail.Groups
+			}
+			if pageKeyStatusList[i].UsedQuota == 0 {
+				pageKeyStatusList[i].UsedQuota = channel.GetMultiKeyUsedQuota(pageKeyStatusList[i].Index)
+			}
 		}
 
 		c.JSON(http.StatusOK, gin.H{

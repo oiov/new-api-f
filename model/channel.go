@@ -68,6 +68,7 @@ type ChannelInfo struct {
 	MultiKeyDisabledReason  map[int]string        `json:"multi_key_disabled_reason,omitempty"`   // key禁用原因列表，key index -> reason
 	MultiKeyDisabledTime    map[int]int64         `json:"multi_key_disabled_time,omitempty"`     // key禁用时间列表，key index -> time
 	MultiKeyUsedCount       map[int]int64         `json:"multi_key_used_count,omitempty"`        // key已成功请求次数
+	MultiKeyUsedQuota       map[int]int64         `json:"multi_key_used_quota,omitempty"`        // key已消耗额度
 	MultiKeyMaxRequestCount map[int]int64         `json:"multi_key_max_request_count,omitempty"` // key成功请求次数上限，0表示不限
 	MultiKeyPollingIndex    int                   `json:"multi_key_polling_index"`               // 多Key模式下轮询的key索引
 	MultiKeyMode            constant.MultiKeyMode `json:"multi_key_mode"`
@@ -133,6 +134,13 @@ func (channel *Channel) GetMultiKeyMaxRequestCount(index int) int64 {
 		return 0
 	}
 	return channel.ChannelInfo.MultiKeyMaxRequestCount[index]
+}
+
+func (channel *Channel) GetMultiKeyUsedQuota(index int) int64 {
+	if channel == nil || channel.ChannelInfo.MultiKeyUsedQuota == nil {
+		return 0
+	}
+	return channel.ChannelInfo.MultiKeyUsedQuota[index]
 }
 
 func (channel *Channel) IsSpecificKeyAvailable(index int) bool {
@@ -922,9 +930,44 @@ func incrementChannelMultiKeyUsedCount(id int, keyIndex int, count int) {
 	}
 }
 
+func incrementChannelMultiKeyUsedQuota(id int, keyIndex int, quota int) {
+	if keyIndex < 0 || quota == 0 {
+		return
+	}
+	lock := GetChannelPollingLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+
+	channel, err := GetChannelById(id, true)
+	if err != nil || channel == nil || !channel.ChannelInfo.IsMultiKey {
+		return
+	}
+	if channel.ChannelInfo.MultiKeyUsedQuota == nil {
+		channel.ChannelInfo.MultiKeyUsedQuota = make(map[int]int64)
+	}
+	channel.ChannelInfo.MultiKeyUsedQuota[keyIndex] += int64(quota)
+	if err := DB.Model(&Channel{}).Where("id = ?", id).Update("channel_info", channel.ChannelInfo).Error; err != nil {
+		common.SysLog(fmt.Sprintf("failed to update channel multi-key quota: channel_id=%d, key_index=%d, delta_quota=%d, error=%v", id, keyIndex, quota, err))
+		return
+	}
+	if common.MemoryCacheEnabled {
+		if cached, cacheErr := CacheGetChannel(id); cacheErr == nil && cached != nil {
+			if cached.ChannelInfo.MultiKeyUsedQuota == nil {
+				cached.ChannelInfo.MultiKeyUsedQuota = make(map[int]int64)
+			}
+			cached.ChannelInfo.MultiKeyUsedQuota[keyIndex] += int64(quota)
+		}
+	}
+}
+
 func UpdateChannelRequestCountByKey(id int, keyIndex int, count int) {
 	UpdateChannelRequestCount(id, count)
 	incrementChannelMultiKeyUsedCount(id, keyIndex, count)
+}
+
+func UpdateChannelUsedQuotaByKey(id int, keyIndex int, quota int) {
+	UpdateChannelUsedQuota(id, quota)
+	incrementChannelMultiKeyUsedQuota(id, keyIndex, quota)
 }
 
 func updateChannelUsage(id int, quota int, count int) {

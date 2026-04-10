@@ -8,8 +8,15 @@ import (
 )
 
 var userUsableGroups = map[string]string{
-	"default": "默认分组",
-	"vip":     "vip分组",
+	"default":                      "默认分组",
+	"vip":                          "vip分组",
+	"sub_plan_claude_lite":         "Claude Lite 订阅专属分组",
+	"sub_plan_claude_mini_plus":    "Claude Mini Plus 订阅专属分组",
+	"sub_plan_claude_mini_max":     "Claude Mini Max 订阅专属分组",
+	"sub_plan_claude_premium":      "Claude Premium 订阅专属分组",
+	"sub_plan_claude_premium_plus": "Claude Premium+ 订阅专属分组",
+	"sub_plan_claude_nano":         "Claude Nano 订阅专属分组",
+	"sub_plan_claude_micro":        "Claude Micro 订阅专属分组",
 }
 var userUsableGroupsMutex sync.RWMutex
 
