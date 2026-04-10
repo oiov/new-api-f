@@ -167,6 +167,23 @@ type activeSpecificChannelKeyBindingUserRow struct {
 	Status                  int    `gorm:"column:status"`
 }
 
+type activeSpecificChannelKeyBindingSubscriptionDetailRow struct {
+	SpecificChannelKeyIndex int    `gorm:"column:specific_channel_key_index"`
+	Group                   string `gorm:"column:group_name"`
+	BindingCount            int64  `gorm:"column:binding_count"`
+}
+
+type activeSpecificChannelKeyBindingSubscriptionUserRow struct {
+	SpecificChannelKeyIndex int    `gorm:"column:specific_channel_key_index"`
+	UserId                  int    `gorm:"column:user_id"`
+	Username                string `gorm:"column:username"`
+	UserSubscriptionId      int    `gorm:"column:user_subscription_id"`
+	PlanId                  int    `gorm:"column:plan_id"`
+	SubscriptionGroup       string `gorm:"column:subscription_group"`
+	ExpiredTime             int64  `gorm:"column:expired_time"`
+	Status                  string `gorm:"column:status"`
+}
+
 func GetActiveSpecificChannelKeyBindingCountMap(channelId int) (map[int]int64, error) {
 	var rows []activeSpecificChannelKeyBindingCount
 	err := DB.Model(&Token{}).
@@ -228,6 +245,40 @@ func GetActiveSpecificChannelKeyBindingDetailMap(channelId int) (map[int]ActiveS
 		}
 		result[row.SpecificChannelKeyIndex] = item
 	}
+	now := common.GetTimestamp()
+	var subRows []activeSpecificChannelKeyBindingSubscriptionDetailRow
+	err = DB.Model(&UserSubscription{}).
+		Select("specific_channel_key_index, upgrade_group as group_name, COUNT(*) AS binding_count").
+		Where(
+			"specific_channel_id = ? AND specific_channel_key_index >= 0 AND status = ? AND end_time > ?",
+			channelId,
+			"active",
+			now,
+		).
+		Group("specific_channel_key_index, upgrade_group").
+		Find(&subRows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range subRows {
+		item := result[row.SpecificChannelKeyIndex]
+		item.KeyIndex = row.SpecificChannelKeyIndex
+		item.BindingCount += row.BindingCount
+		groupName := strings.TrimSpace(row.Group)
+		if groupName != "" {
+			exists := false
+			for _, current := range item.BindingGroups {
+				if current == groupName {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				item.BindingGroups = append(item.BindingGroups, groupName)
+			}
+		}
+		result[row.SpecificChannelKeyIndex] = item
+	}
 	qualifiedGroupCol := qualifiedTokenGroupCol()
 	var userRows []activeSpecificChannelKeyBindingUserRow
 	err = DB.Model(&Token{}).
@@ -253,6 +304,35 @@ func GetActiveSpecificChannelKeyBindingDetailMap(channelId int) (map[int]ActiveS
 			TokenGroup:  row.TokenGroup,
 			ExpiredTime: row.ExpiredTime,
 			Status:      row.Status,
+		})
+		result[row.SpecificChannelKeyIndex] = item
+	}
+	var subUserRows []activeSpecificChannelKeyBindingSubscriptionUserRow
+	err = DB.Model(&UserSubscription{}).
+		Select("user_subscriptions.specific_channel_key_index, user_subscriptions.user_id, users.username, user_subscriptions.id as user_subscription_id, user_subscriptions.plan_id, user_subscriptions.upgrade_group as subscription_group, user_subscriptions.end_time as expired_time, user_subscriptions.status").
+		Joins("LEFT JOIN users ON users.id = user_subscriptions.user_id").
+		Where(
+			"user_subscriptions.specific_channel_id = ? AND user_subscriptions.specific_channel_key_index >= 0 AND user_subscriptions.status = ? AND user_subscriptions.end_time > ?",
+			channelId,
+			"active",
+			now,
+		).
+		Order("user_subscriptions.specific_channel_key_index asc, user_subscriptions.id asc").
+		Find(&subUserRows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range subUserRows {
+		item := result[row.SpecificChannelKeyIndex]
+		item.KeyIndex = row.SpecificChannelKeyIndex
+		item.BindingUsers = append(item.BindingUsers, ActiveSpecificChannelKeyBindingUser{
+			UserId:      row.UserId,
+			Username:    row.Username,
+			TokenId:     -row.UserSubscriptionId,
+			TokenName:   fmt.Sprintf("订阅 #%d · Plan %d", row.UserSubscriptionId, row.PlanId),
+			TokenGroup:  row.SubscriptionGroup,
+			ExpiredTime: row.ExpiredTime,
+			Status:      1,
 		})
 		result[row.SpecificChannelKeyIndex] = item
 	}

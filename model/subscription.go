@@ -3349,6 +3349,47 @@ func EnsureSubscriptionAggregateAccessTokenForUser(userId int) (*Token, error) {
 	return result, nil
 }
 
+func ensureSubscriptionAggregateAccessTokenForUserTx(tx *gorm.DB, userId int) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	now := GetDBTimestampWithTx(tx)
+	var subs []UserSubscription
+	if err := tx.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		Order("id asc").
+		Find(&subs).Error; err != nil {
+		return err
+	}
+	needsAggregateToken := false
+	for i := range subs {
+		sub := subs[i]
+		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+			continue
+		}
+		if sub.SpecificChannelId <= 0 || getUserSubscriptionRouteGroup(&sub) == "" {
+			if err := provisionAggregateAccessForSubscriptionTx(tx, &sub); err != nil {
+				return err
+			}
+		}
+		if sub.SpecificChannelId <= 0 || getUserSubscriptionRouteGroup(&sub) == "" {
+			continue
+		}
+		needsAggregateToken = true
+	}
+	if !needsAggregateToken {
+		_, err := disableSubscriptionAggregateAccessTokenTx(tx, userId)
+		return err
+	}
+	token, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, userId)
+	if err != nil {
+		return err
+	}
+	return refreshSubscriptionAggregateAccessTokenTx(tx, token)
+}
+
 func allocateSubscriptionPlanChannelFromPoolTx(tx *gorm.DB, tag string) (*Channel, int, error) {
 	if tx == nil {
 		return nil, -1, errors.New("tx is nil")
@@ -3900,18 +3941,13 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 			cacheGroup = target
 			downgradeGroup = target
 		}
-		return nil
+		return ensureSubscriptionAggregateAccessTokenForUserTx(tx, userId)
 	})
 	if err != nil {
 		return "", err
 	}
 	if cacheGroup != "" && userId > 0 {
 		_ = UpdateUserGroupCache(userId, cacheGroup)
-	}
-	if userId > 0 {
-		if _, ensureErr := EnsureSubscriptionAggregateAccessTokenForUser(userId); ensureErr != nil {
-			return "", ensureErr
-		}
 	}
 	if downgradeGroup != "" {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
@@ -3946,18 +3982,13 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		if err := tx.Where("id = ?", userSubscriptionId).Delete(&UserSubscription{}).Error; err != nil {
 			return err
 		}
-		return nil
+		return ensureSubscriptionAggregateAccessTokenForUserTx(tx, userId)
 	})
 	if err != nil {
 		return "", err
 	}
 	if cacheGroup != "" && userId > 0 {
 		_ = UpdateUserGroupCache(userId, cacheGroup)
-	}
-	if userId > 0 {
-		if _, ensureErr := EnsureSubscriptionAggregateAccessTokenForUser(userId); ensureErr != nil {
-			return "", ensureErr
-		}
 	}
 	if downgradeGroup != "" {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
@@ -4120,7 +4151,6 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 	}
 	now := GetDBTimestamp()
 	message := ""
-	userId := 0
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").
@@ -4128,7 +4158,6 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 			First(&sub).Error; err != nil {
 			return err
 		}
-		userId = sub.UserId
 		if sub.Status == "cancelled" {
 			return errors.New("subscription has been cancelled")
 		}
@@ -4194,15 +4223,13 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 			}
 			message = "已提前重置当前周期用量"
 		}
-		return tx.Save(&sub).Error
+		if err := tx.Save(&sub).Error; err != nil {
+			return err
+		}
+		return ensureSubscriptionAggregateAccessTokenForUserTx(tx, sub.UserId)
 	})
 	if err != nil {
 		return "", err
-	}
-	if userId > 0 {
-		if _, ensureErr := EnsureSubscriptionAggregateAccessTokenForUser(userId); ensureErr != nil {
-			return "", ensureErr
-		}
 	}
 	return message, nil
 }

@@ -37,6 +37,7 @@ const ChannelsFilters = ({
   activePackagePoolGroup,
   applyPackagePoolFilter,
   handleSearchGroupChange,
+  resetSearchFilters,
   loading,
   searching,
   t,
@@ -138,15 +139,7 @@ const ChannelsFilters = ({
           <Button
             size='small'
             type='tertiary'
-            onClick={() => {
-              if (formApi) {
-                formApi.reset();
-                // 重置后立即查询，使用setTimeout确保表单重置完成
-                setTimeout(() => {
-                  refresh();
-                }, 100);
-              }
-            }}
+            onClick={resetSearchFilters}
             className='w-full md:w-auto'
           >
             {t('重置')}
