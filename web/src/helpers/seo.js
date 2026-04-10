@@ -1,15 +1,48 @@
+import enLocale from '../i18n/locales/en.json';
+import frLocale from '../i18n/locales/fr.json';
+import jaLocale from '../i18n/locales/ja.json';
+import ruLocale from '../i18n/locales/ru.json';
+import viLocale from '../i18n/locales/vi.json';
+import zhCNLocale from '../i18n/locales/zh-CN.json';
+import zhTWLocale from '../i18n/locales/zh-TW.json';
+import { normalizeLanguage } from '../i18n/language';
+
 const SITE_URL =
   (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://fishxcode.com').replace(
     /\/$/,
     '',
   );
 const SITE_NAME = 'FishXCode AI';
+const SEO_LOCALES = {
+  en: enLocale.translation,
+  fr: frLocale.translation,
+  ja: jaLocale.translation,
+  ru: ruLocale.translation,
+  vi: viLocale.translation,
+  'zh-CN': zhCNLocale.translation,
+  'zh-TW': zhTWLocale.translation,
+};
+
 function getDefaultImage(language) {
   return `${SITE_URL}/${isChineseLanguage(language) ? 'og-home-zh.svg' : 'og-home-en.svg'}`;
 }
 
 function isChineseLanguage(language) {
   return language?.startsWith('zh');
+}
+
+function getSeoTranslations(language) {
+  const normalizedLanguage = normalizeLanguage(language) || 'zh-CN';
+  return SEO_LOCALES[normalizedLanguage] || SEO_LOCALES['zh-CN'];
+}
+
+function getSeoMessage(language, key, vars = {}) {
+  const translations = getSeoTranslations(language);
+  const template = translations?.[key] || SEO_LOCALES['zh-CN']?.[key] || key;
+  return String(template).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, name) => {
+    const value = vars[name];
+    return value === undefined || value === null ? '' : String(value);
+  });
 }
 
 export function getSeoLocale(language) {
@@ -135,6 +168,203 @@ export function getPricingSeo(language) {
       'Claude价格,Codex价格,Claude套餐,Codex套餐,AI Coding订阅价格,包月,周卡,天卡',
     keywordsEn:
       'Claude pricing, Codex pricing, AI Coding pricing, monthly subscription, weekly pass, daily pass',
+  });
+}
+
+function uniqueValues(values = [], limit = 8) {
+  return Array.from(new Set((values || []).filter(Boolean))).slice(0, limit);
+}
+
+function normalizePlan(rawPlan) {
+  return rawPlan?.plan || rawPlan || null;
+}
+
+function inferPlanSeries(plan) {
+  const text = [
+    plan?.title,
+    plan?.subtitle,
+    plan?.upgrade_group,
+    ...(Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : []),
+    ...(Array.isArray(plan?.allowed_models) ? plan.allowed_models : []),
+    ...(Array.isArray(plan?.allowed_vendor_names) ? plan.allowed_vendor_names : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const isClaude =
+    text.includes('claude') || text.includes('anthropic') || text.includes('cc-');
+  const isCodex =
+    text.includes('codex') ||
+    text.includes('openai') ||
+    text.includes('gpt') ||
+    text.includes('o4');
+
+  if (isClaude && !isCodex) return 'Claude';
+  if (isCodex && !isClaude) return 'Codex';
+  if (isClaude && isCodex) return 'Claude + Codex';
+  return 'AI';
+}
+
+function getPlanPath(planId) {
+  return `/pricing/subscription-plans/${planId}`;
+}
+
+function getPlanSeoDescription(plan, language) {
+  if (plan?.subtitle) {
+    return plan.subtitle;
+  }
+  const models = uniqueValues(plan?.allowed_models, 3);
+  const vendors = uniqueValues(plan?.allowed_vendor_names, 2);
+  const modelText =
+    models.length > 0 ? models.join(' / ') : getSeoMessage(language, 'SEO 多模型');
+  const vendorText =
+    vendors.length > 0
+      ? vendors.join(' / ')
+      : getSeoMessage(language, 'SEO 兼容供应商');
+  return getSeoMessage(language, 'SEO 套餐描述', {
+    modelText,
+    title: plan?.title || getSeoMessage(language, 'SEO 订阅套餐'),
+    vendorText,
+  });
+}
+
+function buildSubscriptionListJsonLd(language, plans = []) {
+  const enabledPlans = plans
+    .map(normalizePlan)
+    .filter((plan) => plan?.id && plan?.enabled !== false)
+    .slice(0, 12);
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: getSeoMessage(language, 'SEO 订阅套餐列表名称'),
+    url: `${SITE_URL}/pricing?tab=subscription-plans`,
+    numberOfItems: enabledPlans.length,
+    itemListElement: enabledPlans.map((plan, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      url: `${SITE_URL}${getPlanPath(plan.id)}`,
+      name:
+        plan.title ||
+        getSeoMessage(language, 'SEO 套餐编号', {
+          id: plan.id,
+        }),
+    })),
+  };
+}
+
+function buildSubscriptionPlanJsonLd(language, plan) {
+  const price = Number(
+    plan?.effective_price_amount ?? plan?.discount_price_amount ?? plan?.price_amount ?? 0,
+  );
+  const currency = String(plan?.currency || 'USD').toUpperCase();
+  const description = getPlanSeoDescription(plan, language);
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name:
+      plan?.title ||
+      getSeoMessage(language, 'SEO 订阅套餐编号', {
+        id: plan?.id || '',
+      }),
+    description,
+    category: getSeoMessage(language, 'SEO AI 订阅套餐'),
+    brand: {
+      '@type': 'Brand',
+      name: SITE_NAME,
+    },
+    sku: String(plan?.id || ''),
+    url: `${SITE_URL}${getPlanPath(plan?.id)}`,
+    offers: {
+      '@type': 'Offer',
+      priceCurrency: currency,
+      price,
+      availability:
+        plan?.enabled === false
+          ? 'https://schema.org/Discontinued'
+          : 'https://schema.org/InStock',
+      url: `${SITE_URL}${getPlanPath(plan?.id)}`,
+      seller: {
+        '@type': 'Organization',
+        name: SITE_NAME,
+      },
+    },
+  };
+}
+
+export function getSubscriptionPlansSeo(language, rawPlans = [], options = {}) {
+  const plans = rawPlans
+    .map(normalizePlan)
+    .filter((plan) => plan?.id && plan?.enabled !== false);
+  const {
+    canonicalPath = '/pricing?tab=subscription-plans',
+    series: currentSeries = 'all',
+    sort = 'recommended',
+    view = 'card',
+  } = options;
+  const availableSeries = uniqueValues(plans.map((plan) => inferPlanSeries(plan)), 3);
+  const models = uniqueValues(
+    plans.flatMap((plan) =>
+      Array.isArray(plan?.allowed_models) ? plan.allowed_models : [],
+    ),
+    6,
+  );
+  const zh = isChineseLanguage(language);
+  const seriesMap = {
+    all: getSeoMessage(language, 'SEO 全部系列'),
+    claude: getSeoMessage(language, 'SEO Claude 系列'),
+    codex: getSeoMessage(language, 'SEO Codex 系列'),
+    mixed: getSeoMessage(language, 'SEO 混合系列'),
+  };
+  const sortMap = {
+    recommended: getSeoMessage(language, 'SEO 推荐优先'),
+    price_asc: getSeoMessage(language, 'SEO 价格从低到高'),
+    price_desc: getSeoMessage(language, 'SEO 价格从高到低'),
+    value_desc: getSeoMessage(language, 'SEO 权益从多到少'),
+  };
+  const availableSeriesText =
+    availableSeries.join('、') ||
+    getSeoMessage(language, zh ? 'SEO Claude Codex 系列' : 'SEO Claude 与 Codex 系列');
+  const modelText = models.join('、') || getSeoMessage(language, 'SEO 多模型');
+  const currentSeriesText = seriesMap[currentSeries] || seriesMap.all;
+  const currentSortText = sortMap[options.sort || 'recommended'] || sortMap.recommended;
+  const currentViewText = zh
+    ? getSeoMessage(language, view === 'table' ? 'SEO 列表视图' : 'SEO 卡片视图')
+    : getSeoMessage(language, view === 'table' ? 'SEO 列表视图' : 'SEO 卡片视图');
+
+  return buildSeoPayload({
+    language,
+    path: canonicalPath,
+    titleZh: `${currentSeriesText}订阅套餐价格与购买方案 | FishXCode AI`,
+    titleEn: `${currentSeriesText} subscription plans | FishXCode AI`,
+    descriptionZh: `查看 FishXCode AI 当前可售的 ${availableSeriesText} 套餐，当前为 ${currentSeriesText}，按 ${currentSortText} 排序，使用 ${currentViewText} 展示，覆盖 ${modelText} 等能力。`,
+    descriptionEn: `Explore current ${availableSeriesText} plans from FishXCode AI. The current page shows ${currentSeriesText}, sorted by ${currentSortText}, in ${currentViewText}, covering ${modelText}.`,
+    keywordsZh: `订阅套餐,Claude套餐,Codex套餐,AI订阅,套餐价格,在线购买,${currentSeriesText},${currentSortText},${models.slice(0, 4).join(',')}`,
+    keywordsEn: `subscription plans, Claude plans, Codex plans, AI subscriptions, pricing, online purchase, ${currentSeriesText}, ${currentSortText}, ${models.slice(0, 4).join(', ')}`,
+    jsonLd: buildSubscriptionListJsonLd(language, plans),
+  });
+}
+
+export function getSubscriptionPlanSeo(language, rawPlan) {
+  const plan = normalizePlan(rawPlan);
+  if (!plan?.id) {
+    return getSubscriptionPlansSeo(language, []);
+  }
+  const series = inferPlanSeries(plan);
+  const models = uniqueValues(plan?.allowed_models, 5);
+  const groups = uniqueValues(plan?.allowed_groups, 4);
+  const description = getPlanSeoDescription(plan, language);
+  return buildSeoPayload({
+    language,
+    path: getPlanPath(plan.id),
+    titleZh: `${plan.title} 套餐详情与购买 | FishXCode AI`,
+    titleEn: `${plan.title} Plan Details | FishXCode AI`,
+    descriptionZh: description,
+    descriptionEn: description,
+    keywordsZh: `${plan.title},套餐详情,订阅购买,${series},${models.join(',')},${groups.join(',')}`,
+    keywordsEn: `${plan.title}, plan details, subscription purchase, ${series}, ${models.join(', ')}, ${groups.join(', ')}`,
+    jsonLd: buildSubscriptionPlanJsonLd(language, plan),
   });
 }
 

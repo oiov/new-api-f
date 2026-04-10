@@ -435,6 +435,7 @@ function GroupTagWithDescription({ color, group }) {
 
   const tag = (
     <Tag
+      className='pricing-clickable-tag'
       color={color}
       shape='circle'
       onClick={async (event) => {

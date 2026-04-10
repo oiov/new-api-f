@@ -277,10 +277,29 @@ export function formatSubscriptionResetHint(plan, t) {
   if (period === 'never') return t('不重置');
   const useFixedClock = getSubscriptionResetFixedClock(plan);
   if (useFixedClock) {
-    return t('按购买激活时间{{period}}固定在 {{time}} 重置', {
-      period: formatSubscriptionResetPeriod(plan, t),
-      time: formatSubscriptionResetFixedTime(getSubscriptionResetFixedSeconds(plan)),
-    });
+    const time = formatSubscriptionResetFixedTime(
+      getSubscriptionResetFixedSeconds(plan),
+    );
+    if (period === 'daily') {
+      return t('购买生效后，每天 {{time}} 重置', {
+        time,
+      });
+    }
+    if (period === 'weekly') {
+      return t('购买生效后，每周固定时刻 {{time}} 重置', {
+        time,
+      });
+    }
+    if (period === 'monthly') {
+      return t('购买生效后，每月固定时刻 {{time}} 重置', {
+        time,
+      });
+    }
+    if (period === 'yearly') {
+      return t('购买生效后，每年固定时刻 {{time}} 重置', {
+        time,
+      });
+    }
   }
   if (period === 'daily') return t('按购买激活时间每 1 天滚动重置');
   if (period === 'weekly') return t('按购买激活时间每 7 天滚动重置');

@@ -219,6 +219,8 @@ const AddEditSubscriptionModal = ({
   const [vendorLoading, setVendorLoading] = useState(false);
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
+  const linkageUpdateTokenRef = useRef(0);
+  const linkageApplyingRef = useRef(false);
   const linkageStateRef = useRef({
     resourceType: undefined,
     resetPeriod: undefined,
@@ -373,6 +375,15 @@ const AddEditSubscriptionModal = ({
   }, [visible]);
 
   const handleFormValueChange = (values) => {
+    if (linkageApplyingRef.current) {
+      linkageApplyingRef.current = false;
+      linkageStateRef.current = {
+        resourceType: values.resource_type || 'quota',
+        resetPeriod: values.quota_reset_period || 'never',
+      };
+      return;
+    }
+
     const nextResourceType = values.resource_type || 'quota';
     const nextResetPeriod = values.quota_reset_period || 'never';
     const previous = linkageStateRef.current;
@@ -444,9 +455,18 @@ const AddEditSubscriptionModal = ({
     };
 
     if (Object.keys(nextValues).length > 0) {
-      formApiRef.current?.setValues({
+      const mergedValues = {
         ...values,
         ...nextValues,
+      };
+      const updateToken = linkageUpdateTokenRef.current + 1;
+      linkageUpdateTokenRef.current = updateToken;
+      queueMicrotask(() => {
+        if (linkageUpdateTokenRef.current !== updateToken) {
+          return;
+        }
+        linkageApplyingRef.current = true;
+        formApiRef.current?.setValues(mergedValues);
       });
     }
   };

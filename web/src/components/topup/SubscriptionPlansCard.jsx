@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Badge,
   Banner,
@@ -40,8 +40,10 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
+import { IconInfoCircle } from '@douyinfe/semi-icons';
 import {
   API,
+  copy,
   showError,
   showSuccess,
   renderGroup,
@@ -52,7 +54,6 @@ import { getCurrencyConfig, renderQuotaWithAmount } from '../../helpers/render';
 import {
   BarChart3,
   BookOpen,
-  CalendarClock,
   ChevronRight,
   Clock,
   Crown,
@@ -83,6 +84,15 @@ import {
 } from '../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
+const PLAN_URL_PARAM_KEYS = {
+  mainTab: 'plan_tab',
+  subscriptionView: 'sub_view',
+  sort: 'plan_sort',
+  series: 'plan_series',
+  page: 'plan_page',
+  pageSize: 'plan_size',
+  view: 'plan_view',
+};
 
 function getEpayMethods(payMethods = []) {
   return (payMethods || []).filter(
@@ -247,6 +257,27 @@ function inferSubscriptionPlanSeries(plan) {
   return 'other';
 }
 
+function renderScopedValueTag({
+  key,
+  value,
+  color = 'white',
+  size = 'small',
+  onClick,
+}) {
+  return (
+    <Tag
+      key={key}
+      color={color}
+      shape='circle'
+      size={size}
+      onClick={onClick}
+      className={onClick ? 'pricing-clickable-tag' : undefined}
+    >
+      {value}
+    </Tag>
+  );
+}
+
 function getConversionRequestStatusMeta(status, t) {
   switch (status) {
     case 'approved':
@@ -293,24 +324,46 @@ const SubscriptionPlansCard = ({
   showUserSubscriptions = true,
 }) => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isPackageVariant = uiVariant === 'package';
+  const enablePlanUrlSync = isPackageVariant;
+  const initialPlanMainTab =
+    searchParams.get(PLAN_URL_PARAM_KEYS.mainTab) || initialMainTab;
+  const initialSubscriptionView =
+    searchParams.get(PLAN_URL_PARAM_KEYS.subscriptionView) || 'active';
+  const initialPlanSort =
+    searchParams.get(PLAN_URL_PARAM_KEYS.sort) ||
+    (isPackageVariant ? 'recommended' : 'price_asc');
+  const initialPlanSeries =
+    searchParams.get(PLAN_URL_PARAM_KEYS.series) ||
+    (isPackageVariant ? 'claude' : 'all');
+  const initialPlanPage = Math.max(
+    1,
+    Number.parseInt(searchParams.get(PLAN_URL_PARAM_KEYS.page) || '1', 10) || 1,
+  );
+  const initialPlanPageSize = Math.max(
+    1,
+    Number.parseInt(searchParams.get(PLAN_URL_PARAM_KEYS.pageSize) || '9', 10) ||
+    9,
+  );
+  const initialPlanViewMode =
+    searchParams.get(PLAN_URL_PARAM_KEYS.view) ||
+    (isPackageVariant ? 'card' : 'table');
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState(initialMainTab);
-  const [subscriptionView, setSubscriptionView] = useState('active');
-  const [planSort, setPlanSort] = useState(
-    isPackageVariant ? 'recommended' : 'price_asc',
+  const [activeMainTab, setActiveMainTab] = useState(initialPlanMainTab);
+  const [subscriptionView, setSubscriptionView] = useState(
+    initialSubscriptionView,
   );
-  const [planSeriesFilter, setPlanSeriesFilter] = useState(
-    isPackageVariant ? 'claude' : 'all',
-  );
+  const [planSort, setPlanSort] = useState(initialPlanSort);
+  const [planSeriesFilter, setPlanSeriesFilter] = useState(initialPlanSeries);
   const [expandedSubscriptionKeys, setExpandedSubscriptionKeys] = useState([]);
   const [consumeLogsFilter, setConsumeLogsFilter] = useState(null);
-  const [planPage, setPlanPage] = useState(1);
-  const [planPageSize, setPlanPageSize] = useState(9);
+  const [planPage, setPlanPage] = useState(initialPlanPage);
+  const [planPageSize, setPlanPageSize] = useState(initialPlanPageSize);
   const [subscriptionKeyword, setSubscriptionKeyword] = useState('');
   const [subscriptionPlanFilter, setSubscriptionPlanFilter] = useState('all');
   const [subscriptionResourceFilter, setSubscriptionResourceFilter] =
@@ -322,9 +375,7 @@ const SubscriptionPlansCard = ({
     useState(false);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
-  const [planViewMode, setPlanViewMode] = useState(
-    isPackageVariant ? 'card' : 'table',
-  );
+  const [planViewMode, setPlanViewMode] = useState(initialPlanViewMode);
 
   const openBuy = (p) => {
     setSelectedPlan(p);
@@ -334,6 +385,21 @@ const SubscriptionPlansCard = ({
 
   const openPlanDetail = (planId) => {
     navigate(getSubscriptionPlanDetailPath(planId));
+  };
+
+  const copyRestrictionValue = async (event, value) => {
+    event.stopPropagation();
+    if (!value) {
+      return;
+    }
+    if (await copy(value)) {
+      showSuccess(t('已复制：') + value);
+      return;
+    }
+    Modal.error({
+      title: t('无法复制到剪贴板，请手动复制'),
+      content: value,
+    });
   };
 
   const closeBuy = () => {
@@ -596,9 +662,9 @@ const SubscriptionPlansCard = ({
         const state = getSubscriptionState(sub);
         const remainingDays = subscription?.end_time
           ? Math.max(
-              0,
-              Math.ceil((subscription.end_time - Date.now() / 1000) / 86400),
-            )
+            0,
+            Math.ceil((subscription.end_time - Date.now() / 1000) / 86400),
+          )
           : 0;
 
         return {
@@ -679,7 +745,7 @@ const SubscriptionPlansCard = ({
       const matchesReset =
         subscriptionResetFilter === 'all' ||
         String(subscription?.reset_period || 'never') ===
-          String(subscriptionResetFilter);
+        String(subscriptionResetFilter);
       return matchesKeyword && matchesPlan && matchesResource && matchesReset;
     });
   }, [
@@ -832,6 +898,62 @@ const SubscriptionPlansCard = ({
   }, [claudePlanCount, isPackageVariant, planSeriesFilter]);
 
   useEffect(() => {
+    if (!enablePlanUrlSync) {
+      return;
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        const set = (key, value, defaultValue) => {
+          if (
+            value !== undefined &&
+            value !== null &&
+            String(value) !== String(defaultValue)
+          ) {
+            next.set(key, String(value));
+            return;
+          }
+          next.delete(key);
+        };
+
+        set(PLAN_URL_PARAM_KEYS.mainTab, activeMainTab, initialMainTab);
+        set(PLAN_URL_PARAM_KEYS.subscriptionView, subscriptionView, 'active');
+        set(
+          PLAN_URL_PARAM_KEYS.sort,
+          planSort,
+          isPackageVariant ? 'recommended' : 'price_asc',
+        );
+        set(
+          PLAN_URL_PARAM_KEYS.series,
+          planSeriesFilter,
+          isPackageVariant ? 'claude' : 'all',
+        );
+        set(PLAN_URL_PARAM_KEYS.page, planPage, 1);
+        set(PLAN_URL_PARAM_KEYS.pageSize, planPageSize, 9);
+        set(
+          PLAN_URL_PARAM_KEYS.view,
+          planViewMode,
+          isPackageVariant ? 'card' : 'table',
+        );
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    activeMainTab,
+    enablePlanUrlSync,
+    initialMainTab,
+    isPackageVariant,
+    planPage,
+    planPageSize,
+    planSeriesFilter,
+    planSort,
+    planViewMode,
+    setSearchParams,
+    subscriptionView,
+  ]);
+
+  useEffect(() => {
     setPlanPage(1);
   }, [planSort, planSeriesFilter, filteredPlans.length]);
 
@@ -953,16 +1075,16 @@ const SubscriptionPlansCard = ({
       const percent = item.unlimited
         ? 0
         : Math.min(
-            100,
-            Math.max(
-              0,
-              Math.round(
-                (Number(item.used || 0) /
-                  Math.max(Number(item.total || 0), 1)) *
-                  100,
-              ),
+          100,
+          Math.max(
+            0,
+            Math.round(
+              (Number(item.used || 0) /
+                Math.max(Number(item.total || 0), 1)) *
+              100,
             ),
-          );
+          ),
+        );
 
       const formatter =
         item.resourceType === 'request_count'
@@ -1148,10 +1270,10 @@ const SubscriptionPlansCard = ({
     const usagePercent = item.usageSummary.unlimited
       ? 0
       : Math.round(
-          (Number(item.usageSummary.used || 0) /
-            Number(item.usageSummary.total || 1)) *
-            100,
-        );
+        (Number(item.usageSummary.used || 0) /
+          Number(item.usageSummary.total || 1)) *
+        100,
+      );
 
     return (
       <div className='flex flex-col gap-3 py-1'>
@@ -1248,10 +1370,10 @@ const SubscriptionPlansCard = ({
     const usagePercent = item.usageSummary.unlimited
       ? 0
       : Math.round(
-          (Number(item.usageSummary.used || 0) /
-            Number(item.usageSummary.total || 1)) *
-            100,
-        );
+        (Number(item.usageSummary.used || 0) /
+          Number(item.usageSummary.total || 1)) *
+        100,
+      );
     const progressColor =
       usagePercent >= 85
         ? 'var(--semi-color-danger)'
@@ -1414,21 +1536,21 @@ const SubscriptionPlansCard = ({
         {(restrictionSummary.groups.length > 0 ||
           restrictionSummary.models.length > 0 ||
           restrictionSummary.vendors.length > 0) && (
-          <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3 lg:col-span-2'>
-            <div className='text-xs text-gray-500'>{t('可用范围')}</div>
-            <div className='mt-1 text-sm text-semi-color-text-0 break-all'>
-              {restrictionSummary.groups.length > 0
-                ? `${t('分组')}：${restrictionSummary.groups.join(' / ')}`
-                : null}
-              {restrictionSummary.models.length > 0
-                ? ` ${t('模型')}：${restrictionSummary.models.join(' / ')}`
-                : null}
-              {restrictionSummary.vendors.length > 0
-                ? ` ${t('供应商')}：${restrictionSummary.vendors.join(' / ')}`
-                : null}
+            <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3 lg:col-span-2'>
+              <div className='text-xs text-gray-500'>{t('可用范围')}</div>
+              <div className='mt-1 text-sm text-semi-color-text-0 break-all'>
+                {restrictionSummary.groups.length > 0
+                  ? `${t('分组')}：${restrictionSummary.groups.join(' / ')}`
+                  : null}
+                {restrictionSummary.models.length > 0
+                  ? ` ${t('模型')}：${restrictionSummary.models.join(' / ')}`
+                  : null}
+                {restrictionSummary.vendors.length > 0
+                  ? ` ${t('供应商')}：${restrictionSummary.vendors.join(' / ')}`
+                  : null}
+              </div>
             </div>
-          </div>
-        )}
+          )}
       </div>
     );
   };
@@ -1795,10 +1917,6 @@ const SubscriptionPlansCard = ({
     const saleSummary = getSubscriptionSaleSummary(plan);
     const restrictionSummary = getSubscriptionRestrictionSummary(plan);
     const metricItems = getSubscriptionPlanMetricItems(plan, t);
-    const isPopular =
-      planSort === 'recommended' &&
-      sortedPlans.length > 1 &&
-      sortedPlans[0]?.plan?.id === plan?.id;
     const { symbol, effectivePrice, originalPrice } =
       getSubscriptionPriceDisplay(plan);
     const displayPrice = effectivePrice.toFixed(
@@ -1811,31 +1929,24 @@ const SubscriptionPlansCard = ({
       : saleSummary.soldOut
         ? t('该套餐已售罄')
         : '';
-
-    const restrictionTags = [
-      ...restrictionSummary.groups.map((item) => ({
-        key: `group-${item}`,
-        type: 'group',
-        value: item,
-      })),
-      ...restrictionSummary.models.slice(0, 2).map((item) => ({
-        key: `model-${item}`,
-        type: 'model',
-        label: `${t('模型')} · ${item}`,
-      })),
-      ...restrictionSummary.vendors.map((item) => ({
-        key: `vendor-${item}`,
-        type: 'vendor',
-        label: `${t('供应商')} · ${item}`,
-      })),
-    ].slice(0, 4);
+    const uniqueGroups = Array.from(
+      new Set(
+        restrictionSummary.groups.filter(
+          (item) => item && item !== plan?.upgrade_group,
+        ),
+      ),
+    );
+    const uniqueModels = Array.from(new Set(restrictionSummary.models)).slice(0, 2);
+    const uniqueVendors = Array.from(new Set(restrictionSummary.vendors)).slice(0, 1);
+    const remainingModelCount = Math.max(
+      0,
+      Array.from(new Set(restrictionSummary.models)).length - uniqueModels.length,
+    );
 
     return (
       <Card
         key={plan?.id || index}
-        className={`subscription-plan-selling-card !overflow-hidden border-0 shadow-sm ${
-          isPopular ? 'subscription-plan-selling-card-featured' : ''
-        }`}
+        className='subscription-plan-selling-card !overflow-hidden border-0 shadow-sm'
         bodyStyle={{ padding: 0 }}
       >
         <div className='subscription-plan-selling-card__inner'>
@@ -1849,12 +1960,6 @@ const SubscriptionPlansCard = ({
                   {isClaudePlan && (
                     <Tag color='violet' shape='circle' size='small'>
                       {t('Claude 系列')}
-                    </Tag>
-                  )}
-                  {isPopular && (
-                    <Tag color='blue' shape='circle' size='small'>
-                      <Sparkles size={10} className='mr-1' />
-                      {t('主推')}
                     </Tag>
                   )}
                   {saleSummary.soldOut && (
@@ -1884,11 +1989,7 @@ const SubscriptionPlansCard = ({
               <div className='rounded-2xl bg-white/80 p-2 shadow-sm dark:bg-white/10'>
                 <Package
                   size={18}
-                  className={
-                    isPopular
-                      ? 'text-blue-600 dark:text-blue-400'
-                      : 'text-semi-color-text-1'
-                  }
+                  className='text-semi-color-text-1'
                 />
               </div>
             </div>
@@ -1939,42 +2040,81 @@ const SubscriptionPlansCard = ({
           </div>
 
           <div className='subscription-plan-selling-card__bottom'>
-            <div className='flex flex-wrap gap-2'>
-              {restrictionTags.length > 0 ? (
-                restrictionTags.map((item) => (
-                  item.type === 'group' ? (
-                    <div key={item.key}>{renderGroup(item.value)}</div>
-                  ) : (
-                    <Tag key={item.key} color='white' shape='circle' size='small'>
-                      {item.label}
-                    </Tag>
-                  )
-                ))
-              ) : (
-                <Tag color='white' shape='circle' size='small'>
-                  {t('适用范围更灵活')}
-                </Tag>
-              )}
-              {plan?.upgrade_group && (
-                <div>{renderGroup(plan.upgrade_group)}</div>
-              )}
+            <div className='subscription-plan-selling-card__restriction-head'>
+              <div className='subscription-plan-selling-card__restriction-title'>
+                <IconInfoCircle size='small' />
+                <span>{t('适用范围')}</span>
+              </div>
             </div>
-            {disabled ? (
-              <Tooltip content={tip} position='top'>
-                <Button theme='solid' type='primary' disabled block>
-                  {saleSummary.soldOut ? t('已售罄') : t('已达上限')}
-                </Button>
-              </Tooltip>
-            ) : (
-              <div className='grid grid-cols-2 gap-2'>
-                <Button
-                  theme='outline'
-                  type='tertiary'
-                  block
-                  onClick={() => openPlanDetail(plan?.id)}
-                >
-                  {t('查看详情')}
-                </Button>
+            {plan?.upgrade_group || uniqueGroups.length > 0 ? (
+              <div className='subscription-plan-selling-card__restriction-row'>
+                <div className='subscription-plan-selling-card__restriction-label'>
+                  {plan?.upgrade_group ? t('分组') : t('可用分组')}
+                </div>
+                <div className='subscription-plan-selling-card__tag-group'>
+                  {plan?.upgrade_group ? renderGroup(plan.upgrade_group) : null}
+                  {uniqueGroups.map((item) => (
+                    <React.Fragment key={`group-fragment-${item}`}>
+                      {renderGroup(item)}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {uniqueModels.length > 0 || uniqueVendors.length > 0 ? (
+              <div className='subscription-plan-selling-card__restriction-row'>
+                <div className='subscription-plan-selling-card__restriction-label'>
+                  {t('模型与供应商')}
+                </div>
+                <div className='subscription-plan-selling-card__tag-group'>
+                  {uniqueModels.map((item) =>
+                    renderScopedValueTag({
+                      key: `model-${item}`,
+                      value: item,
+                      color: 'grey',
+                      onClick: (event) => copyRestrictionValue(event, item),
+                    }),
+                  )}
+                  {remainingModelCount > 0 ? (
+                    <Tag color='orange' shape='circle' size='small'>
+                      {t('另有 {{count}} 个模型', { count: remainingModelCount })}
+                    </Tag>
+                  ) : null}
+                  {uniqueVendors.map((item) =>
+                    renderScopedValueTag({
+                      key: `vendor-${item}`,
+                      value: item,
+                      color: 'green',
+                      onClick: (event) => copyRestrictionValue(event, item),
+                    }),
+                  )}
+                </div>
+              </div>
+            ) : null}
+            {!plan?.upgrade_group &&
+              uniqueGroups.length === 0 &&
+              uniqueModels.length === 0 &&
+              uniqueVendors.length === 0 ? (
+              <div className='subscription-plan-selling-card__restriction-empty'>
+                {t('适用范围更灵活')}
+              </div>
+            ) : null}
+            <div className='grid grid-cols-2 gap-2'>
+              <Button
+                theme='outline'
+                type='tertiary'
+                block
+                onClick={() => openPlanDetail(plan?.id)}
+              >
+                {t('查看详情')}
+              </Button>
+              {disabled ? (
+                <Tooltip content={tip} position='top'>
+                  <Button theme='solid' type='primary' disabled block>
+                    {saleSummary.soldOut ? t('已售罄') : t('已达上限')}
+                  </Button>
+                </Tooltip>
+              ) : (
                 <Button
                   theme='solid'
                   type='primary'
@@ -1985,8 +2125,8 @@ const SubscriptionPlansCard = ({
                 >
                   {t('立即订阅')}
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </Card>
@@ -2257,7 +2397,7 @@ const SubscriptionPlansCard = ({
                                     (conversionPreview?.can_execute
                                       ? t('可申请')
                                       : conversionPreview?.closed_reason ||
-                                        t('仅展示记录'))}
+                                      t('仅展示记录'))}
                                 </Tag>
                                 {conversionLoading && (
                                   <Tag color='white' shape='circle' size='small'>
@@ -2287,7 +2427,7 @@ const SubscriptionPlansCard = ({
                                 <div className='mt-1 font-medium'>
                                   {renderQuota(
                                     conversionPreview?.total_convertible_quota ||
-                                      0,
+                                    0,
                                   )}
                                 </div>
                               </div>
@@ -2327,33 +2467,33 @@ const SubscriptionPlansCard = ({
                               .length > 0 ||
                             (conversionPreview?.campaign?.charge_rules || [])
                               .length > 0) && (
-                            <Collapse>
-                              <Collapse.Panel
-                                itemKey='conversion-rules'
-                                header={t('详细规则与计算方式')}
-                              >
-                                <div className='space-y-2 text-sm text-semi-color-text-1'>
-                                  {conversionPreview?.campaign?.conversion_rule ? (
-                                    <div>
-                                      {conversionPreview.campaign.conversion_rule}
-                                    </div>
-                                  ) : null}
-                                  {(
-                                    conversionPreview?.campaign?.billing_rules ||
-                                    []
-                                  ).map((rule) => (
-                                    <div key={rule}>• {rule}</div>
-                                  ))}
-                                  {(
-                                    conversionPreview?.campaign?.charge_rules ||
-                                    []
-                                  ).map((rule) => (
-                                    <div key={rule}>• {rule}</div>
-                                  ))}
-                                </div>
-                              </Collapse.Panel>
-                            </Collapse>
-                          )}
+                              <Collapse>
+                                <Collapse.Panel
+                                  itemKey='conversion-rules'
+                                  header={t('详细规则与计算方式')}
+                                >
+                                  <div className='space-y-2 text-sm text-semi-color-text-1'>
+                                    {conversionPreview?.campaign?.conversion_rule ? (
+                                      <div>
+                                        {conversionPreview.campaign.conversion_rule}
+                                      </div>
+                                    ) : null}
+                                    {(
+                                      conversionPreview?.campaign?.billing_rules ||
+                                      []
+                                    ).map((rule) => (
+                                      <div key={rule}>• {rule}</div>
+                                    ))}
+                                    {(
+                                      conversionPreview?.campaign?.charge_rules ||
+                                      []
+                                    ).map((rule) => (
+                                      <div key={rule}>• {rule}</div>
+                                    ))}
+                                  </div>
+                                </Collapse.Panel>
+                              </Collapse>
+                            )}
 
                           {(conversionPreview?.items || []).length > 0 && (
                             <div className='rounded-xl bg-white/70 p-3'>
@@ -2398,7 +2538,7 @@ const SubscriptionPlansCard = ({
                                         <Text type='tertiary' size='small'>
                                           {t('折算比例')} {Math.round(
                                             Number(item.remaining_ratio || 0) *
-                                              10000,
+                                            10000,
                                           ) / 100}
                                           %
                                         </Text>
@@ -2469,18 +2609,18 @@ const SubscriptionPlansCard = ({
                                 className='mt-2 block'
                               >
                                 {conversionPreview.latest_request.status ===
-                                'pending'
+                                  'pending'
                                   ? t(
-                                      '申请提交后，相关套餐会暂停使用，直到审核通过或拒绝。',
-                                    )
+                                    '申请提交后，相关套餐会暂停使用，直到审核通过或拒绝。',
+                                  )
                                   : conversionPreview.latest_request.status ===
-                                      'approved'
+                                    'approved'
                                     ? t(
-                                        '申请已通过，系统会把核准后的额度转入账户余额，原套餐失效。',
-                                      )
+                                      '申请已通过，系统会把核准后的额度转入账户余额，原套餐失效。',
+                                    )
                                     : t(
-                                        '申请未通过，系统会恢复原套餐，你可以继续使用。',
-                                      )}
+                                      '申请未通过，系统会恢复原套餐，你可以继续使用。',
+                                    )}
                               </Text>
                             </div>
                           )}
@@ -2498,12 +2638,12 @@ const SubscriptionPlansCard = ({
                                 !conversionPreview?.can_execute ||
                                 submittingConversionRequest ||
                                 conversionPreview?.latest_request?.status ===
-                                  'pending'
+                                'pending'
                               }
                               onClick={handleSubmitConversionRequest}
                             >
                               {conversionPreview?.latest_request?.status ===
-                              'pending'
+                                'pending'
                                 ? t('申请审核中')
                                 : t('提交套餐转余额申请')}
                             </Button>
@@ -2569,9 +2709,9 @@ const SubscriptionPlansCard = ({
                             }
                             description={
                               subscriptionKeyword ||
-                              subscriptionPlanFilter !== 'all' ||
-                              subscriptionResourceFilter !== 'all' ||
-                              subscriptionResetFilter !== 'all'
+                                subscriptionPlanFilter !== 'all' ||
+                                subscriptionResourceFilter !== 'all' ||
+                                subscriptionResetFilter !== 'all'
                                 ? t('当前组合筛选下没有匹配结果')
                                 : t('切换筛选或购买新套餐后会显示在这里')
                             }
@@ -2599,46 +2739,7 @@ const SubscriptionPlansCard = ({
               >
                 <div className='space-y-3'>
                   <div className='subscription-plan-selling-toolbar'>
-                    <div className='subscription-plan-selling-toolbar__hero'>
-                      <div className='flex items-start gap-3'>
-                        <div className='subscription-plan-selling-toolbar__icon'>
-                          <Package
-                            size={16}
-                            className='text-indigo-600 dark:text-indigo-300'
-                          />
-                        </div>
-                        <div className='min-w-0 flex-1'>
-                          <div className='flex flex-wrap items-center gap-2'>
-                            <Text
-                              strong
-                              className='subscription-plan-selling-toolbar__title'
-                            >
-                              {t('可购买套餐')}
-                            </Text>
-                            <Tag color='white' shape='circle' size='small'>
-                              {sortedPlans.length} {t('个方案')}
-                            </Tag>
-                            <Tag color='blue' shape='circle' size='small'>
-                              {planViewMode === 'card'
-                                ? t('卡片视图')
-                                : t('列表视图')}
-                            </Tag>
-                          </div>
-                          <Text
-                            type='tertiary'
-                            size='small'
-                            className='subscription-plan-selling-toolbar__desc'
-                          >
-                            {planSeriesFilter === 'claude'
-                              ? t('当前优先展示最新 Claude 系列套餐，支付完成后会自动生效。')
-                              : planSort === 'price_asc'
-                                ? t('当前默认按金额从低到高排序，适合快速横向比价')
-                                : t('先看定位与价格，再进入购买弹窗查看完整支付方式')}
-                          </Text>
-                        </div>
-                      </div>
-                    </div>
-                    <div className='w-full'>
+                    <div className='subscription-plan-selling-toolbar__tabs'>
                       <Tabs
                         type='button'
                         collapsible={false}
@@ -2695,9 +2796,6 @@ const SubscriptionPlansCard = ({
                         </Tooltip>
                       </div>
                       <div className='subscription-plan-selling-toolbar__sort'>
-                        <div className='subscription-plan-selling-toolbar__sort-icon'>
-                          <CalendarClock size={14} className='text-gray-400' />
-                        </div>
                         <Select
                           value={planSort}
                           size='small'
@@ -2712,19 +2810,6 @@ const SubscriptionPlansCard = ({
                       </div>
                     </div>
                   </div>
-
-                  <Divider margin={8} />
-
-                  {isPackageVariant && planSeriesFilter === 'claude' && (
-                    <Banner
-                      type='info'
-                      className='!rounded-2xl'
-                      closeIcon={null}
-                      description={t(
-                        '这里展示的是当前对外售卖的 Claude 系列套餐。支付完成后会自动生效，你可以在“我的订阅”查看套餐状态与消耗记录。',
-                      )}
-                    />
-                  )}
 
                   {sortedPlans.length > 0 ? (
                     planViewMode === 'card' ? (
@@ -2767,11 +2852,6 @@ const SubscriptionPlansCard = ({
                           </div>
                         </div>
                         <div className='flex flex-col gap-3 border-t border-semi-color-border pt-4 lg:flex-row lg:items-center lg:justify-between'>
-                          <Text type='tertiary' size='small'>
-                            {t(
-                              '卡片视图方便快速浏览套餐，购买时仍会进入支付确认。',
-                            )}
-                          </Text>
                           <Pagination
                             currentPage={planPage}
                             pageSize={planPageSize}
@@ -2857,9 +2937,9 @@ const SubscriptionPlansCard = ({
         purchaseLimitInfo={
           selectedPlan?.plan?.id
             ? {
-                limit: Number(selectedPlan?.plan?.max_purchase_per_user || 0),
-                count: getPlanPurchaseCount(selectedPlan?.plan?.id),
-              }
+              limit: Number(selectedPlan?.plan?.max_purchase_per_user || 0),
+              count: getPlanPurchaseCount(selectedPlan?.plan?.id),
+            }
             : null
         }
         onPayStripe={payStripe}

@@ -91,6 +91,14 @@
       "dest": "https://api.fishxcode.com/pg/$1"
     },
     {
+      "src": "^/sitemap\\.xml$",
+      "dest": "/api/sitemap"
+    },
+    {
+      "src": "^/rss\\.xml$",
+      "dest": "/api/rss"
+    },
+    {
       "handle": "filesystem"
     },
     {

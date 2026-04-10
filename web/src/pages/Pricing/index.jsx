@@ -25,13 +25,13 @@ import SeoMeta from '../../components/common/seo/SeoMeta';
 import ModelPricingPage from '../../components/table/model-pricing/layout/PricingPage';
 import SubscriptionPlansCard from '../../components/topup/SubscriptionPlansCard';
 import { API, getUserData } from '../../helpers';
-import { getPricingSeo } from '../../helpers/seo';
+import { getPricingSeo, getSubscriptionPlansSeo } from '../../helpers/seo';
 import { StatusContext } from '../../context/Status';
 
 const PLAN_LIST_TAB = ['plan', 'list'].join('_');
 const PACKAGE_VARIANT = ['pack', 'age'].join('');
 
-const SubscriptionPricingTab = ({ t }) => {
+const SubscriptionPricingTab = ({ onPlansChange, t }) => {
   const [statusState] = useContext(StatusContext);
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
@@ -168,8 +168,19 @@ const SubscriptionPricingTab = ({ t }) => {
     setEnableCreemTopUp(Boolean(statusState.status.enable_creem_topup));
   }, [statusState?.status]);
 
+  useEffect(() => {
+    onPlansChange?.(subscriptionPlans);
+  }, [onPlansChange, subscriptionPlans]);
+
+  useEffect(
+    () => () => {
+      onPlansChange?.([]);
+    },
+    [onPlansChange],
+  );
+
   return (
-    <div>
+    <div className='subscription-pricing-page'>
       <SubscriptionPlansCard
         t={t}
         loading={subscriptionLoading}
@@ -196,10 +207,27 @@ const SubscriptionPricingTab = ({ t }) => {
 const Pricing = () => {
   const { i18n } = useTranslation();
   const { t } = useTranslation();
-  const seo = getPricingSeo(i18n.language);
+  const pricingSeo = getPricingSeo(i18n.language);
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(
     searchParams.get('tab') || 'model-pricing',
+  );
+  const [subscriptionPlans, setSubscriptionPlans] = useState([]);
+  const subscriptionCanonicalPath = useMemo(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'subscription-plans');
+    const query = next.toString();
+    return `/pricing${query ? `?${query}` : ''}`;
+  }, [searchParams]);
+  const subscriptionSeo = useMemo(
+    () =>
+      getSubscriptionPlansSeo(i18n.language, subscriptionPlans, {
+        canonicalPath: subscriptionCanonicalPath,
+        series: searchParams.get('plan_series') || 'all',
+        sort: searchParams.get('plan_sort') || 'recommended',
+        view: searchParams.get('plan_view') || 'card',
+      }),
+    [i18n.language, searchParams, subscriptionCanonicalPath, subscriptionPlans],
   );
 
   const handleTabChange = (key) => {
@@ -217,19 +245,18 @@ const Pricing = () => {
 
   return (
     <>
-      <SeoMeta {...seo} />
-      <div className='pricing-landing-page mx-auto mt-[60px] w-full max-w-[1440px] px-3 pb-8 md:px-6'>
-        {/* Tab 导航栏 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '16px 0 0',
-            marginBottom: 0,
-            borderBottom: '1px solid var(--semi-color-border)',
-          }}
-        >
+      <SeoMeta
+        key={
+          activeTab === 'subscription-plans'
+            ? `subscription-${searchParams.toString()}`
+            : 'pricing-default'
+        }
+        {...(activeTab === 'subscription-plans' && subscriptionSeo
+          ? subscriptionSeo
+          : pricingSeo)}
+      />
+      <div className='pricing-landing-page mx-auto mt-[60px] w-full max-w-[1360px] px-3 pb-6 md:px-6'>
+        <div className='pricing-landing-tabbar'>
           {[
             {
               key: 'model-pricing',
@@ -247,27 +274,9 @@ const Pricing = () => {
               <button
                 key={tab.key}
                 onClick={() => handleTabChange(tab.key)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '10px 16px',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: isActive
-                    ? '2px solid var(--semi-color-primary)'
-                    : '2px solid transparent',
-                  cursor: 'pointer',
-                  fontSize: 14,
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive
-                    ? 'var(--semi-color-primary)'
-                    : 'var(--semi-color-text-1)',
-                  marginBottom: -1,
-                  transition: 'all 0.2s',
-                  outline: 'none',
-                  whiteSpace: 'nowrap',
-                }}
+                className={`pricing-landing-tabbar__button ${
+                  isActive ? 'pricing-landing-tabbar__button-active' : ''
+                }`}
               >
                 <span>{tab.label}</span>
                 <Tag color={tab.badge.color} shape='circle' size='small'>
@@ -278,15 +287,17 @@ const Pricing = () => {
           })}
         </div>
 
-        {/* 内容区域 */}
-        <div style={{ paddingTop: 16 }}>
+        <div className='pricing-landing-tabpanel'>
           {activeTab === 'model-pricing' && (
             <div className='pricing-landing-model-panel'>
               <ModelPricingPage />
             </div>
           )}
           {activeTab === 'subscription-plans' && (
-            <SubscriptionPricingTab t={t} />
+            <SubscriptionPricingTab
+              t={t}
+              onPlansChange={setSubscriptionPlans}
+            />
           )}
         </div>
       </div>
