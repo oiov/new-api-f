@@ -17,9 +17,9 @@ var ErrRedeemFailed = errors.New("redeem.failed")
 
 // User-facing redemption errors — returned directly to the caller without wrapping
 var (
-	ErrInvalidCode  = errors.New("redeem.invalid_code")
-	ErrCodeUsed     = errors.New("redeem.code_used")
-	ErrCodeExpired  = errors.New("redeem.code_expired")
+	ErrInvalidCode = errors.New("redeem.invalid_code")
+	ErrCodeUsed    = errors.New("redeem.code_used")
+	ErrCodeExpired = errors.New("redeem.code_expired")
 )
 
 type Redemption struct {
@@ -51,6 +51,8 @@ type RedeemResult struct {
 	SubscriptionPlanId    int    `json:"subscription_plan_id"`
 	SubscriptionPlanTitle string `json:"subscription_plan_title"`
 	SubscriptionId        int    `json:"subscription_id"`
+	SubscriptionOrderId   int    `json:"subscription_order_id"`
+	FulfillmentStatus     string `json:"fulfillment_status,omitempty"`
 }
 
 type RedemptionHistoryItem struct {
@@ -242,13 +244,37 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 			if err != nil {
 				return err
 			}
-			sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption")
-			if err != nil {
-				return err
-			}
 			result.SubscriptionPlanId = plan.Id
 			result.SubscriptionPlanTitle = plan.Title
-			result.SubscriptionId = sub.Id
+			if normalizeSubscriptionDeliveryMode(plan.DeliveryMode) == SubscriptionDeliveryModeManualDelivery {
+				tradeNo, err := buildManualDeliveryTradeNo("redeem")
+				if err != nil {
+					return err
+				}
+				now := common.GetTimestamp()
+				order := &SubscriptionOrder{
+					UserId:        userId,
+					PlanId:        plan.Id,
+					Money:         0,
+					TradeNo:       tradeNo,
+					PaymentMethod: "redemption",
+					Status:        common.TopUpStatusSuccess,
+					CreateTime:    now,
+					CompleteTime:  now,
+				}
+				order.ApplyPlanSnapshot(plan)
+				if err := tx.Create(order).Error; err != nil {
+					return err
+				}
+				result.SubscriptionOrderId = order.Id
+				result.FulfillmentStatus = order.FulfillmentStatus
+			} else {
+				sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption")
+				if err != nil {
+					return err
+				}
+				result.SubscriptionId = sub.Id
+			}
 		default:
 			err = tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
 			if err != nil {
@@ -276,7 +302,11 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 		if strings.TrimSpace(planLabel) == "" {
 			planLabel = fmt.Sprintf("#%d", result.SubscriptionPlanId)
 		}
-		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码兑换订阅套餐 %s，兑换码ID %d，订阅ID %d", planLabel, redemption.Id, result.SubscriptionId))
+		if result.SubscriptionOrderId > 0 && result.SubscriptionId == 0 {
+			RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码创建订阅人工发放订单 %s，兑换码ID %d，订单ID %d", planLabel, redemption.Id, result.SubscriptionOrderId))
+		} else {
+			RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码兑换订阅套餐 %s，兑换码ID %d，订阅ID %d", planLabel, redemption.Id, result.SubscriptionId))
+		}
 	default:
 		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	}

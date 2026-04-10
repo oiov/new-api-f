@@ -526,6 +526,18 @@ func buildSubscriptionPlanSnapshot(plan *SubscriptionPlan, planId int) *Subscrip
 	}
 }
 
+func buildManualDeliveryTradeNo(prefix string) (string, error) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		prefix = "manual"
+	}
+	nonce, err := common.GenerateRandomCharsKey(24)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s-%d-%s", prefix, common.GetTimestamp(), nonce), nil
+}
+
 // User subscription instance
 type UserSubscription struct {
 	Id     int `json:"id"`
@@ -1996,11 +2008,31 @@ func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) 
 		return "", nil, err
 	}
 	var createdSub *UserSubscription
+	isManualDelivery := normalizeSubscriptionDeliveryMode(plan.DeliveryMode) == SubscriptionDeliveryModeManualDelivery
 	source := strings.TrimSpace(sourceNote)
 	if source == "" {
 		source = "admin"
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
+		if isManualDelivery {
+			tradeNo, err := buildManualDeliveryTradeNo("admin")
+			if err != nil {
+				return err
+			}
+			now := common.GetTimestamp()
+			order := &SubscriptionOrder{
+				UserId:        userId,
+				PlanId:        plan.Id,
+				Money:         0,
+				TradeNo:       tradeNo,
+				PaymentMethod: "admin",
+				Status:        common.TopUpStatusSuccess,
+				CreateTime:    now,
+				CompleteTime:  now,
+			}
+			order.ApplyPlanSnapshot(plan)
+			return tx.Create(order).Error
+		}
 		sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, source)
 		if err == nil {
 			createdSub = sub
@@ -2009,6 +2041,9 @@ func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) 
 	})
 	if err != nil {
 		return "", nil, err
+	}
+	if isManualDelivery {
+		return "已创建人工发放订单，请在人工发放列表中完成发放", nil, nil
 	}
 	if strings.TrimSpace(plan.UpgradeGroup) != "" {
 		_ = UpdateUserGroupCache(userId, plan.UpgradeGroup)
