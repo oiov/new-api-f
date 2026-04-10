@@ -347,6 +347,11 @@ func TokenAuth() func(c *gin.Context) {
 
 		userGroup := userCache.Group
 		tokenGroup := token.Group
+		if token.IsSubscriptionAggregateAccessToken() {
+			// 聚合订阅访问 key 在 distributor 中会基于实际可用订阅重写路由分组，
+			// 这里不能先按默认分组做静态权限拦截。
+			tokenGroup = ""
+		}
 		if tokenGroup != "" {
 			// check common.UserUsableGroups[userGroup]
 			if !service.GroupInUserUsableGroupsForUser(token.UserId, userCache.Group, userCache.Quota > 0, tokenGroup) {

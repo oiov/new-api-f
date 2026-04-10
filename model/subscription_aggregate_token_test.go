@@ -336,3 +336,89 @@ func TestGetPreferredSubscriptionRouteForAggregateToken_ReturnsExhaustedMessageW
 		require.Contains(t, decision.ExhaustedMessage, "今日次数 500/500（100.00%）")
 	})
 }
+
+func TestAdminInvalidateUserSubscription_RefreshesAggregateRouteToAnotherActiveSubscription(t *testing.T) {
+	withSubscriptionAggregateTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       1201,
+			Username: "invalidate_route_user",
+			AffCode:  "invalidate_route_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          9301,
+			Name:        "Claude Lite Pool",
+			Key:         "sk-lite-1",
+			Status:      common.ChannelStatusEnabled,
+			Group:       "sub_plan_claude_lite",
+			Models:      "claude-opus-4-6",
+			CreatedTime: now,
+		}).Error)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          9302,
+			Name:        "Claude Premium Pool",
+			Key:         "sk-premium-1",
+			Status:      common.ChannelStatusEnabled,
+			Group:       "sub_plan_claude_premium",
+			Models:      "claude-opus-4-6",
+			CreatedTime: now,
+		}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                      8301,
+			UserId:                  1201,
+			PlanId:                  7301,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       15000,
+			RequestCountPeriodTotal: 500,
+			Status:                  "active",
+			StartTime:               now - 3600,
+			EndTime:                 now + 7200,
+			UpgradeGroup:            "sub_plan_claude_lite",
+			AllowedModelsJSON:       `["claude-opus-4-6"]`,
+			SpecificChannelId:       9301,
+			SpecificChannelKeyIndex: 0,
+			CreatedAt:               now - 3600,
+			UpdatedAt:               now - 3600,
+		}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                      8302,
+			UserId:                  1201,
+			PlanId:                  7302,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       90000,
+			RequestCountPeriodTotal: 3000,
+			Status:                  "active",
+			StartTime:               now - 3600,
+			EndTime:                 now + 10800,
+			UpgradeGroup:            "sub_plan_claude_premium",
+			AllowedModelsJSON:       `["claude-opus-4-6"]`,
+			SpecificChannelId:       9302,
+			SpecificChannelKeyIndex: 0,
+			CreatedAt:               now - 3600,
+			UpdatedAt:               now - 3600,
+		}).Error)
+
+		token, err := EnsureSubscriptionAggregateAccessTokenForUser(1201)
+		require.NoError(t, err)
+		require.NotNil(t, token)
+		require.Equal(t, common.TokenStatusEnabled, token.Status)
+
+		beforeDecision, err := GetPreferredSubscriptionRouteForAggregateToken(1201, "claude-opus-4-6")
+		require.NoError(t, err)
+		require.NotNil(t, beforeDecision)
+		require.Equal(t, 8301, beforeDecision.UserSubscriptionId)
+		require.Equal(t, 9301, beforeDecision.SpecificChannelId)
+
+		_, err = AdminInvalidateUserSubscription(8301)
+		require.NoError(t, err)
+
+		afterDecision, err := GetPreferredSubscriptionRouteForAggregateToken(1201, "claude-opus-4-6")
+		require.NoError(t, err)
+		require.NotNil(t, afterDecision)
+		require.Equal(t, 8302, afterDecision.UserSubscriptionId)
+		require.Equal(t, 9302, afterDecision.SpecificChannelId)
+	})
+}

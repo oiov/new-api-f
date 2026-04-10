@@ -3908,6 +3908,11 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	if cacheGroup != "" && userId > 0 {
 		_ = UpdateUserGroupCache(userId, cacheGroup)
 	}
+	if userId > 0 {
+		if _, ensureErr := EnsureSubscriptionAggregateAccessTokenForUser(userId); ensureErr != nil {
+			return "", ensureErr
+		}
+	}
 	if downgradeGroup != "" {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
 	}
@@ -3948,6 +3953,11 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	}
 	if cacheGroup != "" && userId > 0 {
 		_ = UpdateUserGroupCache(userId, cacheGroup)
+	}
+	if userId > 0 {
+		if _, ensureErr := EnsureSubscriptionAggregateAccessTokenForUser(userId); ensureErr != nil {
+			return "", ensureErr
+		}
 	}
 	if downgradeGroup != "" {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
@@ -4110,6 +4120,7 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 	}
 	now := GetDBTimestamp()
 	message := ""
+	userId := 0
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").
@@ -4117,6 +4128,7 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 			First(&sub).Error; err != nil {
 			return err
 		}
+		userId = sub.UserId
 		if sub.Status == "cancelled" {
 			return errors.New("subscription has been cancelled")
 		}
@@ -4186,6 +4198,11 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 	})
 	if err != nil {
 		return "", err
+	}
+	if userId > 0 {
+		if _, ensureErr := EnsureSubscriptionAggregateAccessTokenForUser(userId); ensureErr != nil {
+			return "", ensureErr
+		}
 	}
 	return message, nil
 }

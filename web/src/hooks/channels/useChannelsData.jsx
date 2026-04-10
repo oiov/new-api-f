@@ -85,6 +85,7 @@ export const useChannelsData = () => {
   // Type tabs states
   const [activeTypeKey, setActiveTypeKey] = useState('all');
   const [typeCounts, setTypeCounts] = useState({});
+  const [activePackagePoolGroup, setActivePackagePoolGroup] = useState('');
 
   // Model test states
   const [showModelTestModal, setShowModelTestModal] = useState(false);
@@ -145,6 +146,7 @@ export const useChannelsData = () => {
     { value: 'sub_plan_claude_nano', label: 'Claude Nano' },
     { value: 'sub_plan_claude_micro', label: 'Claude Micro' },
   ];
+  const PACKAGE_POOL_GROUP_VALUES = PACKAGE_POOL_GROUPS.map((item) => item.value);
 
   // Column keys
   const COLUMN_KEYS = {
@@ -351,40 +353,43 @@ export const useChannelsData = () => {
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
     return {
-      searchKeyword: formValues.searchKeyword || '',
-      searchGroup: formValues.searchGroup || '',
-      searchModel: formValues.searchModel || '',
+      searchKeyword:
+        typeof formValues.searchKeyword === 'string'
+          ? formValues.searchKeyword.trim()
+          : '',
+      searchGroup:
+        typeof formValues.searchGroup === 'string'
+          ? formValues.searchGroup.trim()
+          : '',
+      searchModel:
+        typeof formValues.searchModel === 'string'
+          ? formValues.searchModel.trim()
+          : '',
     };
   };
 
-  // Load channels
-  const loadChannels = async (
+  const syncActivePackagePoolGroup = (groupValue) => {
+    const normalizedGroup =
+      typeof groupValue === 'string' ? groupValue.trim() : '';
+    setActivePackagePoolGroup(
+      PACKAGE_POOL_GROUP_VALUES.includes(normalizedGroup) ? normalizedGroup : '',
+    );
+  };
+
+  const hasSearchFilters = (filters) =>
+    filters.searchKeyword !== '' ||
+    filters.searchGroup !== '' ||
+    filters.searchModel !== '';
+
+  const fetchChannelList = async (
     page,
     pageSize,
     idSort,
     enableTagMode,
     typeKey = activeTypeKey,
-    statusF,
+    statusF = statusFilter,
   ) => {
-    if (statusF === undefined) statusF = statusFilter;
-
-    const { searchKeyword, searchGroup, searchModel } = getFormValues();
-    if (searchKeyword !== '' || searchGroup !== '' || searchModel !== '') {
-      setLoading(true);
-      await searchChannels(
-        enableTagMode,
-        typeKey,
-        statusF,
-        page,
-        pageSize,
-        idSort,
-      );
-      setLoading(false);
-      return;
-    }
-
     const reqId = ++requestCounter.current;
-    setLoading(true);
     const typeParam = typeKey !== 'all' ? `&type=${typeKey}` : '';
     const statusParam = statusF !== 'all' ? `&status=${statusF}` : '';
     const res = await API.get(
@@ -392,7 +397,7 @@ export const useChannelsData = () => {
     );
 
     if (res === undefined || reqId !== requestCounter.current) {
-      return;
+      return false;
     }
 
     const { success, message, data } = res.data;
@@ -407,9 +412,42 @@ export const useChannelsData = () => {
       }
       setChannelFormat(items, enableTagMode);
       setChannelCount(total);
-    } else {
-      showError(message);
+      setActivePage(page);
+      return true;
     }
+
+    showError(message);
+    return false;
+  };
+
+  // Load channels
+  const loadChannels = async (
+    page,
+    pageSize,
+    idSort,
+    enableTagMode,
+    typeKey = activeTypeKey,
+    statusF,
+  ) => {
+    if (statusF === undefined) statusF = statusFilter;
+
+    const { searchKeyword, searchGroup, searchModel } = getFormValues();
+    if (hasSearchFilters({ searchKeyword, searchGroup, searchModel })) {
+      setLoading(true);
+      await searchChannels(
+        enableTagMode,
+        typeKey,
+        statusF,
+        page,
+        pageSize,
+        idSort,
+      );
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    await fetchChannelList(page, pageSize, idSort, enableTagMode, typeKey, statusF);
     setLoading(false);
   };
 
@@ -421,12 +459,14 @@ export const useChannelsData = () => {
     page = 1,
     pageSz = pageSize,
     sortFlag = idSort,
+    filtersOverride = null,
   ) => {
-    const { searchKeyword, searchGroup, searchModel } = getFormValues();
+    const { searchKeyword, searchGroup, searchModel } =
+      filtersOverride || getFormValues();
     setSearching(true);
     try {
-      if (searchKeyword === '' && searchGroup === '' && searchModel === '') {
-        await loadChannels(
+      if (!hasSearchFilters({ searchKeyword, searchGroup, searchModel })) {
+        await fetchChannelList(
           page,
           pageSz,
           sortFlag,
@@ -483,21 +523,64 @@ export const useChannelsData = () => {
       return;
     }
     const nextGroup = String(groupValue || '').trim();
+    const currentFilters = getFormValues();
+    const nextFilters = {
+      ...currentFilters,
+      searchGroup: nextGroup,
+    };
     formApi.setValue('searchGroup', nextGroup || null);
-    setTimeout(async () => {
-      if (nextGroup === '') {
-        await refresh(1);
-        return;
-      }
-      await searchChannels(
-        enableTagMode,
-        activeTypeKey,
-        statusFilter,
-        1,
-        pageSize,
-        idSort,
-      );
-    }, 0);
+    syncActivePackagePoolGroup(nextGroup);
+    setActivePage(1);
+    await searchChannels(
+      enableTagMode,
+      activeTypeKey,
+      statusFilter,
+      1,
+      pageSize,
+      idSort,
+      nextFilters,
+    );
+  };
+
+  const handleSearchGroupChange = async (groupValue) => {
+    if (!formApi) {
+      return;
+    }
+    const nextGroup = String(groupValue || '').trim();
+    const currentFilters = getFormValues();
+    const nextFilters = {
+      ...currentFilters,
+      searchGroup: nextGroup,
+    };
+    syncActivePackagePoolGroup(nextGroup);
+    setActivePage(1);
+    await searchChannels(
+      enableTagMode,
+      activeTypeKey,
+      statusFilter,
+      1,
+      pageSize,
+      idSort,
+      nextFilters,
+    );
+  };
+
+  const resetSearchFilters = async () => {
+    if (formApi) {
+      formApi.reset();
+    }
+    syncActivePackagePoolGroup('');
+    setActivePage(1);
+    setLoading(true);
+    await fetchChannelList(
+      1,
+      pageSize,
+      idSort,
+      enableTagMode,
+      activeTypeKey,
+      statusFilter,
+    );
+    setLoading(false);
   };
 
   const upstreamUpdates = useChannelUpstreamUpdates({ t, refresh });
@@ -630,6 +713,10 @@ export const useChannelsData = () => {
       showError(error.message);
     }
   };
+
+  useEffect(() => {
+    syncActivePackagePoolGroup(getFormValues().searchGroup);
+  }, [formApi]);
 
   // Copy channel
   const copySelectedChannel = async (record) => {
@@ -1468,6 +1555,7 @@ export const useChannelsData = () => {
     setFormApi,
     formInitValues,
     PACKAGE_POOL_GROUPS,
+    activePackagePoolGroup,
 
     // Helpers
     t,
@@ -1478,6 +1566,8 @@ export const useChannelsData = () => {
     searchChannels,
     refresh,
     applyPackagePoolFilter,
+    handleSearchGroupChange,
+    resetSearchFilters,
     manageChannel,
     manageTag,
     handlePageChange,
