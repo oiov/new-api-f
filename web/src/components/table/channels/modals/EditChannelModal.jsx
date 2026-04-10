@@ -129,6 +129,16 @@ const PARAM_OVERRIDE_OPERATIONS_TEMPLATE = {
 
 const DEPRECATED_DOUBAO_CODING_PLAN_BASE_URL = 'doubao-coding-plan';
 
+const PACKAGE_POOL_LABELS = {
+  'subscription_plan:19': 'Claude Lite',
+  'subscription_plan:20': 'Claude Mini Plus',
+  'subscription_plan:21': 'Claude Mini Max',
+  'subscription_plan:22': 'Claude Premium',
+  'subscription_plan:23': 'Claude Premium+',
+  'subscription_plan:24': 'Claude Nano',
+  'subscription_plan:25': 'Claude Micro',
+};
+
 // 支持并且已适配通过接口获取模型列表的渠道类型
 const MODEL_FETCHABLE_TYPES = new Set([
   1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43,
@@ -252,6 +262,19 @@ const EditChannelModal = (props) => {
   const [keyMode, setKeyMode] = useState('append'); // 密钥模式：replace（覆盖）或 append（追加）
   const [isEnterpriseAccount, setIsEnterpriseAccount] = useState(false); // 是否为企业账户
   const [doubaoApiEditUnlocked, setDoubaoApiEditUnlocked] = useState(false); // 豆包渠道自定义 API 地址隐藏入口
+  const packagePoolName = useMemo(() => {
+    const normalizedTag = (inputs.tag || '').trim();
+    return PACKAGE_POOL_LABELS[normalizedTag] || '';
+  }, [inputs.tag]);
+  const packagePoolGroup = useMemo(() => {
+    if (!Array.isArray(inputs.groups) || inputs.groups.length === 0) {
+      return '';
+    }
+    const matchedGroup = inputs.groups.find((group) =>
+      String(group || '').trim().startsWith('sub_plan_'),
+    );
+    return String(matchedGroup || '').trim();
+  }, [inputs.groups]);
   const redirectModelList = useMemo(() => {
     const mapping = inputs.model_mapping;
     if (typeof mapping !== 'string') return [];
@@ -2625,6 +2648,13 @@ const EditChannelModal = (props) => {
                                           )}
                                         </Text>
                                       )}
+                                    {isEdit && isMultiKeyChannel && (
+                                      <Text type='tertiary' size='small'>
+                                        {t(
+                                          '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
+                                        )}
+                                      </Text>
+                                    )}
                                     {isEdit && (
                                       <Button
                                         size='small'
@@ -2632,7 +2662,7 @@ const EditChannelModal = (props) => {
                                         theme='outline'
                                         onClick={handleShow2FAModal}
                                       >
-                                        {t('查看密钥')}
+                                        {t('查看现有密钥')}
                                       </Button>
                                     )}
                                     {batchExtra}
@@ -2706,6 +2736,13 @@ const EditChannelModal = (props) => {
                                       )}
                                     </Text>
                                   )}
+                                {isEdit && isMultiKeyChannel && (
+                                  <Text type='tertiary' size='small'>
+                                    {t(
+                                      '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
+                                    )}
+                                  </Text>
+                                )}
                                 {isEdit && (
                                   <Button
                                     size='small'
@@ -2713,7 +2750,7 @@ const EditChannelModal = (props) => {
                                     theme='outline'
                                     onClick={handleShow2FAModal}
                                   >
-                                    {t('查看密钥')}
+                                    {t('查看现有密钥')}
                                   </Button>
                                 )}
                                 {batchExtra}
@@ -2728,8 +2765,8 @@ const EditChannelModal = (props) => {
                     {isEdit && isMultiKeyChannel && (
                       <Form.Select
                         field='key_mode'
-                        label={t('密钥更新模式')}
-                        placeholder={t('请选择密钥更新模式')}
+                        label={t('密钥修改方式')}
+                        placeholder={t('请选择密钥修改方式')}
                         optionList={[
                           { label: t('追加到现有密钥'), value: 'append' },
                           { label: t('覆盖现有密钥'), value: 'replace' },
@@ -2740,8 +2777,12 @@ const EditChannelModal = (props) => {
                         extraText={
                           <Text type='tertiary' size='small'>
                             {keyMode === 'replace'
-                              ? t('覆盖模式：将完全替换现有的所有密钥')
-                              : t('追加模式：将新密钥添加到现有密钥列表末尾')}
+                              ? t(
+                                  '覆盖模式：会用上方输入的新密钥完整替换现有密钥列表。',
+                                )
+                              : t(
+                                  '追加模式：会把上方输入的新密钥追加到现有密钥列表末尾。',
+                                )}
                           </Text>
                         }
                       />
@@ -3421,6 +3462,40 @@ const EditChannelModal = (props) => {
                       style={{ width: '100%' }}
                       onChange={(value) => handleInputChange('groups', value)}
                     />
+
+                    {packagePoolName ? (
+                      <Banner
+                        type='info'
+                        closeIcon={null}
+                        className='!rounded-xl mb-4'
+                        title={t('当前渠道已归属订阅套餐池')}
+                        description={
+                          <div className='flex flex-col gap-2 text-sm'>
+                            <div className='flex flex-wrap items-center gap-2'>
+                              <Tag color='blue' shape='circle' type='light'>
+                                {t('{{name}} 套餐池', { name: packagePoolName })}
+                              </Tag>
+                              <Tag color='white' shape='circle' type='ghost'>
+                                {inputs.tag}
+                              </Tag>
+                            </div>
+                            <div className='flex flex-wrap items-center gap-2'>
+                              <Text type='secondary'>
+                                {t('套餐专属分组')}
+                              </Text>
+                              <Tag color='orange' shape='circle' type='light'>
+                                {packagePoolGroup || t('未设置')}
+                              </Tag>
+                            </div>
+                            <Text type='tertiary'>
+                              {t(
+                                '这里的模型配置可以相同，但套餐池标签和套餐专属分组决定了它实际服务的是哪个套餐。',
+                              )}
+                            </Text>
+                          </div>
+                        }
+                      />
+                    ) : null}
 
                     <Form.Input
                       field='tag'

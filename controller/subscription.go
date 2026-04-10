@@ -179,6 +179,14 @@ func GetSubscriptionSelf(c *gin.Context) {
 	userId := c.GetInt("id")
 	settingMap, _ := model.GetUserSetting(userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
+	if err := model.ReconcileActiveUserSubscriptionsByUser(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if _, err := model.EnsureSubscriptionAggregateAccessTokenForUser(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	// Get all subscriptions (including expired)
 	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
@@ -810,6 +818,14 @@ func AdminListUserSubscriptions(c *gin.Context) {
 	userId, _ := strconv.Atoi(c.Param("id"))
 	if userId <= 0 {
 		common.ApiErrorMsg(c, "无效的用户ID")
+		return
+	}
+	if err := model.ReconcileActiveUserSubscriptionsByUser(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if _, err := model.EnsureSubscriptionAggregateAccessTokenForUser(userId); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 	pageInfo := common.GetPageQuery(c)

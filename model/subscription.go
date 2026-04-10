@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -600,8 +601,10 @@ type UserSubscription struct {
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
 	NextResetTime int64 `json:"next_reset_time" gorm:"type:bigint;default:0;index"`
 
-	UpgradeGroup  string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
-	PrevUserGroup string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
+	UpgradeGroup            string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
+	PrevUserGroup           string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
+	SpecificChannelId       int    `json:"specific_channel_id" gorm:"type:int;not null;default:0"`
+	SpecificChannelKeyIndex int    `json:"specific_channel_key_index" gorm:"type:int;not null;default:-1"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
@@ -620,8 +623,9 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 }
 
 type SubscriptionSummary struct {
-	Subscription *UserSubscription               `json:"subscription"`
-	RefundOrder  *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+	Subscription         *UserSubscription               `json:"subscription"`
+	RefundOrder          *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+	AggregateAccessToken *SubscriptionAccessTokenSummary `json:"aggregate_access_token,omitempty"`
 }
 
 type SubscriptionRefundOrderSummary struct {
@@ -634,10 +638,19 @@ type SubscriptionRefundOrderSummary struct {
 }
 
 type AdminUserSubscriptionSummary struct {
-	Subscription *UserSubscription               `json:"subscription"`
-	Username     string                          `json:"username"`
-	UserGroup    string                          `json:"user_group"`
-	RefundOrder  *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+	Subscription         *UserSubscription               `json:"subscription"`
+	Username             string                          `json:"username"`
+	UserGroup            string                          `json:"user_group"`
+	RefundOrder          *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+	AggregateAccessToken *SubscriptionAccessTokenSummary `json:"aggregate_access_token,omitempty"`
+}
+
+type SubscriptionAccessTokenSummary struct {
+	TokenId     int    `json:"token_id"`
+	TokenName   string `json:"token_name"`
+	KeyPreview  string `json:"key_preview"`
+	ExpiredTime int64  `json:"expired_time"`
+	Status      int    `json:"status"`
 }
 
 type SubscriptionMigrationFilter struct {
@@ -1367,6 +1380,78 @@ func getCurrentRequestCountUsed(sub *UserSubscription) int64 {
 	return sub.RequestCountUsed
 }
 
+func formatSubscriptionUsagePercent(used int64, total int64) string {
+	if total <= 0 {
+		return "0.00%"
+	}
+	return fmt.Sprintf("%.2f%%", float64(used)/float64(total)*100)
+}
+
+func formatSubscriptionResetTimeLabel(resetUnix int64) string {
+	if resetUnix <= 0 {
+		return ""
+	}
+	return subscriptionResetTime(time.Unix(resetUnix, 0)).Format("2006-01-02 15:04:05")
+}
+
+func getSubscriptionPeriodUsageLabel(sub *UserSubscription) string {
+	switch NormalizeResetPeriod(sub.ResetPeriod) {
+	case SubscriptionResetDaily:
+		return "今日次数"
+	case SubscriptionResetWeekly:
+		return "本周次数"
+	case SubscriptionResetMonthly:
+		return "本月次数"
+	case SubscriptionResetYearly:
+		return "今年次数"
+	default:
+		return "本周期次数"
+	}
+}
+
+func buildSubscriptionQuotaInsufficientMessage(sub *UserSubscription, amount int64) string {
+	if sub == nil {
+		return fmt.Sprintf("subscription quota insufficient, need=%d", amount)
+	}
+	resourceType := NormalizeSubscriptionResourceType(sub.ResourceType)
+	if resourceType == SubscriptionResourceRequestCount {
+		messageParts := make([]string, 0, 4)
+		if hasLifetimeRequestCountLimit(sub) {
+			messageParts = append(messageParts, fmt.Sprintf(
+				"套餐总次数 %d/%d（%s）",
+				sub.RequestCountUsed,
+				sub.RequestCountTotal,
+				formatSubscriptionUsagePercent(sub.RequestCountUsed, sub.RequestCountTotal),
+			))
+		}
+		if periodLimit := getSubscriptionRequestCountPeriodLimit(sub); periodLimit > 0 {
+			currentUsed := getCurrentRequestCountUsed(sub)
+			messageParts = append(messageParts, fmt.Sprintf(
+				"%s %d/%d（%s）",
+				getSubscriptionPeriodUsageLabel(sub),
+				currentUsed,
+				periodLimit,
+				formatSubscriptionUsagePercent(currentUsed, periodLimit),
+			))
+		}
+		if nextReset := formatSubscriptionResetTimeLabel(sub.NextResetTime); nextReset != "" {
+			messageParts = append(messageParts, fmt.Sprintf("下次重置时间 %s", nextReset))
+		}
+		if len(messageParts) > 0 {
+			return "subscription quota insufficient: " + strings.Join(messageParts, "，")
+		}
+	}
+	if sub.AmountTotal > 0 {
+		return fmt.Sprintf(
+			"subscription quota insufficient: 套餐额度 %d/%d（%s）",
+			sub.AmountUsed,
+			sub.AmountTotal,
+			formatSubscriptionUsagePercent(sub.AmountUsed, sub.AmountTotal),
+		)
+	}
+	return fmt.Sprintf("subscription quota insufficient, need=%d", amount)
+}
+
 func hasUserSubscriptionRemainingEntitlement(sub *UserSubscription) bool {
 	if sub == nil {
 		return false
@@ -1835,6 +1920,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		sub.SourceOrderTradeNo = order.TradeNo
 		sub.SourceOrderPaymentMethod = order.PaymentMethod
 		sub.SourceOrderMoney = order.Money
+		if err := provisionAggregateAccessForSubscriptionTx(tx, sub); err != nil {
+			return err
+		}
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
 		}
@@ -2058,6 +2146,9 @@ func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) 
 		}
 		sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, source)
 		if err == nil {
+			if bindErr := provisionAggregateAccessForSubscriptionTx(tx, sub); bindErr != nil {
+				return bindErr
+			}
 			createdSub = sub
 		}
 		return err
@@ -2221,6 +2312,63 @@ func GetUserSubscriptionsByAdmin(userId int, pageInfo *common.PageInfo, keyword 
 	return buildSubscriptionSummaries(subs), total, nil
 }
 
+func ReconcileActiveUserSubscriptionsByUser(userId int) error {
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	var subIDs []int
+	if err := DB.Model(&UserSubscription{}).
+		Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		Order("id asc").
+		Pluck("id", &subIDs).Error; err != nil {
+		return err
+	}
+	for _, subID := range subIDs {
+		if err := DB.Transaction(func(tx *gorm.DB) error {
+			query := tx.Where("id = ? AND user_id = ?", subID, userId)
+			if !common.UsingSQLite {
+				query = query.Set("gorm:query_option", "FOR UPDATE")
+			}
+			var sub UserSubscription
+			if err := query.First(&sub).Error; err != nil {
+				return err
+			}
+			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			if err != nil {
+				return err
+			}
+			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
+				return err
+			}
+			originalStatus := sub.Status
+			usageChanged, err := reconcileUserSubscriptionUsageFromLogs(&sub, now)
+			if err != nil {
+				return err
+			}
+			nextStatus := deriveUserSubscriptionStatus(&sub, now)
+			statusChanged := nextStatus != originalStatus
+			sub.Status = nextStatus
+			if !usageChanged && !statusChanged {
+				return nil
+			}
+			updates := map[string]any{
+				"amount_used":               sub.AmountUsed,
+				"request_count_used":        sub.RequestCountUsed,
+				"request_count_period_used": sub.RequestCountPeriodUsed,
+				"updated_at":                common.GetTimestamp(),
+			}
+			if statusChanged {
+				updates["status"] = sub.Status
+			}
+			return tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(updates).Error
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func GetUserManualDeliveryOrders(userId int) ([]SubscriptionManualDeliverySummary, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
@@ -2280,16 +2428,75 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}
 	}
+	userIDSet := make(map[int]struct{}, len(subs))
+	for _, sub := range subs {
+		if sub.UserId > 0 {
+			userIDSet[sub.UserId] = struct{}{}
+		}
+	}
+	userIDs := make([]int, 0, len(userIDSet))
+	for userID := range userIDSet {
+		userIDs = append(userIDs, userID)
+	}
+	aggregateTokenMap, _ := buildSubscriptionAccessTokenSummaryMapByUserIDs(userIDs)
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
 		refundOrder, _ := buildSubscriptionRefundOrderSummaryFromSubscription(&subCopy, nil)
 		result = append(result, SubscriptionSummary{
-			Subscription: &subCopy,
-			RefundOrder:  refundOrder,
+			Subscription:         &subCopy,
+			RefundOrder:          refundOrder,
+			AggregateAccessToken: aggregateTokenMap[subCopy.UserId],
 		})
 	}
 	return result
+}
+
+func maskSubscriptionAccessTokenKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 10 {
+		return "sk-" + key
+	}
+	return fmt.Sprintf("sk-%s...%s", key[:4], key[len(key)-6:])
+}
+
+func buildSubscriptionAccessTokenSummaryMapByUserIDs(userIDs []int) (map[int]*SubscriptionAccessTokenSummary, error) {
+	result := make(map[int]*SubscriptionAccessTokenSummary)
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+	keyCol := commonKeyCol
+	if keyCol == "" {
+		if common.UsingPostgreSQL {
+			keyCol = `"key"`
+		} else {
+			keyCol = "`key`"
+		}
+	}
+	var tokens []Token
+	if err := DB.Select("id", "user_id", "name", keyCol, "expired_time", "status").
+		Where("user_id IN ? AND name = ? AND deleted_at IS NULL", userIDs, SubscriptionAggregateAccessTokenName).
+		Order("id asc").
+		Find(&tokens).Error; err != nil {
+		return nil, err
+	}
+	for i := range tokens {
+		token := tokens[i]
+		if _, exists := result[token.UserId]; exists {
+			continue
+		}
+		result[token.UserId] = &SubscriptionAccessTokenSummary{
+			TokenId:     token.Id,
+			TokenName:   strings.TrimSpace(token.Name),
+			KeyPreview:  maskSubscriptionAccessTokenKey(token.Key),
+			ExpiredTime: token.ExpiredTime,
+			Status:      token.Status,
+		}
+	}
+	return result, nil
 }
 
 func buildSubscriptionRefundOrderSummaryFromSubscription(sub *UserSubscription, tx *gorm.DB) (*SubscriptionRefundOrderSummary, error) {
@@ -2601,6 +2808,17 @@ func GetAdminUserSubscriptions(
 		Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
+	userIDSet := make(map[int]struct{}, len(rows))
+	for _, row := range rows {
+		if row.UserId > 0 {
+			userIDSet[row.UserId] = struct{}{}
+		}
+	}
+	userIDs := make([]int, 0, len(userIDSet))
+	for userID := range userIDSet {
+		userIDs = append(userIDs, userID)
+	}
+	aggregateTokenMap, _ := buildSubscriptionAccessTokenSummaryMapByUserIDs(userIDs)
 
 	items := make([]AdminUserSubscriptionSummary, 0, len(rows))
 	for _, row := range rows {
@@ -2610,10 +2828,11 @@ func GetAdminUserSubscriptions(
 			return nil, 0, err
 		}
 		items = append(items, AdminUserSubscriptionSummary{
-			Subscription: &subCopy,
-			Username:     row.Username,
-			UserGroup:    row.UserGroup,
-			RefundOrder:  refundOrder,
+			Subscription:         &subCopy,
+			Username:             row.Username,
+			UserGroup:            row.UserGroup,
+			RefundOrder:          refundOrder,
+			AggregateAccessToken: aggregateTokenMap[subCopy.UserId],
 		})
 	}
 	return items, total, nil
@@ -2768,44 +2987,30 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 					return err
 				}
 
-				allowedGroups := decodeSubscriptionStringList(plan.AllowedGroupsJSON)
-				allowedModels := decodeSubscriptionStringList(plan.AllowedModelsJSON)
+				if err := tx.Model(sub).Updates(map[string]any{
+					"specific_channel_id":        channel.Id,
+					"specific_channel_key_index": keyIndex,
+					"updated_at":                 common.GetTimestamp(),
+				}).Error; err != nil {
+					return err
+				}
+				sub.SpecificChannelId = channel.Id
+				sub.SpecificChannelKeyIndex = keyIndex
 
-				key, err := common.GenerateKey()
+				aggregateToken, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, order.UserId)
 				if err != nil {
 					return err
 				}
-				tokenGroup := "default"
-				if upgradeGroup != "" {
-					tokenGroup = upgradeGroup
-				} else if len(allowedGroups) == 1 {
-					tokenGroup = strings.TrimSpace(allowedGroups[0])
-				}
-				token := Token{
-					UserId:                  order.UserId,
-					Name:                    fmt.Sprintf("%s #%d", strings.TrimSpace(order.PlanTitle), order.Id),
-					Key:                     key,
-					SpecificChannelId:       channel.Id,
-					SpecificChannelKeyIndex: keyIndex,
-					CreatedTime:             now,
-					AccessedTime:            now,
-					ExpiredTime:             sub.EndTime,
-					UnlimitedQuota:          true,
-					Group:                   tokenGroup,
-				}
-				if len(allowedModels) > 0 {
-					token.ModelLimitsEnabled = true
-					token.ModelLimits = strings.Join(allowedModels, ",")
-				}
-				if err := tx.Create(&token).Error; err != nil {
+				if err := refreshSubscriptionAggregateAccessTokenTx(tx, aggregateToken); err != nil {
 					return err
 				}
 				if common.RedisEnabled {
+					tokenCopy := *aggregateToken
 					gopool.Go(func() {
-						_ = cacheSetToken(token)
+						_ = cacheSetToken(tokenCopy)
 					})
 				}
-				normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", "sk-"+token.Key)
+				normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", "sk-"+aggregateToken.Key)
 			} else {
 				apiKey := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "api_key"))
 				if apiKey != "" {
@@ -2870,6 +3075,278 @@ func isAutoIssuedSubscriptionDeliverySchema(schema []SubscriptionDeliveryField) 
 	return subscriptionDeliverySchemaHasKey(schema, "api_key") &&
 		subscriptionDeliverySchemaHasKey(schema, "base_url") &&
 		subscriptionDeliverySchemaHasKey(schema, "usage_query_url")
+}
+
+func getOrCreateSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var token Token
+	err := tx.Where("user_id = ? AND name = ? AND deleted_at IS NULL", userId, SubscriptionAggregateAccessTokenName).
+		Order("id asc").
+		First(&token).Error
+	if err == nil {
+		return &token, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	key, err := common.GenerateKey()
+	if err != nil {
+		return nil, err
+	}
+	token = Token{
+		UserId:                  userId,
+		Name:                    SubscriptionAggregateAccessTokenName,
+		Key:                     key,
+		Status:                  common.TokenStatusEnabled,
+		CreatedTime:             common.GetTimestamp(),
+		AccessedTime:            common.GetTimestamp(),
+		ExpiredTime:             -1,
+		UnlimitedQuota:          true,
+		Group:                   "default",
+		SpecificChannelId:       0,
+		SpecificChannelKeyIndex: -1,
+	}
+	if err := tx.Create(&token).Error; err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
+func disableSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var token Token
+	err := tx.Where("user_id = ? AND name = ? AND deleted_at IS NULL", userId, SubscriptionAggregateAccessTokenName).
+		Order("id asc").
+		First(&token).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	updates := map[string]any{
+		"status":                     common.TokenStatusDisabled,
+		"expired_time":               common.GetTimestamp(),
+		"model_limits_enabled":       false,
+		"model_limits":               "",
+		"specific_channel_id":        0,
+		"specific_channel_key_index": -1,
+	}
+	if err := tx.Model(&Token{}).Where("id = ?", token.Id).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	token.Status = common.TokenStatusDisabled
+	token.ExpiredTime = updates["expired_time"].(int64)
+	token.ModelLimitsEnabled = false
+	token.ModelLimits = ""
+	token.SpecificChannelId = 0
+	token.SpecificChannelKeyIndex = -1
+	return &token, nil
+}
+
+func refreshSubscriptionAggregateAccessTokenTx(tx *gorm.DB, token *Token) error {
+	if tx == nil || token == nil || token.Id <= 0 || token.UserId <= 0 {
+		return errors.New("invalid aggregate token args")
+	}
+	now := GetDBTimestampWithTx(tx)
+	var subs []UserSubscription
+	if err := tx.Select("allowed_models_json", "end_time", "resource_type", "upgrade_group", "allowed_groups_json", "specific_channel_id").
+		Where("user_id = ? AND status = ? AND end_time > ?", token.UserId, "active", now).
+		Order("id asc").
+		Find(&subs).Error; err != nil {
+		return err
+	}
+	latestExpiredTime := int64(-1)
+	unionModels := make(map[string]struct{})
+	modelLimitEnabled := true
+	for i := range subs {
+		sub := subs[i]
+		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+			continue
+		}
+		if getUserSubscriptionRouteGroup(&sub) == "" {
+			continue
+		}
+		if sub.SpecificChannelId <= 0 {
+			continue
+		}
+		if sub.EndTime > latestExpiredTime {
+			latestExpiredTime = sub.EndTime
+		}
+		models := decodeSubscriptionStringList(sub.AllowedModelsJSON)
+		if len(models) == 0 {
+			modelLimitEnabled = false
+			continue
+		}
+		if !modelLimitEnabled {
+			continue
+		}
+		for _, modelName := range models {
+			modelName = strings.TrimSpace(modelName)
+			if modelName == "" {
+				continue
+			}
+			unionModels[modelName] = struct{}{}
+		}
+	}
+	if latestExpiredTime <= 0 {
+		disabledToken, err := disableSubscriptionAggregateAccessTokenTx(tx, token.UserId)
+		if err != nil {
+			return err
+		}
+		if disabledToken != nil {
+			*token = *disabledToken
+		}
+		return nil
+	}
+	updates := map[string]any{
+		"status":                     common.TokenStatusEnabled,
+		"expired_time":               latestExpiredTime,
+		"unlimited_quota":            true,
+		"group":                      "default",
+		"specific_channel_id":        0,
+		"specific_channel_key_index": -1,
+	}
+	if !modelLimitEnabled || len(unionModels) == 0 {
+		updates["model_limits_enabled"] = false
+		updates["model_limits"] = ""
+	} else {
+		models := make([]string, 0, len(unionModels))
+		for modelName := range unionModels {
+			models = append(models, modelName)
+		}
+		slices.Sort(models)
+		updates["model_limits_enabled"] = true
+		updates["model_limits"] = strings.Join(models, ",")
+	}
+	if err := tx.Model(&Token{}).Where("id = ?", token.Id).Updates(updates).Error; err != nil {
+		return err
+	}
+	token.Status = common.TokenStatusEnabled
+	token.ExpiredTime = latestExpiredTime
+	token.UnlimitedQuota = true
+	token.Group = "default"
+	token.SpecificChannelId = 0
+	token.SpecificChannelKeyIndex = -1
+	if value, ok := updates["model_limits_enabled"].(bool); ok {
+		token.ModelLimitsEnabled = value
+	}
+	if value, ok := updates["model_limits"].(string); ok {
+		token.ModelLimits = value
+	}
+	return nil
+}
+
+func provisionAggregateAccessForSubscriptionTx(tx *gorm.DB, sub *UserSubscription) error {
+	if tx == nil || sub == nil || sub.Id <= 0 || sub.UserId <= 0 {
+		return nil
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+		return nil
+	}
+	routeGroup := getUserSubscriptionRouteGroup(sub)
+	if !strings.HasPrefix(routeGroup, "sub_plan_") {
+		return nil
+	}
+	if sub.SpecificChannelId <= 0 {
+		planTag := subscriptionPlanChannelPoolTag(sub.PlanId)
+		if planTag == "" {
+			return nil
+		}
+		channel, keyIndex, err := allocateSubscriptionPlanChannelFromPoolTx(tx, planTag)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]any{
+			"specific_channel_id":        channel.Id,
+			"specific_channel_key_index": keyIndex,
+			"updated_at":                 common.GetTimestamp(),
+		}).Error; err != nil {
+			return err
+		}
+		sub.SpecificChannelId = channel.Id
+		sub.SpecificChannelKeyIndex = keyIndex
+	}
+	aggregateToken, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, sub.UserId)
+	if err != nil {
+		return err
+	}
+	return refreshSubscriptionAggregateAccessTokenTx(tx, aggregateToken)
+}
+
+func EnsureSubscriptionAggregateAccessTokenForUser(userId int) (*Token, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var result *Token
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		now := GetDBTimestampWithTx(tx)
+		var subs []UserSubscription
+		if err := tx.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+			Order("id asc").
+			Find(&subs).Error; err != nil {
+			return err
+		}
+		needsAggregateToken := false
+		for i := range subs {
+			sub := subs[i]
+			if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+				continue
+			}
+			if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+				return err
+			}
+			if err := provisionAggregateAccessForSubscriptionTx(tx, &sub); err != nil {
+				return err
+			}
+			if sub.SpecificChannelId <= 0 || getUserSubscriptionRouteGroup(&sub) == "" {
+				continue
+			}
+			needsAggregateToken = true
+			break
+		}
+		if !needsAggregateToken {
+			token, err := disableSubscriptionAggregateAccessTokenTx(tx, userId)
+			if err != nil {
+				return err
+			}
+			if token != nil {
+				tokenCopy := *token
+				result = &tokenCopy
+			}
+			return nil
+		}
+		token, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, userId)
+		if err != nil {
+			return err
+		}
+		if err := refreshSubscriptionAggregateAccessTokenTx(tx, token); err != nil {
+			return err
+		}
+		tokenCopy := *token
+		result = &tokenCopy
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result != nil && common.RedisEnabled {
+		tokenCopy := *result
+		gopool.Go(func() {
+			_ = cacheSetToken(tokenCopy)
+		})
+	}
+	return result, nil
 }
 
 func allocateSubscriptionPlanChannelFromPoolTx(tx *gorm.DB, tag string) (*Channel, int, error) {
@@ -3715,6 +4192,9 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 
 type SubscriptionPreConsumeResult struct {
 	UserSubscriptionId       int
+	SpecificChannelId        int
+	SpecificChannelKeyIndex  int
+	RouteGroup               string
 	PreConsumed              int64
 	PreConsumedAmount        int64
 	PreConsumedCount         int64
@@ -3907,6 +4387,154 @@ func isUserSubscriptionEligibleForPreConsume(sub *UserSubscription, amount int64
 	return true, requiredAmount, requiredCount, resourceType
 }
 
+func getUserSubscriptionRouteGroup(sub *UserSubscription) string {
+	if sub == nil {
+		return ""
+	}
+	group := strings.TrimSpace(sub.UpgradeGroup)
+	if group != "" {
+		return group
+	}
+	allowedGroups := decodeUserSubscriptionAllowedGroups(sub)
+	if len(allowedGroups) == 1 {
+		return strings.TrimSpace(allowedGroups[0])
+	}
+	return ""
+}
+
+func tryBackfillUserSubscriptionChannelBindingTx(tx *gorm.DB, sub *UserSubscription) error {
+	if tx == nil || sub == nil || sub.Id <= 0 || sub.UserId <= 0 {
+		return nil
+	}
+	if sub.SpecificChannelId > 0 {
+		return nil
+	}
+	if sub.SourceOrderId <= 0 {
+		return nil
+	}
+	var order SubscriptionOrder
+	if err := tx.Select("id", "plan_title").Where("id = ?", sub.SourceOrderId).First(&order).Error; err != nil {
+		return nil
+	}
+	expectedName := fmt.Sprintf("%s #%d", strings.TrimSpace(order.PlanTitle), order.Id)
+	if strings.TrimSpace(expectedName) == "" {
+		return nil
+	}
+	var token Token
+	if err := tx.Select("specific_channel_id", "specific_channel_key_index").
+		Where("user_id = ? AND name = ? AND specific_channel_id > 0 AND deleted_at IS NULL", sub.UserId, expectedName).
+		Order("id asc").
+		First(&token).Error; err != nil {
+		return nil
+	}
+	sub.SpecificChannelId = token.SpecificChannelId
+	sub.SpecificChannelKeyIndex = token.SpecificChannelKeyIndex
+	return tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]any{
+		"specific_channel_id":        sub.SpecificChannelId,
+		"specific_channel_key_index": sub.SpecificChannelKeyIndex,
+		"updated_at":                 common.GetTimestamp(),
+	}).Error
+}
+
+type SubscriptionRouteDecision struct {
+	UserSubscriptionId      int
+	PlanId                  int
+	RouteGroup              string
+	SpecificChannelId       int
+	SpecificChannelKeyIndex int
+	ExhaustedMessage        string
+}
+
+func GetPreferredSubscriptionRouteForAggregateToken(userId int, modelName string) (*SubscriptionRouteDecision, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	now := GetDBTimestamp()
+	var result *SubscriptionRouteDecision
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		query := tx
+		if !common.UsingSQLite {
+			query = query.Set("gorm:query_option", "FOR UPDATE")
+		}
+		var subs []UserSubscription
+		if err := query.
+			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+			Order("end_time asc, id asc").
+			Find(&subs).Error; err != nil {
+			return err
+		}
+		if len(subs) == 0 {
+			return nil
+		}
+		resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
+		var exhaustedCandidate *UserSubscription
+		for i := range subs {
+			sub := subs[i]
+			if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedModel(&sub, modelName) {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedVendor(&sub, resolvedVendorID) {
+				continue
+			}
+			routeGroup := getUserSubscriptionRouteGroup(&sub)
+			if routeGroup == "" {
+				continue
+			}
+			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, nil, now); err != nil {
+				return err
+			}
+			if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+				return err
+			}
+			if err := provisionAggregateAccessForSubscriptionTx(tx, &sub); err != nil {
+				return err
+			}
+			if sub.SpecificChannelId <= 0 {
+				continue
+			}
+			eligible, _, requiredCount, _ := isUserSubscriptionEligibleForPreConsume(&sub, 1)
+			if !eligible || requiredCount <= 0 {
+				if exhaustedCandidate == nil {
+					subCopy := sub
+					exhaustedCandidate = &subCopy
+				}
+				continue
+			}
+			var channel Channel
+			if err := tx.Where("id = ?", sub.SpecificChannelId).First(&channel).Error; err != nil {
+				continue
+			}
+			if channel.Status != common.ChannelStatusEnabled {
+				continue
+			}
+			if sub.SpecificChannelKeyIndex >= 0 && !channel.IsSpecificKeyAvailable(sub.SpecificChannelKeyIndex) {
+				continue
+			}
+			result = &SubscriptionRouteDecision{
+				UserSubscriptionId:      sub.Id,
+				PlanId:                  sub.PlanId,
+				RouteGroup:              routeGroup,
+				SpecificChannelId:       sub.SpecificChannelId,
+				SpecificChannelKeyIndex: sub.SpecificChannelKeyIndex,
+			}
+			return nil
+		}
+		if exhaustedCandidate != nil {
+			result = &SubscriptionRouteDecision{
+				ExhaustedMessage: buildSubscriptionQuotaInsufficientMessage(exhaustedCandidate, 1),
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func getUsableGroupsForUserGroup(userGroup string) map[string]string {
 	groupsCopy := setting.GetUserUsableGroupsCopy()
 	userGroup = strings.TrimSpace(userGroup)
@@ -4033,6 +4661,9 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 				return errors.New("subscription pre-consume already refunded")
 			}
 			returnValue.UserSubscriptionId = sub.Id
+			returnValue.SpecificChannelId = sub.SpecificChannelId
+			returnValue.SpecificChannelKeyIndex = sub.SpecificChannelKeyIndex
+			returnValue.RouteGroup = getUserSubscriptionRouteGroup(sub)
 			returnValue.PreConsumed = dup.PreConsumed
 			returnValue.PreConsumedAmount = dup.PreConsumedAmount
 			returnValue.PreConsumedCount = dup.PreConsumedCount
@@ -4065,6 +4696,9 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 		return err
 	}
 	returnValue.UserSubscriptionId = sub.Id
+	returnValue.SpecificChannelId = sub.SpecificChannelId
+	returnValue.SpecificChannelKeyIndex = sub.SpecificChannelKeyIndex
+	returnValue.RouteGroup = getUserSubscriptionRouteGroup(sub)
 	returnValue.PreConsumed = primaryPreConsumed
 	returnValue.PreConsumedAmount = requiredAmount
 	returnValue.PreConsumedCount = requiredCount
@@ -4081,8 +4715,42 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 	return nil
 }
 
-// PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+func trySelectPreferredUserSubscriptionTx(tx *gorm.DB, requestId string, userId int, preferredSubID int, modelName string, amount int64, returnValue *SubscriptionPreConsumeResult) error {
+	if tx == nil || preferredSubID <= 0 {
+		return nil
+	}
+	now := GetDBTimestampWithTx(tx)
+	var sub UserSubscription
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("id = ? AND user_id = ? AND status = ? AND end_time > ?", preferredSubID, userId, "active", now).
+		First(&sub).Error; err != nil {
+		return err
+	}
+	if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+		return err
+	}
+	if !doesUserSubscriptionMatchAllowedModel(&sub, modelName) {
+		return fmt.Errorf("preferred subscription model mismatch: subscription=%d model=%s", sub.Id, modelName)
+	}
+	resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
+	if !doesUserSubscriptionMatchAllowedVendor(&sub, resolvedVendorID) {
+		return fmt.Errorf("preferred subscription vendor mismatch: subscription=%d vendor=%d", sub.Id, resolvedVendorID)
+	}
+	routeGroup := getUserSubscriptionRouteGroup(&sub)
+	if routeGroup == "" {
+		return fmt.Errorf("preferred subscription route group is empty: subscription=%d", sub.Id)
+	}
+	if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, nil, now); err != nil {
+		return err
+	}
+	eligible, requiredAmount, requiredCount, resourceType := isUserSubscriptionEligibleForPreConsume(&sub, amount)
+	if !eligible {
+		return fmt.Errorf("%s", buildSubscriptionQuotaInsufficientMessage(&sub, amount))
+	}
+	return applyUserSubscriptionPreConsumeTx(tx, requestId, userId, &sub, requiredAmount, requiredCount, resourceType, returnValue)
+}
+
+func preConsumeUserSubscriptionWithPreference(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64, preferredSubID int) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -4111,6 +4779,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				return err
 			}
 			returnValue.UserSubscriptionId = sub.Id
+			returnValue.SpecificChannelId = sub.SpecificChannelId
+			returnValue.SpecificChannelKeyIndex = sub.SpecificChannelKeyIndex
+			returnValue.RouteGroup = getUserSubscriptionRouteGroup(&sub)
 			returnValue.PreConsumed = existing.PreConsumed
 			returnValue.PreConsumedAmount = existing.PreConsumedAmount
 			returnValue.PreConsumedCount = existing.PreConsumedCount
@@ -4137,11 +4808,15 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
 		}
+		if preferredSubID > 0 {
+			return trySelectPreferredUserSubscriptionTx(tx, requestId, userId, preferredSubID, modelName, amount, returnValue)
+		}
 		currentUserGroup, err := getUserGroupByIdTx(tx, userId)
 		if err != nil {
 			return err
 		}
 		resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
+		var exhaustedCandidate *UserSubscription
 		requestCountCandidates := make([]UserSubscription, 0, len(subs))
 		quotaCandidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
@@ -4165,8 +4840,15 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
+			if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+				return err
+			}
 			eligible, _, _, resourceType := isUserSubscriptionEligibleForPreConsume(&sub, amount)
 			if !eligible {
+				if exhaustedCandidate == nil {
+					subCopy := sub
+					exhaustedCandidate = &subCopy
+				}
 				continue
 			}
 			if resourceType == SubscriptionResourceRequestCount {
@@ -4185,12 +4867,24 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			_, requiredAmount, requiredCount, resourceType := isUserSubscriptionEligibleForPreConsume(&selected, amount)
 			return applyUserSubscriptionPreConsumeTx(tx, requestId, userId, &selected, requiredAmount, requiredCount, resourceType, returnValue)
 		}
+		if exhaustedCandidate != nil {
+			return fmt.Errorf("%s", buildSubscriptionQuotaInsufficientMessage(exhaustedCandidate, amount))
+		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return returnValue, nil
+}
+
+// PreConsumeUserSubscription pre-consumes from any active subscription total quota.
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+	return preConsumeUserSubscriptionWithPreference(requestId, userId, modelName, usingGroup, quotaType, amount, 0)
+}
+
+func PreConsumePreferredUserSubscription(requestId string, userId int, preferredSubID int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+	return preConsumeUserSubscriptionWithPreference(requestId, userId, modelName, usingGroup, quotaType, amount, preferredSubID)
 }
 
 // RefundSubscriptionPreConsume is idempotent and refunds pre-consumed subscription quota by requestId.

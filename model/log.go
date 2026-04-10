@@ -183,9 +183,6 @@ func GetChannelMultiKeyUsageDetailMap(channelId int) (map[int]ChannelMultiKeyUsa
 			continue
 		}
 		keyIndex := readIntFromAny(adminInfo["multi_key_index"], -1)
-		if keyIndex < 0 {
-			continue
-		}
 		item := result[keyIndex]
 		item.KeyIndex = keyIndex
 		item.SuccessCount++

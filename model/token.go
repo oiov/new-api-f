@@ -35,6 +35,25 @@ type Token struct {
 	DeletedAt               gorm.DeletedAt `gorm:"index"`
 }
 
+const SubscriptionAggregateAccessTokenName = "Subscription Access"
+
+func (token *Token) IsSubscriptionSpecificChannelToken() bool {
+	if token == nil {
+		return false
+	}
+	if token.SpecificChannelId <= 0 {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(token.Group), "sub_plan_")
+}
+
+func (token *Token) IsSubscriptionAggregateAccessToken() bool {
+	if token == nil {
+		return false
+	}
+	return token.SpecificChannelId <= 0 && strings.TrimSpace(token.Name) == SubscriptionAggregateAccessTokenName
+}
+
 type AdminTokenSearchFilters struct {
 	Username     string
 	TokenName    string
@@ -115,15 +134,37 @@ type activeSpecificChannelKeyBindingCount struct {
 }
 
 type ActiveSpecificChannelKeyBindingDetail struct {
-	KeyIndex      int      `json:"key_index"`
-	BindingCount  int64    `json:"binding_count"`
-	BindingGroups []string `json:"binding_groups,omitempty"`
+	KeyIndex      int                                   `json:"key_index"`
+	BindingCount  int64                                 `json:"binding_count"`
+	BindingGroups []string                              `json:"binding_groups,omitempty"`
+	BindingUsers  []ActiveSpecificChannelKeyBindingUser `json:"binding_users,omitempty"`
 }
 
 type activeSpecificChannelKeyBindingDetailRow struct {
 	SpecificChannelKeyIndex int    `gorm:"column:specific_channel_key_index"`
 	Group                   string `gorm:"column:group_name"`
 	BindingCount            int64  `gorm:"column:binding_count"`
+}
+
+type ActiveSpecificChannelKeyBindingUser struct {
+	UserId      int    `json:"user_id"`
+	Username    string `json:"username"`
+	TokenId     int    `json:"token_id"`
+	TokenName   string `json:"token_name"`
+	TokenGroup  string `json:"token_group"`
+	ExpiredTime int64  `json:"expired_time"`
+	Status      int    `json:"status"`
+}
+
+type activeSpecificChannelKeyBindingUserRow struct {
+	SpecificChannelKeyIndex int    `gorm:"column:specific_channel_key_index"`
+	UserId                  int    `gorm:"column:user_id"`
+	Username                string `gorm:"column:username"`
+	TokenId                 int    `gorm:"column:token_id"`
+	TokenName               string `gorm:"column:token_name"`
+	TokenGroup              string `gorm:"column:token_group"`
+	ExpiredTime             int64  `gorm:"column:expired_time"`
+	Status                  int    `gorm:"column:status"`
 }
 
 func GetActiveSpecificChannelKeyBindingCountMap(channelId int) (map[int]int64, error) {
@@ -187,17 +228,35 @@ func GetActiveSpecificChannelKeyBindingDetailMap(channelId int) (map[int]ActiveS
 		}
 		result[row.SpecificChannelKeyIndex] = item
 	}
+	qualifiedGroupCol := qualifiedTokenGroupCol()
+	var userRows []activeSpecificChannelKeyBindingUserRow
+	err = DB.Model(&Token{}).
+		Select("tokens.specific_channel_key_index, tokens.user_id, users.username, tokens.id as token_id, tokens.name as token_name, "+qualifiedGroupCol+" as token_group, tokens.expired_time, tokens.status").
+		Joins("LEFT JOIN users ON users.id = tokens.user_id").
+		Where(
+			"tokens.specific_channel_id = ? AND tokens.specific_channel_key_index >= 0 AND tokens.deleted_at IS NULL",
+			channelId,
+		).
+		Order("tokens.specific_channel_key_index asc, tokens.id asc").
+		Find(&userRows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range userRows {
+		item := result[row.SpecificChannelKeyIndex]
+		item.KeyIndex = row.SpecificChannelKeyIndex
+		item.BindingUsers = append(item.BindingUsers, ActiveSpecificChannelKeyBindingUser{
+			UserId:      row.UserId,
+			Username:    row.Username,
+			TokenId:     row.TokenId,
+			TokenName:   row.TokenName,
+			TokenGroup:  row.TokenGroup,
+			ExpiredTime: row.ExpiredTime,
+			Status:      row.Status,
+		})
+		result[row.SpecificChannelKeyIndex] = item
+	}
 	return result, nil
-}
-
-func qualifiedTokenKeyCol() string {
-	if commonKeyCol != "" {
-		return "tokens." + commonKeyCol
-	}
-	if common.UsingPostgreSQL {
-		return `tokens."key"`
-	}
-	return "tokens.`key`"
 }
 
 func qualifiedTokenGroupCol() string {
@@ -208,6 +267,35 @@ func qualifiedTokenGroupCol() string {
 		return `tokens."group"`
 	}
 	return "tokens.`group`"
+}
+
+func NormalizeLegacySpecificChannelKeyBindings(channelId int, defaultKeyIndex int) (int64, error) {
+	if channelId <= 0 {
+		return 0, errors.New("invalid channelId")
+	}
+	if defaultKeyIndex < 0 {
+		defaultKeyIndex = 0
+	}
+	updates := map[string]any{
+		"specific_channel_key_index": defaultKeyIndex,
+	}
+	result := DB.Model(&Token{}).
+		Where("specific_channel_id = ? AND specific_channel_key_index < 0 AND deleted_at IS NULL", channelId).
+		Updates(updates)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+func qualifiedTokenKeyCol() string {
+	if commonKeyCol != "" {
+		return "tokens." + commonKeyCol
+	}
+	if common.UsingPostgreSQL {
+		return `tokens."key"`
+	}
+	return "tokens.`key`"
 }
 
 func GetAllTokensByAdmin(startIdx int, num int) ([]*Token, int64, error) {

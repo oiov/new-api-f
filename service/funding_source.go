@@ -78,15 +78,19 @@ func (w *WalletFunding) Refund() error {
 // ---------------------------------------------------------------------------
 
 type SubscriptionFunding struct {
-	requestId      string
-	userId         int
-	modelName      string
-	usingGroup     string
-	amount         int64 // 预扣的订阅额度（subConsume）
-	subscriptionId int
-	preConsumed    int64
-	preConsumedCnt int64
-	ResourceType   string
+	requestId               string
+	userId                  int
+	modelName               string
+	usingGroup              string
+	preferredSubscriptionId int
+	amount                  int64 // 预扣的订阅额度（subConsume）
+	subscriptionId          int
+	specificChannelId       int
+	specificChannelKeyIndex int
+	routeGroup              string
+	preConsumed             int64
+	preConsumedCnt          int64
+	ResourceType            string
 	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
 	AmountTotal           int64
 	AmountUsedAfter       int64
@@ -104,11 +108,22 @@ func (s *SubscriptionFunding) UseTokenQuota() bool {
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, s.usingGroup, 0, s.amount)
+	var (
+		res *model.SubscriptionPreConsumeResult
+		err error
+	)
+	if s.preferredSubscriptionId > 0 {
+		res, err = model.PreConsumePreferredUserSubscription(s.requestId, s.userId, s.preferredSubscriptionId, s.modelName, s.usingGroup, 0, s.amount)
+	} else {
+		res, err = model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, s.usingGroup, 0, s.amount)
+	}
 	if err != nil {
 		return err
 	}
 	s.subscriptionId = res.UserSubscriptionId
+	s.specificChannelId = res.SpecificChannelId
+	s.specificChannelKeyIndex = res.SpecificChannelKeyIndex
+	s.routeGroup = res.RouteGroup
 	s.preConsumed = res.PreConsumed
 	s.preConsumedCnt = res.PreConsumedCount
 	s.ResourceType = model.NormalizeSubscriptionResourceType(res.ResourceType)

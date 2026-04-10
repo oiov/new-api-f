@@ -64,18 +64,58 @@ func getForcedChannelKeyIndex(c *gin.Context) int {
 	return index
 }
 
+func applyAggregateSubscriptionRoute(c *gin.Context, modelName string) *types.NewAPIError {
+	if c == nil || strings.TrimSpace(modelName) == "" {
+		return nil
+	}
+	if c.GetString("token_name") != model.SubscriptionAggregateAccessTokenName {
+		return nil
+	}
+	if _, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
+		return nil
+	}
+	decision, err := model.GetPreferredSubscriptionRouteForAggregateToken(c.GetInt("id"), modelName)
+	if err != nil {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeModelNotFound, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	if decision != nil && strings.TrimSpace(decision.ExhaustedMessage) != "" {
+		return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %s", decision.ExhaustedMessage), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	if decision == nil || decision.UserSubscriptionId <= 0 || decision.SpecificChannelId <= 0 {
+		return nil
+	}
+	common.SetContextKey(c, constant.ContextKeyPreferredSubscriptionId, decision.UserSubscriptionId)
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(decision.SpecificChannelId))
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, decision.SpecificChannelKeyIndex)
+	if decision.RouteGroup != "" {
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, decision.RouteGroup)
+		common.SetContextKey(c, constant.ContextKeyTokenGroup, decision.RouteGroup)
+	}
+	return nil
+}
+
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
-		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if shouldSelectChannel && modelRequest.Model != "" {
+			if err := applyAggregateSubscriptionRoute(c, modelRequest.Model); err != nil {
+				statusCode := err.StatusCode
+				if statusCode <= 0 {
+					statusCode = http.StatusServiceUnavailable
+				}
+				abortWithOpenAiMessage(c, statusCode, err.Error(), err.GetErrorCode())
+				return
+			}
+		}
 		if shouldSelectChannel && modelRequest.Model != "" && !validateRequestedModelAccess(c, modelRequest.Model) {
 			return
 		}
+		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {

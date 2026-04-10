@@ -28,7 +28,7 @@ func withSubscriptionQueryTestDB(t *testing.T, run func()) {
 	LOG_DB = db
 	common.UsingSQLite = true
 
-	require.NoError(t, db.AutoMigrate(&User{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &SubscriptionPreConsumeRecord{}, &Log{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &SubscriptionPreConsumeRecord{}, &Token{}, &Log{}))
 
 	t.Cleanup(func() {
 		DB = oldDB
@@ -115,6 +115,37 @@ func TestCalcNextResetTime_UsesFixedClockWhenConfigured(t *testing.T) {
 		QuotaResetFixedSeconds:  20*3600 + 30*60,
 	}, 0)
 	require.Equal(t, time.Date(2026, 5, 7, 20, 30, 0, 0, loc).Unix(), monthly)
+}
+
+func TestBuildSubscriptionQuotaInsufficientMessage_RequestCount(t *testing.T) {
+	loc := time.FixedZone("UTC+8", 8*3600)
+	resetAt := time.Date(2026, 4, 12, 8, 0, 0, 0, loc).Unix()
+
+	sub := &UserSubscription{
+		ResourceType:            SubscriptionResourceRequestCount,
+		RequestCountTotal:       15000,
+		RequestCountUsed:        15000,
+		RequestCountPeriodTotal: 500,
+		RequestCountPeriodUsed:  500,
+		ResetPeriod:             SubscriptionResetDaily,
+		NextResetTime:           resetAt,
+	}
+
+	msg := buildSubscriptionQuotaInsufficientMessage(sub, 445000)
+	require.Contains(t, msg, "套餐总次数 15000/15000（100.00%）")
+	require.Contains(t, msg, "今日次数 500/500（100.00%）")
+	require.Contains(t, msg, "下次重置时间 2026-04-12 08:00:00")
+}
+
+func TestBuildSubscriptionQuotaInsufficientMessage_Quota(t *testing.T) {
+	sub := &UserSubscription{
+		ResourceType: SubscriptionResourceQuota,
+		AmountTotal:  1000,
+		AmountUsed:   1000,
+	}
+
+	msg := buildSubscriptionQuotaInsufficientMessage(sub, 1200)
+	require.Contains(t, msg, "套餐额度 1000/1000（100.00%）")
 }
 
 func TestSyncActiveSubscriptionsForPlanTx(t *testing.T) {

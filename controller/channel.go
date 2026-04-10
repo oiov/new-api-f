@@ -1279,11 +1279,12 @@ type MultiKeyManageRequest struct {
 
 // MultiKeyStatusResponse represents the response for key status query
 type MultiKeyStatusResponse struct {
-	Keys       []KeyStatus `json:"keys"`
-	Total      int         `json:"total"`
-	Page       int         `json:"page"`
-	PageSize   int         `json:"page_size"`
-	TotalPages int         `json:"total_pages"`
+	Keys            []KeyStatus                       `json:"keys"`
+	Total           int                               `json:"total"`
+	Page            int                               `json:"page"`
+	PageSize        int                               `json:"page_size"`
+	TotalPages      int                               `json:"total_pages"`
+	UnassignedUsage *model.ChannelMultiKeyUsageDetail `json:"unassigned_usage,omitempty"`
 	// Statistics
 	EnabledCount        int `json:"enabled_count"`
 	ManualDisabledCount int `json:"manual_disabled_count"`
@@ -1291,18 +1292,19 @@ type MultiKeyStatusResponse struct {
 }
 
 type KeyStatus struct {
-	Index           int                               `json:"index"`
-	Status          int                               `json:"status"` // 1: enabled, 2: disabled
-	DisabledTime    int64                             `json:"disabled_time,omitempty"`
-	Reason          string                            `json:"reason,omitempty"`
-	KeyPreview      string                            `json:"key_preview"` // first 10 chars of key for identification
-	UsedCount       int64                             `json:"used_count"`
-	UsedQuota       int64                             `json:"used_quota"`
-	MaxRequestCount int64                             `json:"max_request_count"`
-	BindingCount    int64                             `json:"binding_count"`
-	BindingGroups   []string                          `json:"binding_groups,omitempty"`
-	LastUsedAt      int64                             `json:"last_used_at,omitempty"`
-	UsageGroups     []model.ChannelMultiKeyGroupUsage `json:"usage_groups,omitempty"`
+	Index           int                                         `json:"index"`
+	Status          int                                         `json:"status"` // 1: enabled, 2: disabled
+	DisabledTime    int64                                       `json:"disabled_time,omitempty"`
+	Reason          string                                      `json:"reason,omitempty"`
+	KeyPreview      string                                      `json:"key_preview"` // first 10 chars of key for identification
+	UsedCount       int64                                       `json:"used_count"`
+	UsedQuota       int64                                       `json:"used_quota"`
+	MaxRequestCount int64                                       `json:"max_request_count"`
+	BindingCount    int64                                       `json:"binding_count"`
+	BindingGroups   []string                                    `json:"binding_groups,omitempty"`
+	BindingUsers    []model.ActiveSpecificChannelKeyBindingUser `json:"binding_users,omitempty"`
+	LastUsedAt      int64                                       `json:"last_used_at,omitempty"`
+	UsageGroups     []model.ChannelMultiKeyGroupUsage           `json:"usage_groups,omitempty"`
 }
 
 // ManageMultiKeys handles multi-key management operations
@@ -1452,10 +1454,17 @@ func ManageMultiKeys(c *gin.Context) {
 			})
 			return
 		}
+		var unassignedUsage *model.ChannelMultiKeyUsageDetail
+		if usageDetail, ok := usageDetailMap[-1]; ok && (usageDetail.SuccessCount > 0 || usageDetail.UsedQuota > 0) {
+			detailCopy := usageDetail
+			unassignedUsage = &detailCopy
+			delete(usageDetailMap, -1)
+		}
 		for i := range pageKeyStatusList {
 			if bindingDetail, ok := bindingDetailMap[pageKeyStatusList[i].Index]; ok {
 				pageKeyStatusList[i].BindingCount = bindingDetail.BindingCount
 				pageKeyStatusList[i].BindingGroups = bindingDetail.BindingGroups
+				pageKeyStatusList[i].BindingUsers = bindingDetail.BindingUsers
 			}
 			if usageDetail, ok := usageDetailMap[pageKeyStatusList[i].Index]; ok {
 				if usageDetail.SuccessCount > 0 {
@@ -1479,6 +1488,7 @@ func ManageMultiKeys(c *gin.Context) {
 				Page:                page,
 				PageSize:            pageSize,
 				TotalPages:          totalPages,
+				UnassignedUsage:     unassignedUsage,
 				EnabledCount:        enabledCount,        // Overall statistics
 				ManualDisabledCount: manualDisabledCount, // Overall statistics
 				AutoDisabledCount:   autoDisabledCount,   // Overall statistics

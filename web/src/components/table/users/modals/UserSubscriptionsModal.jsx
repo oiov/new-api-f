@@ -81,6 +81,21 @@ function renderStatusTag(sub, t) {
   );
 }
 
+function renderAccessTokenStatus(status, t) {
+  if (Number(status) === 1) {
+    return (
+      <Tag color='green' size='small'>
+        {t('可用')}
+      </Tag>
+    );
+  }
+  return (
+    <Tag color='grey' size='small'>
+      {t('停用')}
+    </Tag>
+  );
+}
+
 function getPlanPeriodLabel(source, t) {
   const unit = source?.duration_unit || 'month';
   const value = Number(source?.duration_value || 1);
@@ -393,6 +408,37 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
                     : renderQuota(summary.remain)}
                 </div>
               )}
+            </div>
+          );
+        },
+      },
+      {
+        title: t('订阅绑定'),
+        key: 'binding',
+        width: 260,
+        render: (_, record) => {
+          const sub = record?.subscription;
+          const aggregateToken = record?.aggregate_access_token;
+          return (
+            <div className='text-xs text-gray-600 space-y-1'>
+              <div>
+                {t('渠道')} #{sub?.specific_channel_id || '-'}
+                {sub?.specific_channel_id > 0
+                  ? ` · Key #${Number(sub?.specific_channel_key_index ?? -1) >= 0 ? sub?.specific_channel_key_index : 0}`
+                  : ''}
+              </div>
+              <div>
+                {t('聚合访问 Key')}:{' '}
+                {aggregateToken?.key_preview || t('未生成')}
+              </div>
+              {aggregateToken?.token_id ? (
+                <div className='flex items-center gap-2 flex-wrap'>
+                  <Tag size='small' color='white'>
+                    #{aggregateToken.token_id}
+                  </Tag>
+                  {renderAccessTokenStatus(aggregateToken?.status, t)}
+                </div>
+              ) : null}
             </div>
           );
         },

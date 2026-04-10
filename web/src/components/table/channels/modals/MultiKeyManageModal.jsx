@@ -27,6 +27,7 @@ import {
   Typography,
   Space,
   Tooltip,
+  Popover,
   Popconfirm,
   Empty,
   Spin,
@@ -37,6 +38,7 @@ import {
   Badge,
   Progress,
   Card,
+  Banner,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
@@ -58,6 +60,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
   const [keyStatusList, setKeyStatusList] = useState([]);
   const [operationLoading, setOperationLoading] = useState({});
   const [limitDrafts, setLimitDrafts] = useState({});
+  const [unassignedUsage, setUnassignedUsage] = useState(null);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -112,6 +115,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
         setCurrentPage(data.page || 1);
         setPageSize(data.page_size || 10);
         setTotalPages(data.total_pages || 0);
+        setUnassignedUsage(data.unassigned_usage || null);
 
         // Update statistics (these are always the overall statistics)
         setEnabledCount(data.enabled_count || 0);
@@ -349,6 +353,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       setManualDisabledCount(0);
       setAutoDisabledCount(0);
       setStatusFilter(null); // Reset filter
+      setUnassignedUsage(null);
     }
   }, [visible]);
 
@@ -469,6 +474,72 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
     );
   };
 
+  const renderBindingUsers = (users = []) => {
+    if (!Array.isArray(users) || users.length === 0) {
+      return <Text type='quaternary'>-</Text>;
+    }
+    const content = (
+      <div className='flex flex-col gap-2 min-w-[320px] max-w-[420px]'>
+        {users.map((item) => (
+          <div
+            key={`${item.token_id}-${item.user_id}`}
+            className='rounded-lg border px-3 py-2'
+            style={{ borderColor: 'var(--semi-color-border)' }}
+          >
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex items-center gap-2 flex-wrap'>
+                <Tag size='small' color='blue' shape='circle'>
+                  UID {item.user_id}
+                </Tag>
+                <Text strong>{item.username || t('未命名用户')}</Text>
+              </div>
+              <Tag
+                size='small'
+                color={Number(item.status) === 1 ? 'green' : 'grey'}
+                shape='circle'
+              >
+                {Number(item.status) === 1 ? t('已启用') : t('已停用')}
+              </Tag>
+            </div>
+            <div className='mt-2 flex flex-wrap gap-2'>
+              <Tag size='small' color='white' shape='circle'>
+                Token #{item.token_id}
+              </Tag>
+              <Tag size='small' color='cyan' shape='circle'>
+                {item.token_group || t('未设置分组')}
+              </Tag>
+            </div>
+            <Text size='small' type='secondary' className='mt-2 block'>
+              {item.token_name || '-'}
+            </Text>
+            <Text size='small' type='tertiary' className='mt-1 block'>
+              {item.expired_time > 0
+                ? t('到期时间：{{time}}', {
+                    time: timestamp2string(item.expired_time),
+                  })
+                : t('到期时间：永不过期')}
+            </Text>
+          </div>
+        ))}
+      </div>
+    );
+    const firstUser = users[0];
+    return (
+      <Popover
+        trigger='click'
+        position='leftTop'
+        content={content}
+        style={{ maxWidth: 440 }}
+      >
+        <Button size='small' theme='borderless' type='tertiary'>
+          {users.length === 1
+            ? firstUser.username || `UID ${firstUser.user_id}`
+            : t('查看 {{count}} 个绑定用户', { count: users.length })}
+        </Button>
+      </Popover>
+    );
+  };
+
   // Table columns definition
   const columns = [
     {
@@ -501,18 +572,21 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       render: (value) => <Text>{renderQuota(Number(value || 0))}</Text>,
     },
     {
-      title: t('绑定套餐分组'),
-      dataIndex: 'binding_groups',
-      width: 220,
-      render: (groups, record) => (
-        <Space spacing={6}>
-          <Tag color='white' shape='circle' type='ghost'>
-            {t('{{count}} 个绑定', {
-              count: Number(record.binding_count || 0).toLocaleString(),
-            })}
-          </Tag>
-          {renderGroupTags(groups)}
-        </Space>
+      title: t('绑定详情'),
+      dataIndex: 'binding_users',
+      width: 360,
+      render: (users, record) => (
+        <div className='flex flex-col gap-2'>
+          <Space spacing={6}>
+            <Tag color='white' shape='circle' type='ghost'>
+              {t('{{count}} 个绑定', {
+                count: Number(record.binding_count || 0).toLocaleString(),
+              })}
+            </Tag>
+            {renderBindingUsers(users)}
+          </Space>
+          <div>{renderGroupTags(record.binding_groups)}</div>
+        </div>
       ),
     },
     {
@@ -779,6 +853,36 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
             </Col>
           </Row>
         </div>
+
+        {unassignedUsage &&
+          (Number(unassignedUsage.success_count || 0) > 0 ||
+            Number(unassignedUsage.used_quota || 0) > 0) && (
+            <Banner
+              type='warning'
+              className='!rounded-xl mb-3'
+              closeIcon={null}
+              title={t('存在历史未绑定流量')}
+              description={
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Text>
+                    {t(
+                      '这些请求发生在渠道还没有固定到具体 key 索引时，所以不会归到下面的 #0、#1 明细里。',
+                    )}
+                  </Text>
+                  <Tag color='orange' shape='circle'>
+                    {t('{{count}} 次', {
+                      count: Number(
+                        unassignedUsage.success_count || 0,
+                      ).toLocaleString(),
+                    })}
+                  </Tag>
+                  <Tag color='white' shape='circle'>
+                    {renderQuota(Number(unassignedUsage.used_quota || 0))}
+                  </Tag>
+                </div>
+              }
+            />
+          )}
 
         {/* Table */}
         <div className='flex-1 flex flex-col min-h-0'>

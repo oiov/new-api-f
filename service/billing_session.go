@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -350,11 +351,12 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId:  relayInfo.RequestId,
-				userId:     relayInfo.UserId,
-				modelName:  relayInfo.OriginModelName,
-				usingGroup: relayInfo.UsingGroup,
-				amount:     subConsume,
+				requestId:               relayInfo.RequestId,
+				userId:                  relayInfo.UserId,
+				modelName:               relayInfo.OriginModelName,
+				usingGroup:              relayInfo.UsingGroup,
+				preferredSubscriptionId: common.GetContextKeyInt(c, constant.ContextKeyPreferredSubscriptionId),
+				amount:                  subConsume,
 			},
 		}
 		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、

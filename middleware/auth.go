@@ -397,6 +397,10 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	}
 	if token.SpecificChannelKeyIndex >= 0 {
 		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, token.SpecificChannelKeyIndex)
+	} else if token.IsSubscriptionSpecificChannelToken() {
+		// 历史套餐令牌在渠道还是单 key 时只绑定了渠道，没有保存具体 key 索引。
+		// 当渠道后续扩展为多 key 时，默认固定到原始第 1 个 key，避免随机分流。
+		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, 0)
 	}
 	if len(parts) > 1 {
 		if model.IsAdmin(token.UserId) {

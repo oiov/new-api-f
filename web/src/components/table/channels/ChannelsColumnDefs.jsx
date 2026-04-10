@@ -148,6 +148,29 @@ const renderTagType = (t) => {
   );
 };
 
+const PACKAGE_POOL_LABELS = {
+  'subscription_plan:19': 'Claude Lite',
+  'subscription_plan:20': 'Claude Mini Plus',
+  'subscription_plan:21': 'Claude Mini Max',
+  'subscription_plan:22': 'Claude Premium',
+  'subscription_plan:23': 'Claude Premium+',
+  'subscription_plan:24': 'Claude Nano',
+  'subscription_plan:25': 'Claude Micro',
+};
+
+const getPackagePoolName = (tag) => {
+  const normalizedTag = (tag || '').trim();
+  return PACKAGE_POOL_LABELS[normalizedTag] || '';
+};
+
+const renderChannelGroup = (group) => {
+  const normalizedGroup = (group || '').trim();
+  if (!normalizedGroup) {
+    return null;
+  }
+  return renderGroup(normalizedGroup);
+};
+
 const renderStatus = (status, channelInfo = undefined, t) => {
   if (channelInfo) {
     if (channelInfo.is_multi_key) {
@@ -482,20 +505,37 @@ export const getChannelsColumns = ({
       key: COLUMN_KEYS.GROUP,
       title: t('分组'),
       dataIndex: 'group',
-      render: (text, record, index) => (
-        <div>
-          <Space spacing={2}>
-            {text
-              ?.split(',')
-              .sort((a, b) => {
-                if (a === 'default') return -1;
-                if (b === 'default') return 1;
-                return a.localeCompare(b);
-              })
-              .map((item, index) => renderGroup(item))}
-          </Space>
-        </div>
-      ),
+      render: (text, record, index) => {
+        const packagePoolName = getPackagePoolName(record?.tag);
+        return (
+          <div className='flex flex-col gap-2'>
+            <Space spacing={2}>
+              {text
+                ?.split(',')
+                .sort((a, b) => {
+                  if (a === 'default') return -1;
+                  if (b === 'default') return 1;
+                  return a.localeCompare(b);
+                })
+                .map((item, index) => renderChannelGroup(item))}
+            </Space>
+            {packagePoolName ? (
+              <Space spacing={6}>
+                <Tag color='blue' shape='circle' type='light'>
+                  {t('{{name}} 套餐池', { name: packagePoolName })}
+                </Tag>
+                <Tag color='white' shape='circle' type='ghost'>
+                  {record?.tag}
+                </Tag>
+              </Space>
+            ) : record?.tag ? (
+              <Tag color='white' shape='circle' type='ghost'>
+                {record.tag}
+              </Tag>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       key: COLUMN_KEYS.TYPE,
@@ -847,57 +887,27 @@ export const getChannelsColumns = ({
                 </Button>
               )}
 
-              {record.channel_info?.is_multi_key ? (
-                <SplitButtonGroup aria-label={t('多密钥渠道操作项目组')}>
-                  <Button
-                    type='tertiary'
-                    size='small'
-                    onClick={() => {
-                      setCurrentMultiKeyChannel(record);
-                      setShowMultiKeyManageModal(true);
-                    }}
-                  >
-                    {t('多密钥')}
-                  </Button>
-                  <Dropdown
-                    trigger='click'
-                    position='bottomRight'
-                    menu={[
-                      {
-                        node: 'item',
-                        name: t('编辑渠道'),
-                        onClick: () => {
-                          setEditingChannel(record);
-                          setShowEdit(true);
-                        },
-                      },
-                      {
-                        node: 'item',
-                        name: t('多密钥管理'),
-                        onClick: () => {
-                          setCurrentMultiKeyChannel(record);
-                          setShowMultiKeyManageModal(true);
-                        },
-                      },
-                    ]}
-                  >
-                    <Button
-                      type='tertiary'
-                      size='small'
-                      icon={<IconTreeTriangleDown />}
-                    />
-                  </Dropdown>
-                </SplitButtonGroup>
-              ) : (
+              <Button
+                type='tertiary'
+                size='small'
+                onClick={() => {
+                  setEditingChannel(record);
+                  setShowEdit(true);
+                }}
+              >
+                {t('编辑')}
+              </Button>
+
+              {record.channel_info?.is_multi_key && (
                 <Button
                   type='tertiary'
                   size='small'
                   onClick={() => {
-                    setEditingChannel(record);
-                    setShowEdit(true);
+                    setCurrentMultiKeyChannel(record);
+                    setShowMultiKeyManageModal(true);
                   }}
                 >
-                  {t('编辑')}
+                  {t('密钥管理')}
                 </Button>
               )}
 
