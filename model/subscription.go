@@ -12,6 +12,8 @@ import (
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/hot"
 	"gorm.io/gorm"
 )
@@ -81,14 +83,14 @@ var (
 )
 
 type SubscriptionDeliveryField struct {
-	Key         string `json:"key"`
-	Label       string `json:"label"`
-	Type        string `json:"type"`
-	Required    bool   `json:"required"`
-	Masked      bool   `json:"masked"`
-	Copyable    bool   `json:"copyable"`
-	SortOrder   int    `json:"sort_order"`
-	Placeholder string `json:"placeholder"`
+	Key          string `json:"key"`
+	Label        string `json:"label"`
+	Type         string `json:"type"`
+	Required     bool   `json:"required"`
+	Masked       bool   `json:"masked"`
+	Copyable     bool   `json:"copyable"`
+	SortOrder    int    `json:"sort_order"`
+	Placeholder  string `json:"placeholder"`
 	DefaultValue string `json:"default_value,omitempty"`
 }
 
@@ -897,14 +899,14 @@ func normalizeSubscriptionDeliveryFields(fields []SubscriptionDeliveryField) []S
 		}
 		keySet[key] = struct{}{}
 		result = append(result, SubscriptionDeliveryField{
-			Key:         key,
-			Label:       label,
-			Type:        normalizeDeliveryFieldType(field.Type),
-			Required:    field.Required,
-			Masked:      field.Masked,
-			Copyable:    field.Copyable,
-			SortOrder:   field.SortOrder,
-			Placeholder: strings.TrimSpace(field.Placeholder),
+			Key:          key,
+			Label:        label,
+			Type:         normalizeDeliveryFieldType(field.Type),
+			Required:     field.Required,
+			Masked:       field.Masked,
+			Copyable:     field.Copyable,
+			SortOrder:    field.SortOrder,
+			Placeholder:  strings.TrimSpace(field.Placeholder),
 			DefaultValue: strings.TrimSpace(field.DefaultValue),
 		})
 		if result[len(result)-1].SortOrder == 0 {
@@ -2358,13 +2360,13 @@ func validateManualDeliveryPayload(schema []SubscriptionDeliveryField, payload [
 	for _, field := range normalizedSchema {
 		item, ok := payloadMap[field.Key]
 		if !ok {
-			if field.Required {
+			if field.Required && !subscriptionDeliveryFieldIsAutoFilled(field.Key) {
 				return nil, fmt.Errorf("请填写交付字段：%s", field.Label)
 			}
 			continue
 		}
 		if strings.TrimSpace(item.Value) == "" {
-			if field.Required {
+			if field.Required && !subscriptionDeliveryFieldIsAutoFilled(field.Key) {
 				return nil, fmt.Errorf("请填写交付字段：%s", field.Label)
 			}
 			continue
@@ -2372,9 +2374,33 @@ func validateManualDeliveryPayload(schema []SubscriptionDeliveryField, payload [
 		result = append(result, item)
 	}
 	if len(result) == 0 {
+		if subscriptionDeliverySchemaHasOnlyAutoFilledFields(schemaMap) {
+			return result, nil
+		}
 		return nil, errors.New("请至少填写一项交付信息")
 	}
 	return result, nil
+}
+
+func subscriptionDeliveryFieldIsAutoFilled(key string) bool {
+	switch strings.TrimSpace(key) {
+	case "api_key", "base_url", "usage_query_url":
+		return true
+	default:
+		return false
+	}
+}
+
+func subscriptionDeliverySchemaHasOnlyAutoFilledFields(schemaMap map[string]SubscriptionDeliveryField) bool {
+	if len(schemaMap) == 0 {
+		return false
+	}
+	for key := range schemaMap {
+		if !subscriptionDeliveryFieldIsAutoFilled(key) {
+			return false
+		}
+	}
+	return true
 }
 
 func buildManualDeliveryPlan(order *SubscriptionOrder) *SubscriptionPlan {
@@ -2594,6 +2620,8 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 		return nil, errors.New("invalid orderId")
 	}
 	var result SubscriptionOrder
+	var upgradeGroup string
+	var targetUserId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
@@ -2619,11 +2647,99 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 		if err != nil {
 			return err
 		}
+		now := common.GetTimestamp()
+
+		// Only the standard Claude manual-delivery template should trigger
+		// automatic channel-pool allocation and token issuance.
+		if isAutoIssuedSubscriptionDeliverySchema(schema) {
+			if resolveSubscriptionDeliveryBaseURL() == "" {
+				return errors.New("当前未配置站点地址(ServerAddress)，无法自动发放套餐")
+			}
+			planTag := subscriptionPlanChannelPoolTag(order.PlanId)
+			if planTag == "" {
+				return errors.New("无效的套餐ID，无法分配渠道池")
+			}
+			channel, keyIndex, err := allocateSubscriptionPlanChannelFromPoolTx(tx, planTag)
+			if err != nil {
+				return err
+			}
+			if channel == nil || channel.Id <= 0 {
+				return errors.New("渠道池暂无可用 Key，请先补充渠道或释放占用")
+			}
+
+			plan := order.SnapshotPlan()
+			if plan == nil {
+				plan, err = getSubscriptionPlanByIdTx(tx, order.PlanId)
+				if err != nil {
+					return err
+				}
+			}
+			targetUserId = order.UserId
+			if plan != nil {
+				upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+			}
+
+			sub, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+			if err != nil {
+				return err
+			}
+			if err := tx.Model(sub).Updates(map[string]any{
+				"source_order_id":             order.Id,
+				"source_order_trade_no":       order.TradeNo,
+				"source_order_payment_method": order.PaymentMethod,
+				"source_order_money":          order.Money,
+				"updated_at":                  common.GetTimestamp(),
+			}).Error; err != nil {
+				return err
+			}
+			if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
+				return err
+			}
+
+			allowedModels := decodeSubscriptionStringList(order.PlanAllowedModelsJSON)
+			if len(allowedModels) == 0 && plan != nil {
+				allowedModels = decodeSubscriptionStringList(plan.AllowedModelsJSON)
+			}
+
+			key, err := common.GenerateKey()
+			if err != nil {
+				return err
+			}
+			token := Token{
+				UserId:                  order.UserId,
+				Name:                    fmt.Sprintf("%s #%d", strings.TrimSpace(order.PlanTitle), order.Id),
+				Key:                     key,
+				SpecificChannelId:       channel.Id,
+				SpecificChannelKeyIndex: keyIndex,
+				CreatedTime:             now,
+				AccessedTime:            now,
+				ExpiredTime:             sub.EndTime,
+				UnlimitedQuota:          true,
+				Group:                   "default",
+			}
+			if len(allowedModels) > 0 {
+				token.ModelLimitsEnabled = true
+				token.ModelLimits = strings.Join(allowedModels, ",")
+			}
+			if err := tx.Create(&token).Error; err != nil {
+				return err
+			}
+			if common.RedisEnabled {
+				gopool.Go(func() {
+					_ = cacheSetToken(token)
+				})
+			}
+
+			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", "sk-"+token.Key)
+		}
+
+		normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "base_url", resolveSubscriptionDeliveryBaseURL())
+		normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "usage_query_url", "https://api-key-tool.fishxcode.com/")
+
 		payloadJSON, err := encodeSubscriptionDeliveryPayload(normalizedPayload)
 		if err != nil {
 			return err
 		}
-		now := common.GetTimestamp()
 		updates := map[string]any{
 			"fulfillment_status":    SubscriptionFulfillmentDelivered,
 			"delivery_payload_json": payloadJSON,
@@ -2642,8 +2758,165 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 	if err != nil {
 		return nil, err
 	}
+	if upgradeGroup != "" && targetUserId > 0 {
+		_ = UpdateUserGroupCache(targetUserId, upgradeGroup)
+	}
 	ApplySubscriptionOrderDeliveryFields(&result)
 	return &result, nil
+}
+
+func subscriptionPlanChannelPoolTag(planId int) string {
+	if planId <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("subscription_plan:%d", planId)
+}
+
+func subscriptionDeliverySchemaHasKey(schema []SubscriptionDeliveryField, key string) bool {
+	key = strings.TrimSpace(key)
+	if key == "" || len(schema) == 0 {
+		return false
+	}
+	for _, f := range schema {
+		if strings.TrimSpace(f.Key) == key {
+			return true
+		}
+	}
+	return false
+}
+
+func isAutoIssuedSubscriptionDeliverySchema(schema []SubscriptionDeliveryField) bool {
+	return subscriptionDeliverySchemaHasKey(schema, "api_key") &&
+		subscriptionDeliverySchemaHasKey(schema, "base_url") &&
+		subscriptionDeliverySchemaHasKey(schema, "usage_query_url")
+}
+
+func allocateSubscriptionPlanChannelFromPoolTx(tx *gorm.DB, tag string) (*Channel, int, error) {
+	if tx == nil {
+		return nil, -1, errors.New("tx is nil")
+	}
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return nil, -1, errors.New("tag is empty")
+	}
+	type boundKeyBinding struct {
+		SpecificChannelId       int
+		SpecificChannelKeyIndex int
+	}
+	var bindings []boundKeyBinding
+	if err := tx.Model(&Token{}).
+		Select("specific_channel_id", "specific_channel_key_index").
+		Where("specific_channel_id > 0 AND deleted_at IS NULL").
+		Find(&bindings).Error; err != nil {
+		return nil, -1, err
+	}
+	usedKeyMap := make(map[string]struct{}, len(bindings))
+	usedWholeChannel := make(map[int]struct{})
+	for _, binding := range bindings {
+		if binding.SpecificChannelId <= 0 {
+			continue
+		}
+		if binding.SpecificChannelKeyIndex < 0 {
+			usedWholeChannel[binding.SpecificChannelId] = struct{}{}
+			continue
+		}
+		usedKeyMap[fmt.Sprintf("%d:%d", binding.SpecificChannelId, binding.SpecificChannelKeyIndex)] = struct{}{}
+	}
+
+	var channels []Channel
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("tag = ? AND status = ?", tag, common.ChannelStatusEnabled).
+		Order("id asc").
+		Find(&channels).Error; err != nil {
+		return nil, -1, err
+	}
+	for i := range channels {
+		channel := &channels[i]
+		keys := channel.GetKeys()
+		if len(keys) == 0 {
+			continue
+		}
+		if !channel.ChannelInfo.IsMultiKey {
+			if _, exists := usedWholeChannel[channel.Id]; exists {
+				continue
+			}
+			if _, exists := usedKeyMap[fmt.Sprintf("%d:%d", channel.Id, 0)]; exists {
+				continue
+			}
+			return channel, 0, nil
+		}
+		if _, exists := usedWholeChannel[channel.Id]; exists {
+			continue
+		}
+		for keyIndex := range keys {
+			if !channel.IsSpecificKeyAvailable(keyIndex) {
+				continue
+			}
+			if _, exists := usedKeyMap[fmt.Sprintf("%d:%d", channel.Id, keyIndex)]; exists {
+				continue
+			}
+			return channel, keyIndex, nil
+		}
+	}
+	return nil, -1, nil
+}
+
+func upsertSubscriptionDeliveryPayloadValue(payload []SubscriptionDeliveryPayloadItem, schema []SubscriptionDeliveryField, key string, value string) []SubscriptionDeliveryPayloadItem {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return payload
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return payload
+	}
+	label := ""
+	typ := ""
+	masked := false
+	copyable := false
+	found := false
+	for _, f := range schema {
+		if strings.TrimSpace(f.Key) != key {
+			continue
+		}
+		found = true
+		label = f.Label
+		typ = f.Type
+		masked = f.Masked
+		copyable = f.Copyable
+		break
+	}
+	if !found {
+		return payload
+	}
+	for i := range payload {
+		if strings.TrimSpace(payload[i].Key) != key {
+			continue
+		}
+		payload[i].Value = value
+		if label != "" {
+			payload[i].Label = label
+		}
+		if typ != "" {
+			payload[i].Type = typ
+		}
+		payload[i].Masked = masked
+		payload[i].Copyable = copyable
+		return payload
+	}
+	item := SubscriptionDeliveryPayloadItem{
+		Key:      key,
+		Label:    label,
+		Type:     typ,
+		Value:    value,
+		Masked:   masked,
+		Copyable: copyable,
+	}
+	return append(payload, item)
+}
+
+func resolveSubscriptionDeliveryBaseURL() string {
+	return strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/")
 }
 
 func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string) (*SubscriptionOrder, error) {

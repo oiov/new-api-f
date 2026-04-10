@@ -405,15 +405,6 @@ const AddEditSubscriptionModal = ({
     }
 
     if (
-      previous.resetPeriod !== nextResetPeriod &&
-      nextResetPeriod === 'never' &&
-      nextResourceType === 'request_count' &&
-      Number(values.request_count_period_total || 0) !== 0
-    ) {
-      nextValues.request_count_period_total = 0;
-    }
-
-    if (
       nextResetPeriod === 'custom' &&
       Number(values.quota_reset_custom_seconds || 0) !== nextCustomSeconds
     ) {
@@ -834,16 +825,23 @@ const AddEditSubscriptionModal = ({
                         />
                       </Col>
 
-                      {isRequestCountPlan && hasResetWindow && (
+                      {isRequestCountPlan && (
                         <Col span={12}>
                           <Form.InputNumber
                             field='request_count_period_total'
                             label={t('周期次数上限')}
                             min={0}
                             precision={0}
-                            extraText={t(
-                              '例如每日 500 次、每周 5000 次；0 表示当前周期不限',
-                            )}
+                            disabled={!hasResetWindow}
+                            extraText={
+                              hasResetWindow
+                                ? t(
+                                    '例如每日 500 次、每周 5000 次；0 表示当前周期不限',
+                                  )
+                                : t(
+                                    '先在下方开启重置周期后才会生效；未开启时不会提交这个值。',
+                                  )
+                            }
                             style={{ width: '100%' }}
                           />
                         </Col>

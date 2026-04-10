@@ -392,9 +392,16 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	}
 	common.SetContextKey(c, constant.ContextKeyTokenGroup, token.Group)
 	common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, token.CrossGroupRetry)
+	if token.SpecificChannelId > 0 {
+		c.Set("specific_channel_id", strconv.Itoa(token.SpecificChannelId))
+	}
+	if token.SpecificChannelKeyIndex >= 0 {
+		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, token.SpecificChannelKeyIndex)
+	}
 	if len(parts) > 1 {
 		if model.IsAdmin(token.UserId) {
 			c.Set("specific_channel_id", parts[1])
+			common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, -1)
 		} else {
 			c.Header("specific_channel_version", "701e3ae1dc3f7975556d354e0675168d004891c8")
 			abortWithOpenAiMessage(c, http.StatusForbidden, "普通用户不支持指定渠道")

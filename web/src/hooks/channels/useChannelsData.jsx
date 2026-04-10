@@ -136,6 +136,16 @@ export const useChannelsData = () => {
     searchModel: '',
   };
 
+  const PACKAGE_POOL_GROUPS = [
+    { value: 'sub_plan_claude_lite', label: 'Claude Lite' },
+    { value: 'sub_plan_claude_mini_plus', label: 'Claude Mini Plus' },
+    { value: 'sub_plan_claude_mini_max', label: 'Claude Mini Max' },
+    { value: 'sub_plan_claude_premium', label: 'Claude Premium' },
+    { value: 'sub_plan_claude_premium_plus', label: 'Claude Premium+' },
+    { value: 'sub_plan_claude_nano', label: 'Claude Nano' },
+    { value: 'sub_plan_claude_micro', label: 'Claude Micro' },
+  ];
+
   // Column keys
   const COLUMN_KEYS = {
     ID: 'id',
@@ -148,6 +158,7 @@ export const useChannelsData = () => {
     PRIORITY: 'priority',
     WEIGHT: 'weight',
     REQUEST_COUNT_TODAY: 'request_count_today',
+    REQUEST_LIMIT: 'request_limit',
     OPERATE: 'operate',
   };
 
@@ -189,6 +200,7 @@ export const useChannelsData = () => {
       [COLUMN_KEYS.PRIORITY]: true,
       [COLUMN_KEYS.WEIGHT]: true,
       [COLUMN_KEYS.REQUEST_COUNT_TODAY]: true,
+      [COLUMN_KEYS.REQUEST_LIMIT]: true,
       [COLUMN_KEYS.OPERATE]: true,
     };
   };
@@ -314,6 +326,22 @@ export const useChannelsData = () => {
         tagChannelDates.request_count_today += Number(
           channels[i].request_count_today || 0,
         );
+        tagChannelDates.used_count =
+          Number(tagChannelDates.used_count || 0) +
+          Number(channels[i].used_count || 0);
+        const childMaxRequestCount = Number(channels[i].max_request_count || 0);
+        if (typeof tagChannelDates.max_request_count === 'undefined') {
+          tagChannelDates.max_request_count = childMaxRequestCount;
+        } else if (
+          Number(tagChannelDates.max_request_count || 0) > 0 &&
+          childMaxRequestCount > 0
+        ) {
+          tagChannelDates.max_request_count =
+            Number(tagChannelDates.max_request_count || 0) +
+            childMaxRequestCount;
+        } else {
+          tagChannelDates.max_request_count = 0;
+        }
       }
     }
     setChannels(channelDates);
@@ -448,6 +476,28 @@ export const useChannelsData = () => {
         idSort,
       );
     }
+  };
+
+  const applyPackagePoolFilter = async (groupValue) => {
+    if (!formApi) {
+      return;
+    }
+    const nextGroup = String(groupValue || '').trim();
+    formApi.setValue('searchGroup', nextGroup || null);
+    setTimeout(async () => {
+      if (nextGroup === '') {
+        await refresh(1);
+        return;
+      }
+      await searchChannels(
+        enableTagMode,
+        activeTypeKey,
+        statusFilter,
+        1,
+        pageSize,
+        idSort,
+      );
+    }, 0);
   };
 
   const upstreamUpdates = useChannelUpstreamUpdates({ t, refresh });
@@ -1417,6 +1467,7 @@ export const useChannelsData = () => {
     formApi,
     setFormApi,
     formInitValues,
+    PACKAGE_POOL_GROUPS,
 
     // Helpers
     t,
@@ -1426,6 +1477,7 @@ export const useChannelsData = () => {
     loadChannels,
     searchChannels,
     refresh,
+    applyPackagePoolFilter,
     manageChannel,
     manageTag,
     handlePageChange,

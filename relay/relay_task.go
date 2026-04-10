@@ -19,6 +19,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -90,19 +91,37 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	info.LockedChannel = ch
 
 	if originTask.ChannelId != info.ChannelId {
-		key, _, newAPIError := ch.GetNextEnabledKey()
-		if newAPIError != nil {
-			return service.TaskErrorWrapper(newAPIError, "channel_no_available_key", newAPIError.StatusCode)
+		var key string
+		var index int
+		var newAPIError *types.NewAPIError
+		if originTask.PrivateData.ChannelMultiKeyIndex != nil {
+			index = *originTask.PrivateData.ChannelMultiKeyIndex
+			key, newAPIError = ch.GetSpecificKey(index)
+			if newAPIError != nil {
+				return service.TaskErrorWrapper(newAPIError, "channel_no_available_key", newAPIError.StatusCode)
+			}
+		} else {
+			key, index, newAPIError = ch.GetNextEnabledKey()
+			if newAPIError != nil {
+				return service.TaskErrorWrapper(newAPIError, "channel_no_available_key", newAPIError.StatusCode)
+			}
 		}
 		common.SetContextKey(c, constant.ContextKeyChannelKey, key)
 		common.SetContextKey(c, constant.ContextKeyChannelType, ch.Type)
 		common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, ch.GetBaseURL())
 		common.SetContextKey(c, constant.ContextKeyChannelId, originTask.ChannelId)
+		if ch.ChannelInfo.IsMultiKey {
+			common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, true)
+			common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, index)
+		} else {
+			common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, false)
+		}
 
 		info.ChannelBaseUrl = ch.GetBaseURL()
 		info.ChannelId = originTask.ChannelId
 		info.ChannelType = ch.Type
 		info.ApiKey = key
+		info.ChannelMultiKeyIndex = index
 	}
 
 	// 提取 remix 参数（时长、分辨率 → OtherRatios）

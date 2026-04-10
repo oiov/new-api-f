@@ -33,6 +33,8 @@ const ChannelsFilters = ({
   enableTagMode,
   formApi,
   groupOptions,
+  PACKAGE_POOL_GROUPS,
+  applyPackagePoolFilter,
   loading,
   searching,
   t,
@@ -153,6 +155,27 @@ const ChannelsFilters = ({
             {t('重置')}
           </Button>
         </Form>
+        <div className='flex flex-wrap items-center justify-start gap-1.5 w-full md:w-auto'>
+          <Button
+            size='small'
+            type='tertiary'
+            theme='borderless'
+            onClick={() => applyPackagePoolFilter('')}
+          >
+            {t('全部渠道')}
+          </Button>
+          {PACKAGE_POOL_GROUPS.map((item) => (
+            <Button
+              key={item.value}
+              size='small'
+              type='tertiary'
+              theme='borderless'
+              onClick={() => applyPackagePoolFilter(item.value)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -31,6 +31,7 @@ import {
   Empty,
   Spin,
   Select,
+  InputNumber,
   Row,
   Col,
   Badge,
@@ -55,6 +56,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
   const [loading, setLoading] = useState(false);
   const [keyStatusList, setKeyStatusList] = useState([]);
   const [operationLoading, setOperationLoading] = useState({});
+  const [limitDrafts, setLimitDrafts] = useState({});
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -97,6 +99,14 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       if (res.data.success) {
         const data = res.data.data;
         setKeyStatusList(data.keys || []);
+        setLimitDrafts(
+          Object.fromEntries(
+            (data.keys || []).map((item) => [
+              item.index,
+              Number(item.max_request_count || 0),
+            ]),
+          ),
+        );
         setTotal(data.total || 0);
         setCurrentPage(data.page || 1);
         setPageSize(data.page_size || 10);
@@ -273,6 +283,32 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
     }
   };
 
+  const handleSaveKeyLimit = async (keyIndex) => {
+    const operationId = `limit_${keyIndex}`;
+    setOperationLoading((prev) => ({ ...prev, [operationId]: true }));
+
+    try {
+      const res = await API.post('/api/channel/multi_key/manage', {
+        channel_id: channel.id,
+        action: 'set_key_request_limit',
+        key_index: keyIndex,
+        max_request_count: Math.max(0, Number(limitDrafts[keyIndex] || 0)),
+      });
+
+      if (res.data.success) {
+        showSuccess(t('密钥次数上限已保存'));
+        await loadKeyStatus(currentPage, pageSize, statusFilter);
+        onRefresh && onRefresh();
+      } else {
+        showError(res.data.message);
+      }
+    } catch (error) {
+      showError(t('保存密钥次数上限失败'));
+    } finally {
+      setOperationLoading((prev) => ({ ...prev, [operationId]: false }));
+    }
+  };
+
   // Handle page change
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -375,6 +411,40 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       title: t('状态'),
       dataIndex: 'status',
       render: (status) => renderStatusTag(status),
+    },
+    {
+      title: t('已用成功次数'),
+      dataIndex: 'used_count',
+      render: (value) => <Text>{Number(value || 0).toLocaleString()}</Text>,
+    },
+    {
+      title: t('成功次数上限'),
+      dataIndex: 'max_request_count',
+      width: 220,
+      render: (value, record) => (
+        <Space>
+          <InputNumber
+            min={0}
+            value={Number(limitDrafts[record.index] ?? value ?? 0)}
+            style={{ width: 96 }}
+            onNumberChange={(nextValue) =>
+              setLimitDrafts((prev) => ({
+                ...prev,
+                [record.index]: Number(nextValue ?? 0),
+              }))
+            }
+          />
+          <Button
+            size='small'
+            type='primary'
+            theme='light'
+            loading={operationLoading[`limit_${record.index}`]}
+            onClick={() => handleSaveKeyLimit(record.index)}
+          >
+            {t('保存')}
+          </Button>
+        </Space>
+      ),
     },
     {
       title: t('禁用原因'),

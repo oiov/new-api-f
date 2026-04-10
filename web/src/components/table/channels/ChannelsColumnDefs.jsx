@@ -304,6 +304,27 @@ const getUpstreamUpdateMeta = (record) => {
   };
 };
 
+const renderRequestLimit = (record, t) => {
+  const usedCount = Number(record?.used_count || 0);
+  const maxRequestCount = Number(record?.max_request_count || 0);
+  return (
+    <Space spacing={4}>
+      <Tag color='white' type='ghost' shape='circle'>
+        {`${usedCount.toLocaleString()} ${t('次')}`}
+      </Tag>
+      <Tag
+        color={maxRequestCount > 0 ? 'light-blue' : 'grey'}
+        type={maxRequestCount > 0 ? 'light' : 'ghost'}
+        shape='circle'
+      >
+        {maxRequestCount > 0
+          ? `${t('上限')} ${maxRequestCount.toLocaleString()} ${t('次')}`
+          : t('不限次')}
+      </Tag>
+    </Space>
+  );
+};
+
 export const getChannelsColumns = ({
   t,
   COLUMN_KEYS,
@@ -527,6 +548,12 @@ export const getChannelsColumns = ({
       title: t('当日成功请求'),
       dataIndex: 'request_count_today',
       render: (text) => <div>{Number(text || 0).toLocaleString()}</div>,
+    },
+    {
+      key: COLUMN_KEYS.REQUEST_LIMIT,
+      title: t('成功请求上限'),
+      dataIndex: 'max_request_count',
+      render: (text, record) => <div>{renderRequestLimit(record, t)}</div>,
     },
     {
       key: COLUMN_KEYS.BALANCE,
