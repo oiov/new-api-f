@@ -36,33 +36,39 @@ const { Text } = Typography;
 
 function renderUsageBlock(sub, t) {
   const blocks = [];
-  const requestTotal = Number(sub?.request_count_total || 0);
-  const requestUsed = Number(sub?.request_count_used || 0);
-  if (requestTotal > 0) {
-    blocks.push(
-      <div key='count'>
-        {formatSubscriptionResourceLabel(
-          { resource_type: 'request_count', reset_period: sub?.reset_period },
-          t,
-        )}{' '}
-        {requestUsed}/{requestTotal} · {t('剩余')}{' '}
-        {Math.max(0, requestTotal - requestUsed)}
-      </div>,
-    );
-  }
-  const amountTotal = Number(sub?.amount_total || 0);
-  const amountUsed = Number(sub?.amount_used || 0);
-  if (amountTotal > 0) {
-    blocks.push(
-      <div key='amount'>
-        {formatSubscriptionResourceLabel(
-          { resource_type: 'quota', reset_period: sub?.reset_period },
-          t,
-        )}{' '}
-        {renderQuota(amountUsed)}/{renderQuota(amountTotal)} · {t('剩余')}{' '}
-        {renderQuota(Math.max(0, amountTotal - amountUsed))}
-      </div>,
-    );
+  const usage = getSubscriptionUsageSummary(sub);
+  if (usage.resourceType === 'request_count') {
+    if (!usage.periodUnlimited) {
+      blocks.push(
+        <div key='count-period'>
+          {t('周期次数')} {usage.periodUsed}/{usage.periodTotal} · {t('剩余')}{' '}
+          {usage.periodRemain}
+        </div>,
+      );
+    }
+    if (!usage.unlimited) {
+      blocks.push(
+        <div key='count-total'>
+          {t('总次数')} {usage.used}/{usage.total} · {t('剩余')}{' '}
+          {usage.remain}
+        </div>,
+      );
+    }
+  } else {
+    const amountTotal = Number(sub?.amount_total || 0);
+    const amountUsed = Number(sub?.amount_used || 0);
+    if (amountTotal > 0) {
+      blocks.push(
+        <div key='amount'>
+          {formatSubscriptionResourceLabel(
+            { resource_type: 'quota', reset_period: sub?.reset_period },
+            t,
+          )}{' '}
+          {renderQuota(amountUsed)}/{renderQuota(amountTotal)} · {t('剩余')}{' '}
+          {renderQuota(Math.max(0, amountTotal - amountUsed))}
+        </div>,
+      );
+    }
   }
   if (blocks.length === 0) {
     const summary = getSubscriptionUsageSummary(sub);
