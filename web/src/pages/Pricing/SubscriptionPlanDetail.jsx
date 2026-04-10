@@ -30,7 +30,16 @@ import {
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
-import { ArrowLeft, ChevronRight, Package, Sparkles } from 'lucide-react';
+import {
+  ArrowLeft,
+  BadgeCheck,
+  ChevronRight,
+  Clock3,
+  Layers3,
+  Package,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
 import SeoMeta from '../../components/common/seo/SeoMeta';
 import SubscriptionPurchaseModal from '../../components/topup/modals/SubscriptionPurchaseModal';
 import { StatusContext } from '../../context/Status';
@@ -120,6 +129,44 @@ function inferSubscriptionPlanSeries(plan) {
   if (isCodex && !isClaude) return 'codex';
   if (isClaude && isCodex) return 'mixed';
   return 'other';
+}
+
+function getPlanHighlightItems(plan, metricItems, t) {
+  const restrictionSummary = getSubscriptionRestrictionSummary(plan);
+  return [
+    {
+      key: 'benefit',
+      icon: Sparkles,
+      title: t('权益与价格'),
+      description:
+        metricItems[0]?.value || t('页面展示的套餐信息即为当前生效规则。'),
+    },
+    {
+      key: 'activation',
+      icon: BadgeCheck,
+      title: t('支付后自动生效'),
+      description: t('支付成功后会自动开通对应套餐权益，无需重复提交申请。'),
+    },
+    {
+      key: 'reset',
+      icon: Clock3,
+      title: t('重置规则'),
+      description:
+        metricItems.find((item) => item.key === 'reset_time')?.value ||
+        t('页面会明确展示额度或次数如何重置。'),
+    },
+    {
+      key: 'restriction',
+      icon: Layers3,
+      title: t('适用范围'),
+      description:
+        restrictionSummary.groups.length > 0 ||
+        restrictionSummary.models.length > 0 ||
+        restrictionSummary.vendors.length > 0
+          ? t('分组、模型和供应商限制都会在下方明确列出。')
+          : t('当前没有额外的分组、模型或供应商限制。'),
+    },
+  ];
 }
 
 export default function SubscriptionPlanDetail() {
@@ -376,11 +423,57 @@ export default function SubscriptionPlanDetail() {
   const isClaudePlan = inferSubscriptionPlanSeries(plan) === 'claude';
   const { symbol, effectivePrice, originalPrice } = getSubscriptionPriceDisplay(plan);
   const displayPrice = effectivePrice.toFixed(Number.isInteger(effectivePrice) ? 0 : 2);
+  const displayOriginalPrice = originalPrice.toFixed(
+    Number.isInteger(originalPrice) ? 0 : 2,
+  );
   const activeDiscount = isSubscriptionDiscountActive(plan);
   const purchaseLimitInfo = {
     limit,
     count,
   };
+  const heroStats = [
+    {
+      label: t('套餐价格'),
+      value: `${symbol}${displayPrice}`,
+      sub: formatSubscriptionDuration(plan, t),
+    },
+    {
+      label: t('包含权益'),
+      value: metricItems[0]?.value || t('暂无说明'),
+      sub: metricItems[0]?.label || t('完整权益'),
+    },
+    {
+      label: t('购买状态'),
+      value: saleSummary.soldOut ? t('当前售罄') : t('当前可购买'),
+      sub: limit > 0 ? t('每人限购 {{limit}}', { limit }) : t('不限购'),
+    },
+  ];
+  const planHighlights = getPlanHighlightItems(plan, metricItems, t);
+  const summaryItems = [
+    {
+      label: t('完整权益'),
+      value: usageSummary.unlimited
+        ? t('有效期内不限使用')
+        : getPlanBenefitDescription(plan, t),
+    },
+    {
+      label: t('购买情况'),
+      value:
+        limit > 0
+          ? t('已购 {{count}} / {{limit}}', { count, limit })
+          : t('已购 {{count}}', { count }),
+    },
+    {
+      label: t('适用限制'),
+      value:
+        restrictionSummary.groups.length > 0 ||
+        restrictionSummary.models.length > 0 ||
+        restrictionSummary.vendors.length > 0 ||
+        plan?.upgrade_group
+          ? t('购买前请先确认分组、模型和供应商限制。')
+          : t('当前没有额外限制，可直接购买使用。'),
+    },
+  ];
 
   return (
     <>
@@ -390,7 +483,7 @@ export default function SubscriptionPlanDetail() {
         description={plan.subtitle || seo.description}
         canonicalPath={`/pricing/subscription-plans/${plan.id}`}
       />
-      <div className='pricing-landing-page mx-auto mt-[60px] w-full max-w-[1120px] px-3 pb-10 md:px-6'>
+      <div className='pricing-landing-page pricing-plan-detail-page mx-auto mt-[60px] w-full max-w-[1180px] px-3 pb-10 md:px-6'>
         <div className='mb-4 flex flex-wrap items-center gap-3'>
           <Button
             theme='outline'
@@ -404,17 +497,17 @@ export default function SubscriptionPlanDetail() {
           <Text type='tertiary'>{t('套餐 ID')} #{plan.id}</Text>
         </div>
 
-        <div className='grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.5fr)_360px]'>
-          <Card className='!rounded-2xl border-0 shadow-sm' bodyStyle={{ padding: 24 }}>
-            <div className='flex flex-col gap-6'>
-              <div className='flex flex-col gap-4 border-b border-semi-color-border pb-6 lg:flex-row lg:items-start lg:justify-between'>
-                <div className='min-w-0'>
-                  <div className='mb-3 flex flex-wrap items-center gap-2'>
-                    <Title heading={3} className='!mb-0'>{plan.title}</Title>
+        <div className='pricing-plan-detail-layout'>
+          <div className='pricing-plan-detail-main'>
+            <div className='pricing-plan-detail-hero pricing-landing-hero'>
+              <div className='pricing-landing-hero-glow pricing-landing-hero-glow-primary' />
+              <div className='pricing-landing-hero-glow pricing-landing-hero-glow-secondary' />
+              <div className='pricing-plan-detail-hero__top'>
+                <div className='pricing-plan-detail-hero__copy'>
+                  <div className='pricing-plan-detail-hero__eyebrow'>
+                    <Tag color='blue' shape='circle'>{t('套餐详情')}</Tag>
                     {isClaudePlan && (
-                      <Tag color='violet' shape='circle'>
-                        {t('Claude 系列')}
-                      </Tag>
+                      <Tag color='violet' shape='circle'>{t('Claude 系列')}</Tag>
                     )}
                     {activeDiscount && (
                       <Tag color='red' shape='circle' icon={<Sparkles size={12} />}>
@@ -425,122 +518,215 @@ export default function SubscriptionPlanDetail() {
                       <Tag color='red' shape='circle'>{t('已售罄')}</Tag>
                     )}
                   </div>
-                  <Text type='secondary' className='block text-base leading-7'>
+                  <Title heading={2} className='pricing-plan-detail-hero__title !mb-0'>
+                    {plan.title}
+                  </Title>
+                  <Text className='pricing-plan-detail-hero__subtitle' type='secondary'>
                     {plan.subtitle || t('暂无说明')}
                   </Text>
-                  {isClaudePlan && (
-                    <Text type='tertiary' className='mt-3 block'>
-                      {t('付款完成后套餐会自动生效；如需协助可联系管理员。')}
-                    </Text>
-                  )}
+                  <div className='pricing-plan-detail-hero__summary'>
+                    {summaryItems.map((item) => (
+                      <div key={item.label} className='pricing-plan-detail-summary-card'>
+                        <div className='pricing-plan-detail-summary-card__label'>{item.label}</div>
+                        <div className='pricing-plan-detail-summary-card__value'>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className='rounded-2xl bg-semi-color-fill-0 p-3'>
-                  <Package size={22} className='text-semi-color-text-1' />
+                <div className='pricing-plan-detail-hero__badge'>
+                  <div className='pricing-plan-detail-hero__badge-icon'>
+                    <Package size={26} />
+                  </div>
+                  <div className='pricing-plan-detail-hero__badge-label'>{t('公开售卖套餐')}</div>
                 </div>
               </div>
 
-              <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'>
-                <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-4'>
-                  <div className='text-xs text-semi-color-text-2'>{t('价格')}</div>
-                  <div className='mt-2 text-3xl font-bold text-semi-color-text-0'>
-                    {symbol}{displayPrice}
-                  </div>
-                  <Text type='tertiary' size='small' className='mt-1 block'>
-                    / {formatSubscriptionDuration(plan, t)}
-                  </Text>
-                  {activeDiscount ? (
-                    <Text type='tertiary' size='small' delete className='mt-1 block'>
-                      {symbol}
-                      {originalPrice.toFixed(Number.isInteger(originalPrice) ? 0 : 2)}
-                    </Text>
-                  ) : null}
-                </div>
-
-                <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-4'>
-                  <div className='text-xs text-semi-color-text-2'>{t('完整权益')}</div>
-                  <div className='mt-2 text-sm leading-7 text-semi-color-text-0'>
-                    {usageSummary.unlimited
-                      ? t('有效期内不限使用')
-                      : getPlanBenefitDescription(plan, t)}
-                  </div>
-                </div>
-
-                <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-4'>
-                  <div className='text-xs text-semi-color-text-2'>{t('购买情况')}</div>
-                  <div className='mt-2 text-sm leading-7 text-semi-color-text-0'>
-                    {limit > 0 ? t('已购 {{count}} / {{limit}}', { count, limit }) : t('已购 {{count}}', { count })}
-                    {saleSummary.unlimited
-                      ? ` · ${t('已售')} ${saleSummary.soldCount}`
-                      : ` · ${t('已售')} ${saleSummary.soldCount} / ${t('剩余')} ${saleSummary.remainingSaleCount}`}
-                  </div>
-                  {isLoggedIn ? null : (
-                    <Text type='tertiary' size='small' className='mt-2 block'>
-                      {t('登录后可查看自己已购数量与订阅状态。')}
-                    </Text>
-                  )}
-                </div>
-              </div>
-
-              <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-                {metricItems.map((item) => (
-                  <div key={item.key} className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-4'>
-                    <div className='text-xs text-semi-color-text-2'>{item.label}</div>
-                    <div className='mt-2 text-sm font-semibold leading-7 text-semi-color-text-0'>
-                      {item.value}
-                    </div>
+              <div className='pricing-plan-detail-stats'>
+                {heroStats.map((item) => (
+                  <div key={item.label} className='pricing-plan-detail-stat'>
+                    <div className='pricing-plan-detail-stat__label'>{item.label}</div>
+                    <div className='pricing-plan-detail-stat__value'>{item.value}</div>
+                    <div className='pricing-plan-detail-stat__sub'>{item.sub}</div>
                   </div>
                 ))}
               </div>
+            </div>
 
+            <Card className='pricing-plan-detail-section !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 24 }}>
+              <div className='pricing-plan-detail-section__header'>
+                <div>
+                  <Text strong>{t('购买说明')}</Text>
+                  <Text type='tertiary' className='block mt-1'>
+                    {t('价格、权益、重置规则和适用范围均以本页展示为准。')}
+                  </Text>
+                </div>
+              </div>
+              <div className='pricing-plan-detail-highlights'>
+                {planHighlights.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.key} className='pricing-plan-detail-highlight'>
+                      <div className='pricing-plan-detail-highlight__icon'>
+                        <Icon size={18} />
+                      </div>
+                      <div>
+                        <div className='pricing-plan-detail-highlight__title'>{item.title}</div>
+                        <div className='pricing-plan-detail-highlight__desc'>{item.description}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card className='pricing-plan-detail-section !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 24 }}>
+              <div className='pricing-plan-detail-section__header'>
+                <div>
+                  <Text strong>{t('规则与权益明细')}</Text>
+                  <Text type='tertiary' className='block mt-1'>
+                    {t('以下内容即当前页面生效的套餐规则。')}
+                  </Text>
+                </div>
+              </div>
+              <div className='pricing-plan-detail-metrics'>
+                {metricItems.map((item) => (
+                  <div key={item.key} className='pricing-plan-detail-metric'>
+                    <div className='pricing-plan-detail-metric__label'>{item.label}</div>
+                    <div className='pricing-plan-detail-metric__value'>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className='pricing-plan-detail-section !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 24 }}>
+              <div className='pricing-plan-detail-section__header'>
+                <div>
+                  <Text strong>{t('适用限制')}</Text>
+                  <Text type='tertiary' className='block mt-1'>
+                    {t('购买前请确认套餐对应的分组、模型和供应商范围。')}
+                  </Text>
+                </div>
+              </div>
               {(restrictionSummary.groups.length > 0 ||
                 restrictionSummary.models.length > 0 ||
                 restrictionSummary.vendors.length > 0 ||
-                plan?.upgrade_group) && (
-                <Card className='!rounded-2xl border border-semi-color-border shadow-none' bodyStyle={{ padding: 20 }}>
-                  <div className='mb-3 flex items-center gap-2'>
-                    <Text strong>{t('适用限制')}</Text>
-                  </div>
-                  <div className='flex flex-wrap gap-2'>
-                    {plan?.upgrade_group ? (
-                      <div>{renderGroupTextWithDescription(plan.upgrade_group)}</div>
-                    ) : null}
-                    {restrictionSummary.groups.map((group) => (
-                      <div key={`group-${group}`}>{renderGroup(group)}</div>
-                    ))}
-                    {restrictionSummary.models.map((modelName) => (
-                      <Tag key={`model-${modelName}`} color='white' shape='circle'>
-                        {t('模型')}: {modelName}
-                      </Tag>
-                    ))}
-                    {restrictionSummary.vendors.map((vendorName) => (
-                      <Tag key={`vendor-${vendorName}`} color='white' shape='circle'>
-                        {t('供应商')}: {vendorName}
-                      </Tag>
-                    ))}
-                  </div>
-                </Card>
+                plan?.upgrade_group) ? (
+                <div className='pricing-plan-detail-restrictions'>
+                  {plan?.upgrade_group ? (
+                    <div className='pricing-plan-detail-restrictions__row'>
+                      <div className='pricing-plan-detail-restrictions__label'>{t('升级分组')}</div>
+                      <div className='pricing-plan-detail-restrictions__content'>
+                        {renderGroupTextWithDescription(plan.upgrade_group)}
+                      </div>
+                    </div>
+                  ) : null}
+                  {restrictionSummary.groups.length > 0 ? (
+                    <div className='pricing-plan-detail-restrictions__row'>
+                      <div className='pricing-plan-detail-restrictions__label'>{t('可用分组')}</div>
+                      <div className='pricing-plan-detail-restrictions__content'>
+                        {restrictionSummary.groups.map((group) => (
+                          <div key={`group-${group}`}>{renderGroup(group)}</div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {restrictionSummary.models.length > 0 ? (
+                    <div className='pricing-plan-detail-restrictions__row'>
+                      <div className='pricing-plan-detail-restrictions__label'>{t('可用模型')}</div>
+                      <div className='pricing-plan-detail-restrictions__content'>
+                        {restrictionSummary.models.map((modelName) => (
+                          <Tag key={`model-${modelName}`} color='white' shape='circle'>
+                            {modelName}
+                          </Tag>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {restrictionSummary.vendors.length > 0 ? (
+                    <div className='pricing-plan-detail-restrictions__row'>
+                      <div className='pricing-plan-detail-restrictions__label'>{t('供应商')}</div>
+                      <div className='pricing-plan-detail-restrictions__content'>
+                        {restrictionSummary.vendors.map((vendorName) => (
+                          <Tag key={`vendor-${vendorName}`} color='white' shape='circle'>
+                            {vendorName}
+                          </Tag>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className='pricing-plan-detail-empty-note'>
+                  <ShieldCheck size={16} />
+                  <span>{t('当前没有额外限制，可直接购买使用。')}</span>
+                </div>
               )}
-            </div>
-          </Card>
+            </Card>
+          </div>
 
-          <Card className='!rounded-2xl border-0 shadow-sm' bodyStyle={{ padding: 24 }}>
-            <div className='space-y-4'>
-              <Title heading={5} className='!mb-0'>{t('购买订阅套餐')}</Title>
+          <div className='pricing-plan-detail-sidebar'>
+            <Card className='pricing-plan-detail-buy-card !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 24 }}>
+              <div className='pricing-plan-detail-buy-card__header'>
+                <div>
+                  <Title heading={5} className='!mb-0'>{t('立即订阅')}</Title>
+                  <Text type='tertiary' className='block mt-1'>
+                    {t('支付成功后自动开通，请按本页规则使用。')}
+                  </Text>
+                </div>
+                <div className='pricing-plan-detail-buy-card__price'>
+                  <span>{symbol}</span>
+                  {displayPrice}
+                </div>
+              </div>
+              {activeDiscount ? (
+                <div className='pricing-plan-detail-buy-card__price-note'>
+                  <Text type='tertiary' delete>
+                    {symbol}
+                    {displayOriginalPrice}
+                  </Text>
+                  <Tag color='red' shape='circle'>
+                    {t('限时优惠')}
+                  </Tag>
+                </div>
+              ) : null}
+
               <Banner
                 type='info'
                 description={t('支付后将自动生效，若需协助可联系管理员。')}
                 closeIcon={null}
-                className='!rounded-xl'
+                className='!rounded-2xl'
               />
-              <div className='rounded-xl bg-semi-color-fill-0 p-4'>
-                <div className='text-xs text-semi-color-text-2'>{t('价格')}</div>
-                <div className='mt-2 text-2xl font-bold'>
-                  {symbol}{displayPrice}
+
+              <div className='pricing-plan-detail-buy-card__checklist'>
+                <div className='pricing-plan-detail-buy-card__checklist-item'>
+                  <BadgeCheck size={15} />
+                  <span>{t('本页展示的价格、权益和适用范围为当前规则。')}</span>
                 </div>
-                <Text type='tertiary' size='small' className='mt-1 block'>
-                  {formatSubscriptionDuration(plan, t)}
-                </Text>
+                <div className='pricing-plan-detail-buy-card__checklist-item'>
+                  <Clock3 size={15} />
+                  <span>{t('周期性权益按页面标注的重置规则生效。')}</span>
+                </div>
+                <div className='pricing-plan-detail-buy-card__checklist-item'>
+                  <Layers3 size={15} />
+                  <span>{t('购买前请确认所需模型、分组和供应商范围。')}</span>
+                </div>
               </div>
+
+              <div className='pricing-plan-detail-buy-card__meta'>
+                <div className='pricing-plan-detail-buy-card__meta-row'>
+                  <span>{t('套餐 ID')}</span>
+                  <strong>#{plan.id}</strong>
+                </div>
+                <div className='pricing-plan-detail-buy-card__meta-row'>
+                  <span>{t('有效期')}</span>
+                  <strong>{formatSubscriptionDuration(plan, t)}</strong>
+                </div>
+                <div className='pricing-plan-detail-buy-card__meta-row'>
+                  <span>{t('购买状态')}</span>
+                  <strong>{disabled ? (saleSummary.soldOut ? t('已售罄') : t('已达上限')) : t('当前可购买')}</strong>
+                </div>
+              </div>
+
               <Button
                 theme='solid'
                 type='primary'
@@ -560,8 +746,16 @@ export default function SubscriptionPlanDetail() {
               >
                 {t('去订阅套餐列表')}
               </Button>
-            </div>
-          </Card>
+
+              {!isLoggedIn ? (
+                <div className='pricing-plan-detail-buy-card__footnote'>
+                  <Text type='tertiary' size='small'>
+                    {t('登录后可查看自己已购数量与订阅状态。')}
+                  </Text>
+                </div>
+              ) : null}
+            </Card>
+          </div>
         </div>
       </div>
 
