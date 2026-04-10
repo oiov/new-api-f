@@ -300,6 +300,9 @@ func migrateDB() error {
 	if err := migrateLegacyPeriodicRequestCountPlans(); err != nil {
 		return err
 	}
+	if err := migrateSubscriptionManualDeliveryDefaults(); err != nil {
+		return err
+	}
 	if updated, err := RefreshActiveSubscriptionResetWindows(500); err != nil {
 		return err
 	} else if updated > 0 {
@@ -380,6 +383,9 @@ func migrateDBFast() error {
 	if err := migrateLegacyPeriodicRequestCountPlans(); err != nil {
 		return err
 	}
+	if err := migrateSubscriptionManualDeliveryDefaults(); err != nil {
+		return err
+	}
 	if updated, err := RefreshActiveSubscriptionResetWindows(500); err != nil {
 		return err
 	} else if updated > 0 {
@@ -441,6 +447,8 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`allowed_groups_json`" + ` text DEFAULT '',
 ` + "`allowed_models_json`" + ` text DEFAULT '',
 ` + "`allowed_vendor_ids_json`" + ` text DEFAULT '',
+` + "`delivery_mode`" + ` varchar(32) NOT NULL DEFAULT 'auto_activate',
+` + "`delivery_field_schema_json`" + ` text DEFAULT '',
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
@@ -486,6 +494,8 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "allowed_groups_json", DDL: "`allowed_groups_json` text DEFAULT ''"},
 		{Name: "allowed_models_json", DDL: "`allowed_models_json` text DEFAULT ''"},
 		{Name: "allowed_vendor_ids_json", DDL: "`allowed_vendor_ids_json` text DEFAULT ''"},
+		{Name: "delivery_mode", DDL: "`delivery_mode` varchar(32) NOT NULL DEFAULT 'auto_activate'"},
+		{Name: "delivery_field_schema_json", DDL: "`delivery_field_schema_json` text DEFAULT ''"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
 	}
@@ -673,6 +683,41 @@ WHERE resource_type = 'request_count'
 		}
 		if res.RowsAffected > 0 {
 			common.SysLog(fmt.Sprintf("migrated legacy periodic request-count rows for %s: %d", item.name, res.RowsAffected))
+		}
+	}
+	return nil
+}
+
+func migrateSubscriptionManualDeliveryDefaults() error {
+	if DB == nil {
+		return nil
+	}
+	if DB.Migrator().HasTable(&SubscriptionPlan{}) {
+		if DB.Migrator().HasColumn(&SubscriptionPlan{}, "delivery_mode") {
+			if err := DB.Exec(
+				"UPDATE subscription_plans SET delivery_mode = ? WHERE COALESCE(TRIM(delivery_mode), '') = ''",
+				SubscriptionDeliveryModeAutoActivate,
+			).Error; err != nil {
+				return err
+			}
+		}
+	}
+	if DB.Migrator().HasTable(&SubscriptionOrder{}) {
+		if DB.Migrator().HasColumn(&SubscriptionOrder{}, "plan_delivery_mode") {
+			if err := DB.Exec(
+				"UPDATE subscription_orders SET plan_delivery_mode = ? WHERE COALESCE(TRIM(plan_delivery_mode), '') = ''",
+				SubscriptionDeliveryModeAutoActivate,
+			).Error; err != nil {
+				return err
+			}
+		}
+		if DB.Migrator().HasColumn(&SubscriptionOrder{}, "fulfillment_status") {
+			if err := DB.Exec(
+				"UPDATE subscription_orders SET fulfillment_status = ? WHERE COALESCE(TRIM(fulfillment_status), '') = ''",
+				SubscriptionFulfillmentNotRequired,
+			).Error; err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -260,6 +260,19 @@ function getConversionRequestStatusMeta(status, t) {
   }
 }
 
+function getManualDeliveryStatusMeta(status, t) {
+  switch (status) {
+    case 'pending_delivery':
+      return { color: 'orange', text: t('待发放') };
+    case 'delivered':
+      return { color: 'green', text: t('已发放') };
+    case 'rejected':
+      return { color: 'red', text: t('已拒绝') };
+    default:
+      return { color: 'grey', text: status || '--' };
+  }
+}
+
 const SubscriptionPlansCard = ({
   t,
   loading = false,
@@ -272,6 +285,7 @@ const SubscriptionPlansCard = ({
   onChangeBillingPreference,
   activeSubscriptions = [],
   allSubscriptions = [],
+  manualDeliveryOrders = [],
   reloadSubscriptionSelf,
   withCard = true,
   initialMainTab = 'my_subscriptions',
@@ -505,7 +519,8 @@ const SubscriptionPlansCard = ({
   };
 
   const hasActiveSubscription = activeSubscriptions.length > 0;
-  const hasAnySubscription = allSubscriptions.length > 0;
+  const hasAnySubscription =
+    allSubscriptions.length > 0 || manualDeliveryOrders.length > 0;
   const disableSubscriptionPreference = !hasActiveSubscription;
 
   useEffect(() => {
@@ -540,8 +555,14 @@ const SubscriptionPlansCard = ({
       if (!planId) return;
       map.set(planId, (map.get(planId) || 0) + 1);
     });
+    (manualDeliveryOrders || []).forEach((item) => {
+      if (item?.order?.fulfillment_status === 'rejected') return;
+      const planId = item?.order?.plan_id;
+      if (!planId) return;
+      map.set(planId, (map.get(planId) || 0) + 1);
+    });
     return map;
-  }, [allSubscriptions]);
+  }, [allSubscriptions, manualDeliveryOrders]);
 
   const planTitleMap = useMemo(() => {
     const map = new Map();
@@ -599,6 +620,24 @@ const SubscriptionPlansCard = ({
           (b?.subscription?.end_time || 0) - (a?.subscription?.end_time || 0),
       );
   }, [allSubscriptions, planMap, planTitleMap, t]);
+
+  const normalizedManualDeliveryOrders = useMemo(() => {
+    return (manualDeliveryOrders || []).map((item, index) => {
+      const order = item?.order || {};
+      const plan = item?.plan || planMap.get(order?.plan_id) || null;
+      return {
+        ...item,
+        key: String(order?.id || order?.trade_no || `manual-${index}`),
+        order,
+        plan,
+        title:
+          order?.plan_title ||
+          plan?.title ||
+          `${t('人工发放订单')} #${order?.id || index + 1}`,
+        statusMeta: getManualDeliveryStatusMeta(order?.fulfillment_status, t),
+      };
+    });
+  }, [manualDeliveryOrders, planMap, t]);
 
   const activeSubscriptionItems = useMemo(
     () => normalizedSubscriptions.filter((item) => item.state === 'active'),
@@ -1394,6 +1433,96 @@ const SubscriptionPlansCard = ({
     );
   };
 
+  const renderManualDeliveryValue = (item) => {
+    if (!item?.value) return '--';
+    return item.value;
+  };
+
+  const renderManualDeliveryOrderCard = (item) => {
+    const order = item?.order || {};
+    const payload = Array.isArray(order?.delivery_payload)
+      ? order.delivery_payload
+      : [];
+    const hasPayload = payload.length > 0;
+
+    return (
+      <div
+        key={item.key}
+        className='rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-4'
+      >
+        <div className='flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
+          <div className='min-w-0 flex-1'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <Text strong>{item.title}</Text>
+              <Tag color={item.statusMeta.color} shape='circle' size='small'>
+                {item.statusMeta.text}
+              </Tag>
+            </div>
+            <div className='mt-1 text-sm text-semi-color-text-2'>
+              #{order?.id || '--'} · {order?.trade_no || '--'}
+            </div>
+            {item?.plan?.subtitle ? (
+              <div className='mt-1 text-sm text-semi-color-text-2'>
+                {item.plan.subtitle}
+              </div>
+            ) : null}
+          </div>
+          <div className='grid grid-cols-1 gap-2 text-sm lg:min-w-[280px]'>
+            <div>
+              {t('支付完成')}：{formatDateTime(order?.complete_time)}
+            </div>
+            <div>
+              {t('处理时间')}：{formatDateTime(order?.delivered_at)}
+            </div>
+            {order?.delivery_admin_remark ? (
+              <div>
+                {t('管理员备注')}：{order.delivery_admin_remark}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {order?.fulfillment_status === 'pending_delivery' ? (
+          <Banner
+            type='warning'
+            closeIcon={null}
+            className='!mt-3 !rounded-xl'
+            description={t(
+              '已支付成功，当前套餐正在等待发放。发放完成后可在此查看交付内容。',
+            )}
+          />
+        ) : null}
+
+        {hasPayload ? (
+          <div className='mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2'>
+            {payload.map((entry) => (
+              <div
+                key={`${item.key}-${entry.key}`}
+                className='rounded-xl border border-semi-color-border bg-white p-3 dark:bg-semi-color-bg-0'
+              >
+                <div className='flex items-center justify-between gap-2'>
+                  <Text strong>{entry.label}</Text>
+                  {entry.copyable ? (
+                    <Text
+                      type='tertiary'
+                      size='small'
+                      copyable={{ content: entry.value }}
+                    >
+                      {t('可复制')}
+                    </Text>
+                  ) : null}
+                </div>
+                <div className='mt-2 break-all text-sm text-semi-color-text-0'>
+                  {renderManualDeliveryValue(entry)}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   const planTableColumns = useMemo(
     () => [
       {
@@ -1448,10 +1577,14 @@ const SubscriptionPlansCard = ({
                       {t('已售罄')}
                     </Tag>
                   )}
+                  {plan?.delivery_mode === 'manual_delivery' && (
+                    <Tag color='cyan' shape='circle' size='small'>
+                      {t('人工发放')}
+                    </Tag>
+                  )}
                 </div>
                 <Text type='tertiary' size='small'>
-                  {plan?.subtitle || t('暂无说明')}
-                  {isPopular ? ` · ${t('适合首次购买与标准使用场景')}` : ''}
+                  {plan?.subtitle || t('以套餐配置为准')}
                 </Text>
               </div>
             </div>
@@ -1559,6 +1692,11 @@ const SubscriptionPlansCard = ({
               )}
               {plan?.upgrade_group && (
                 <div>{renderGroup(plan.upgrade_group)}</div>
+              )}
+              {plan?.delivery_mode === 'manual_delivery' && (
+                <Tag color='cyan' shape='circle' size='small'>
+                  {t('人工发放')}
+                </Tag>
               )}
               {restrictionSummary.groups.map((group) => (
                 <div key={`group-${group}`}>{renderGroup(group)}</div>
@@ -1735,11 +1873,11 @@ const SubscriptionPlansCard = ({
                   size='small'
                   className='mt-2 block leading-6'
                 >
-                  {plan?.subtitle || t('暂无说明')}
+                  {plan?.subtitle || t('以套餐配置为准')}
                 </Text>
                 {isClaudePlan && (
                   <Text type='secondary' size='small' className='mt-2 block leading-5'>
-                    {t('付款完成后套餐会自动生效；如需协助可联系管理员。')}
+                    {t('支付成功后自动生效。')}
                   </Text>
                 )}
               </div>
@@ -2373,6 +2511,34 @@ const SubscriptionPlansCard = ({
                         </div>
                       </Card>
                     )}
+
+                    {normalizedManualDeliveryOrders.length > 0 ? (
+                      <Card
+                        className='!rounded-2xl border border-sky-200 bg-sky-50/70 shadow-none'
+                        bodyStyle={{ padding: '16px' }}
+                      >
+                        <div className='space-y-3'>
+                          <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+                            <div>
+                              <Text strong>{t('人工发放订单')}</Text>
+                              <div className='mt-1 text-sm text-semi-color-text-2'>
+                                {t(
+                                  '这里会显示待发放或已发放完成的订单内容。',
+                                )}
+                              </div>
+                            </div>
+                            <Tag color='blue' shape='circle' size='small'>
+                              {normalizedManualDeliveryOrders.length} {t('个订单')}
+                            </Tag>
+                          </div>
+                          <div className='space-y-3'>
+                            {normalizedManualDeliveryOrders.map((item) =>
+                              renderManualDeliveryOrderCard(item),
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    ) : null}
 
                     <Divider margin={8} />
 

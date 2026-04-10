@@ -37,6 +37,8 @@ import {
   IconCalendarClock,
   IconClose,
   IconCreditCard,
+  IconDelete,
+  IconPlus,
   IconSave,
 } from '@douyinfe/semi-icons';
 import { Clock, RefreshCw } from 'lucide-react';
@@ -101,6 +103,19 @@ function composeResetFixedSeconds(hour, minute, second) {
   return normalizedHour * 3600 + normalizedMinute * 60 + normalizedSecond;
 }
 
+function normalizeDeliveryField(field = {}, index = 0) {
+  return {
+    key: String(field.key || '').trim(),
+    label: String(field.label || '').trim(),
+    type: field.type || 'text',
+    required: Boolean(field.required),
+    masked: Boolean(field.masked),
+    copyable: field.copyable !== false,
+    sort_order: Number(field.sort_order || index + 1),
+    placeholder: String(field.placeholder || '').trim(),
+  };
+}
+
 const AddEditSubscriptionModal = ({
   visible,
   handleClose,
@@ -121,6 +136,17 @@ const AddEditSubscriptionModal = ({
   const resourceTypeOptions = [
     { value: 'quota', label: t('按额度') },
     { value: 'request_count', label: t('按次数') },
+  ];
+  const deliveryModeOptions = [
+    { value: 'auto_activate', label: t('自动开通') },
+    { value: 'manual_delivery', label: t('人工发放') },
+  ];
+  const deliveryFieldTypeOptions = [
+    { value: 'text', label: t('文本') },
+    { value: 'password', label: t('密码') },
+    { value: 'url', label: t('链接') },
+    { value: 'email', label: t('邮箱') },
+    { value: 'textarea', label: t('多行文本') },
   ];
 
   const resetPeriodOptions = [
@@ -191,6 +217,8 @@ const AddEditSubscriptionModal = ({
     allowed_groups: [],
     allowed_models: [],
     allowed_vendor_ids: [],
+    delivery_mode: 'auto_activate',
+    delivery_field_schema: [],
     stripe_price_id: '',
     creem_product_id: '',
   });
@@ -243,6 +271,12 @@ const AddEditSubscriptionModal = ({
       allowed_models: Array.isArray(p.allowed_models) ? p.allowed_models : [],
       allowed_vendor_ids: Array.isArray(p.allowed_vendor_ids)
         ? p.allowed_vendor_ids.map((id) => Number(id)).filter((id) => id > 0)
+        : [],
+      delivery_mode: p.delivery_mode || 'auto_activate',
+      delivery_field_schema: Array.isArray(p.delivery_field_schema)
+        ? p.delivery_field_schema.map((item, index) =>
+            normalizeDeliveryField(item, index),
+          )
         : [],
       stripe_price_id: p.stripe_price_id || '',
       creem_product_id: p.creem_product_id || '',
@@ -457,6 +491,16 @@ const AddEditSubscriptionModal = ({
       showError(t('固定重置时刻不合法'));
       return;
     }
+    const deliveryMode = values.delivery_mode || 'auto_activate';
+    const deliveryFieldSchema = Array.isArray(values.delivery_field_schema)
+      ? values.delivery_field_schema
+          .map((item, index) => normalizeDeliveryField(item, index))
+          .filter((item) => item.key && item.label)
+      : [];
+    if (deliveryMode === 'manual_delivery' && deliveryFieldSchema.length === 0) {
+      showError(t('人工发放套餐至少需要配置一个交付字段'));
+      return;
+    }
     setLoading(true);
     try {
       const normalizedTotalAmount = isQuotaPlan
@@ -517,6 +561,8 @@ const AddEditSubscriptionModal = ({
                 .map((id) => Number(id))
                 .filter((id) => id > 0)
             : [],
+          delivery_mode: deliveryMode,
+          delivery_field_schema: deliveryFieldSchema,
         },
       };
       if (editingPlan?.plan?.id) {
@@ -1038,6 +1084,195 @@ const AddEditSubscriptionModal = ({
                         </Form.Select>
                       </Col>
                     </Row>
+                  </Card>
+
+                  <Card className='!rounded-2xl shadow-sm border-0 mb-4'>
+                    <div className='flex items-center mb-2'>
+                      <Avatar
+                        size='small'
+                        color='violet'
+                        className='mr-2 shadow-md'
+                      >
+                        <IconCreditCard size={16} />
+                      </Avatar>
+                      <div>
+                        <Text className='text-lg font-medium'>
+                          {t('交付方式')}
+                        </Text>
+                        <div className='text-xs text-gray-600'>
+                          {t('支持自动开通站内订阅，或改为付款后由管理员人工发放结构化信息')}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Row gutter={12}>
+                      <Col span={12}>
+                        <Form.Select
+                          field='delivery_mode'
+                          label={t('交付模式')}
+                          extraText={t(
+                            '自动开通会在支付完成后立刻生成订阅；人工发放会保留订单并等待管理员填写交付信息。',
+                          )}
+                        >
+                          {deliveryModeOptions.map((option) => (
+                            <Select.Option
+                              key={option.value}
+                              value={option.value}
+                            >
+                              {option.label}
+                            </Select.Option>
+                          ))}
+                        </Form.Select>
+                      </Col>
+                    </Row>
+
+                    {values.delivery_mode === 'manual_delivery' ? (
+                      <div className='mt-2 space-y-3'>
+                        <div className='flex items-center justify-between rounded-xl bg-violet-50 px-3 py-2 text-xs text-violet-700 dark:bg-violet-500/10 dark:text-violet-200'>
+                          <span>
+                            {t(
+                              '购买此套餐后不会自动开通站内订阅，支付成功后会进入待人工发放队列。',
+                            )}
+                          </span>
+                          <Button
+                            theme='light'
+                            type='primary'
+                            size='small'
+                            icon={<IconPlus />}
+                            onClick={() => {
+                              const currentFields = Array.isArray(
+                                values.delivery_field_schema,
+                              )
+                                ? values.delivery_field_schema
+                                : [];
+                              formApiRef.current?.setValue(
+                                'delivery_field_schema',
+                                [
+                                  ...currentFields,
+                                  normalizeDeliveryField(
+                                    {},
+                                    currentFields.length,
+                                  ),
+                                ],
+                              );
+                            }}
+                          >
+                            {t('新增字段')}
+                          </Button>
+                        </div>
+
+                        {(Array.isArray(values.delivery_field_schema)
+                          ? values.delivery_field_schema
+                          : []
+                        ).map((field, index) => (
+                          <div
+                            key={`${field?.key || 'delivery'}-${index}`}
+                            className='rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3'
+                          >
+                            <div className='mb-3 flex items-center justify-between'>
+                              <Text strong>
+                                {t('交付字段')} #{index + 1}
+                              </Text>
+                              <Button
+                                theme='borderless'
+                                type='danger'
+                                icon={<IconDelete />}
+                                onClick={() => {
+                                  const currentFields = Array.isArray(
+                                    values.delivery_field_schema,
+                                  )
+                                    ? values.delivery_field_schema
+                                    : [];
+                                  formApiRef.current?.setValue(
+                                    'delivery_field_schema',
+                                    currentFields.filter(
+                                      (_, currentIndex) =>
+                                        currentIndex !== index,
+                                    ),
+                                  );
+                                }}
+                              />
+                            </div>
+                            <Row gutter={12}>
+                              <Col span={12}>
+                                <Form.Input
+                                  field={`delivery_field_schema[${index}].label`}
+                                  label={t('字段名称')}
+                                  placeholder={t('例如：账号')}
+                                />
+                              </Col>
+                              <Col span={12}>
+                                <Form.Input
+                                  field={`delivery_field_schema[${index}].key`}
+                                  label={t('字段键名')}
+                                  placeholder={t('例如：account')}
+                                  extraText={t(
+                                    '仅用于系统识别，建议使用英文小写和下划线。',
+                                  )}
+                                />
+                              </Col>
+                              <Col span={12}>
+                                <Form.Select
+                                  field={`delivery_field_schema[${index}].type`}
+                                  label={t('字段类型')}
+                                >
+                                  {deliveryFieldTypeOptions.map((option) => (
+                                    <Select.Option
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </Select.Option>
+                                  ))}
+                                </Form.Select>
+                              </Col>
+                              <Col span={12}>
+                                <Form.Input
+                                  field={`delivery_field_schema[${index}].placeholder`}
+                                  label={t('占位提示')}
+                                  placeholder={t('例如：请输入发放内容')}
+                                />
+                              </Col>
+                              <Col span={8}>
+                                <Form.InputNumber
+                                  field={`delivery_field_schema[${index}].sort_order`}
+                                  label={t('排序')}
+                                  min={1}
+                                  precision={0}
+                                  style={{ width: '100%' }}
+                                />
+                              </Col>
+                              <Col span={5}>
+                                <Form.Switch
+                                  field={`delivery_field_schema[${index}].required`}
+                                  label={t('必填')}
+                                  size='small'
+                                />
+                              </Col>
+                              <Col span={5}>
+                                <Form.Switch
+                                  field={`delivery_field_schema[${index}].masked`}
+                                  label={t('脱敏')}
+                                  size='small'
+                                />
+                              </Col>
+                              <Col span={6}>
+                                <Form.Switch
+                                  field={`delivery_field_schema[${index}].copyable`}
+                                  label={t('可复制')}
+                                  size='small'
+                                />
+                              </Col>
+                            </Row>
+                          </div>
+                        ))}
+                        {(values.delivery_field_schema || []).length === 0 ? (
+                          <div className='rounded-xl border border-dashed border-semi-color-border bg-semi-color-fill-0 px-4 py-6 text-center text-sm text-semi-color-text-2'>
+                            {t('暂未配置交付字段，至少需要一个字段供管理员发放')}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </Card>
 
                   {/* 权益重置 */}

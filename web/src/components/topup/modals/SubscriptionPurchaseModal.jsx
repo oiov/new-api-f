@@ -100,6 +100,7 @@ const SubscriptionPurchaseModal = ({
     !planText.includes('codex');
   const isClaudeMonthlyPlan =
     isClaudePlan && String(plan?.duration_unit || 'month') === 'month';
+  const isManualDeliveryPlan = plan?.delivery_mode === 'manual_delivery';
 
   return (
     <Modal
@@ -117,12 +118,20 @@ const SubscriptionPurchaseModal = ({
     >
       {plan ? (
         <div className='space-y-4 pb-10'>
-          {isClaudePlan && (
+          {isManualDeliveryPlan ? (
+            <Banner
+              type='info'
+              description={t(
+                '该套餐支付成功后不会自动开通，订单将进入待发放状态；发放完成后可在订阅页查看交付内容。',
+              )}
+              className='!rounded-xl'
+              closeIcon={null}
+            />
+          ) : null}
+          {isClaudePlan && !isManualDeliveryPlan && (
             <Banner
               type='warning'
-              description={t(
-                'Claude 系列套餐付款完成后会自动生效；如需协助可联系管理员。',
-              )}
+              description={t('Claude 系列套餐支付成功后自动生效。')}
               className='!rounded-xl'
               closeIcon={null}
             />
@@ -130,9 +139,7 @@ const SubscriptionPurchaseModal = ({
           {isClaudeMonthlyPlan ? (
             <Banner
               type='danger'
-              description={t(
-                'Claude 月卡套餐购买后不支持退换；如需先体验，请联系管理员沟通天卡。',
-              )}
+              description={t('Claude 月卡套餐购买后不支持退换；如需体验，建议先购买天卡。')}
               className='!rounded-xl'
               closeIcon={null}
             />

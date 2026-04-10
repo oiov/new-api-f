@@ -1,0 +1,159 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Banner,
+  Button,
+  Form,
+  Input,
+  Modal,
+  Space,
+  Typography,
+} from '@douyinfe/semi-ui';
+import { API, showError, showSuccess } from '../../../../helpers';
+
+const { Text } = Typography;
+
+const ManualDeliveryModal = ({
+  visible,
+  onCancel,
+  record,
+  onSuccess,
+  t,
+}) => {
+  const [formApi, setFormApi] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const deliveryFields = useMemo(() => {
+    const fields =
+      record?.order?.plan_delivery_field_schema ||
+      record?.plan?.delivery_field_schema ||
+      [];
+    return Array.isArray(fields) ? fields : [];
+  }, [record]);
+
+  useEffect(() => {
+    if (!visible || !formApi) return;
+    const nextValues = {};
+    const payload = Array.isArray(record?.order?.delivery_payload)
+      ? record.order.delivery_payload
+      : [];
+    payload.forEach((item) => {
+      nextValues[item.key] = item.value || '';
+    });
+    nextValues.admin_remark = record?.order?.delivery_admin_remark || '';
+    formApi.setValues(nextValues);
+  }, [visible, formApi, record]);
+
+  const handleSubmit = async () => {
+    if (!record?.order?.id) {
+      showError(t('无效的订单记录'));
+      return;
+    }
+    const values = formApi?.getValues?.() || {};
+    const deliveryPayload = deliveryFields
+      .map((field) => ({
+        key: field.key,
+        label: field.label,
+        type: field.type,
+        value: String(values[field.key] || '').trim(),
+      }))
+      .filter((item) => item.value);
+
+    setSubmitting(true);
+    try {
+      const res = await API.post(
+        `/api/subscription/admin/manual_orders/${record.order.id}/deliver`,
+        {
+          delivery_payload: deliveryPayload,
+          admin_remark: String(values.admin_remark || '').trim(),
+        },
+      );
+      if (res.data?.success) {
+        showSuccess(t('发放成功'));
+        onSuccess?.();
+      } else {
+        showError(res.data?.message || t('发放失败'));
+      }
+    } catch {
+      showError(t('请求失败'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={t('人工发放交付信息')}
+      visible={visible}
+      onCancel={onCancel}
+      onOk={handleSubmit}
+      okText={t('确认发放')}
+      cancelText={t('取消')}
+      confirmLoading={submitting}
+      size='large'
+    >
+      <div className='space-y-4'>
+        <Banner
+          type='info'
+          closeIcon={null}
+          description={t(
+            '发放后订单会标记为已交付，用户可在订阅页查看这里填写的内容。',
+          )}
+        />
+        <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3 text-sm'>
+          <div>
+            {t('订单')} #{record?.order?.id || '--'} · {record?.username || '--'}
+          </div>
+          <div className='mt-1'>
+            {t('套餐')}：{record?.order?.plan_title || record?.plan?.title || '--'}
+          </div>
+        </div>
+        <Form getFormApi={setFormApi}>
+          {deliveryFields.length > 0 ? (
+            <div className='space-y-3'>
+              {deliveryFields.map((field) => (
+                <div key={field.key} className='rounded-xl bg-semi-color-fill-0 p-3'>
+                  <div className='mb-2 flex items-center justify-between'>
+                    <Text strong>{field.label}</Text>
+                    <Space spacing={6}>
+                      {field.required ? <Text type='danger'>{t('必填')}</Text> : null}
+                      {field.copyable ? (
+                        <Text type='tertiary'>{t('用户可复制')}</Text>
+                      ) : null}
+                    </Space>
+                  </div>
+                  {field.type === 'textarea' ? (
+                    <Form.TextArea
+                      field={field.key}
+                      autosize={{ minRows: 3, maxRows: 6 }}
+                      placeholder={field.placeholder || t('请输入交付内容')}
+                    />
+                  ) : (
+                    <Form.Input
+                      field={field.key}
+                      placeholder={field.placeholder || t('请输入交付内容')}
+                      mode={field.type === 'password' ? 'password' : 'text'}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className='rounded-xl border border-dashed border-semi-color-border px-4 py-8 text-center text-sm text-semi-color-text-2'>
+              {t('当前套餐没有配置交付字段，暂时无法发放')}
+            </div>
+          )}
+          <div className='mt-4'>
+            <Form.TextArea
+              field='admin_remark'
+              label={t('管理员备注')}
+              autosize={{ minRows: 2, maxRows: 4 }}
+              placeholder={t('可选，用户可见')}
+            />
+          </div>
+        </Form>
+      </div>
+    </Modal>
+  );
+};
+
+export default ManualDeliveryModal;

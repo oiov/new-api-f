@@ -237,6 +237,262 @@ func TestCompleteSubscriptionOrder_UsesOrderSnapshot(t *testing.T) {
 	})
 }
 
+func TestCountUserPlanPurchases_IgnoresRejectedManualDeliveryOrders(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       31,
+			Username: "purchase_count_user",
+			AffCode:  "purchase_count_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:            502,
+			Title:         "manual-delivery-plan",
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   1000,
+			DeliveryMode:  SubscriptionDeliveryModeManualDelivery,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:        901,
+			UserId:    31,
+			PlanId:    502,
+			Status:    "active",
+			StartTime: now - 3600,
+			EndTime:   now + 86400,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:                902,
+			UserId:            31,
+			PlanId:            502,
+			TradeNo:           "manual-delivery-approved",
+			Status:            common.TopUpStatusSuccess,
+			PlanDeliveryMode:  SubscriptionDeliveryModeManualDelivery,
+			FulfillmentStatus: SubscriptionFulfillmentPending,
+			CreateTime:        now,
+			CompleteTime:      now,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:                903,
+			UserId:            31,
+			PlanId:            502,
+			TradeNo:           "manual-delivery-rejected",
+			Status:            common.TopUpStatusSuccess,
+			PlanDeliveryMode:  SubscriptionDeliveryModeManualDelivery,
+			FulfillmentStatus: SubscriptionFulfillmentRejected,
+			CreateTime:        now,
+			CompleteTime:      now,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:                904,
+			UserId:            31,
+			PlanId:            502,
+			TradeNo:           "manual-delivery-auto",
+			Status:            common.TopUpStatusSuccess,
+			PlanDeliveryMode:  SubscriptionDeliveryModeAutoActivate,
+			FulfillmentStatus: SubscriptionFulfillmentNotRequired,
+			CreateTime:        now,
+			CompleteTime:      now,
+		}).Error)
+
+		count, err := CountUserPlanPurchases(31, 502)
+		require.NoError(t, err)
+		require.EqualValues(t, 2, count)
+	})
+}
+
+func TestCompleteSubscriptionOrder_ManualDeliveryDoesNotCreateSubscription(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		schema := []SubscriptionDeliveryField{
+			{Key: "endpoint", Label: "接口地址", Type: "text", Required: true},
+		}
+		schemaJSON, err := encodeSubscriptionDeliveryFields(schema)
+		require.NoError(t, err)
+
+		require.NoError(t, DB.Create(&User{
+			Id:       31,
+			Username: "manual_delivery_user",
+			AffCode:  "manual_delivery_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:                      502,
+			Title:                   "manual-delivery-plan",
+			DurationUnit:            SubscriptionDurationMonth,
+			DurationValue:           1,
+			Enabled:                 true,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       50,
+			QuotaResetPeriod:        SubscriptionResetNever,
+			DeliveryMode:            SubscriptionDeliveryModeManualDelivery,
+			DeliveryFieldSchemaJSON: schemaJSON,
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		order := &SubscriptionOrder{
+			UserId:        31,
+			PlanId:        502,
+			Money:         19.9,
+			TradeNo:       "manual-delivery-order-1",
+			PaymentMethod: "epay",
+			CreateTime:    now,
+			Status:        common.TopUpStatusPending,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+
+		require.NoError(t, CompleteSubscriptionOrder("manual-delivery-order-1", `{"ok":true}`))
+
+		storedOrder := GetSubscriptionOrderByTradeNo("manual-delivery-order-1")
+		require.NotNil(t, storedOrder)
+		require.Equal(t, common.TopUpStatusSuccess, storedOrder.Status)
+		require.Equal(t, SubscriptionDeliveryModeManualDelivery, storedOrder.PlanDeliveryMode)
+		require.Equal(t, SubscriptionFulfillmentPending, storedOrder.FulfillmentStatus)
+
+		var subCount int64
+		require.NoError(t, DB.Model(&UserSubscription{}).
+			Where("user_id = ? AND plan_id = ?", 31, 502).
+			Count(&subCount).Error)
+		require.Zero(t, subCount)
+
+		var topUpCount int64
+		require.NoError(t, DB.Model(&TopUp{}).
+			Where("trade_no = ?", "manual-delivery-order-1").
+			Count(&topUpCount).Error)
+		require.Zero(t, topUpCount)
+	})
+}
+
+func TestCountUserPlanPurchases_ExcludesRejectedManualOrders(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{
+			Id:       32,
+			Username: "purchase_count_user",
+			AffCode:  "purchase_count_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:           801,
+			UserId:       32,
+			PlanId:       503,
+			Status:       "active",
+			StartTime:    common.GetTimestamp() - 3600,
+			EndTime:      common.GetTimestamp() + 3600,
+			CreatedAt:    common.GetTimestamp(),
+			UpdatedAt:    common.GetTimestamp(),
+			Source:       "order",
+			ResourceType: SubscriptionResourceQuota,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:                901,
+			UserId:            32,
+			PlanId:            503,
+			TradeNo:           "purchase-count-delivered",
+			Status:            common.TopUpStatusSuccess,
+			PlanDeliveryMode:  SubscriptionDeliveryModeManualDelivery,
+			FulfillmentStatus: SubscriptionFulfillmentDelivered,
+		}).Error)
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:                902,
+			UserId:            32,
+			PlanId:            503,
+			TradeNo:           "purchase-count-rejected",
+			Status:            common.TopUpStatusSuccess,
+			PlanDeliveryMode:  SubscriptionDeliveryModeManualDelivery,
+			FulfillmentStatus: SubscriptionFulfillmentRejected,
+		}).Error)
+
+		count, err := CountUserPlanPurchases(32, 503)
+		require.NoError(t, err)
+		require.EqualValues(t, 2, count)
+	})
+}
+
+func TestAdminDeliverManualDeliveryOrder_UsesOrderSnapshotSchema(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		oldSchema := []SubscriptionDeliveryField{
+			{Key: "endpoint", Label: "接口地址", Type: "text", Required: true, Copyable: true},
+		}
+		oldSchemaJSON, err := encodeSubscriptionDeliveryFields(oldSchema)
+		require.NoError(t, err)
+		newSchema := []SubscriptionDeliveryField{
+			{Key: "license", Label: "许可证", Type: "text", Required: true},
+		}
+		newSchemaJSON, err := encodeSubscriptionDeliveryFields(newSchema)
+		require.NoError(t, err)
+
+		require.NoError(t, DB.Create(&User{
+			Id:       33,
+			Username: "manual_schema_user",
+			AffCode:  "manual_schema_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:                      504,
+			Title:                   "manual-schema-plan",
+			DurationUnit:            SubscriptionDurationMonth,
+			DurationValue:           1,
+			Enabled:                 true,
+			ResourceType:            SubscriptionResourceQuota,
+			TotalAmount:             1000,
+			DeliveryMode:            SubscriptionDeliveryModeManualDelivery,
+			DeliveryFieldSchemaJSON: oldSchemaJSON,
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		order := &SubscriptionOrder{
+			Id:            903,
+			UserId:        33,
+			PlanId:        504,
+			Money:         29.9,
+			TradeNo:       "manual-schema-order-1",
+			PaymentMethod: "epay",
+			CreateTime:    now,
+			CompleteTime:  now,
+			Status:        common.TopUpStatusSuccess,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+
+		require.NoError(t, DB.Model(&SubscriptionPlan{}).
+			Where("id = ?", 504).
+			Update("delivery_field_schema_json", newSchemaJSON).Error)
+
+		result, err := AdminDeliverManualDeliveryOrder(903, 7, []SubscriptionDeliveryPayloadItem{
+			{Key: "endpoint", Label: "接口地址", Type: "text", Value: "https://example.com"},
+		}, "已发放")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, SubscriptionFulfillmentDelivered, result.FulfillmentStatus)
+		require.Len(t, result.DeliveryPayload, 1)
+		require.Equal(t, "endpoint", result.DeliveryPayload[0].Key)
+		require.Equal(t, "https://example.com", result.DeliveryPayload[0].Value)
+	})
+}
+
 func TestRefreshActiveSubscriptionResetWindows_RecalculatesLegacyWindow(t *testing.T) {
 	withSubscriptionQueryTestDB(t, func() {
 		now := common.GetTimestamp()

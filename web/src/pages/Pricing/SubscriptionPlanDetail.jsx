@@ -133,19 +133,21 @@ function inferSubscriptionPlanSeries(plan) {
 
 function getPlanHighlightItems(plan, metricItems, t) {
   const restrictionSummary = getSubscriptionRestrictionSummary(plan);
+  const isManualDelivery = plan?.delivery_mode === 'manual_delivery';
   return [
     {
       key: 'benefit',
       icon: Sparkles,
       title: t('权益与价格'),
-      description:
-        metricItems[0]?.value || t('页面展示的套餐信息即为当前生效规则。'),
+      description: metricItems[0]?.value || t('以当前套餐配置为准'),
     },
     {
       key: 'activation',
       icon: BadgeCheck,
-      title: t('支付后自动生效'),
-      description: t('支付成功后会自动开通对应套餐权益，无需重复提交申请。'),
+      title: isManualDelivery ? t('支付后人工发放') : t('支付后自动生效'),
+      description: isManualDelivery
+        ? t('支付成功后进入待发放状态，发放完成后可查看交付信息。')
+        : t('支付成功后自动开通对应套餐权益。'),
     },
     {
       key: 'reset',
@@ -153,7 +155,7 @@ function getPlanHighlightItems(plan, metricItems, t) {
       title: t('重置规则'),
       description:
         metricItems.find((item) => item.key === 'reset_time')?.value ||
-        t('页面会明确展示额度或次数如何重置。'),
+        t('按套餐设置的重置规则执行'),
     },
     {
       key: 'restriction',
@@ -163,8 +165,8 @@ function getPlanHighlightItems(plan, metricItems, t) {
         restrictionSummary.groups.length > 0 ||
         restrictionSummary.models.length > 0 ||
         restrictionSummary.vendors.length > 0
-          ? t('分组、模型和供应商限制都会在下方明确列出。')
-          : t('当前没有额外的分组、模型或供应商限制。'),
+          ? t('购买前请确认分组、模型和供应商限制')
+          : t('无额外限制'),
     },
   ];
 }
@@ -188,6 +190,7 @@ export default function SubscriptionPlanDetail() {
     statusState?.status?.enable_creem_topup || false,
   );
   const [allSubscriptions, setAllSubscriptions] = useState([]);
+  const [manualDeliveryOrders, setManualDeliveryOrders] = useState([]);
   const [open, setOpen] = useState(false);
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
@@ -216,8 +219,14 @@ export default function SubscriptionPlanDetail() {
       if (!id) return;
       map.set(id, (map.get(id) || 0) + 1);
     });
+    (manualDeliveryOrders || []).forEach((item) => {
+      if (item?.order?.fulfillment_status === 'rejected') return;
+      const id = item?.order?.plan_id;
+      if (!id) return;
+      map.set(id, (map.get(id) || 0) + 1);
+    });
     return map;
-  }, [allSubscriptions]);
+  }, [allSubscriptions, manualDeliveryOrders]);
 
   const getPlanPurchaseCount = (id) => planPurchaseCountMap.get(id) || 0;
 
@@ -274,8 +283,12 @@ export default function SubscriptionPlanDetail() {
 
         if (selfRes.status === 'fulfilled' && selfRes.value.data?.success) {
           setAllSubscriptions(selfRes.value.data?.data?.all_subscriptions || []);
+          setManualDeliveryOrders(
+            selfRes.value.data?.data?.manual_delivery_orders || [],
+          );
         } else {
           setAllSubscriptions([]);
+          setManualDeliveryOrders([]);
         }
       } finally {
         setLoading(false);
@@ -423,6 +436,7 @@ export default function SubscriptionPlanDetail() {
   const isClaudePlan = inferSubscriptionPlanSeries(plan) === 'claude';
   const isClaudeMonthlyPlan =
     isClaudePlan && String(plan?.duration_unit || 'month') === 'month';
+  const isManualDeliveryPlan = plan?.delivery_mode === 'manual_delivery';
   const { symbol, effectivePrice, originalPrice } = getSubscriptionPriceDisplay(plan);
   const displayPrice = effectivePrice.toFixed(Number.isInteger(effectivePrice) ? 0 : 2);
   const displayOriginalPrice = originalPrice.toFixed(
@@ -441,19 +455,19 @@ export default function SubscriptionPlanDetail() {
     },
     {
       label: t('包含权益'),
-      value: metricItems[0]?.value || t('暂无说明'),
-      sub: metricItems[0]?.label || t('完整权益'),
+      value: metricItems[0]?.value || t('以套餐配置为准'),
+      sub: metricItems[0]?.label || t('套餐权益'),
     },
     {
       label: t('购买状态'),
-      value: saleSummary.soldOut ? t('当前售罄') : t('当前可购买'),
+      value: saleSummary.soldOut ? t('已售罄') : t('可购买'),
       sub: limit > 0 ? t('每人限购 {{limit}}', { limit }) : t('不限购'),
     },
   ];
   const planHighlights = getPlanHighlightItems(plan, metricItems, t);
   const summaryItems = [
     {
-      label: t('完整权益'),
+      label: t('套餐权益'),
       value: usageSummary.unlimited
         ? t('有效期内不限使用')
         : getPlanBenefitDescription(plan, t),
@@ -472,8 +486,8 @@ export default function SubscriptionPlanDetail() {
         restrictionSummary.models.length > 0 ||
         restrictionSummary.vendors.length > 0 ||
         plan?.upgrade_group
-          ? t('购买前请先确认分组、模型和供应商限制。')
-          : t('当前没有额外限制，可直接购买使用。'),
+          ? t('购买前请确认分组、模型和供应商限制')
+          : t('无额外限制'),
     },
   ];
 
@@ -524,7 +538,7 @@ export default function SubscriptionPlanDetail() {
                     {plan.title}
                   </Title>
                   <Text className='pricing-plan-detail-hero__subtitle' type='secondary'>
-                    {plan.subtitle || t('暂无说明')}
+                    {plan.subtitle || t('以套餐配置为准')}
                   </Text>
                   <div className='pricing-plan-detail-hero__summary'>
                     {summaryItems.map((item) => (
@@ -559,7 +573,7 @@ export default function SubscriptionPlanDetail() {
                 <div>
                   <Text strong>{t('购买说明')}</Text>
                   <Text type='tertiary' className='block mt-1'>
-                    {t('价格、权益、重置规则和适用范围均以本页展示为准。')}
+                    {t('价格、权益、重置规则和适用范围以当前套餐配置为准。')}
                   </Text>
                 </div>
               </div>
@@ -586,7 +600,7 @@ export default function SubscriptionPlanDetail() {
                 <div>
                   <Text strong>{t('规则与权益明细')}</Text>
                   <Text type='tertiary' className='block mt-1'>
-                    {t('以下内容即当前页面生效的套餐规则。')}
+                    {t('以下为当前套餐规则与权益明细。')}
                   </Text>
                 </div>
               </div>
@@ -660,7 +674,7 @@ export default function SubscriptionPlanDetail() {
               ) : (
                 <div className='pricing-plan-detail-empty-note'>
                   <ShieldCheck size={16} />
-                  <span>{t('当前没有额外限制，可直接购买使用。')}</span>
+                  <span>{t('无额外限制')}</span>
                 </div>
               )}
             </Card>
@@ -672,7 +686,9 @@ export default function SubscriptionPlanDetail() {
                 <div>
                   <Title heading={5} className='!mb-0'>{t('立即订阅')}</Title>
                   <Text type='tertiary' className='block mt-1'>
-                    {t('支付成功后自动开通，请按本页规则使用。')}
+                    {isManualDeliveryPlan
+                      ? t('支付成功后进入待发放状态。')
+                      : t('支付成功后自动开通。')}
                   </Text>
                 </div>
                 <div className='pricing-plan-detail-buy-card__price'>
@@ -694,7 +710,13 @@ export default function SubscriptionPlanDetail() {
 
               <Banner
                 type='info'
-                description={t('支付后将自动生效，若需协助可联系管理员。')}
+                description={
+                  isManualDeliveryPlan
+                    ? t(
+                        '该套餐支付成功后不会自动开通，发放完成后可在订阅页查看交付信息。',
+                      )
+                    : t('支付成功后自动生效。')
+                }
                 closeIcon={null}
                 className='!rounded-2xl'
               />
@@ -702,7 +724,7 @@ export default function SubscriptionPlanDetail() {
                 <Banner
                   type='warning'
                   description={t(
-                    'Claude 月卡套餐购买后不支持退换；如需先体验，请联系管理员沟通天卡。',
+                    'Claude 月卡套餐购买后不支持退换；如需体验，建议先购买天卡。',
                   )}
                   closeIcon={null}
                   className='!mt-3 !rounded-2xl'
@@ -712,7 +734,7 @@ export default function SubscriptionPlanDetail() {
               <div className='pricing-plan-detail-buy-card__checklist'>
                 <div className='pricing-plan-detail-buy-card__checklist-item'>
                   <BadgeCheck size={15} />
-                  <span>{t('本页展示的价格、权益和适用范围为当前规则。')}</span>
+                  <span>{t('价格、权益和适用范围以当前套餐配置为准。')}</span>
                 </div>
                 <div className='pricing-plan-detail-buy-card__checklist-item'>
                   <Clock3 size={15} />

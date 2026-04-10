@@ -39,6 +39,7 @@ const SubscriptionPricingTab = ({ t }) => {
     useState('subscription_first');
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
+  const [manualDeliveryOrders, setManualDeliveryOrders] = useState([]);
   const [payMethods, setPayMethods] = useState([]);
   const [enableOnlineTopUp, setEnableOnlineTopUp] = useState(
     statusState?.status?.enable_online_topup || false,
@@ -73,6 +74,7 @@ const SubscriptionPricingTab = ({ t }) => {
       setBillingPreference('subscription_first');
       setActiveSubscriptions([]);
       setAllSubscriptions([]);
+      setManualDeliveryOrders([]);
       return;
     }
     try {
@@ -85,10 +87,12 @@ const SubscriptionPricingTab = ({ t }) => {
         );
         setActiveSubscriptions(res.data.data?.subscriptions || []);
         setAllSubscriptions(res.data.data?.all_subscriptions || []);
+        setManualDeliveryOrders(res.data.data?.manual_delivery_orders || []);
       }
     } catch (e) {
       setActiveSubscriptions([]);
       setAllSubscriptions([]);
+      setManualDeliveryOrders([]);
     }
   };
 
@@ -178,6 +182,7 @@ const SubscriptionPricingTab = ({ t }) => {
         onChangeBillingPreference={updateBillingPreference}
         activeSubscriptions={activeSubscriptions}
         allSubscriptions={allSubscriptions}
+        manualDeliveryOrders={manualDeliveryOrders}
         reloadSubscriptionSelf={getSubscriptionSelf}
         initialMainTab={PLAN_LIST_TAB}
         uiVariant={PACKAGE_VARIANT}

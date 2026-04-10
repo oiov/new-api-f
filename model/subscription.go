@@ -63,10 +63,56 @@ const (
 	SubscriptionResetCustom  = "custom"
 )
 
+const (
+	SubscriptionDeliveryModeAutoActivate   = "auto_activate"
+	SubscriptionDeliveryModeManualDelivery = "manual_delivery"
+)
+
+const (
+	SubscriptionFulfillmentNotRequired = "not_required"
+	SubscriptionFulfillmentPending     = "pending_delivery"
+	SubscriptionFulfillmentDelivered   = "delivered"
+	SubscriptionFulfillmentRejected    = "rejected"
+)
+
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
 )
+
+type SubscriptionDeliveryField struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Type        string `json:"type"`
+	Required    bool   `json:"required"`
+	Masked      bool   `json:"masked"`
+	Copyable    bool   `json:"copyable"`
+	SortOrder   int    `json:"sort_order"`
+	Placeholder string `json:"placeholder"`
+}
+
+type SubscriptionDeliveryPayloadItem struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Type     string `json:"type"`
+	Value    string `json:"value"`
+	Masked   bool   `json:"masked"`
+	Copyable bool   `json:"copyable"`
+}
+
+type SubscriptionManualDeliverySummary struct {
+	Order       *SubscriptionOrder              `json:"order"`
+	Plan        *SubscriptionPlan               `json:"plan,omitempty"`
+	RefundOrder *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+}
+
+type AdminSubscriptionManualDeliverySummary struct {
+	Order       *SubscriptionOrder              `json:"order"`
+	Plan        *SubscriptionPlan               `json:"plan,omitempty"`
+	Username    string                          `json:"username"`
+	UserGroup   string                          `json:"user_group"`
+	RefundOrder *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+}
 
 const (
 	subscriptionPlanCacheNamespace     = "new-api:subscription_plan:v1"
@@ -229,14 +275,17 @@ type SubscriptionPlan struct {
 	QuotaResetUseFixedClock bool   `json:"quota_reset_use_fixed_clock" gorm:"not null;default:false"`
 	QuotaResetFixedSeconds  int64  `json:"quota_reset_fixed_seconds" gorm:"type:bigint;not null;default:0"`
 
-	AllowedGroupsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_groups_json"`
-	AllowedModelsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_models_json"`
-	AllowedVendorIDsJSON string `json:"-" gorm:"type:text;default:'';column:allowed_vendor_ids_json"`
+	AllowedGroupsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_groups_json"`
+	AllowedModelsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_models_json"`
+	AllowedVendorIDsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_vendor_ids_json"`
+	DeliveryMode            string `json:"delivery_mode" gorm:"type:varchar(32);not null;default:'auto_activate'"`
+	DeliveryFieldSchemaJSON string `json:"-" gorm:"type:text;default:'';column:delivery_field_schema_json"`
 
-	AllowedGroups      []string `json:"allowed_groups,omitempty" gorm:"-"`
-	AllowedModels      []string `json:"allowed_models,omitempty" gorm:"-"`
-	AllowedVendorIDs   []int    `json:"allowed_vendor_ids,omitempty" gorm:"-"`
-	AllowedVendorNames []string `json:"allowed_vendor_names,omitempty" gorm:"-"`
+	AllowedGroups       []string                    `json:"allowed_groups,omitempty" gorm:"-"`
+	AllowedModels       []string                    `json:"allowed_models,omitempty" gorm:"-"`
+	AllowedVendorIDs    []int                       `json:"allowed_vendor_ids,omitempty" gorm:"-"`
+	AllowedVendorNames  []string                    `json:"allowed_vendor_names,omitempty" gorm:"-"`
+	DeliveryFieldSchema []SubscriptionDeliveryField `json:"delivery_field_schema,omitempty" gorm:"-"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
@@ -310,12 +359,14 @@ func (p *SubscriptionPlan) ApplyDisplayInventory() {
 
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
+	p.DeliveryMode = normalizeSubscriptionDeliveryMode(p.DeliveryMode)
 	p.CreatedAt = now
 	p.UpdatedAt = now
 	return nil
 }
 
 func (p *SubscriptionPlan) BeforeUpdate(tx *gorm.DB) error {
+	p.DeliveryMode = normalizeSubscriptionDeliveryMode(p.DeliveryMode)
 	p.UpdatedAt = common.GetTimestamp()
 	return nil
 }
@@ -343,6 +394,8 @@ type SubscriptionOrder struct {
 	PlanAllowedGroupsJSON       string `json:"-" gorm:"type:text;default:'';column:plan_allowed_groups_json"`
 	PlanAllowedModelsJSON       string `json:"-" gorm:"type:text;default:'';column:plan_allowed_models_json"`
 	PlanAllowedVendorIDsJSON    string `json:"-" gorm:"type:text;default:'';column:plan_allowed_vendor_ids_json"`
+	PlanDeliveryMode            string `json:"plan_delivery_mode" gorm:"type:varchar(32);default:'auto_activate'"`
+	PlanDeliveryFieldSchemaJSON string `json:"-" gorm:"type:text;default:'';column:plan_delivery_field_schema_json"`
 
 	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -350,17 +403,29 @@ type SubscriptionOrder struct {
 	CreateTime    int64  `json:"create_time"`
 	CompleteTime  int64  `json:"complete_time"`
 
-	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
+	ProviderPayload     string `json:"provider_payload" gorm:"type:text"`
+	FulfillmentStatus   string `json:"fulfillment_status" gorm:"type:varchar(32);not null;default:'not_required';index"`
+	DeliveryPayloadJSON string `json:"-" gorm:"type:text;default:'';column:delivery_payload_json"`
+	DeliveryAdminRemark string `json:"delivery_admin_remark" gorm:"type:text;default:''"`
+	DeliveredBy         int    `json:"delivered_by" gorm:"type:int;not null;default:0"`
+	DeliveredAt         int64  `json:"delivered_at" gorm:"type:bigint;not null;default:0"`
+
+	PlanDeliveryFieldSchema []SubscriptionDeliveryField       `json:"plan_delivery_field_schema,omitempty" gorm:"-"`
+	DeliveryPayload         []SubscriptionDeliveryPayloadItem `json:"delivery_payload,omitempty" gorm:"-"`
 }
 
 func (o *SubscriptionOrder) Insert() error {
 	if o.CreateTime == 0 {
 		o.CreateTime = common.GetTimestamp()
 	}
+	o.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(o.PlanDeliveryMode)
+	o.FulfillmentStatus = normalizeSubscriptionFulfillmentStatus(o.FulfillmentStatus)
 	return DB.Create(o).Error
 }
 
 func (o *SubscriptionOrder) Update() error {
+	o.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(o.PlanDeliveryMode)
+	o.FulfillmentStatus = normalizeSubscriptionFulfillmentStatus(o.FulfillmentStatus)
 	return DB.Save(o).Error
 }
 
@@ -372,6 +437,7 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 	if err := DB.Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
 		return nil
 	}
+	ApplySubscriptionOrderDeliveryFields(&order)
 	return &order
 }
 
@@ -395,6 +461,12 @@ func (o *SubscriptionOrder) ApplyPlanSnapshot(plan *SubscriptionPlan) {
 	o.PlanAllowedGroupsJSON = strings.TrimSpace(plan.AllowedGroupsJSON)
 	o.PlanAllowedModelsJSON = strings.TrimSpace(plan.AllowedModelsJSON)
 	o.PlanAllowedVendorIDsJSON = strings.TrimSpace(plan.AllowedVendorIDsJSON)
+	o.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(plan.DeliveryMode)
+	o.PlanDeliveryFieldSchemaJSON = strings.TrimSpace(plan.DeliveryFieldSchemaJSON)
+	o.FulfillmentStatus = SubscriptionFulfillmentNotRequired
+	if o.PlanDeliveryMode == SubscriptionDeliveryModeManualDelivery {
+		o.FulfillmentStatus = SubscriptionFulfillmentPending
+	}
 }
 
 func (o *SubscriptionOrder) SnapshotPlan() *SubscriptionPlan {
@@ -419,6 +491,8 @@ func (o *SubscriptionOrder) SnapshotPlan() *SubscriptionPlan {
 		AllowedGroupsJSON:       strings.TrimSpace(o.PlanAllowedGroupsJSON),
 		AllowedModelsJSON:       strings.TrimSpace(o.PlanAllowedModelsJSON),
 		AllowedVendorIDsJSON:    strings.TrimSpace(o.PlanAllowedVendorIDsJSON),
+		DeliveryMode:            normalizeSubscriptionDeliveryMode(o.PlanDeliveryMode),
+		DeliveryFieldSchemaJSON: strings.TrimSpace(o.PlanDeliveryFieldSchemaJSON),
 	}
 }
 
@@ -444,6 +518,8 @@ func buildSubscriptionPlanSnapshot(plan *SubscriptionPlan, planId int) *Subscrip
 		AllowedGroupsJSON:       strings.TrimSpace(plan.AllowedGroupsJSON),
 		AllowedModelsJSON:       strings.TrimSpace(plan.AllowedModelsJSON),
 		AllowedVendorIDsJSON:    strings.TrimSpace(plan.AllowedVendorIDsJSON),
+		DeliveryMode:            normalizeSubscriptionDeliveryMode(plan.DeliveryMode),
+		DeliveryFieldSchemaJSON: strings.TrimSpace(plan.DeliveryFieldSchemaJSON),
 	}
 }
 
@@ -748,6 +824,37 @@ func encodeSubscriptionIntList(items []int) (string, error) {
 	return string(data), nil
 }
 
+func normalizeSubscriptionDeliveryMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case SubscriptionDeliveryModeManualDelivery:
+		return SubscriptionDeliveryModeManualDelivery
+	default:
+		return SubscriptionDeliveryModeAutoActivate
+	}
+}
+
+func normalizeSubscriptionFulfillmentStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case SubscriptionFulfillmentPending:
+		return SubscriptionFulfillmentPending
+	case SubscriptionFulfillmentDelivered:
+		return SubscriptionFulfillmentDelivered
+	case SubscriptionFulfillmentRejected:
+		return SubscriptionFulfillmentRejected
+	default:
+		return SubscriptionFulfillmentNotRequired
+	}
+}
+
+func normalizeDeliveryFieldType(fieldType string) string {
+	switch strings.TrimSpace(fieldType) {
+	case "url", "textarea", "email", "password":
+		return strings.TrimSpace(fieldType)
+	default:
+		return "text"
+	}
+}
+
 func decodeSubscriptionStringList(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -772,6 +879,117 @@ func decodeSubscriptionIntList(raw string) []int {
 	return normalizeSubscriptionIntList(items)
 }
 
+func normalizeSubscriptionDeliveryFields(fields []SubscriptionDeliveryField) []SubscriptionDeliveryField {
+	if len(fields) == 0 {
+		return nil
+	}
+	result := make([]SubscriptionDeliveryField, 0, len(fields))
+	keySet := make(map[string]struct{}, len(fields))
+	for index, field := range fields {
+		key := strings.TrimSpace(field.Key)
+		label := strings.TrimSpace(field.Label)
+		if key == "" || label == "" {
+			continue
+		}
+		if _, exists := keySet[key]; exists {
+			continue
+		}
+		keySet[key] = struct{}{}
+		result = append(result, SubscriptionDeliveryField{
+			Key:         key,
+			Label:       label,
+			Type:        normalizeDeliveryFieldType(field.Type),
+			Required:    field.Required,
+			Masked:      field.Masked,
+			Copyable:    field.Copyable,
+			SortOrder:   field.SortOrder,
+			Placeholder: strings.TrimSpace(field.Placeholder),
+		})
+		if result[len(result)-1].SortOrder == 0 {
+			result[len(result)-1].SortOrder = index + 1
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func normalizeSubscriptionDeliveryPayload(items []SubscriptionDeliveryPayloadItem) []SubscriptionDeliveryPayloadItem {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]SubscriptionDeliveryPayloadItem, 0, len(items))
+	for _, item := range items {
+		key := strings.TrimSpace(item.Key)
+		label := strings.TrimSpace(item.Label)
+		value := strings.TrimSpace(item.Value)
+		if key == "" || label == "" || value == "" {
+			continue
+		}
+		result = append(result, SubscriptionDeliveryPayloadItem{
+			Key:      key,
+			Label:    label,
+			Type:     normalizeDeliveryFieldType(item.Type),
+			Value:    value,
+			Masked:   item.Masked,
+			Copyable: item.Copyable,
+		})
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func encodeSubscriptionDeliveryFields(fields []SubscriptionDeliveryField) (string, error) {
+	normalized := normalizeSubscriptionDeliveryFields(fields)
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeSubscriptionDeliveryFields(raw string) []SubscriptionDeliveryField {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []SubscriptionDeliveryField
+	if err := common.UnmarshalJsonStr(raw, &items); err != nil {
+		return nil
+	}
+	return normalizeSubscriptionDeliveryFields(items)
+}
+
+func encodeSubscriptionDeliveryPayload(items []SubscriptionDeliveryPayloadItem) (string, error) {
+	normalized := normalizeSubscriptionDeliveryPayload(items)
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeSubscriptionDeliveryPayload(raw string) []SubscriptionDeliveryPayloadItem {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []SubscriptionDeliveryPayloadItem
+	if err := common.UnmarshalJsonStr(raw, &items); err != nil {
+		return nil
+	}
+	return normalizeSubscriptionDeliveryPayload(items)
+}
+
 func PrepareSubscriptionPlanRestrictionFields(plan *SubscriptionPlan) error {
 	if plan == nil {
 		return nil
@@ -794,6 +1012,13 @@ func PrepareSubscriptionPlanRestrictionFields(plan *SubscriptionPlan) error {
 	plan.AllowedGroupsJSON = allowedGroups
 	plan.AllowedModelsJSON = allowedModels
 	plan.AllowedVendorIDsJSON = allowedVendorIDs
+	plan.DeliveryMode = normalizeSubscriptionDeliveryMode(plan.DeliveryMode)
+	deliveryFieldSchema, err := encodeSubscriptionDeliveryFields(plan.DeliveryFieldSchema)
+	if err != nil {
+		return err
+	}
+	plan.DeliveryFieldSchema = normalizeSubscriptionDeliveryFields(plan.DeliveryFieldSchema)
+	plan.DeliveryFieldSchemaJSON = deliveryFieldSchema
 	return nil
 }
 
@@ -804,6 +1029,8 @@ func applySubscriptionPlanRestrictionFields(plan *SubscriptionPlan, vendorNamesB
 	plan.AllowedGroups = decodeSubscriptionStringList(plan.AllowedGroupsJSON)
 	plan.AllowedModels = decodeSubscriptionStringList(plan.AllowedModelsJSON)
 	plan.AllowedVendorIDs = decodeSubscriptionIntList(plan.AllowedVendorIDsJSON)
+	plan.DeliveryMode = normalizeSubscriptionDeliveryMode(plan.DeliveryMode)
+	plan.DeliveryFieldSchema = decodeSubscriptionDeliveryFields(plan.DeliveryFieldSchemaJSON)
 	if len(plan.AllowedVendorIDs) == 0 {
 		plan.AllowedVendorNames = nil
 		return
@@ -849,6 +1076,16 @@ func ApplySubscriptionPlanRestrictionFields(plans []*SubscriptionPlan) {
 	for _, plan := range plans {
 		applySubscriptionPlanRestrictionFields(plan, vendorNamesByID)
 	}
+}
+
+func ApplySubscriptionOrderDeliveryFields(order *SubscriptionOrder) {
+	if order == nil {
+		return
+	}
+	order.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(order.PlanDeliveryMode)
+	order.FulfillmentStatus = normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus)
+	order.PlanDeliveryFieldSchema = decodeSubscriptionDeliveryFields(order.PlanDeliveryFieldSchemaJSON)
+	order.DeliveryPayload = decodeSubscriptionDeliveryPayload(order.DeliveryPayloadJSON)
 }
 
 func decodeUserSubscriptionAllowedGroups(sub *UserSubscription) []string {
@@ -1300,17 +1537,24 @@ func validatePlanSaleFields(plan *SubscriptionPlan) error {
 	return nil
 }
 
-func CountUserSubscriptionsByPlan(userId int, planId int) (int64, error) {
+func CountUserPlanPurchases(userId int, planId int) (int64, error) {
 	if userId <= 0 || planId <= 0 {
 		return 0, errors.New("invalid userId or planId")
 	}
-	var count int64
+	var subscriptionCount int64
 	if err := DB.Model(&UserSubscription{}).
 		Where("user_id = ? AND plan_id = ?", userId, planId).
-		Count(&count).Error; err != nil {
+		Count(&subscriptionCount).Error; err != nil {
 		return 0, err
 	}
-	return count, nil
+	var manualOrderCount int64
+	if err := DB.Model(&SubscriptionOrder{}).
+		Where("user_id = ? AND plan_id = ? AND status = ? AND plan_delivery_mode = ? AND fulfillment_status <> ?",
+			userId, planId, common.TopUpStatusSuccess, SubscriptionDeliveryModeManualDelivery, SubscriptionFulfillmentRejected).
+		Count(&manualOrderCount).Error; err != nil {
+		return 0, err
+	}
+	return subscriptionCount + manualOrderCount, nil
 }
 
 func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
@@ -1515,6 +1759,26 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 			}
 		}
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+		order.Status = common.TopUpStatusSuccess
+		order.CompleteTime = common.GetTimestamp()
+		order.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(plan.DeliveryMode)
+		order.FulfillmentStatus = SubscriptionFulfillmentNotRequired
+		if order.PlanDeliveryMode == SubscriptionDeliveryModeManualDelivery {
+			order.FulfillmentStatus = SubscriptionFulfillmentPending
+		}
+		if providerPayload != "" {
+			order.ProviderPayload = providerPayload
+		}
+		if order.PlanDeliveryMode == SubscriptionDeliveryModeManualDelivery {
+			if err := tx.Save(&order).Error; err != nil {
+				return err
+			}
+			logUserId = order.UserId
+			logPlanTitle = plan.Title
+			logMoney = order.Money
+			logPaymentMethod = order.PaymentMethod
+			return nil
+		}
 		sub, planErr := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
 		if planErr != nil {
 			return planErr
@@ -1534,11 +1798,6 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		sub.SourceOrderMoney = order.Money
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
-		}
-		order.Status = common.TopUpStatusSuccess
-		order.CompleteTime = common.GetTimestamp()
-		if providerPayload != "" {
-			order.ProviderPayload = providerPayload
 		}
 		if err := tx.Save(&order).Error; err != nil {
 			return err
@@ -1900,6 +2159,30 @@ func GetUserSubscriptionsByAdmin(userId int, pageInfo *common.PageInfo, keyword 
 	return buildSubscriptionSummaries(subs), total, nil
 }
 
+func GetUserManualDeliveryOrders(userId int) ([]SubscriptionManualDeliverySummary, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var orders []SubscriptionOrder
+	if err := DB.Where("user_id = ? AND plan_delivery_mode = ? AND status = ?",
+		userId, SubscriptionDeliveryModeManualDelivery, common.TopUpStatusSuccess).
+		Order("id desc").
+		Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	items := make([]SubscriptionManualDeliverySummary, 0, len(orders))
+	for i := range orders {
+		summary, err := buildSelfManualDeliverySummary(&orders[i])
+		if err != nil {
+			return nil, err
+		}
+		if summary != nil {
+			items = append(items, *summary)
+		}
+	}
+	return items, nil
+}
+
 func GetUserSubscriptionById(userSubscriptionId int) (*UserSubscription, error) {
 	if userSubscriptionId <= 0 {
 		return nil, errors.New("invalid userSubscriptionId")
@@ -1983,8 +2266,44 @@ func buildSubscriptionRefundOrderSummaryFromSubscription(sub *UserSubscription, 
 	return summary, nil
 }
 
+func buildSubscriptionRefundOrderSummaryFromOrder(order *SubscriptionOrder, tx *gorm.DB) (*SubscriptionRefundOrderSummary, error) {
+	if order == nil || strings.TrimSpace(order.TradeNo) == "" {
+		return nil, nil
+	}
+	summary := &SubscriptionRefundOrderSummary{
+		OrderId:       order.Id,
+		TradeNo:       strings.TrimSpace(order.TradeNo),
+		PaymentMethod: strings.TrimSpace(order.PaymentMethod),
+		Money:         order.Money,
+		CompleteTime:  order.CompleteTime,
+	}
+	topUpMap, err := buildTopUpMapByTradeNo([]string{summary.TradeNo}, tx)
+	if err != nil {
+		return nil, err
+	}
+	if topUp := topUpMap[summary.TradeNo]; topUp != nil {
+		summary.TopUpId = topUp.Id
+		if summary.PaymentMethod == "" {
+			summary.PaymentMethod = topUp.PaymentMethod
+		}
+		if summary.Money <= 0 {
+			summary.Money = topUp.Money
+		}
+		if summary.CompleteTime <= 0 {
+			summary.CompleteTime = topUp.CompleteTime
+		}
+	}
+	return summary, nil
+}
+
 type adminUserSubscriptionListRow struct {
 	UserSubscription
+	Username  string `gorm:"column:username"`
+	UserGroup string `gorm:"column:user_group"`
+}
+
+type adminManualDeliveryOrderListRow struct {
+	SubscriptionOrder
 	Username  string `gorm:"column:username"`
 	UserGroup string `gorm:"column:user_group"`
 }
@@ -2007,6 +2326,99 @@ func buildTopUpMapByTradeNo(tradeNos []string, tx *gorm.DB) (map[string]*TopUp, 
 		result[topUpCopy.TradeNo] = &topUpCopy
 	}
 	return result, nil
+}
+
+func validateManualDeliveryPayload(schema []SubscriptionDeliveryField, payload []SubscriptionDeliveryPayloadItem) ([]SubscriptionDeliveryPayloadItem, error) {
+	normalizedSchema := normalizeSubscriptionDeliveryFields(schema)
+	if len(normalizedSchema) == 0 {
+		return nil, errors.New("该套餐未配置交付字段模板")
+	}
+	schemaMap := make(map[string]SubscriptionDeliveryField, len(normalizedSchema))
+	for _, field := range normalizedSchema {
+		schemaMap[field.Key] = field
+	}
+	payloadMap := make(map[string]SubscriptionDeliveryPayloadItem, len(payload))
+	for _, item := range normalizeSubscriptionDeliveryPayload(payload) {
+		field, ok := schemaMap[item.Key]
+		if !ok {
+			continue
+		}
+		payloadMap[item.Key] = SubscriptionDeliveryPayloadItem{
+			Key:      field.Key,
+			Label:    field.Label,
+			Type:     field.Type,
+			Value:    strings.TrimSpace(item.Value),
+			Masked:   field.Masked,
+			Copyable: field.Copyable,
+		}
+	}
+	result := make([]SubscriptionDeliveryPayloadItem, 0, len(normalizedSchema))
+	for _, field := range normalizedSchema {
+		item, ok := payloadMap[field.Key]
+		if !ok {
+			if field.Required {
+				return nil, fmt.Errorf("请填写交付字段：%s", field.Label)
+			}
+			continue
+		}
+		if strings.TrimSpace(item.Value) == "" {
+			if field.Required {
+				return nil, fmt.Errorf("请填写交付字段：%s", field.Label)
+			}
+			continue
+		}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		return nil, errors.New("请至少填写一项交付信息")
+	}
+	return result, nil
+}
+
+func buildManualDeliveryPlan(order *SubscriptionOrder) *SubscriptionPlan {
+	if order == nil {
+		return nil
+	}
+	plan := order.SnapshotPlan()
+	if plan == nil {
+		return nil
+	}
+	ApplySubscriptionPlanRestrictionFields([]*SubscriptionPlan{plan})
+	return plan
+}
+
+func buildManualDeliverySummary(order *SubscriptionOrder, username string, userGroup string) (*AdminSubscriptionManualDeliverySummary, error) {
+	if order == nil {
+		return nil, nil
+	}
+	ApplySubscriptionOrderDeliveryFields(order)
+	refundOrder, err := buildSubscriptionRefundOrderSummaryFromOrder(order, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &AdminSubscriptionManualDeliverySummary{
+		Order:       order,
+		Plan:        buildManualDeliveryPlan(order),
+		Username:    username,
+		UserGroup:   userGroup,
+		RefundOrder: refundOrder,
+	}, nil
+}
+
+func buildSelfManualDeliverySummary(order *SubscriptionOrder) (*SubscriptionManualDeliverySummary, error) {
+	if order == nil {
+		return nil, nil
+	}
+	ApplySubscriptionOrderDeliveryFields(order)
+	refundOrder, err := buildSubscriptionRefundOrderSummaryFromOrder(order, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &SubscriptionManualDeliverySummary{
+		Order:       order,
+		Plan:        buildManualDeliveryPlan(order),
+		RefundOrder: refundOrder,
+	}, nil
 }
 
 func GetAdminUserSubscriptions(
@@ -2119,6 +2531,158 @@ func GetAdminUserSubscriptions(
 		})
 	}
 	return items, total, nil
+}
+
+func GetAdminManualDeliveryOrders(pageInfo *common.PageInfo, keyword string, fulfillmentStatus string) ([]AdminSubscriptionManualDeliverySummary, int64, error) {
+	if pageInfo == nil {
+		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
+	}
+	keyword = strings.TrimSpace(keyword)
+	fulfillmentStatus = normalizeSubscriptionFulfillmentStatus(fulfillmentStatus)
+	baseQuery := DB.Table("subscription_orders").
+		Select("subscription_orders.*, users.username as username, users."+commonGroupCol+" as user_group").
+		Joins("left join users on users.id = subscription_orders.user_id").
+		Where("subscription_orders.plan_delivery_mode = ? AND subscription_orders.status = ?",
+			SubscriptionDeliveryModeManualDelivery, common.TopUpStatusSuccess)
+
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		if keywordInt, err := strconv.Atoi(keyword); err == nil {
+			baseQuery = baseQuery.Where("subscription_orders.id = ? OR subscription_orders.user_id = ? OR subscription_orders.plan_id = ? OR users.id = ? OR users.username LIKE ? OR subscription_orders.trade_no LIKE ? OR subscription_orders.plan_title LIKE ?",
+				keywordInt, keywordInt, keywordInt, keywordInt, like, like, like)
+		} else {
+			baseQuery = baseQuery.Where("users.username LIKE ? OR subscription_orders.trade_no LIKE ? OR subscription_orders.plan_title LIKE ?",
+				like, like, like)
+		}
+	}
+	if strings.TrimSpace(fulfillmentStatus) != "" && fulfillmentStatus != SubscriptionFulfillmentNotRequired {
+		baseQuery = baseQuery.Where("subscription_orders.fulfillment_status = ?", fulfillmentStatus)
+	}
+
+	var total int64
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var rows []adminManualDeliveryOrderListRow
+	if err := baseQuery.
+		Order("subscription_orders.id desc").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]AdminSubscriptionManualDeliverySummary, 0, len(rows))
+	for i := range rows {
+		orderCopy := rows[i].SubscriptionOrder
+		summary, err := buildManualDeliverySummary(&orderCopy, rows[i].Username, rows[i].UserGroup)
+		if err != nil {
+			return nil, 0, err
+		}
+		if summary != nil {
+			items = append(items, *summary)
+		}
+	}
+	return items, total, nil
+}
+
+func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []SubscriptionDeliveryPayloadItem, adminRemark string) (*SubscriptionOrder, error) {
+	if orderId <= 0 {
+		return nil, errors.New("invalid orderId")
+	}
+	var result SubscriptionOrder
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var order SubscriptionOrder
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
+			return err
+		}
+		if order.PlanDeliveryMode != SubscriptionDeliveryModeManualDelivery {
+			return errors.New("该订单不是人工发放套餐")
+		}
+		if order.Status != common.TopUpStatusSuccess {
+			return errors.New("仅已支付成功的订单可发放")
+		}
+		if normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus) == SubscriptionFulfillmentDelivered {
+			return errors.New("该订单已发放")
+		}
+		schema := decodeSubscriptionDeliveryFields(order.PlanDeliveryFieldSchemaJSON)
+		if len(schema) == 0 {
+			plan := order.SnapshotPlan()
+			if plan != nil {
+				schema = decodeSubscriptionDeliveryFields(plan.DeliveryFieldSchemaJSON)
+			}
+		}
+		normalizedPayload, err := validateManualDeliveryPayload(schema, payload)
+		if err != nil {
+			return err
+		}
+		payloadJSON, err := encodeSubscriptionDeliveryPayload(normalizedPayload)
+		if err != nil {
+			return err
+		}
+		now := common.GetTimestamp()
+		updates := map[string]any{
+			"fulfillment_status":    SubscriptionFulfillmentDelivered,
+			"delivery_payload_json": payloadJSON,
+			"delivery_admin_remark": strings.TrimSpace(adminRemark),
+			"delivered_by":          adminId,
+			"delivered_at":          now,
+		}
+		if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", orderId).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	ApplySubscriptionOrderDeliveryFields(&result)
+	return &result, nil
+}
+
+func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string) (*SubscriptionOrder, error) {
+	if orderId <= 0 {
+		return nil, errors.New("invalid orderId")
+	}
+	var result SubscriptionOrder
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var order SubscriptionOrder
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
+			return err
+		}
+		if order.PlanDeliveryMode != SubscriptionDeliveryModeManualDelivery {
+			return errors.New("该订单不是人工发放套餐")
+		}
+		if order.Status != common.TopUpStatusSuccess {
+			return errors.New("仅已支付成功的订单可拒绝")
+		}
+		if normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus) == SubscriptionFulfillmentDelivered {
+			return errors.New("该订单已发放，不能拒绝")
+		}
+		now := common.GetTimestamp()
+		updates := map[string]any{
+			"fulfillment_status":    SubscriptionFulfillmentRejected,
+			"delivery_admin_remark": strings.TrimSpace(adminRemark),
+			"delivered_by":          adminId,
+			"delivered_at":          now,
+		}
+		if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", orderId).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	ApplySubscriptionOrderDeliveryFields(&result)
+	return &result, nil
 }
 
 func normalizeSubscriptionMigrationFilter(filter SubscriptionMigrationFilter) SubscriptionMigrationFilter {

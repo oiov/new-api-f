@@ -139,6 +139,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
     useState('subscription_first');
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
+  const [manualDeliveryOrders, setManualDeliveryOrders] = useState([]);
 
   // 预设充值额度选项
   const [presetAmounts, setPresetAmounts] = useState([]);
@@ -521,6 +522,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
         // All subscriptions (including expired)
         const allSubs = res.data.data?.all_subscriptions || [];
         setAllSubscriptions(allSubs);
+        setManualDeliveryOrders(res.data.data?.manual_delivery_orders || []);
       }
     } catch (e) {
       // ignore
@@ -991,6 +993,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
               onChangeBillingPreference={updateBillingPreference}
               activeSubscriptions={activeSubscriptions}
               allSubscriptions={allSubscriptions}
+              manualDeliveryOrders={manualDeliveryOrders}
               reloadSubscriptionSelf={getSubscriptionSelf}
               initialMainTab={PLAN_LIST_TAB}
               uiVariant={PACKAGE_VARIANT}
@@ -1011,6 +1014,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             onChangeBillingPreference={updateBillingPreference}
             activeSubscriptions={activeSubscriptions}
             allSubscriptions={allSubscriptions}
+            manualDeliveryOrders={manualDeliveryOrders}
             reloadSubscriptionSelf={getSubscriptionSelf}
             initialMainTab={MY_SUBSCRIPTIONS_TAB}
             uiVariant={SUBSCRIPTION_VARIANT}

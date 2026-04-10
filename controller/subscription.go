@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -40,7 +42,7 @@ func validateSubscriptionPlanPurchaseAvailability(userId int, plan *model.Subscr
 	if userId <= 0 || plan.MaxPurchasePerUser <= 0 {
 		return nil
 	}
-	count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+	count, err := model.CountUserPlanPurchases(userId, plan.Id)
 	if err != nil {
 		return err
 	}
@@ -48,6 +50,60 @@ func validateSubscriptionPlanPurchaseAvailability(userId int, plan *model.Subscr
 		return fmt.Errorf("已达到该套餐购买上限")
 	}
 	return nil
+}
+
+func normalizeSubscriptionPlanDeliveryFields(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	plan.DeliveryMode = strings.TrimSpace(plan.DeliveryMode)
+	if plan.DeliveryMode == "" {
+		plan.DeliveryMode = model.SubscriptionDeliveryModeAutoActivate
+	}
+	switch plan.DeliveryMode {
+	case model.SubscriptionDeliveryModeAutoActivate:
+		plan.DeliveryFieldSchema = nil
+	case model.SubscriptionDeliveryModeManualDelivery:
+		if len(plan.DeliveryFieldSchema) == 0 {
+			return fmt.Errorf("人工发放套餐至少需要配置一个交付字段")
+		}
+	default:
+		return fmt.Errorf("无效的交付方式")
+	}
+	return nil
+}
+
+func notifyManualDeliveryOrderResult(order *model.SubscriptionOrder, approved bool) {
+	if order == nil || order.UserId <= 0 {
+		return
+	}
+	user, err := model.GetUserById(order.UserId, true)
+	if err != nil || user == nil {
+		return
+	}
+	title := fmt.Sprintf("套餐订单处理结果：%s", strings.TrimSpace(order.PlanTitle))
+	var content string
+	if approved {
+		content = "你购买的套餐订单已发放完成。<br/>套餐：<strong>{{value}}</strong><br/>订单号：<strong>{{value}}</strong><br/>你现在可以前往订阅页面查看交付内容。"
+	} else {
+		content = "你购买的套餐订单未通过发放审核。<br/>套餐：<strong>{{value}}</strong><br/>订单号：<strong>{{value}}</strong><br/>处理说明：{{value}}"
+	}
+	values := []interface{}{
+		strings.TrimSpace(order.PlanTitle),
+		strings.TrimSpace(order.TradeNo),
+		strings.TrimSpace(order.DeliveryAdminRemark),
+	}
+	if approved {
+		values = values[:2]
+	} else if strings.TrimSpace(order.DeliveryAdminRemark) == "" {
+		values[2] = "管理员暂未填写额外说明。"
+	}
+	_ = service.NotifyUser(
+		user.Id,
+		user.Email,
+		user.GetSetting(),
+		dto.NewNotify("subscription_manual_delivery", title, content, values),
+	)
 }
 
 func shouldSyncActiveSubscriptionsForPlanUpdate(currentPlan, nextPlan *model.SubscriptionPlan) bool {
@@ -135,11 +191,16 @@ func GetSubscriptionSelf(c *gin.Context) {
 	if err != nil {
 		activeSubscriptions = []model.SubscriptionSummary{}
 	}
+	manualDeliveryOrders, err := model.GetUserManualDeliveryOrders(userId)
+	if err != nil {
+		manualDeliveryOrders = []model.SubscriptionManualDeliverySummary{}
+	}
 
 	common.ApiSuccess(c, gin.H{
-		"billing_preference": pref,
-		"subscriptions":      activeSubscriptions, // all active subscriptions
-		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"billing_preference":     pref,
+		"subscriptions":          activeSubscriptions, // all active subscriptions
+		"all_subscriptions":      allSubscriptions,    // all subscriptions including expired
+		"manual_delivery_orders": manualDeliveryOrders,
 	})
 }
 
@@ -179,6 +240,23 @@ type AdminApproveSubscriptionConversionPayload struct {
 }
 
 type AdminRejectSubscriptionConversionPayload struct {
+	AdminRemark string `json:"admin_remark"`
+}
+
+type AdminManualDeliveryOrderListItem struct {
+	Order       *model.SubscriptionOrder              `json:"order"`
+	Plan        *model.SubscriptionPlan               `json:"plan,omitempty"`
+	Username    string                                `json:"username"`
+	UserGroup   string                                `json:"user_group"`
+	RefundOrder *model.SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+}
+
+type AdminDeliverManualOrderPayload struct {
+	DeliveryPayload []model.SubscriptionDeliveryPayloadItem `json:"delivery_payload"`
+	AdminRemark     string                                  `json:"admin_remark"`
+}
+
+type AdminRejectManualOrderPayload struct {
 	AdminRemark string `json:"admin_remark"`
 }
 
@@ -232,6 +310,71 @@ func AdminRejectSubscriptionConversionRequest(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminListManualDeliveryOrders(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	items, total, err := model.GetAdminManualDeliveryOrders(
+		pageInfo,
+		c.Query("keyword"),
+		c.Query("fulfillment_status"),
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func AdminDeliverManualDeliveryOrder(c *gin.Context) {
+	orderId, _ := strconv.Atoi(c.Param("id"))
+	if orderId <= 0 {
+		common.ApiErrorMsg(c, "无效的订单ID")
+		return
+	}
+	var req AdminDeliverManualOrderPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.AdminDeliverManualDeliveryOrder(
+		orderId,
+		c.GetInt("id"),
+		req.DeliveryPayload,
+		req.AdminRemark,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	go notifyManualDeliveryOrderResult(result, true)
+	common.ApiSuccess(c, result)
+}
+
+func AdminRejectManualDeliveryOrder(c *gin.Context) {
+	orderId, _ := strconv.Atoi(c.Param("id"))
+	if orderId <= 0 {
+		common.ApiErrorMsg(c, "无效的订单ID")
+		return
+	}
+	var req AdminRejectManualOrderPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.AdminRejectManualDeliveryOrder(
+		orderId,
+		c.GetInt("id"),
+		req.AdminRemark,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	go notifyManualDeliveryOrderResult(result, false)
 	common.ApiSuccess(c, result)
 }
 
@@ -465,6 +608,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	if err := normalizeSubscriptionPlanDeliveryFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	if err := validateSubscriptionPlanRestrictionFields(&req.Plan); err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
@@ -529,6 +676,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	if err := normalizeSubscriptionPlanDeliveryFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	if err := validateSubscriptionPlanRestrictionFields(&req.Plan); err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
@@ -585,6 +736,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"allowed_groups_json":         req.Plan.AllowedGroupsJSON,
 			"allowed_models_json":         req.Plan.AllowedModelsJSON,
 			"allowed_vendor_ids_json":     req.Plan.AllowedVendorIDsJSON,
+			"delivery_mode":               req.Plan.DeliveryMode,
+			"delivery_field_schema_json":  req.Plan.DeliveryFieldSchemaJSON,
 			"updated_at":                  common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
