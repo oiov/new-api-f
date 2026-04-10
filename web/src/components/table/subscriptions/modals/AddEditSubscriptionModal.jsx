@@ -52,12 +52,54 @@ import {
   displayAmountToQuota,
 } from '../../../../helpers/quota';
 import {
+  formatSubscriptionCustomSeconds,
+  formatSubscriptionResetFixedTime,
+  formatSubscriptionResetHint,
   formatSubscriptionResourceLabel,
   getSubscriptionResourceType,
 } from '../../../../helpers/subscriptionFormat';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const { Text, Title } = Typography;
+
+function deriveResetCustomFields(seconds) {
+  const value = Number(seconds || 0);
+  if (value >= 86400 && value % 86400 === 0) {
+    return { quota_reset_custom_value: value / 86400, quota_reset_custom_unit: 'day' };
+  }
+  if (value >= 3600 && value % 3600 === 0) {
+    return { quota_reset_custom_value: value / 3600, quota_reset_custom_unit: 'hour' };
+  }
+  if (value >= 60 && value % 60 === 0) {
+    return { quota_reset_custom_value: value / 60, quota_reset_custom_unit: 'minute' };
+  }
+  return { quota_reset_custom_value: Math.max(value, 1), quota_reset_custom_unit: 'second' };
+}
+
+function composeResetCustomSeconds(value, unit) {
+  const amount = Number(value || 0);
+  if (amount <= 0) return 0;
+  if (unit === 'day') return amount * 86400;
+  if (unit === 'hour') return amount * 3600;
+  if (unit === 'minute') return amount * 60;
+  return amount;
+}
+
+function deriveResetFixedFields(seconds) {
+  const value = Math.max(0, Math.min(Number(seconds || 0), 24 * 3600 - 1));
+  return {
+    quota_reset_fixed_hour: Math.floor(value / 3600),
+    quota_reset_fixed_minute: Math.floor((value % 3600) / 60),
+    quota_reset_fixed_second: value % 60,
+  };
+}
+
+function composeResetFixedSeconds(hour, minute, second) {
+  const normalizedHour = Math.max(0, Math.min(Number(hour || 0), 23));
+  const normalizedMinute = Math.max(0, Math.min(Number(minute || 0), 59));
+  const normalizedSecond = Math.max(0, Math.min(Number(second || 0), 59));
+  return normalizedHour * 3600 + normalizedMinute * 60 + normalizedSecond;
+}
 
 const AddEditSubscriptionModal = ({
   visible,
@@ -89,6 +131,16 @@ const AddEditSubscriptionModal = ({
     { value: 'yearly', label: t('每年') },
     { value: 'custom', label: t('自定义(秒)') },
   ];
+  const resetTimingModeOptions = [
+    { value: 'activation', label: t('按激活时间滚动') },
+    { value: 'fixed_clock', label: t('固定时刻重置') },
+  ];
+  const resetCustomUnitOptions = [
+    { value: 'day', label: t('天') },
+    { value: 'hour', label: t('小时') },
+    { value: 'minute', label: t('分钟') },
+    { value: 'second', label: t('秒') },
+  ];
 
   const [loading, setLoading] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
@@ -118,6 +170,14 @@ const AddEditSubscriptionModal = ({
     custom_seconds: 0,
     quota_reset_period: 'never',
     quota_reset_custom_seconds: 0,
+    quota_reset_custom_value: 1,
+    quota_reset_custom_unit: 'day',
+    quota_reset_use_fixed_clock: false,
+    quota_reset_fixed_seconds: 0,
+    quota_reset_timing_mode: 'activation',
+    quota_reset_fixed_hour: 8,
+    quota_reset_fixed_minute: 0,
+    quota_reset_fixed_second: 0,
     enabled: true,
     sort_order: 0,
     max_purchase_per_user: 0,
@@ -139,8 +199,16 @@ const AddEditSubscriptionModal = ({
     const base = getInitValues();
     if (editingPlan?.plan?.id === undefined) return base;
     const p = editingPlan.plan || {};
+    const resetCustomFields = deriveResetCustomFields(
+      Number(p.quota_reset_custom_seconds || 0),
+    );
+    const resetFixedFields = deriveResetFixedFields(
+      Number(p.quota_reset_fixed_seconds || 0),
+    );
     return {
       ...base,
+      ...resetCustomFields,
+      ...resetFixedFields,
       title: p.title || '',
       subtitle: p.subtitle || '',
       price_amount: Number(p.price_amount || 0),
@@ -154,6 +222,11 @@ const AddEditSubscriptionModal = ({
       custom_seconds: Number(p.custom_seconds || 0),
       quota_reset_period: p.quota_reset_period || 'never',
       quota_reset_custom_seconds: Number(p.quota_reset_custom_seconds || 0),
+      quota_reset_use_fixed_clock: Boolean(p.quota_reset_use_fixed_clock),
+      quota_reset_fixed_seconds: Number(p.quota_reset_fixed_seconds || 0),
+      quota_reset_timing_mode: p.quota_reset_use_fixed_clock
+        ? 'fixed_clock'
+        : 'activation',
       enabled: p.enabled !== false,
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
@@ -228,6 +301,19 @@ const AddEditSubscriptionModal = ({
     const nextResetPeriod = values.quota_reset_period || 'never';
     const previous = linkageStateRef.current;
     const nextValues = {};
+    const nextCustomSeconds = composeResetCustomSeconds(
+      values.quota_reset_custom_value,
+      values.quota_reset_custom_unit,
+    );
+    const nextFixedSeconds = composeResetFixedSeconds(
+      values.quota_reset_fixed_hour,
+      values.quota_reset_fixed_minute,
+      values.quota_reset_fixed_second,
+    );
+    const supportsFixedClock =
+      nextResetPeriod !== 'never' && nextResetPeriod !== 'custom';
+    const nextUseFixedClock =
+      supportsFixedClock && values.quota_reset_timing_mode === 'fixed_clock';
 
     if (previous.resourceType !== nextResourceType) {
       if (nextResourceType === 'quota') {
@@ -252,11 +338,37 @@ const AddEditSubscriptionModal = ({
     }
 
     if (
+      nextResetPeriod === 'custom' &&
+      Number(values.quota_reset_custom_seconds || 0) !== nextCustomSeconds
+    ) {
+      nextValues.quota_reset_custom_seconds = nextCustomSeconds;
+    }
+
+    if (
       previous.resetPeriod !== nextResetPeriod &&
       nextResetPeriod !== 'custom' &&
       Number(values.quota_reset_custom_seconds || 0) !== 0
     ) {
       nextValues.quota_reset_custom_seconds = 0;
+    }
+
+    if (
+      (!supportsFixedClock || !nextUseFixedClock) &&
+      (values.quota_reset_use_fixed_clock ||
+        Number(values.quota_reset_fixed_seconds || 0) !== 0)
+    ) {
+      nextValues.quota_reset_use_fixed_clock = false;
+      nextValues.quota_reset_fixed_seconds = 0;
+      if (values.quota_reset_timing_mode !== 'activation') {
+        nextValues.quota_reset_timing_mode = 'activation';
+      }
+    } else if (nextUseFixedClock) {
+      if (!values.quota_reset_use_fixed_clock) {
+        nextValues.quota_reset_use_fixed_clock = true;
+      }
+      if (Number(values.quota_reset_fixed_seconds || 0) !== nextFixedSeconds) {
+        nextValues.quota_reset_fixed_seconds = nextFixedSeconds;
+      }
     }
 
     linkageStateRef.current = {
@@ -277,6 +389,10 @@ const AddEditSubscriptionModal = ({
     const isQuotaPlan = resourceType === 'quota';
     const isRequestCountPlan = resourceType === 'request_count';
     const hasResetWindow = (values.quota_reset_period || 'never') !== 'never';
+    const supportsFixedClock =
+      hasResetWindow && values.quota_reset_period !== 'custom';
+    const useFixedClock =
+      supportsFixedClock && values.quota_reset_timing_mode === 'fixed_clock';
 
     if (!values.title || values.title.trim() === '') {
       showError(t('套餐标题不能为空'));
@@ -319,6 +435,28 @@ const AddEditSubscriptionModal = ({
       showError(t('开启重置后，周期次数或总次数至少需要填写一项'));
       return;
     }
+    if (
+      values.quota_reset_period === 'custom' &&
+      composeResetCustomSeconds(
+        values.quota_reset_custom_value,
+        values.quota_reset_custom_unit,
+      ) < 60
+    ) {
+      showError(t('自定义重置周期需大于等于60秒'));
+      return;
+    }
+    if (
+      useFixedClock &&
+      composeResetFixedSeconds(
+        values.quota_reset_fixed_hour,
+        values.quota_reset_fixed_minute,
+        values.quota_reset_fixed_second,
+      ) >=
+        24 * 3600
+    ) {
+      showError(t('固定重置时刻不合法'));
+      return;
+    }
     setLoading(true);
     try {
       const normalizedTotalAmount = isQuotaPlan
@@ -346,8 +484,19 @@ const AddEditSubscriptionModal = ({
           quota_reset_period: values.quota_reset_period || 'never',
           quota_reset_custom_seconds:
             values.quota_reset_period === 'custom'
-              ? Number(values.quota_reset_custom_seconds || 0)
+              ? composeResetCustomSeconds(
+                  values.quota_reset_custom_value,
+                  values.quota_reset_custom_unit,
+                )
               : 0,
+          quota_reset_use_fixed_clock: useFixedClock,
+          quota_reset_fixed_seconds: useFixedClock
+            ? composeResetFixedSeconds(
+                values.quota_reset_fixed_hour,
+                values.quota_reset_fixed_minute,
+                values.quota_reset_fixed_second,
+              )
+            : 0,
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
           sale_limit_count: Number(values.sale_limit_count || 0),
@@ -475,6 +624,30 @@ const AddEditSubscriptionModal = ({
                 },
                 t,
               );
+              const resetPreviewPlan = {
+                quota_reset_period: values.quota_reset_period,
+                quota_reset_custom_seconds:
+                  values.quota_reset_period === 'custom'
+                    ? composeResetCustomSeconds(
+                        values.quota_reset_custom_value,
+                        values.quota_reset_custom_unit,
+                      )
+                    : 0,
+                quota_reset_use_fixed_clock:
+                  values.quota_reset_period !== 'never' &&
+                  values.quota_reset_period !== 'custom' &&
+                  values.quota_reset_timing_mode === 'fixed_clock',
+                quota_reset_fixed_seconds:
+                  values.quota_reset_period !== 'never' &&
+                  values.quota_reset_period !== 'custom' &&
+                  values.quota_reset_timing_mode === 'fixed_clock'
+                    ? composeResetFixedSeconds(
+                        values.quota_reset_fixed_hour,
+                        values.quota_reset_fixed_minute,
+                        values.quota_reset_fixed_second,
+                      )
+                    : 0,
+              };
 
               return (
                 <div className='p-2'>
@@ -909,17 +1082,101 @@ const AddEditSubscriptionModal = ({
                       </Col>
                       <Col span={12}>
                         {values.quota_reset_period === 'custom' ? (
-                          <Form.InputNumber
-                            field='quota_reset_custom_seconds'
-                            label={t('自定义秒数')}
-                            required
-                            min={60}
-                            precision={0}
-                            rules={[
-                              { required: true, message: t('请输入秒数') },
-                            ]}
-                            style={{ width: '100%' }}
-                          />
+                          <div className='space-y-2'>
+                            <Text>{t('滚动重置间隔')}</Text>
+                            <div className='grid grid-cols-[1fr_120px] gap-2'>
+                              <Form.InputNumber
+                                field='quota_reset_custom_value'
+                                noLabel
+                                required
+                                min={1}
+                                precision={0}
+                                rules={[
+                                  { required: true, message: t('请输入间隔值') },
+                                ]}
+                                style={{ width: '100%' }}
+                              />
+                              <Form.Select field='quota_reset_custom_unit' noLabel>
+                                {resetCustomUnitOptions.map((o) => (
+                                  <Select.Option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </Select.Option>
+                                ))}
+                              </Form.Select>
+                            </div>
+                            <Text type='tertiary' size='small'>
+                              {t('当前换算为 {{duration}}', {
+                                duration: formatSubscriptionCustomSeconds(
+                                  composeResetCustomSeconds(
+                                    values.quota_reset_custom_value,
+                                    values.quota_reset_custom_unit,
+                                  ),
+                                  t,
+                                ),
+                              })}
+                            </Text>
+                          </div>
+                        ) : hasResetWindow ? (
+                          <div className='space-y-2'>
+                            <Form.Select
+                              field='quota_reset_timing_mode'
+                              label={t('重置时机')}
+                              extraText={t(
+                                '不设置时默认按购买激活时间滚动重置；设置固定时刻后，会按购买激活周期落在该时刻重置。',
+                              )}
+                            >
+                              {resetTimingModeOptions.map((o) => (
+                                <Select.Option key={o.value} value={o.value}>
+                                  {o.label}
+                                </Select.Option>
+                              ))}
+                            </Form.Select>
+                            {values.quota_reset_timing_mode === 'fixed_clock' ? (
+                              <div className='space-y-2'>
+                                <Text>{t('固定重置时刻')}</Text>
+                                <div className='grid grid-cols-[1fr_1fr_1fr] gap-2'>
+                                  <Form.InputNumber
+                                    field='quota_reset_fixed_hour'
+                                    noLabel
+                                    min={0}
+                                    max={23}
+                                    precision={0}
+                                    style={{ width: '100%' }}
+                                    suffix={t('时')}
+                                  />
+                                  <Form.InputNumber
+                                    field='quota_reset_fixed_minute'
+                                    noLabel
+                                    min={0}
+                                    max={59}
+                                    precision={0}
+                                    style={{ width: '100%' }}
+                                    suffix={t('分')}
+                                  />
+                                  <Form.InputNumber
+                                    field='quota_reset_fixed_second'
+                                    noLabel
+                                    min={0}
+                                    max={59}
+                                    precision={0}
+                                    style={{ width: '100%' }}
+                                    suffix={t('秒')}
+                                  />
+                                </div>
+                                <Text type='tertiary' size='small'>
+                                  {t('当前固定时刻 {{time}}', {
+                                    time: formatSubscriptionResetFixedTime(
+                                      composeResetFixedSeconds(
+                                        values.quota_reset_fixed_hour,
+                                        values.quota_reset_fixed_minute,
+                                        values.quota_reset_fixed_second,
+                                      ),
+                                    ),
+                                  })}
+                                </Text>
+                              </div>
+                            ) : null}
+                          </div>
                         ) : (
                           <Form.InputNumber
                             field='quota_reset_custom_seconds'
@@ -932,6 +1189,11 @@ const AddEditSubscriptionModal = ({
                         )}
                       </Col>
                     </Row>
+                    {hasResetWindow && (
+                      <div className='mt-3 rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-500/10 dark:text-blue-200'>
+                        {t('重置预览')}：{formatSubscriptionResetHint(resetPreviewPlan, t)}
+                      </div>
+                    )}
                   </Card>
 
                   {/* 第三方支付配置 */}

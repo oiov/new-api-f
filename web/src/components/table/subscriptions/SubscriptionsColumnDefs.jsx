@@ -32,6 +32,7 @@ import { renderGroupTextWithDescription, renderQuota } from '../../../helpers';
 import { convertUSDToCurrency } from '../../../helpers/render';
 import {
   formatSubscriptionResourceLabel,
+  formatSubscriptionResetHint,
   formatSubscriptionResetPeriod,
   getSubscriptionSaleSummary,
   getSubscriptionEffectivePrice,
@@ -206,7 +207,7 @@ const renderPlanTitle = (text, record, t) => {
         <Text type='tertiary'>{t('有效期')}</Text>
         <Text>{formatDuration(plan, t)}</Text>
         <Text type='tertiary'>{t('重置')}</Text>
-        <Text>{formatSubscriptionResetPeriod(plan, t)}</Text>
+        <Text>{formatSubscriptionResetHint(plan, t)}</Text>
       </div>
     </div>
   );

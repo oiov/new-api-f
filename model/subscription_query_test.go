@@ -98,6 +98,25 @@ func TestCalcNextResetTime_UsesRollingResetPeriods(t *testing.T) {
 	require.Equal(t, time.Date(2027, 4, 7, 11, 16, 46, 0, loc).Unix(), yearly)
 }
 
+func TestCalcNextResetTime_UsesFixedClockWhenConfigured(t *testing.T) {
+	loc := time.FixedZone("UTC+8", 8*3600)
+	base := time.Date(2026, 4, 7, 11, 16, 46, 0, loc)
+
+	daily := calcNextResetTime(base, &SubscriptionPlan{
+		QuotaResetPeriod:        SubscriptionResetDaily,
+		QuotaResetUseFixedClock: true,
+		QuotaResetFixedSeconds:  8 * 3600,
+	}, 0)
+	require.Equal(t, time.Date(2026, 4, 8, 8, 0, 0, 0, loc).Unix(), daily)
+
+	monthly := calcNextResetTime(base, &SubscriptionPlan{
+		QuotaResetPeriod:        SubscriptionResetMonthly,
+		QuotaResetUseFixedClock: true,
+		QuotaResetFixedSeconds:  20*3600 + 30*60,
+	}, 0)
+	require.Equal(t, time.Date(2026, 5, 7, 20, 30, 0, 0, loc).Unix(), monthly)
+}
+
 func TestSyncActiveSubscriptionsForPlanTx(t *testing.T) {
 	withSubscriptionQueryTestDB(t, func() {
 		now := common.GetTimestamp()

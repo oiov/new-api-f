@@ -226,6 +226,8 @@ type SubscriptionPlan struct {
 	// Quota reset period for plan
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
+	QuotaResetUseFixedClock bool   `json:"quota_reset_use_fixed_clock" gorm:"not null;default:false"`
+	QuotaResetFixedSeconds  int64  `json:"quota_reset_fixed_seconds" gorm:"type:bigint;not null;default:0"`
 
 	AllowedGroupsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_groups_json"`
 	AllowedModelsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_models_json"`
@@ -336,6 +338,8 @@ type SubscriptionOrder struct {
 	PlanRequestCountPeriodTotal int64  `json:"plan_request_count_period_total" gorm:"type:bigint;not null;default:0"`
 	PlanQuotaResetPeriod        string `json:"plan_quota_reset_period" gorm:"type:varchar(16);default:''"`
 	PlanQuotaResetCustomSec     int64  `json:"plan_quota_reset_custom_sec" gorm:"type:bigint;not null;default:0"`
+	PlanQuotaResetUseFixedClock bool   `json:"plan_quota_reset_use_fixed_clock" gorm:"not null;default:false"`
+	PlanQuotaResetFixedSeconds  int64  `json:"plan_quota_reset_fixed_seconds" gorm:"type:bigint;not null;default:0"`
 	PlanAllowedGroupsJSON       string `json:"-" gorm:"type:text;default:'';column:plan_allowed_groups_json"`
 	PlanAllowedModelsJSON       string `json:"-" gorm:"type:text;default:'';column:plan_allowed_models_json"`
 	PlanAllowedVendorIDsJSON    string `json:"-" gorm:"type:text;default:'';column:plan_allowed_vendor_ids_json"`
@@ -386,6 +390,8 @@ func (o *SubscriptionOrder) ApplyPlanSnapshot(plan *SubscriptionPlan) {
 	o.PlanRequestCountPeriodTotal = plan.RequestCountPeriodTotal
 	o.PlanQuotaResetPeriod = NormalizeResetPeriod(plan.QuotaResetPeriod)
 	o.PlanQuotaResetCustomSec = plan.QuotaResetCustomSeconds
+	o.PlanQuotaResetUseFixedClock = plan.QuotaResetUseFixedClock
+	o.PlanQuotaResetFixedSeconds = plan.QuotaResetFixedSeconds
 	o.PlanAllowedGroupsJSON = strings.TrimSpace(plan.AllowedGroupsJSON)
 	o.PlanAllowedModelsJSON = strings.TrimSpace(plan.AllowedModelsJSON)
 	o.PlanAllowedVendorIDsJSON = strings.TrimSpace(plan.AllowedVendorIDsJSON)
@@ -408,6 +414,8 @@ func (o *SubscriptionOrder) SnapshotPlan() *SubscriptionPlan {
 		RequestCountPeriodTotal: o.PlanRequestCountPeriodTotal,
 		QuotaResetPeriod:        NormalizeResetPeriod(o.PlanQuotaResetPeriod),
 		QuotaResetCustomSeconds: o.PlanQuotaResetCustomSec,
+		QuotaResetUseFixedClock: o.PlanQuotaResetUseFixedClock,
+		QuotaResetFixedSeconds:  o.PlanQuotaResetFixedSeconds,
 		AllowedGroupsJSON:       strings.TrimSpace(o.PlanAllowedGroupsJSON),
 		AllowedModelsJSON:       strings.TrimSpace(o.PlanAllowedModelsJSON),
 		AllowedVendorIDsJSON:    strings.TrimSpace(o.PlanAllowedVendorIDsJSON),
@@ -431,6 +439,8 @@ func buildSubscriptionPlanSnapshot(plan *SubscriptionPlan, planId int) *Subscrip
 		RequestCountPeriodTotal: plan.RequestCountPeriodTotal,
 		QuotaResetPeriod:        NormalizeResetPeriod(plan.QuotaResetPeriod),
 		QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
+		QuotaResetUseFixedClock: plan.QuotaResetUseFixedClock,
+		QuotaResetFixedSeconds:  plan.QuotaResetFixedSeconds,
 		AllowedGroupsJSON:       strings.TrimSpace(plan.AllowedGroupsJSON),
 		AllowedModelsJSON:       strings.TrimSpace(plan.AllowedModelsJSON),
 		AllowedVendorIDsJSON:    strings.TrimSpace(plan.AllowedVendorIDsJSON),
@@ -453,6 +463,8 @@ type UserSubscription struct {
 	RequestCountPeriodUsed  int64  `json:"request_count_period_used" gorm:"type:bigint;not null;default:0"`
 	ResetPeriod             string `json:"reset_period" gorm:"type:varchar(16);not null;default:'never'"`
 	ResetCustomSeconds      int64  `json:"reset_custom_seconds" gorm:"type:bigint;not null;default:0"`
+	ResetUseFixedClock      bool   `json:"reset_use_fixed_clock" gorm:"not null;default:false"`
+	ResetFixedSeconds       int64  `json:"reset_fixed_seconds" gorm:"type:bigint;not null;default:0"`
 	AllowedGroupsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_groups_json"`
 	AllowedModelsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_models_json"`
 	AllowedVendorIDsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_vendor_ids_json"`
@@ -597,6 +609,64 @@ func NormalizeResetPeriod(period string) string {
 		return strings.TrimSpace(period)
 	default:
 		return SubscriptionResetNever
+	}
+}
+
+func resetPeriodSupportsFixedClock(period string) bool {
+	switch NormalizeResetPeriod(period) {
+	case SubscriptionResetDaily, SubscriptionResetWeekly, SubscriptionResetMonthly, SubscriptionResetYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeResetFixedClock(useFixed bool, fixedSeconds int64, period string) (bool, int64) {
+	if !useFixed || !resetPeriodSupportsFixedClock(period) {
+		return false, 0
+	}
+	if fixedSeconds < 0 {
+		return false, 0
+	}
+	if fixedSeconds >= 24*3600 {
+		return true, 24*3600 - 1
+	}
+	return true, fixedSeconds
+}
+
+func applyFixedClockToResetTime(base time.Time, next time.Time, period string, fixedSeconds int64) time.Time {
+	useFixed, normalizedFixedSeconds := normalizeResetFixedClock(true, fixedSeconds, period)
+	if !useFixed {
+		return next
+	}
+	localNext := subscriptionResetTime(next)
+	hour := int(normalizedFixedSeconds / 3600)
+	minute := int((normalizedFixedSeconds % 3600) / 60)
+	second := int(normalizedFixedSeconds % 60)
+	candidate := time.Date(
+		localNext.Year(),
+		localNext.Month(),
+		localNext.Day(),
+		hour,
+		minute,
+		second,
+		0,
+		localNext.Location(),
+	)
+	if candidate.After(subscriptionResetTime(base)) {
+		return candidate
+	}
+	switch NormalizeResetPeriod(period) {
+	case SubscriptionResetDaily:
+		return candidate.AddDate(0, 0, 1)
+	case SubscriptionResetWeekly:
+		return candidate.AddDate(0, 0, 7)
+	case SubscriptionResetMonthly:
+		return candidate.AddDate(0, 1, 0)
+	case SubscriptionResetYearly:
+		return candidate.AddDate(1, 0, 0)
+	default:
+		return candidate
 	}
 }
 
@@ -877,6 +947,9 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 	default:
 		return 0
 	}
+	if plan.QuotaResetUseFixedClock {
+		next = applyFixedClockToResetTime(base, next, period, plan.QuotaResetFixedSeconds)
+	}
 	if endUnix > 0 && next.Unix() > endUnix {
 		return 0
 	}
@@ -911,6 +984,14 @@ func syncSubscriptionPlanSnapshotFields(sub *UserSubscription, plan *Subscriptio
 		sub.ResetCustomSeconds = plan.QuotaResetCustomSeconds
 		changed = true
 	}
+	if sub.ResetUseFixedClock != plan.QuotaResetUseFixedClock {
+		sub.ResetUseFixedClock = plan.QuotaResetUseFixedClock
+		changed = true
+	}
+	if sub.ResetFixedSeconds != plan.QuotaResetFixedSeconds {
+		sub.ResetFixedSeconds = plan.QuotaResetFixedSeconds
+		changed = true
+	}
 
 	if recalculateSubscriptionResetWindow(sub, now) {
 		changed = true
@@ -938,6 +1019,8 @@ func recalculateSubscriptionResetWindow(sub *UserSubscription, now int64) bool {
 	snapshotPlan := &SubscriptionPlan{
 		QuotaResetPeriod:        resetPeriod,
 		QuotaResetCustomSeconds: sub.ResetCustomSeconds,
+		QuotaResetUseFixedClock: sub.ResetUseFixedClock,
+		QuotaResetFixedSeconds:  sub.ResetFixedSeconds,
 	}
 	next := calcNextResetTime(base, snapshotPlan, sub.EndTime)
 	for next > 0 && next <= now {
@@ -1363,6 +1446,8 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		RequestCountPeriodUsed:  0,
 		ResetPeriod:             NormalizeResetPeriod(effectivePlan.QuotaResetPeriod),
 		ResetCustomSeconds:      effectivePlan.QuotaResetCustomSeconds,
+		ResetUseFixedClock:      effectivePlan.QuotaResetUseFixedClock,
+		ResetFixedSeconds:       effectivePlan.QuotaResetFixedSeconds,
 		AllowedGroupsJSON:       strings.TrimSpace(effectivePlan.AllowedGroupsJSON),
 		AllowedModelsJSON:       strings.TrimSpace(effectivePlan.AllowedModelsJSON),
 		AllowedVendorIDsJSON:    strings.TrimSpace(effectivePlan.AllowedVendorIDsJSON),
@@ -2170,6 +2255,8 @@ func alignMigratedSubscriptionResetWindow(sub *UserSubscription, plan *Subscript
 	snapshotPlan := &SubscriptionPlan{
 		QuotaResetPeriod:        period,
 		QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
+		QuotaResetUseFixedClock: plan.QuotaResetUseFixedClock,
+		QuotaResetFixedSeconds:  plan.QuotaResetFixedSeconds,
 	}
 	next := calcNextResetTime(base, snapshotPlan, sub.EndTime)
 	for next > 0 && next <= now {
@@ -2284,6 +2371,8 @@ func createMigratedUserSubscriptionTx(tx *gorm.DB, source *UserSubscription, tar
 		RequestCountPeriodUsed:  source.RequestCountPeriodUsed,
 		ResetPeriod:             NormalizeResetPeriod(targetPlan.QuotaResetPeriod),
 		ResetCustomSeconds:      targetPlan.QuotaResetCustomSeconds,
+		ResetUseFixedClock:      targetPlan.QuotaResetUseFixedClock,
+		ResetFixedSeconds:       targetPlan.QuotaResetFixedSeconds,
 		AllowedGroupsJSON:       strings.TrimSpace(targetPlan.AllowedGroupsJSON),
 		AllowedModelsJSON:       strings.TrimSpace(targetPlan.AllowedModelsJSON),
 		AllowedVendorIDsJSON:    strings.TrimSpace(targetPlan.AllowedVendorIDsJSON),
@@ -2589,6 +2678,8 @@ func calcSubscriptionNextResetFromNow(sub *UserSubscription, now int64) int64 {
 	snapshotPlan := &SubscriptionPlan{
 		QuotaResetPeriod:        NormalizeResetPeriod(sub.ResetPeriod),
 		QuotaResetCustomSeconds: sub.ResetCustomSeconds,
+		QuotaResetUseFixedClock: sub.ResetUseFixedClock,
+		QuotaResetFixedSeconds:  sub.ResetFixedSeconds,
 	}
 	if snapshotPlan.QuotaResetPeriod == SubscriptionResetNever {
 		return 0

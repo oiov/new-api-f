@@ -60,7 +60,39 @@ func shouldSyncActiveSubscriptionsForPlanUpdate(currentPlan, nextPlan *model.Sub
 		currentPlan.RequestCountPeriodTotal != nextPlan.RequestCountPeriodTotal ||
 		model.NormalizeResetPeriod(currentPlan.QuotaResetPeriod) !=
 			model.NormalizeResetPeriod(nextPlan.QuotaResetPeriod) ||
-		currentPlan.QuotaResetCustomSeconds != nextPlan.QuotaResetCustomSeconds
+		currentPlan.QuotaResetCustomSeconds != nextPlan.QuotaResetCustomSeconds ||
+		currentPlan.QuotaResetUseFixedClock != nextPlan.QuotaResetUseFixedClock ||
+		currentPlan.QuotaResetFixedSeconds != nextPlan.QuotaResetFixedSeconds
+}
+
+func normalizeSubscriptionPlanResetFields(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	plan.QuotaResetPeriod = model.NormalizeResetPeriod(plan.QuotaResetPeriod)
+	if plan.QuotaResetPeriod == model.SubscriptionResetNever {
+		plan.QuotaResetCustomSeconds = 0
+		plan.QuotaResetUseFixedClock = false
+		plan.QuotaResetFixedSeconds = 0
+		return nil
+	}
+	if plan.QuotaResetPeriod != model.SubscriptionResetCustom {
+		plan.QuotaResetCustomSeconds = 0
+		if plan.QuotaResetUseFixedClock {
+			if plan.QuotaResetFixedSeconds < 0 || plan.QuotaResetFixedSeconds >= 24*3600 {
+				return fmt.Errorf("固定重置时刻必须在 00:00:00 到 23:59:59 之间")
+			}
+		} else {
+			plan.QuotaResetFixedSeconds = 0
+		}
+		return nil
+	}
+	plan.QuotaResetUseFixedClock = false
+	plan.QuotaResetFixedSeconds = 0
+	if plan.QuotaResetCustomSeconds < 60 {
+		return fmt.Errorf("自定义重置周期需大于等于60秒")
+	}
+	return nil
 }
 
 // ---- User APIs ----
@@ -437,9 +469,8 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
-		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
+	if err := normalizeSubscriptionPlanResetFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	err := model.DB.Create(&req.Plan).Error
@@ -502,9 +533,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
-		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
+	if err := normalizeSubscriptionPlanResetFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	currentPlan, err := model.GetSubscriptionPlanById(id)
@@ -527,33 +557,35 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
-			"title":                      req.Plan.Title,
-			"subtitle":                   req.Plan.Subtitle,
-			"price_amount":               req.Plan.PriceAmount,
-			"discount_price_amount":      req.Plan.DiscountPriceAmount,
-			"discount_deadline":          req.Plan.DiscountDeadline,
-			"currency":                   req.Plan.Currency,
-			"duration_unit":              req.Plan.DurationUnit,
-			"duration_value":             req.Plan.DurationValue,
-			"custom_seconds":             req.Plan.CustomSeconds,
-			"enabled":                    req.Plan.Enabled,
-			"sort_order":                 req.Plan.SortOrder,
-			"stripe_price_id":            req.Plan.StripePriceId,
-			"creem_product_id":           req.Plan.CreemProductId,
-			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
-			"sale_limit_count":           req.Plan.SaleLimitCount,
-			"sold_count":                 req.Plan.SoldCount,
-			"total_amount":               req.Plan.TotalAmount,
-			"resource_type":              req.Plan.ResourceType,
-			"request_count_total":        req.Plan.RequestCountTotal,
-			"request_count_period_total": req.Plan.RequestCountPeriodTotal,
-			"upgrade_group":              req.Plan.UpgradeGroup,
-			"quota_reset_period":         req.Plan.QuotaResetPeriod,
-			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
-			"allowed_groups_json":        req.Plan.AllowedGroupsJSON,
-			"allowed_models_json":        req.Plan.AllowedModelsJSON,
-			"allowed_vendor_ids_json":    req.Plan.AllowedVendorIDsJSON,
-			"updated_at":                 common.GetTimestamp(),
+			"title":                       req.Plan.Title,
+			"subtitle":                    req.Plan.Subtitle,
+			"price_amount":                req.Plan.PriceAmount,
+			"discount_price_amount":       req.Plan.DiscountPriceAmount,
+			"discount_deadline":           req.Plan.DiscountDeadline,
+			"currency":                    req.Plan.Currency,
+			"duration_unit":               req.Plan.DurationUnit,
+			"duration_value":              req.Plan.DurationValue,
+			"custom_seconds":              req.Plan.CustomSeconds,
+			"enabled":                     req.Plan.Enabled,
+			"sort_order":                  req.Plan.SortOrder,
+			"stripe_price_id":             req.Plan.StripePriceId,
+			"creem_product_id":            req.Plan.CreemProductId,
+			"max_purchase_per_user":       req.Plan.MaxPurchasePerUser,
+			"sale_limit_count":            req.Plan.SaleLimitCount,
+			"sold_count":                  req.Plan.SoldCount,
+			"total_amount":                req.Plan.TotalAmount,
+			"resource_type":               req.Plan.ResourceType,
+			"request_count_total":         req.Plan.RequestCountTotal,
+			"request_count_period_total":  req.Plan.RequestCountPeriodTotal,
+			"upgrade_group":               req.Plan.UpgradeGroup,
+			"quota_reset_period":          req.Plan.QuotaResetPeriod,
+			"quota_reset_custom_seconds":  req.Plan.QuotaResetCustomSeconds,
+			"quota_reset_use_fixed_clock": req.Plan.QuotaResetUseFixedClock,
+			"quota_reset_fixed_seconds":   req.Plan.QuotaResetFixedSeconds,
+			"allowed_groups_json":         req.Plan.AllowedGroupsJSON,
+			"allowed_models_json":         req.Plan.AllowedModelsJSON,
+			"allowed_vendor_ids_json":     req.Plan.AllowedVendorIDsJSON,
+			"updated_at":                  common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err

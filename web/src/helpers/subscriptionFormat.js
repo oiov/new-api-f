@@ -47,6 +47,16 @@ export function getSubscriptionResetPeriodValue(plan) {
   return plan?.reset_period || plan?.quota_reset_period || 'never';
 }
 
+export function getSubscriptionResetFixedClock(plan) {
+  return Boolean(
+    plan?.reset_use_fixed_clock ?? plan?.quota_reset_use_fixed_clock ?? false,
+  );
+}
+
+export function getSubscriptionResetFixedSeconds(plan) {
+  return Number(plan?.reset_fixed_seconds ?? plan?.quota_reset_fixed_seconds ?? 0);
+}
+
 export function getSubscriptionRequestCountPeriodLimit(plan) {
   const period = getSubscriptionResetPeriodValue(plan);
   if (period === 'never') return 0;
@@ -240,13 +250,50 @@ export function formatSubscriptionResetPeriod(plan, t) {
   return t('不重置');
 }
 
+export function formatSubscriptionCustomSeconds(seconds, t) {
+  const value = Number(seconds || 0);
+  if (value >= 86400 && value % 86400 === 0) {
+    return `${Math.floor(value / 86400)} ${t('天')}`;
+  }
+  if (value >= 3600 && value % 3600 === 0) {
+    return `${Math.floor(value / 3600)} ${t('小时')}`;
+  }
+  if (value >= 60 && value % 60 === 0) {
+    return `${Math.floor(value / 60)} ${t('分钟')}`;
+  }
+  return `${value} ${t('秒')}`;
+}
+
+export function formatSubscriptionResetFixedTime(seconds) {
+  const value = Math.max(0, Math.min(Number(seconds || 0), 24 * 3600 - 1));
+  const hour = String(Math.floor(value / 3600)).padStart(2, '0');
+  const minute = String(Math.floor((value % 3600) / 60)).padStart(2, '0');
+  const second = String(value % 60).padStart(2, '0');
+  return `${hour}:${minute}:${second}`;
+}
+
 export function formatSubscriptionResetHint(plan, t) {
   const period = getSubscriptionResetPeriodValue(plan);
   if (period === 'never') return t('不重置');
-  if (period === 'daily') return t('每天 00:00 后滚动重置');
-  if (period === 'weekly') return t('每 7 天滚动重置');
-  if (period === 'monthly') return t('每月按生效时间滚动重置');
-  if (period === 'yearly') return t('每年按生效时间滚动重置');
+  const useFixedClock = getSubscriptionResetFixedClock(plan);
+  if (useFixedClock) {
+    return t('按购买激活时间{{period}}固定在 {{time}} 重置', {
+      period: formatSubscriptionResetPeriod(plan, t),
+      time: formatSubscriptionResetFixedTime(getSubscriptionResetFixedSeconds(plan)),
+    });
+  }
+  if (period === 'daily') return t('按购买激活时间每 1 天滚动重置');
+  if (period === 'weekly') return t('按购买激活时间每 7 天滚动重置');
+  if (period === 'monthly') return t('按购买激活时间按月滚动重置');
+  if (period === 'yearly') return t('按购买激活时间按年滚动重置');
+  if (period === 'custom') {
+    return t('按购买激活时间每 {{duration}} 滚动重置', {
+      duration: formatSubscriptionCustomSeconds(
+        plan?.reset_custom_seconds ?? plan?.quota_reset_custom_seconds ?? 0,
+        t,
+      ),
+    });
+  }
   return `${formatSubscriptionResetPeriod(plan, t)} ${t('滚动重置')}`;
 }
 
@@ -286,7 +333,7 @@ export function getSubscriptionPlanMetricItems(plan, t) {
       },
       {
         key: 'reset_time',
-        label: t('重置时间'),
+        label: t('重置规则'),
         value: resetHintText,
       },
       {
@@ -311,7 +358,7 @@ export function getSubscriptionPlanMetricItems(plan, t) {
     },
     {
       key: 'reset_time',
-      label: t('重置时间'),
+      label: t('重置规则'),
       value: resetHintText,
     },
     {
