@@ -98,6 +98,8 @@ const SubscriptionPurchaseModal = ({
   const isClaudePlan =
     (planText.includes('claude') || planText.includes('anthropic')) &&
     !planText.includes('codex');
+  const isClaudeMonthlyPlan =
+    isClaudePlan && String(plan?.duration_unit || 'month') === 'month';
 
   return (
     <Modal
@@ -125,6 +127,16 @@ const SubscriptionPurchaseModal = ({
               closeIcon={null}
             />
           )}
+          {isClaudeMonthlyPlan ? (
+            <Banner
+              type='danger'
+              description={t(
+                'Claude 月卡套餐购买后不支持退换；如需先体验，请联系管理员沟通天卡。',
+              )}
+              className='!rounded-xl'
+              closeIcon={null}
+            />
+          ) : null}
 
           {/* 套餐信息 */}
           <Card className='!rounded-xl !border-0 bg-slate-50 dark:bg-slate-800'>

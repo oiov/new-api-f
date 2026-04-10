@@ -421,6 +421,8 @@ export default function SubscriptionPlanDetail() {
   const reached = limit > 0 && count >= limit;
   const disabled = saleSummary.soldOut || reached;
   const isClaudePlan = inferSubscriptionPlanSeries(plan) === 'claude';
+  const isClaudeMonthlyPlan =
+    isClaudePlan && String(plan?.duration_unit || 'month') === 'month';
   const { symbol, effectivePrice, originalPrice } = getSubscriptionPriceDisplay(plan);
   const displayPrice = effectivePrice.toFixed(Number.isInteger(effectivePrice) ? 0 : 2);
   const displayOriginalPrice = originalPrice.toFixed(
@@ -696,6 +698,16 @@ export default function SubscriptionPlanDetail() {
                 closeIcon={null}
                 className='!rounded-2xl'
               />
+              {isClaudeMonthlyPlan ? (
+                <Banner
+                  type='warning'
+                  description={t(
+                    'Claude 月卡套餐购买后不支持退换；如需先体验，请联系管理员沟通天卡。',
+                  )}
+                  closeIcon={null}
+                  className='!mt-3 !rounded-2xl'
+                />
+              ) : null}
 
               <div className='pricing-plan-detail-buy-card__checklist'>
                 <div className='pricing-plan-detail-buy-card__checklist-item'>
