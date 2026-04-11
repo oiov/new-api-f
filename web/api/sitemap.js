@@ -11,6 +11,7 @@ export default async function handler() {
       status: 200,
       headers: {
         'content-type': 'application/xml; charset=utf-8',
+        'content-disposition': 'inline; filename=\"sitemap.xml\"',
         'cache-control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=1800',
       },
     });
@@ -21,6 +22,7 @@ export default async function handler() {
         status: 200,
         headers: {
           'content-type': 'application/xml; charset=utf-8',
+          'content-disposition': 'inline; filename=\"sitemap.xml\"',
           'cache-control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=300',
           'x-seo-error': error instanceof Error ? error.message : 'unknown',
         },

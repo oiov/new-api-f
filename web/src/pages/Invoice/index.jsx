@@ -1,5 +1,9 @@
 import InvoiceList from '../../components/invoice/InvoiceList';
 
-const InvoicePage = () => <InvoiceList />;
+const InvoicePage = () => (
+  <div className='px-2'>
+    <InvoiceList />
+  </div>
+);
 
 export default InvoicePage;

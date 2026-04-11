@@ -467,7 +467,7 @@ export default function SubscriptionPlanDetail() {
 
   if (loading) {
     return (
-      <div className='mx-auto mt-[60px] w-full max-w-[1120px] px-3 pb-10 md:px-6'>
+      <div className='mx-auto w-full max-w-[1120px] px-3 pb-10 pt-[96px] md:px-6 md:pt-[72px]'>
         <Card className='!rounded-2xl border-0 shadow-sm' bodyStyle={{ padding: 24 }}>
           <Skeleton.Title active style={{ width: '30%', height: 18, marginBottom: 20 }} />
           <Skeleton.Paragraph active rows={8} />
@@ -480,7 +480,7 @@ export default function SubscriptionPlanDetail() {
     return (
       <>
         <SeoMeta {...seo} canonicalPath={`/pricing/subscription-plans/${planId || ''}`} />
-        <div className='mx-auto mt-[60px] w-full max-w-[1120px] px-3 pb-10 md:px-6'>
+        <div className='mx-auto w-full max-w-[1120px] px-3 pb-10 pt-[96px] md:px-6 md:pt-[72px]'>
           <Card className='!rounded-2xl border-0 shadow-sm' bodyStyle={{ padding: 24 }}>
             <Space vertical align='start' spacing={16} style={{ width: '100%' }}>
               <Button
@@ -558,7 +558,7 @@ export default function SubscriptionPlanDetail() {
         {...seo}
         canonicalPath={`/pricing/subscription-plans/${plan.id}`}
       />
-      <div className='pricing-landing-page pricing-plan-detail-page mx-auto mt-[60px] w-full max-w-[1120px] px-3 pb-8 md:px-6'>
+      <div className='pricing-landing-page pricing-plan-detail-page mx-auto w-full max-w-[1120px] px-3 pb-8 md:px-6 pt-[96px] md:pt-[72px]'>
         <div className='mb-3 flex flex-wrap items-center gap-2'>
           <Button
             theme='outline'

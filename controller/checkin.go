@@ -3,6 +3,8 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -39,6 +41,68 @@ func GetCheckinStatus(c *gin.Context) {
 			"min_quota": setting.MinQuota,
 			"max_quota": setting.MaxQuota,
 			"stats":     stats,
+		},
+	})
+}
+
+// GetCheckinLeaderboard 获取签到榜
+func GetCheckinLeaderboard(c *gin.Context) {
+	setting := operation_setting.GetCheckinSetting()
+	if !setting.Enabled {
+		common.ApiErrorMsg(c, "签到功能未启用")
+		return
+	}
+
+	limit := setting.LeaderboardLimit
+	if limit <= 0 {
+		limit = 100
+	}
+	items, err := model.GetCheckinLeaderboard(limit)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"items": items,
+			"limit": limit,
+		},
+	})
+}
+
+// GetAdminCheckinRecords 获取签到管理记录（仅超级管理员）
+func GetAdminCheckinRecords(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(common.ItemsPerPage)))
+	userId, _ := strconv.Atoi(c.DefaultQuery("user_id", "0"))
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	startDate := strings.TrimSpace(c.Query("start_date"))
+	endDate := strings.TrimSpace(c.Query("end_date"))
+
+	items, total, stats, err := model.GetAdminCheckinRecords(
+		page,
+		pageSize,
+		keyword,
+		userId,
+		startDate,
+		endDate,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"items": items,
+			"total": total,
+			"stats": stats,
 		},
 	})
 }

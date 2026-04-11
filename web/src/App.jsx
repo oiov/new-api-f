@@ -19,9 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import Loading from './components/common/ui/Loading';
 import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute } from './helpers/auth';
 import { StatusContext } from './context/Status';
+import SeoMeta from './components/common/seo/SeoMeta';
+import { getRouteSeo } from './helpers/seo';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -48,6 +51,7 @@ const Redemption = lazy(() => import('./pages/Redemption'));
 const TopUp = lazy(() => import('./pages/TopUp'));
 const InvoicePage = lazy(() => import('./pages/Invoice'));
 const InvoiceAdminPage = lazy(() => import('./pages/InvoiceAdmin'));
+const CheckinAdminPage = lazy(() => import('./pages/CheckinAdmin'));
 const PackagePage = lazy(() => import('./pages/Package'));
 const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
@@ -79,7 +83,12 @@ function DynamicOAuth2Callback() {
 
 function App() {
   const location = useLocation();
+  const { i18n } = useTranslation();
   const [statusState] = useContext(StatusContext);
+  const routeSeo = useMemo(
+    () => getRouteSeo(i18n.language, location.pathname),
+    [i18n.language, location.pathname],
+  );
 
   // 获取模型广场权限配置
   const pricingRequireAuth = useMemo(() => {
@@ -126,6 +135,11 @@ function App() {
   return (
     <Suspense fallback={<Loading></Loading>}>
       <SetupCheck>
+        <SeoMeta
+          key={`route-seo-${location.pathname}`}
+          {...routeSeo}
+          canonicalPath={location.pathname}
+        />
         <Routes>
           <Route
             path='/'
@@ -364,6 +378,16 @@ function App() {
               <RootRoute>
                 <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                   <InvoiceAdminPage />
+                </Suspense>
+              </RootRoute>
+            }
+          />
+          <Route
+            path='/console/checkin-admin'
+            element={
+              <RootRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <CheckinAdminPage />
                 </Suspense>
               </RootRoute>
             }

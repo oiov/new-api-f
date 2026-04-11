@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -23,6 +24,29 @@ type Checkin struct {
 type CheckinRecord struct {
 	CheckinDate  string `json:"checkin_date"`
 	QuotaAwarded int    `json:"quota_awarded"`
+}
+
+type CheckinLeaderboardItem struct {
+	DisplayName   string `json:"display_name"`
+	TotalCheckins int64  `json:"total_checkins"`
+	TotalQuota    int64  `json:"total_quota"`
+}
+
+type AdminCheckinRecord struct {
+	Id           int    `json:"id"`
+	UserId       int    `json:"user_id"`
+	Username     string `json:"username"`
+	DisplayName  string `json:"display_name"`
+	CheckinDate  string `json:"checkin_date"`
+	QuotaAwarded int    `json:"quota_awarded"`
+	CreatedAt    int64  `json:"created_at"`
+}
+
+type AdminCheckinStats struct {
+	TotalCheckins int64 `json:"total_checkins"`
+	TotalUsers    int64 `json:"total_users"`
+	TotalQuota    int64 `json:"total_quota"`
+	TodayCheckins int64 `json:"today_checkins"`
 }
 
 func (Checkin) TableName() string {
@@ -176,4 +200,143 @@ func GetUserCheckinStats(userId int, month string) (map[string]interface{}, erro
 		"checked_in_today": hasCheckedToday, // 今天是否已签到
 		"records":          checkinRecords,  // 本月签到记录详情（不含id和user_id）
 	}, nil
+}
+
+func maskCheckinLeaderboardName(value string) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) == 0 {
+		return "匿名用户"
+	}
+	if len(runes) == 1 {
+		return string(runes[0]) + "*"
+	}
+	if len(runes) == 2 {
+		return string(runes[0]) + "*"
+	}
+	return string(runes[0]) + strings.Repeat("*", len(runes)-2) + string(runes[len(runes)-1])
+}
+
+func normalizeCheckinPage(page int, pageSize int) (int, int) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = common.ItemsPerPage
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	return page, pageSize
+}
+
+func GetCheckinLeaderboard(limit int) ([]CheckinLeaderboardItem, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	type checkinLeaderboardRow struct {
+		DisplayName   string
+		Username      string
+		TotalCheckins int64
+		TotalQuota    int64
+	}
+
+	rows := make([]checkinLeaderboardRow, 0, limit)
+	err := DB.Model(&Checkin{}).
+		Select(
+			"users.display_name AS display_name",
+			"users.username AS username",
+			"COUNT(checkins.id) AS total_checkins",
+			"COALESCE(SUM(checkins.quota_awarded), 0) AS total_quota",
+		).
+		Joins("LEFT JOIN users ON users.id = checkins.user_id").
+		Where("users.deleted_at IS NULL").
+		Group("checkins.user_id, users.display_name, users.username").
+		Order("total_quota DESC, total_checkins DESC, checkins.user_id ASC").
+		Limit(limit).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]CheckinLeaderboardItem, 0, len(rows))
+	for _, row := range rows {
+		name := strings.TrimSpace(row.DisplayName)
+		if name == "" {
+			name = strings.TrimSpace(row.Username)
+		}
+		items = append(items, CheckinLeaderboardItem{
+			DisplayName:   maskCheckinLeaderboardName(name),
+			TotalCheckins: row.TotalCheckins,
+			TotalQuota:    row.TotalQuota,
+		})
+	}
+	return items, nil
+}
+
+func GetAdminCheckinRecords(page int, pageSize int, keyword string, userId int, startDate string, endDate string) ([]AdminCheckinRecord, int64, *AdminCheckinStats, error) {
+	page, pageSize = normalizeCheckinPage(page, pageSize)
+
+	baseQuery := DB.Model(&Checkin{}).
+		Joins("LEFT JOIN users ON users.id = checkins.user_id")
+
+	keyword = strings.TrimSpace(keyword)
+	if keyword != "" {
+		likeKeyword := "%" + keyword + "%"
+		baseQuery = baseQuery.Where("users.username LIKE ? OR users.display_name LIKE ?", likeKeyword, likeKeyword)
+	}
+	if userId > 0 {
+		baseQuery = baseQuery.Where("checkins.user_id = ?", userId)
+	}
+	if startDate != "" {
+		baseQuery = baseQuery.Where("checkins.checkin_date >= ?", startDate)
+	}
+	if endDate != "" {
+		baseQuery = baseQuery.Where("checkins.checkin_date <= ?", endDate)
+	}
+
+	var total int64
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, nil, err
+	}
+
+	rows := make([]AdminCheckinRecord, 0, pageSize)
+	err := baseQuery.
+		Select(
+			"checkins.id",
+			"checkins.user_id",
+			"users.username",
+			"users.display_name",
+			"checkins.checkin_date",
+			"checkins.quota_awarded",
+			"checkins.created_at",
+		).
+		Order("checkins.checkin_date DESC, checkins.id DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
+	stats := &AdminCheckinStats{}
+	if err := baseQuery.Count(&stats.TotalCheckins).Error; err != nil {
+		return nil, 0, nil, err
+	}
+	if err := baseQuery.Distinct("checkins.user_id").Count(&stats.TotalUsers).Error; err != nil {
+		return nil, 0, nil, err
+	}
+	if err := baseQuery.Select("COALESCE(SUM(checkins.quota_awarded), 0)").Scan(&stats.TotalQuota).Error; err != nil {
+		return nil, 0, nil, err
+	}
+
+	today := time.Now().Format("2006-01-02")
+	if err := baseQuery.Where("checkins.checkin_date = ?", today).Count(&stats.TodayCheckins).Error; err != nil {
+		return nil, 0, nil, err
+	}
+
+	return rows, total, stats, nil
 }

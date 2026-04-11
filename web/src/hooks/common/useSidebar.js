@@ -64,6 +64,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     setting: true,
     riskControl: true,
     invoiceAdmin: true,
+    checkinAdmin: true,
   },
 };
 

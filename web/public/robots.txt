@@ -1,14 +1,16 @@
-# FishXCode public site crawler rules
+# FishXCode public site crawler rules / 公网站点爬虫规则
 User-agent: *
 Allow: /
 Disallow: /console/
 Disallow: /api/
 Disallow: /oauth/
+Disallow: /login
 Disallow: /reset
+Disallow: /user/reset
 Disallow: /setup
 Disallow: /chat2link
 Disallow: /forbidden
 
 Host: https://fishxcode.com
 Sitemap: https://fishxcode.com/sitemap.xml
-Sitemap: https://fishxcode.com/rss.xml
+# RSS Feed / 订阅源: https://fishxcode.com/rss.xml

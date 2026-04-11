@@ -28,6 +28,9 @@ import {
   Tooltip,
   Collapsible,
   Modal,
+  Tabs,
+  TabPane,
+  Empty,
 } from '@douyinfe/semi-ui';
 import {
   CalendarCheck,
@@ -39,11 +42,20 @@ import {
 import Turnstile from 'react-turnstile';
 import { API, showError, showSuccess, renderQuota } from '../../../../helpers';
 
-const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
+const CheckinCalendar = ({
+  t,
+  status,
+  turnstileEnabled,
+  turnstileSiteKey,
+  className = '',
+}) => {
   const [loading, setLoading] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [turnstileModalVisible, setTurnstileModalVisible] = useState(false);
   const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboardLimit, setLeaderboardLimit] = useState(100);
   const [checkinData, setCheckinData] = useState({
     enabled: false,
     stats: {
@@ -80,6 +92,24 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
       0,
     );
   }, [checkinData.stats?.records]);
+
+  const fetchCheckinLeaderboard = async () => {
+    setLeaderboardLoading(true);
+    try {
+      const res = await API.get('/api/user/checkin/leaderboard');
+      const { success, data, message } = res.data;
+      if (success) {
+        setLeaderboard(Array.isArray(data?.items) ? data.items : []);
+        setLeaderboardLimit(Number(data?.limit || 100));
+      } else {
+        showError(message || t('获取签到榜失败'));
+      }
+    } catch (error) {
+      showError(t('获取签到榜失败'));
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
 
   // 获取签到状态
   const fetchCheckinStatus = async (month) => {
@@ -137,6 +167,7 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
         );
         // 刷新签到状态
         fetchCheckinStatus(currentMonth);
+        fetchCheckinLeaderboard();
         setTurnstileModalVisible(false);
       } else {
         if (!token && shouldTriggerTurnstile(message)) {
@@ -164,6 +195,12 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
       fetchCheckinStatus(currentMonth);
     }
   }, [status?.checkin_enabled, currentMonth]);
+
+  useEffect(() => {
+    if (status?.checkin_enabled) {
+      fetchCheckinLeaderboard();
+    }
+  }, [status?.checkin_enabled]);
 
   // 如果签到功能未启用，不显示组件
   if (!status?.checkin_enabled) {
@@ -213,7 +250,7 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
   };
 
   return (
-    <Card className='!rounded-2xl'>
+    <Card className={`!rounded-2xl ${className}`.trim()}>
       <Modal
         title={t('安全验证')}
         visible={turnstileModalVisible}
@@ -288,93 +325,144 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
 
       {/* 可折叠内容 */}
       <Collapsible isOpen={isCollapsed === false} keepDOM>
-        {/* 签到统计 */}
-        <div className='grid grid-cols-3 gap-3 mb-4 mt-4'>
-          <div className='text-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
-            <div className='text-xl font-bold text-green-600'>
-              {checkinData.stats?.total_checkins || 0}
-            </div>
-            <div className='text-xs text-gray-500'>{t('累计签到')}</div>
-          </div>
-          <div className='text-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
-            <div className='text-xl font-bold text-orange-600'>
-              {renderQuota(monthlyQuota, 6)}
-            </div>
-            <div className='text-xs text-gray-500'>{t('本月获得')}</div>
-          </div>
-          <div className='text-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
-            <div className='text-xl font-bold text-blue-600'>
-              {renderQuota(checkinData.stats?.total_quota || 0, 6)}
-            </div>
-            <div className='text-xs text-gray-500'>{t('累计获得')}</div>
-          </div>
-        </div>
+        <div className='mt-4'>
+          <Tabs type='line'>
+            <TabPane tab={t('签到概览')} itemKey='overview'>
+              <div className='grid grid-cols-3 gap-3 mb-4'>
+                <div className='text-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
+                  <div className='text-xl font-bold text-green-600'>
+                    {checkinData.stats?.total_checkins || 0}
+                  </div>
+                  <div className='text-xs text-gray-500'>{t('累计签到')}</div>
+                </div>
+                <div className='text-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
+                  <div className='text-xl font-bold text-orange-600'>
+                    {renderQuota(monthlyQuota, 6)}
+                  </div>
+                  <div className='text-xs text-gray-500'>{t('本月获得')}</div>
+                </div>
+                <div className='text-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
+                  <div className='text-xl font-bold text-blue-600'>
+                    {renderQuota(checkinData.stats?.total_quota || 0, 6)}
+                  </div>
+                  <div className='text-xs text-gray-500'>{t('累计获得')}</div>
+                </div>
+              </div>
 
-        {/* 签到日历 - 使用更紧凑的样式 */}
-        <Spin spinning={loading}>
-          <div className='border rounded-lg overflow-hidden checkin-calendar'>
-            <style>{`
-            .checkin-calendar .semi-calendar {
-              font-size: 13px;
-            }
-            .checkin-calendar .semi-calendar-month-header {
-              padding: 8px 12px;
-            }
-            .checkin-calendar .semi-calendar-month-week-row {
-              height: 28px;
-            }
-            .checkin-calendar .semi-calendar-month-week-row th {
-              font-size: 12px;
-              padding: 4px 0;
-            }
-            .checkin-calendar .semi-calendar-month-grid-row {
-              height: auto;
-            }
-            .checkin-calendar .semi-calendar-month-grid-row td {
-              height: 56px;
-              padding: 2px;
-            }
-            .checkin-calendar .semi-calendar-month-grid-row-cell {
-              position: relative;
-              height: 100%;
-            }
-            .checkin-calendar .semi-calendar-month-grid-row-cell-day {
-              position: absolute;
-              top: 4px;
-              left: 50%;
-              transform: translateX(-50%);
-              font-size: 12px;
-              z-index: 1;
-            }
-            .checkin-calendar .semi-calendar-month-same {
-              background: transparent;
-            }
-            .checkin-calendar .semi-calendar-month-today .semi-calendar-month-grid-row-cell-day {
-              background: var(--semi-color-primary);
-              color: white;border-radius: 50%;
-              width: 20px;
-              height: 20px;
-              display: flex;
-              align-items: center;
-              justify-content: center;}
-          `}</style>
-            <Calendar
-              mode='month'
-              onChange={handleMonthChange}
-              dateGridRender={(dateString, date) => dateRender(dateString)}
-            />
-          </div>
-        </Spin>
+              <Spin spinning={loading}>
+                <div className='border rounded-lg overflow-hidden checkin-calendar'>
+                  <style>{`
+                  .checkin-calendar .semi-calendar {
+                    font-size: 13px;
+                  }
+                  .checkin-calendar .semi-calendar-month-header {
+                    padding: 8px 12px;
+                  }
+                  .checkin-calendar .semi-calendar-month-week-row {
+                    height: 28px;
+                  }
+                  .checkin-calendar .semi-calendar-month-week-row th {
+                    font-size: 12px;
+                    padding: 4px 0;
+                  }
+                  .checkin-calendar .semi-calendar-month-grid-row {
+                    height: auto;
+                  }
+                  .checkin-calendar .semi-calendar-month-grid-row td {
+                    height: 56px;
+                    padding: 2px;
+                  }
+                  .checkin-calendar .semi-calendar-month-grid-row-cell {
+                    position: relative;
+                    height: 100%;
+                  }
+                  .checkin-calendar .semi-calendar-month-grid-row-cell-day {
+                    position: absolute;
+                    top: 4px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    font-size: 12px;
+                    z-index: 1;
+                  }
+                  .checkin-calendar .semi-calendar-month-same {
+                    background: transparent;
+                  }
+                  .checkin-calendar .semi-calendar-month-today .semi-calendar-month-grid-row-cell-day {
+                    background: var(--semi-color-primary);
+                    color: white;
+                    border-radius: 50%;
+                    width: 20px;
+                    height: 20px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                  }
+                `}</style>
+                  <Calendar
+                    mode='month'
+                    onChange={handleMonthChange}
+                    dateGridRender={(dateString, date) => dateRender(dateString)}
+                  />
+                </div>
+              </Spin>
 
-        {/* 签到说明 */}
-        <div className='mt-3 p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
-          <Typography.Text type='tertiary' className='text-xs'>
-            <ul className='list-disc list-inside space-y-0.5'>
-              <li>{t('每日签到可获得随机额度奖励')}</li>
-              <li>{t('签到奖励将直接添加到您的账户余额')}</li>
-              <li>{t('每日仅可签到一次，请勿重复签到')}</li>
-            </ul>
-          </Typography.Text>
+              <div className='mt-3 p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
+                <Typography.Text type='tertiary' className='text-xs'>
+                  <ul className='list-disc list-inside space-y-0.5'>
+                    <li>{t('每日签到可获得随机额度奖励')}</li>
+                    <li>{t('签到奖励将直接添加到您的账户余额')}</li>
+                    <li>{t('每日仅可签到一次，请勿重复签到')}</li>
+                  </ul>
+                </Typography.Text>
+              </div>
+            </TabPane>
+            <TabPane tab={t('签到榜')} itemKey='leaderboard'>
+              <Spin spinning={leaderboardLoading}>
+                <div className='space-y-3'>
+                  <div className='text-xs text-gray-500'>
+                    {t('仅展示前 {{count}} 位', { count: leaderboardLimit })}
+                  </div>
+                  {leaderboard.length > 0 ? (
+                    leaderboard.map((item, index) => (
+                      <div
+                        key={`${item.display_name || 'anonymous'}-${index + 1}`}
+                        className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'
+                      >
+                        <div className='flex items-center justify-between gap-3'>
+                          <div className='min-w-0 flex items-center gap-3'>
+                            <div className='flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 font-semibold text-emerald-600'>
+                              {index + 1}
+                            </div>
+                            <div className='min-w-0'>
+                              <div className='truncate font-medium text-semi-color-text-0'>
+                                {item.display_name || t('匿名用户')}
+                              </div>
+                            </div>
+                          </div>
+                          <div className='text-right'>
+                            <div className='font-semibold text-semi-color-text-0'>
+                              {item.total_checkins || 0} {t('天')}
+                            </div>
+                            <div className='text-xs text-gray-500'>
+                              {t('累计获得')} {renderQuota(item.total_quota || 0, 6)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      title={t('暂无排行榜数据')}
+                      description={t('当站内出现签到数据后，将展示前 {{count}} 名用户', {
+                        count: leaderboardLimit,
+                      })}
+                    />
+                  )}
+                </div>
+              </Spin>
+            </TabPane>
+          </Tabs>
         </div>
       </Collapsible>
     </Card>

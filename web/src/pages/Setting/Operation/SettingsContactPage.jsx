@@ -34,6 +34,14 @@ const DEFAULT_CONTACT_CHANNELS_EXAMPLE = JSON.stringify(
       actionHref: 'https://qm.qq.com/q/Ce2PaYrbmo',
       actionLabel: '加入QQ群',
       tone: '热门社区',
+      i18n: {
+        en: {
+          title: 'QQ Group',
+          subtitle: 'Community support and discussions',
+          actionLabel: 'Join QQ Group',
+          tone: 'Community',
+        },
+      },
     },
     {
       key: 'wechat-account',
@@ -139,7 +147,7 @@ export default function SettingsContactPage({ options, refresh }) {
         onChange={setValue}
         placeholder={DEFAULT_CONTACT_CHANNELS_EXAMPLE}
         extraText={t(
-          '支持字段：key、title、subtitle、imageSrc、value、copyValue、actionHref、actionLabel、tone。imageSrc 支持 https:// 开头的图片地址或站内 /xxx.jpg 路径。',
+          '支持字段：key、title、subtitle、imageSrc、value、copyValue、actionHref、actionLabel、tone、i18n。key 必填且不能重复；imageSrc 仅支持 https:// 地址或站内 /xxx.jpg 路径；i18n 可按语言覆盖 title、subtitle、tone、actionLabel。',
         )}
       />
 

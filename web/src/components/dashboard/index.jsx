@@ -29,6 +29,7 @@ import AnnouncementsPanel from './AnnouncementsPanel';
 import FaqPanel from './FaqPanel';
 import UptimePanel from './UptimePanel';
 import SearchModal from './modals/SearchModal';
+import CheckinCalendar from '../settings/personal/cards/CheckinCalendar';
 const ChartsPanel = lazy(() => import('./ChartsPanel'));
 
 import { useDashboardData } from '../../hooks/dashboard/useDashboardData';
@@ -111,6 +112,10 @@ const Dashboard = () => {
     },
   );
   const faqData = statusState?.status?.faq || [];
+  const shouldShowCheckin =
+    !!userState?.user && !!statusState?.status?.checkin_enabled;
+  const turnstileEnabled = !!statusState?.status?.turnstile_check;
+  const turnstileSiteKey = statusState?.status?.turnstile_site_key || '';
 
   const uptimeLegendData = Object.entries(UPTIME_STATUS_MAP).map(
     ([status, info]) => ({
@@ -148,6 +153,18 @@ const Dashboard = () => {
         handleInputChange={dashboardData.handleInputChange}
         t={dashboardData.t}
       />
+
+      {shouldShowCheckin && (
+        <div className='mb-4'>
+          <CheckinCalendar
+            t={dashboardData.t}
+            status={statusState?.status}
+            turnstileEnabled={turnstileEnabled}
+            turnstileSiteKey={turnstileSiteKey}
+            className='border border-semi-color-border shadow-sm'
+          />
+        </div>
+      )}
 
       <StatsCards
         groupedStatsData={groupedStatsData}

@@ -40,6 +40,7 @@ const routerMap = {
   topup: '/console/topup',
   invoice: '/console/invoice',
   invoiceAdmin: '/console/invoice-admin',
+  checkinAdmin: '/console/checkin-admin',
   invite: '/console/invite',
   user: '/console/user',
   subscription: '/console/subscription',
@@ -248,6 +249,12 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         text: t('发票开具'),
         itemKey: 'invoiceAdmin',
         to: '/console/invoice-admin',
+        className: isRoot() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('签到管理'),
+        itemKey: 'checkinAdmin',
+        to: '/console/checkin-admin',
         className: isRoot() ? '' : 'tableHiddle',
       },
     ];

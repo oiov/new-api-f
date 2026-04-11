@@ -66,6 +66,63 @@ func GetInvoiceTopUps(c *gin.Context) {
 	common.ApiSuccess(c, topups)
 }
 
+// SendInvoiceEmailByUser 用户将已开具发票发送到自己已绑定邮箱，仅允许发送一次
+func SendInvoiceEmailByUser(c *gin.Context) {
+	userId := c.GetInt("id")
+	invoiceId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || invoiceId <= 0 {
+		common.ApiErrorMsg(c, "无效的发票ID")
+		return
+	}
+
+	inv, err := model.GetInvoiceById(invoiceId)
+	if err != nil {
+		common.ApiErrorMsg(c, "发票不存在")
+		return
+	}
+	if inv.UserId != userId {
+		common.ApiErrorMsg(c, "无权操作此发票")
+		return
+	}
+	if inv.Status != model.InvoiceStatusIssued {
+		common.ApiErrorMsg(c, "该发票当前不可发送或已发送过")
+		return
+	}
+	if strings.TrimSpace(inv.FileUrl) == "" {
+		common.ApiErrorMsg(c, "发票文件尚未上传")
+		return
+	}
+
+	user, err := model.GetUserById(userId, false)
+	if err != nil || user == nil {
+		common.ApiErrorMsg(c, "用户不存在")
+		return
+	}
+	boundEmail := strings.TrimSpace(user.Email)
+	if boundEmail == "" {
+		common.ApiErrorMsg(c, "请先绑定邮箱后再发送发票")
+		return
+	}
+
+	inv.Email = boundEmail
+	if err := sendInvoiceIssuedEmail(inv); err != nil {
+		common.ApiErrorMsg(c, "发送邮件失败："+err.Error())
+		return
+	}
+
+	inv.Status = model.InvoiceStatusSent
+	if err := inv.Update(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{
+		"message": "发票已发送到绑定邮箱",
+		"email":   boundEmail,
+		"invoice": inv,
+	})
+}
+
 // GetInvoiceTopUpsByAdmin 管理员查看某张发票关联的充值订单
 func GetInvoiceTopUpsByAdmin(c *gin.Context) {
 	invoiceId, err := strconv.Atoi(c.Param("id"))

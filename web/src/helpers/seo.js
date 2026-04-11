@@ -24,7 +24,7 @@ const SEO_LOCALES = {
 };
 
 function getDefaultImage(language) {
-  return `${SITE_URL}/${isChineseLanguage(language) ? 'og-home-zh.svg' : 'og-home-en.svg'}`;
+  return `${SITE_URL}/logo.png`;
 }
 
 function isChineseLanguage(language) {
@@ -37,8 +37,27 @@ function getSeoTranslations(language) {
 }
 
 function getSeoMessage(language, key, vars = {}) {
-  const translations = getSeoTranslations(language);
-  const template = translations?.[key] || SEO_LOCALES['zh-CN']?.[key] || key;
+  const normalizedLanguage = normalizeLanguage(language) || 'zh-CN';
+  const primaryTranslations = SEO_LOCALES[normalizedLanguage];
+  const englishTemplate = SEO_LOCALES.en?.[key];
+  const chineseTemplate = SEO_LOCALES['zh-CN']?.[key];
+  let template = primaryTranslations?.[key];
+
+  if (!template) {
+    const shouldUseBilingualFallback =
+      normalizedLanguage !== 'zh-CN' &&
+      normalizedLanguage !== 'zh-TW' &&
+      normalizedLanguage !== 'en' &&
+      englishTemplate &&
+      chineseTemplate;
+
+    if (shouldUseBilingualFallback) {
+      template = `${englishTemplate} / ${chineseTemplate}`;
+    } else {
+      template = englishTemplate || chineseTemplate || key;
+    }
+  }
+
   return String(template).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, name) => {
     const value = vars[name];
     return value === undefined || value === null ? '' : String(value);
@@ -46,7 +65,32 @@ function getSeoMessage(language, key, vars = {}) {
 }
 
 export function getSeoLocale(language) {
-  return isChineseLanguage(language) ? 'zh_CN' : 'en_US';
+  const normalizedLanguage = normalizeLanguage(language) || 'zh-CN';
+  const localeMap = {
+    en: 'en_US',
+    fr: 'fr_FR',
+    ja: 'ja_JP',
+    ru: 'ru_RU',
+    vi: 'vi_VN',
+    'zh-CN': 'zh_CN',
+    'zh-TW': 'zh_TW',
+  };
+  return localeMap[normalizedLanguage] || 'en_US';
+}
+
+function withSiteName(title) {
+  if (!title) {
+    return SITE_NAME;
+  }
+  return title.includes(SITE_NAME) ? title : `${title} | ${SITE_NAME}`;
+}
+
+function joinSeoList(language, values = [], fallback = '') {
+  const items = (values || []).filter(Boolean);
+  if (items.length === 0) {
+    return fallback;
+  }
+  return items.join(isChineseLanguage(language) ? '、' : ', ');
 }
 
 function buildSeoPayload({
@@ -74,6 +118,32 @@ function buildSeoPayload({
   };
 }
 
+function buildLocalizedSeoPayload({
+  language,
+  path,
+  titleKey,
+  titleVars,
+  descriptionKey,
+  descriptionVars,
+  keywordsKey,
+  keywordsVars,
+  robots,
+  jsonLd,
+}) {
+  return {
+    title: withSiteName(getSeoMessage(language, titleKey, titleVars)),
+    description: getSeoMessage(language, descriptionKey, descriptionVars),
+    keywords: keywordsKey
+      ? getSeoMessage(language, keywordsKey, keywordsVars)
+      : undefined,
+    canonicalPath: path,
+    locale: getSeoLocale(language),
+    robots,
+    image: getDefaultImage(language),
+    jsonLd,
+  };
+}
+
 export function buildOrganizationJsonLd() {
   return {
     '@context': 'https://schema.org',
@@ -81,7 +151,7 @@ export function buildOrganizationJsonLd() {
     name: SITE_NAME,
     url: SITE_URL,
     logo: `${SITE_URL}/logo.png`,
-    image: `${SITE_URL}/og-home-zh.svg`,
+    image: `${SITE_URL}/logo.png`,
     contactPoint: [
       {
         '@type': 'ContactPoint',
@@ -138,36 +208,22 @@ export function buildServiceJsonLd(language) {
 }
 
 export function getHomeSeo(language) {
-  return buildSeoPayload({
+  return buildLocalizedSeoPayload({
     language,
     path: '/',
-    titleZh: '企业级 Claude API 官方通道中转 | FishXCode AI',
-    titleEn: 'Enterprise Claude API Gateway | FishXCode AI',
-    descriptionZh:
-      'FishXCode AI 提供企业级 Claude API 官方通道中转，不走逆向，支持包月套餐、企业采购和增值税发票，并兼容 GPT、Gemini 等常用模型。',
-    descriptionEn:
-      'FishXCode AI provides an enterprise Claude API gateway through official Anthropic channels, prioritizing stable Claude access with cache-based cost reduction, enterprise invoice support, and compatibility with common models such as GPT and Gemini.',
-    keywordsZh:
-      'Claude API,Claude中转,Anthropic官方通道,企业级Claude API,AI中转服务,智能缓存,企业采购,增值税发票,GPT,Gemini',
-    keywordsEn:
-      'Claude API, Anthropic gateway, enterprise Claude API, AI gateway service, cache optimization, enterprise invoice support, GPT, Gemini',
+    titleKey: 'SEO 首页标题',
+    descriptionKey: 'SEO 首页描述',
+    keywordsKey: 'SEO 首页关键词',
   });
 }
 
 export function getPricingSeo(language) {
-  return buildSeoPayload({
+  return buildLocalizedSeoPayload({
     language,
     path: '/pricing',
-    titleZh: 'Claude Codex 订阅价格与套餐 | FishXCode AI',
-    titleEn: 'Claude Codex Pricing Plans | FishXCode AI',
-    descriptionZh:
-      '查看 FishXCode AI 的 Claude、Codex 套餐，支持包月、周卡、天卡和企业采购。',
-    descriptionEn:
-      'Compare Claude and Codex pricing plans from FishXCode AI, including monthly, weekly, and daily options for individuals, students, and teams.',
-    keywordsZh:
-      'Claude价格,Codex价格,Claude套餐,Codex套餐,AI Coding订阅价格,包月,周卡,天卡',
-    keywordsEn:
-      'Claude pricing, Codex pricing, AI Coding pricing, monthly subscription, weekly pass, daily pass',
+    titleKey: 'SEO 价格页标题',
+    descriptionKey: 'SEO 价格页描述',
+    keywordsKey: 'SEO 价格页关键词',
   });
 }
 
@@ -324,24 +380,39 @@ export function getSubscriptionPlansSeo(language, rawPlans = [], options = {}) {
     value_desc: getSeoMessage(language, 'SEO 权益从多到少'),
   };
   const availableSeriesText =
-    availableSeries.join('、') ||
+    joinSeoList(language, availableSeries) ||
     getSeoMessage(language, zh ? 'SEO Claude Codex 系列' : 'SEO Claude 与 Codex 系列');
-  const modelText = models.join('、') || getSeoMessage(language, 'SEO 多模型');
+  const modelText = joinSeoList(language, models) || getSeoMessage(language, 'SEO 多模型');
   const currentSeriesText = seriesMap[currentSeries] || seriesMap.all;
   const currentSortText = sortMap[options.sort || 'recommended'] || sortMap.recommended;
-  const currentViewText = zh
-    ? getSeoMessage(language, view === 'table' ? 'SEO 列表视图' : 'SEO 卡片视图')
-    : getSeoMessage(language, view === 'table' ? 'SEO 列表视图' : 'SEO 卡片视图');
+  const currentViewText = getSeoMessage(
+    language,
+    view === 'table' ? 'SEO 列表视图' : 'SEO 卡片视图',
+  );
 
-  return buildSeoPayload({
+  return buildLocalizedSeoPayload({
     language,
     path: canonicalPath,
-    titleZh: `${currentSeriesText}订阅套餐价格与购买方案 | FishXCode AI`,
-    titleEn: `${currentSeriesText} subscription plans | FishXCode AI`,
-    descriptionZh: `查看 FishXCode AI 当前可售的 ${availableSeriesText} 套餐，当前为 ${currentSeriesText}，按 ${currentSortText} 排序，使用 ${currentViewText} 展示，覆盖 ${modelText} 等能力。`,
-    descriptionEn: `Explore current ${availableSeriesText} plans from FishXCode AI. The current page shows ${currentSeriesText}, sorted by ${currentSortText}, in ${currentViewText}, covering ${modelText}.`,
-    keywordsZh: `订阅套餐,Claude套餐,Codex套餐,AI订阅,套餐价格,在线购买,${currentSeriesText},${currentSortText},${models.slice(0, 4).join(',')}`,
-    keywordsEn: `subscription plans, Claude plans, Codex plans, AI subscriptions, pricing, online purchase, ${currentSeriesText}, ${currentSortText}, ${models.slice(0, 4).join(', ')}`,
+    titleKey: 'SEO 套餐列表标题',
+    titleVars: {
+      series: currentSeriesText,
+    },
+    descriptionKey: 'SEO 套餐列表描述',
+    descriptionVars: {
+      seriesList: availableSeriesText,
+      series: currentSeriesText,
+      sort: currentSortText,
+      view: currentViewText,
+      models: modelText,
+    },
+    keywordsKey: 'SEO 套餐列表关键词',
+    keywordsVars: {
+      series: currentSeriesText,
+      sort: currentSortText,
+      models:
+        joinSeoList(language, models.slice(0, 4)) ||
+        getSeoMessage(language, 'SEO 多模型'),
+    },
     jsonLd: buildSubscriptionListJsonLd(language, plans),
   });
 }
@@ -355,89 +426,68 @@ export function getSubscriptionPlanSeo(language, rawPlan) {
   const models = uniqueValues(plan?.allowed_models, 5);
   const groups = uniqueValues(plan?.allowed_groups, 4);
   const description = getPlanSeoDescription(plan, language);
-  return buildSeoPayload({
+  return buildLocalizedSeoPayload({
     language,
     path: getPlanPath(plan.id),
-    titleZh: `${plan.title} 套餐详情与购买 | FishXCode AI`,
-    titleEn: `${plan.title} Plan Details | FishXCode AI`,
-    descriptionZh: description,
-    descriptionEn: description,
-    keywordsZh: `${plan.title},套餐详情,订阅购买,${series},${models.join(',')},${groups.join(',')}`,
-    keywordsEn: `${plan.title}, plan details, subscription purchase, ${series}, ${models.join(', ')}, ${groups.join(', ')}`,
+    titleKey: 'SEO 套餐详情标题',
+    titleVars: {
+      title: plan.title || getSeoMessage(language, 'SEO 订阅套餐'),
+    },
+    descriptionKey: 'SEO 套餐详情描述',
+    descriptionVars: {
+      description,
+    },
+    keywordsKey: 'SEO 套餐详情关键词',
+    keywordsVars: {
+      title: plan.title || getSeoMessage(language, 'SEO 订阅套餐'),
+      series,
+      models:
+        joinSeoList(language, models) || getSeoMessage(language, 'SEO 多模型'),
+      groups:
+        joinSeoList(language, groups) || getSeoMessage(language, 'SEO 全部系列'),
+    },
     jsonLd: buildSubscriptionPlanJsonLd(language, plan),
   });
 }
 
 export function getContactSeo(language) {
-  return buildSeoPayload({
+  return buildLocalizedSeoPayload({
     language,
     path: '/contact',
-    titleZh: '联系我们与官方客服渠道 | FishXCode AI',
-    titleEn: 'Contact and Support Channels | FishXCode AI',
-    descriptionZh:
-      '查看 FishXCode AI 官方联系渠道，包括 QQ 群、微信号、微信群与 QQ 客服，支持售前咨询、企业采购和售后沟通。',
-    descriptionEn:
-      'Reach FishXCode AI through official QQ groups, WeChat, and support channels for presales, onboarding, student use, and team collaboration.',
-    keywordsZh:
-      'FishXCode联系方式,官方客服,QQ群,微信客服,团队合作,售前咨询,学生支持',
-    keywordsEn:
-      'FishXCode contact, support channels, QQ group, WeChat support, team onboarding',
+    titleKey: 'SEO 联系页标题',
+    descriptionKey: 'SEO 联系页描述',
+    keywordsKey: 'SEO 联系页关键词',
   });
 }
 
 export function getStatusSeo(language) {
-  return buildSeoPayload({
+  return buildLocalizedSeoPayload({
     language,
     path: '/status',
-    titleZh: '服务状态与平台说明 | FishXCode AI',
-    titleEn: 'Service Status and Platform Info | FishXCode AI',
-    descriptionZh:
-      '查看 FishXCode AI 的服务状态、平台说明与基础介绍，帮助你了解当前可用性、接入情况与站点信息。',
-    descriptionEn:
-      'Check FishXCode AI service status, platform information, and availability details before using the service.',
-    keywordsZh: '服务状态,平台说明,系统状态,可用性,站点信息,AI Coding服务',
-    keywordsEn: 'service status, platform info, system status, uptime, AI Coding service',
+    titleKey: 'SEO 状态页标题',
+    descriptionKey: 'SEO 状态页描述',
+    keywordsKey: 'SEO 状态页关键词',
   });
 }
 
 export function getDocsSeo(language) {
-  return buildSeoPayload({
+  return buildLocalizedSeoPayload({
     language,
     path: '/docs',
-    titleZh: '接入文档与使用指南 | FishXCode AI',
-    titleEn: 'Claude Integration Docs | FishXCode AI',
-    descriptionZh:
-      '查看 FishXCode AI 的 Claude 接入文档、使用说明与配置指南，了解套餐制接入与企业合作支持。',
-    descriptionEn:
-      'Read FishXCode AI Claude integration docs and setup guides to start using the official-compatible API quickly.',
-    keywordsZh: 'Claude接入文档,Claude文档,API接入,使用指南,配置教程,Claude API',
-    keywordsEn: 'Claude integration docs, Claude docs, API integration, setup guide, Claude API',
+    titleKey: 'SEO 文档页标题',
+    descriptionKey: 'SEO 文档页描述',
+    keywordsKey: 'SEO 文档页关键词',
   });
 }
 
 export function getPolicySeo(language, type) {
   const isPrivacy = type === 'privacy';
-  return buildSeoPayload({
+  return buildLocalizedSeoPayload({
     language,
     path: isPrivacy ? '/privacy-policy' : '/user-agreement',
-    titleZh: isPrivacy
-      ? '隐私政策 | FishXCode AI'
-      : '用户协议 | FishXCode AI',
-    titleEn: isPrivacy
-      ? 'Privacy Policy | FishXCode AI'
-      : 'Terms of Service | FishXCode AI',
-    descriptionZh: isPrivacy
-      ? '查看 FishXCode AI 隐私政策，了解账号、订阅与访问过程中的数据收集、使用与保护方式。'
-      : '查看 FishXCode AI 用户协议，了解订阅服务、账号使用、支付与平台规则。',
-    descriptionEn: isPrivacy
-      ? 'Read the FishXCode AI privacy policy for data collection, usage, and protection details.'
-      : 'Read the FishXCode AI terms for subscriptions, account usage, payments, and platform rules.',
-    keywordsZh: isPrivacy
-      ? '隐私政策,数据保护,账号安全,订阅数据'
-      : '用户协议,服务条款,订阅规则,支付规则',
-    keywordsEn: isPrivacy
-      ? 'privacy policy, data protection, account security'
-      : 'terms of service, subscription policy, payment terms',
+    titleKey: isPrivacy ? 'SEO 隐私标题' : 'SEO 协议标题',
+    descriptionKey: isPrivacy ? 'SEO 隐私描述' : 'SEO 协议描述',
+    keywordsKey: isPrivacy ? 'SEO 隐私关键词' : 'SEO 协议关键词',
   });
 }
 
@@ -445,48 +495,410 @@ export function getAuthSeo(language, type) {
   const config = {
     login: {
       path: '/login',
-      titleZh: '登录账号 | FishXCode AI',
-      titleEn: 'Login | FishXCode AI',
-      descriptionZh:
-        '登录 FishXCode AI 账号，继续使用 Claude、Codex 等 AI Coding 订阅服务。',
-      descriptionEn:
-        'Login to FishXCode AI and continue using Claude and Codex subscription services.',
+      titleKey: 'SEO 登录标题',
+      descriptionKey: 'SEO 登录描述',
     },
     register: {
       path: '/register',
-      titleZh: '注册账号 | FishXCode AI',
-      titleEn: 'Register | FishXCode AI',
-      descriptionZh:
-        '注册 FishXCode AI 账号，开通 Claude、Codex 等 AI Coding 国际中转订阅服务。',
-      descriptionEn:
-        'Create a FishXCode AI account for Claude and Codex subscription access.',
+      titleKey: 'SEO 注册标题',
+      descriptionKey: 'SEO 注册描述',
     },
     reset: {
       path: '/reset',
-      titleZh: '重置密码 | FishXCode AI',
-      titleEn: 'Reset Password | FishXCode AI',
-      descriptionZh: '重置 FishXCode AI 账号密码。',
-      descriptionEn: 'Reset your FishXCode AI account password.',
+      titleKey: 'SEO 重置标题',
+      descriptionKey: 'SEO 重置描述',
     },
     resetConfirm: {
       path: '/user/reset',
-      titleZh: '确认重置密码 | FishXCode AI',
-      titleEn: 'Confirm Password Reset | FishXCode AI',
-      descriptionZh: '确认 FishXCode AI 账号密码重置流程。',
-      descriptionEn: 'Confirm the FishXCode AI password reset flow.',
+      titleKey: 'SEO 确认重置标题',
+      descriptionKey: 'SEO 确认重置描述',
     },
   };
 
   const current = config[type];
-  return buildSeoPayload({
+  return buildLocalizedSeoPayload({
     language,
     path: current.path,
-    titleZh: current.titleZh,
-    titleEn: current.titleEn,
-    descriptionZh: current.descriptionZh,
-    descriptionEn: current.descriptionEn,
-    keywordsZh: '登录,注册,密码重置,账号访问',
-    keywordsEn: 'login, register, reset password, account access',
+    titleKey: current.titleKey,
+    descriptionKey: current.descriptionKey,
+    keywordsKey: 'SEO 账号访问关键词',
+    robots: 'noindex,nofollow',
+  });
+}
+
+function buildRouteSeo({
+  language,
+  path,
+  titleKey,
+  titleVars,
+  descriptionKey,
+  descriptionVars,
+  keywordsKey = 'SEO 路由关键词',
+  keywordsVars,
+  robots = 'index,follow',
+}) {
+  const routeName = getSeoMessage(language, titleKey, titleVars);
+  return buildLocalizedSeoPayload({
+    language,
+    path,
+    titleKey,
+    titleVars,
+    descriptionKey,
+    descriptionVars,
+    keywordsKey,
+    keywordsVars: keywordsVars || {
+      name: routeName,
+    },
+    robots,
+  });
+}
+
+function matchesPath(pathname, pattern) {
+  if (pattern.endsWith('*')) {
+    return pathname.startsWith(pattern.slice(0, -1));
+  }
+  return pathname === pattern;
+}
+
+const ROUTE_SEO_CONFIGS = [
+  {
+    pattern: '/console',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 控制台页标题',
+        descriptionKey: 'SEO 控制台页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/package',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 套餐管理页标题',
+        descriptionKey: 'SEO 套餐管理页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/token',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 令牌管理页标题',
+        descriptionKey: 'SEO 令牌管理页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/channel',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 渠道管理页标题',
+        descriptionKey: 'SEO 渠道管理页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/token/admin',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 管理员令牌页标题',
+        descriptionKey: 'SEO 管理员令牌页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/playground',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO Playground页标题',
+        descriptionKey: 'SEO Playground页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/redemption',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 兑换码页标题',
+        descriptionKey: 'SEO 兑换码页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/user',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 用户管理页标题',
+        descriptionKey: 'SEO 用户管理页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/risk-control',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 风控页标题',
+        descriptionKey: 'SEO 风控页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/setting',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 设置页标题',
+        descriptionKey: 'SEO 设置页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/topup',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 充值页标题',
+        descriptionKey: 'SEO 充值页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/invoice',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 发票页标题',
+        descriptionKey: 'SEO 发票页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/invoice-admin',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 发票后台页标题',
+        descriptionKey: 'SEO 发票后台页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/checkin-admin',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 签到后台页标题',
+        descriptionKey: 'SEO 签到后台页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/invite',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 邀请页标题',
+        descriptionKey: 'SEO 邀请页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/log',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 日志页标题',
+        descriptionKey: 'SEO 日志页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/midjourney',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 绘图日志页标题',
+        descriptionKey: 'SEO 绘图日志页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/task',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 任务页标题',
+        descriptionKey: 'SEO 任务页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/models',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 模型管理页标题',
+        descriptionKey: 'SEO 模型管理页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/deployment',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 模型部署页标题',
+        descriptionKey: 'SEO 模型部署页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/subscription',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 订阅后台页标题',
+        descriptionKey: 'SEO 订阅后台页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/personal',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 个人设置页标题',
+        descriptionKey: 'SEO 个人设置页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/chat/*',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 聊天页标题',
+        descriptionKey: 'SEO 聊天页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/chat2link',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO Chat2Link页标题',
+        descriptionKey: 'SEO Chat2Link页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/setup',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 初始化页标题',
+        descriptionKey: 'SEO 初始化页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/forbidden',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 无权限页标题',
+        descriptionKey: 'SEO 无权限页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/oauth/*',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO OAuth页标题',
+        descriptionKey: 'SEO OAuth页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+];
+
+export function getRouteSeo(language, pathname) {
+  if (!pathname) {
+    return getHomeSeo(language);
+  }
+
+  if (pathname === '/') return getHomeSeo(language);
+  if (pathname === '/pricing') return getPricingSeo(language);
+  if (pathname.startsWith('/pricing/subscription-plans/')) {
+    return buildRouteSeo({
+      language,
+      path: pathname,
+      titleKey: 'SEO 套餐详情回退标题',
+      descriptionKey: 'SEO 套餐详情回退描述',
+      keywordsKey: 'SEO 套餐详情回退关键词',
+    });
+  }
+  if (pathname === '/status') return getStatusSeo(language);
+  if (pathname === '/contact') return getContactSeo(language);
+  if (pathname === '/docs') return getDocsSeo(language);
+  if (pathname === '/privacy-policy') return getPolicySeo(language, 'privacy');
+  if (pathname === '/user-agreement') return getPolicySeo(language, 'agreement');
+  if (pathname === '/login') return getAuthSeo(language, 'login');
+  if (pathname === '/register') return getAuthSeo(language, 'register');
+  if (pathname === '/reset') return getAuthSeo(language, 'reset');
+  if (pathname === '/user/reset') return getAuthSeo(language, 'resetConfirm');
+
+  const matchedConfig = ROUTE_SEO_CONFIGS.find((item) =>
+    matchesPath(pathname, item.pattern),
+  );
+  if (matchedConfig) {
+    return matchedConfig.build(language, pathname);
+  }
+
+  return buildRouteSeo({
+    language,
+    path: pathname,
+    titleKey: 'SEO 404标题',
+    descriptionKey: 'SEO 404描述',
+    keywordsKey: 'SEO 404关键词',
     robots: 'noindex,nofollow',
   });
 }

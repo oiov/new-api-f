@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { IconGift } from '@douyinfe/semi-icons';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
+import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { getCurrencyConfig } from '../../helpers/render';
 
 const { Text } = Typography;
@@ -93,6 +94,7 @@ const RechargeCard = ({
   cardTitle = null,
   cardDescription = null,
 }) => {
+  const isMobile = useIsMobile();
   const onlineFormApiRef = useRef(null);
   const redeemFormApiRef = useRef(null);
   const showAmountSkeleton = useMinimumLoadingTime(amountLoading);
@@ -658,7 +660,7 @@ const RechargeCard = ({
       <Tabs
         className='topup-recharge-tabs'
         type='line'
-        tabPosition='left'
+        tabPosition={isMobile ? 'top' : 'left'}
         lazyRender
       >
         {!hideOnlineTopupCard && (

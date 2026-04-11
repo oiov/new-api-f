@@ -10,7 +10,8 @@ export default async function handler() {
     return new Response(buildRssXml(plans), {
       status: 200,
       headers: {
-        'content-type': 'application/rss+xml; charset=utf-8',
+        'content-type': 'application/xml; charset=utf-8',
+        'content-disposition': 'inline; filename=\"rss.xml\"',
         'cache-control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=1800',
       },
     });
@@ -20,7 +21,8 @@ export default async function handler() {
       {
         status: 200,
         headers: {
-          'content-type': 'application/rss+xml; charset=utf-8',
+          'content-type': 'application/xml; charset=utf-8',
+          'content-disposition': 'inline; filename=\"rss.xml\"',
           'cache-control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=300',
           'x-seo-error': error instanceof Error ? error.message : 'unknown',
         },

@@ -108,6 +108,7 @@ func SetApiRouter(router *gin.Engine) {
 
 				// Check-in routes
 				selfRoute.GET("/checkin", controller.GetCheckinStatus)
+				selfRoute.GET("/checkin/leaderboard", controller.GetCheckinLeaderboard)
 				selfRoute.POST("/checkin", middleware.TurnstileCheck(), controller.DoCheckin)
 
 				// Custom OAuth bindings
@@ -119,6 +120,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/invoice", controller.GetUserInvoices)
 				selfRoute.POST("/invoice", controller.CreateInvoice)
 				selfRoute.GET("/invoice/:id/topups", controller.GetInvoiceTopUps)
+				selfRoute.POST("/invoice/:id/send", controller.SendInvoiceEmailByUser)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -201,6 +203,11 @@ func SetApiRouter(router *gin.Engine) {
 			invoiceAdminRoute.PUT("/:id/reject", controller.RejectInvoice)
 			invoiceAdminRoute.POST("/:id/send", controller.SendInvoiceEmail)
 			invoiceAdminRoute.POST("/upload", controller.UploadInvoiceFile)
+		}
+		checkinAdminRoute := apiRouter.Group("/checkin/admin")
+		checkinAdminRoute.Use(middleware.RootAuth())
+		{
+			checkinAdminRoute.GET("/records", controller.GetAdminCheckinRecords)
 		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())

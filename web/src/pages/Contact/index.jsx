@@ -34,6 +34,7 @@ import SeoMeta from '../../components/common/seo/SeoMeta';
 import { getContactSeo } from '../../helpers/seo';
 import { copy, showError, showSuccess } from '../../helpers/utils';
 import { StatusContext } from '../../context/Status';
+import { normalizeLanguage } from '../../i18n/language';
 import './index.css';
 
 const { Title, Text } = Typography;
@@ -128,6 +129,122 @@ const SUPPORT_NOTES = [
   '群聊主要用于交流与公告，同类问题请尽量集中在同一渠道沟通',
 ];
 
+const LOCALIZABLE_CARD_FIELDS = ['title', 'subtitle', 'tone', 'actionLabel'];
+
+const getLocaleCandidates = (language) => {
+  const candidates = [];
+  const pushCandidate = (value) => {
+    if (!value || candidates.includes(value)) {
+      return;
+    }
+    candidates.push(value);
+  };
+
+  const raw = typeof language === 'string' ? language.trim().replace(/_/g, '-') : '';
+  const normalized = normalizeLanguage(language);
+
+  pushCandidate(raw);
+  pushCandidate(normalized);
+
+  return candidates;
+};
+
+const getLocaleBaseCandidates = (language) => {
+  const candidates = [];
+  const pushCandidate = (value) => {
+    if (!value || candidates.includes(value)) {
+      return;
+    }
+    candidates.push(value);
+  };
+
+  const raw = typeof language === 'string' ? language.trim().replace(/_/g, '-') : '';
+  const normalized = normalizeLanguage(language);
+
+  pushCandidate(raw.split('-')[0]);
+  pushCandidate(normalized?.split('-')?.[0]);
+
+  return candidates;
+};
+
+const normalizeLocaleKey = (locale) => {
+  if (typeof locale !== 'string') {
+    return '';
+  }
+
+  const trimmedLocale = locale.trim().replace(/_/g, '-');
+  if (!trimmedLocale) {
+    return '';
+  }
+
+  const [languageCode, ...regionParts] = trimmedLocale.split('-');
+  const normalizedLanguageCode = languageCode.toLowerCase();
+
+  if (regionParts.length === 0) {
+    return normalizedLanguageCode;
+  }
+
+  return `${normalizedLanguageCode}-${regionParts.join('-').toUpperCase()}`;
+};
+
+const findLocalizedCardByExactLocale = (i18nMap, language) => {
+  for (const locale of getLocaleCandidates(language)) {
+    const normalizedLocale = normalizeLocaleKey(locale);
+
+    for (const [key, value] of Object.entries(i18nMap || {})) {
+      if (!value || typeof value !== 'object') {
+        continue;
+      }
+
+      if (normalizeLocaleKey(key) === normalizedLocale) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+};
+
+const findLocalizedCardByLanguageBase = (i18nMap, language) => {
+  for (const localeBase of getLocaleBaseCandidates(language)) {
+    const matchedEntry = Object.entries(i18nMap).find(([key, value]) => {
+      if (typeof key !== 'string' || !value || typeof value !== 'object') {
+        return false;
+      }
+
+      const normalizedKey = key.trim().replace(/_/g, '-');
+      return normalizedKey.split('-')[0] === localeBase;
+    });
+
+    if (matchedEntry) {
+      return matchedEntry[1];
+    }
+  }
+
+  return null;
+};
+
+const resolveCardTranslations = (card, language) => {
+  if (!card?.i18n || typeof card.i18n !== 'object') {
+    return {};
+  }
+
+  const localizedCard =
+    findLocalizedCardByExactLocale(card.i18n, language) ||
+    findLocalizedCardByLanguageBase(card.i18n, language);
+
+  if (!localizedCard || typeof localizedCard !== 'object') {
+    return {};
+  }
+
+  return LOCALIZABLE_CARD_FIELDS.reduce((result, field) => {
+    if (typeof localizedCard[field] === 'string' && localizedCard[field].trim() !== '') {
+      result[field] = localizedCard[field].trim();
+    }
+    return result;
+  }, {});
+};
+
 const Contact = () => {
   const { t, i18n } = useTranslation();
   const [statusState] = useContext(StatusContext);
@@ -143,8 +260,13 @@ const Contact = () => {
         : DEFAULT_CONTACT_CARDS;
 
     return baseCards.map((card, index) => {
+      const cardKey =
+        typeof card?.key === 'string' && card.key.trim() !== ''
+          ? card.key.trim()
+          : `contact-${index + 1}`;
+      const localizedCard = resolveCardTranslations(card, i18n.language);
       const decoration =
-        CARD_DECORATIONS[card.key] ||
+        CARD_DECORATIONS[cardKey] ||
         Object.values(CARD_DECORATIONS)[index] || {
           icon: QrCode,
           accentClassName: 'contact-card-accent-blue',
@@ -152,12 +274,14 @@ const Contact = () => {
 
       return {
         ...card,
-        imageAlt: card.imageAlt || `${card.title || t('联系我们')}二维码`,
+        ...localizedCard,
+        key: cardKey,
+        imageAlt: card.imageAlt || `${localizedCard.title || card.title || t('联系我们')}二维码`,
         icon: decoration.icon,
         accentClassName: decoration.accentClassName,
       };
     });
-  }, [statusState?.status?.contact_channels, t]);
+  }, [i18n.language, statusState?.status?.contact_channels, t]);
   const heroFeatures = useMemo(() => HERO_FEATURES, []);
   const quickPrimaryCard = cards.find((item) => item.actionHref) || cards[0];
   const quickSecondaryCard =

@@ -36,7 +36,10 @@ import {
   renderQuota,
   showError,
   showSuccess,
+  timestamp2string,
 } from '../../../helpers';
+
+const { Text } = Typography;
 
 /**
  * Render user role
@@ -404,6 +407,26 @@ export const getUsersColumns = ({
       title: t('用户名'),
       dataIndex: 'username',
       render: (text, record) => renderUsername(text, record),
+    },
+    {
+      title: t('注册时间'),
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 160,
+      render: (value) => {
+        if (!value) {
+          return <Text type='tertiary'>—</Text>;
+        }
+        return (
+          <Text
+            type='secondary'
+            ellipsis={{ showTooltip: true, tooltipMaxWidth: 200 }}
+            style={{ display: 'block', maxWidth: 150 }}
+          >
+            {timestamp2string(value)}
+          </Text>
+        );
+      },
     },
     {
       title: t('状态'),

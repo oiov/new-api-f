@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import {
   Table,
   Tag,
@@ -30,17 +30,20 @@ import {
   Spin,
   Modal,
   SideSheet,
-  Pagination,
+  Descriptions,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { IconDownload, IconList, IconEyeOpened } from '@douyinfe/semi-icons';
+import { IconDownload, IconList, IconEyeOpened, IconMail } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { API, timestamp2string } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import InvoiceRequestModal from './InvoiceRequestModal';
+import { createCardProPagination } from '../../helpers/utils';
+import CardTable from '../common/ui/CardTable';
+import { UserContext } from '../../context/User';
 
 const { Text } = Typography;
 
@@ -74,6 +77,7 @@ function resolveUrl(url) {
 
 const InvoiceList = () => {
   const { t } = useTranslation();
+  const [userState] = useContext(UserContext);
   const isMobile = useIsMobile();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -89,10 +93,13 @@ const InvoiceList = () => {
     topups: [],
     loading: false,
     topupPage: 1,
+    topupPageSize: TOPUP_PAGE_SIZE,
+    topupTotal: 0,
   });
 
   // 发票预览 SideSheet
   const [previewSheet, setPreviewSheet] = useState({ visible: false, url: '', isPdf: false });
+  const [sendingInvoiceId, setSendingInvoiceId] = useState(null);
 
   const fetchInvoices = useCallback(
     async (p = 1) => {
@@ -132,24 +139,97 @@ const InvoiceList = () => {
     }
   };
 
-  const openDetail = async (invoice) => {
-    setDetailSheet({ visible: true, invoice, topups: [], loading: true, topupPage: 1 });
+  const boundEmail = String(userState?.user?.email || '').trim();
+
+  const sendToBoundEmail = async (invoice) => {
+    if (!invoice?.id || !boundEmail) {
+      Toast.error(t('请先绑定邮箱后再发送发票'));
+      return;
+    }
+    setSendingInvoiceId(invoice.id);
     try {
-      const res = await API.get(`/api/user/invoice/${invoice.id}/topups`);
-      if (res.data.success === true) {
-        setDetailSheet((prev) => ({
-          ...prev,
-          topups: res.data.data || [],
-          loading: false,
-        }));
+      const res = await API.post(`/api/user/invoice/${invoice.id}/send`);
+      if (res.data?.success) {
+        const nextStatus = res.data?.data?.invoice?.status || 'sent';
+        setInvoices((prev) =>
+          prev.map((item) =>
+            item.id === invoice.id
+              ? {
+                  ...item,
+                  status: nextStatus,
+                  email: boundEmail,
+                }
+              : item,
+          ),
+        );
+        Toast.success(
+          t('发票已发送到绑定邮箱：{{email}}', {
+            email: boundEmail,
+          }),
+        );
       } else {
-        Toast.error(t('获取关联订单失败'));
-        setDetailSheet((prev) => ({ ...prev, loading: false }));
+        Toast.error(res.data?.message || t('发送失败'));
       }
+    } catch (error) {
+      Toast.error(error?.response?.data?.message || t('发送失败'));
+    } finally {
+      setSendingInvoiceId(null);
+    }
+  };
+
+  const loadTopups = async (
+    invoice,
+    targetPage = 1,
+    targetPageSize = detailSheet.topupPageSize,
+  ) => {
+    if (!invoice) return;
+
+    setDetailSheet((prev) => ({
+      ...prev,
+      visible: true,
+      invoice,
+      loading: true,
+    }));
+
+    try {
+      const res = await API.get(`/api/user/invoice/${invoice.id}/topups`, {
+        params: { page: targetPage, page_size: targetPageSize },
+      });
+      if (res.data.success !== true) {
+        throw new Error('failed');
+      }
+
+      const payload = res.data.data;
+      let list = [];
+      let total = 0;
+
+      if (Array.isArray(payload)) {
+        list = payload;
+        total = payload.length;
+      } else if (payload) {
+        list = payload.items || payload.list || payload.topups || [];
+        total = Number(payload.total ?? payload.count ?? list.length);
+        if (!Number.isFinite(total)) {
+          total = Array.isArray(list) ? list.length : 0;
+        }
+      }
+
+      setDetailSheet((prev) => ({
+        ...prev,
+        topups: Array.isArray(list) ? list : [],
+        topupTotal: total,
+        topupPage: targetPage,
+        topupPageSize: targetPageSize,
+        loading: false,
+      }));
     } catch {
       Toast.error(t('获取关联订单失败'));
       setDetailSheet((prev) => ({ ...prev, loading: false }));
     }
+  };
+
+  const openDetail = (invoice) => {
+    loadTopups(invoice, 1, detailSheet.topupPageSize);
   };
 
   const topupColumns = [
@@ -191,17 +271,6 @@ const InvoiceList = () => {
       render: (v) => timestamp2string(v),
     },
     {
-      title: t('发票抬头'),
-      dataIndex: 'title',
-      key: 'title',
-    },
-    {
-      title: t('税号'),
-      dataIndex: 'tax_id',
-      key: 'tax_id',
-      render: (v) => v || <Text type='tertiary'>—</Text>,
-    },
-    {
       title: t('金额（元）'),
       dataIndex: 'amount',
       key: 'amount',
@@ -215,72 +284,142 @@ const InvoiceList = () => {
         const cfg = STATUS_CONFIG[status] || { type: 'default', label: status };
         const tag = <Tag color={cfg.type}>{t(cfg.label)}</Tag>;
         if (status === 'rejected' && record.remark) {
-          return (
-            <div>
-              {tag}
-              <Text
-                type='danger'
-                size='small'
-                style={{ display: 'block', marginTop: 4, lineHeight: 1.4, maxWidth: 180 }}
-              >
-                {record.remark}
-              </Text>
-            </div>
-          );
+          return <Tooltip content={record.remark}>{tag}</Tooltip>;
         }
         return tag;
       },
     },
     {
-      title: t('接收邮箱'),
-      dataIndex: 'email',
-      key: 'email',
-    },
-    {
       title: t('操作'),
       key: 'action',
+      width: 170,
       render: (_, record) => (
-        <Space>
+        <Space wrap={isMobile} spacing={isMobile ? 8 : 6}>
           <Tooltip content={t('关联订单')}>
             <Button
               icon={<IconList />}
               size='small'
               onClick={() => openDetail(record)}
-            />
+            >
+              {isMobile ? t('详情') : null}
+            </Button>
           </Tooltip>
-          {(record.status === 'issued' || record.status === 'sent') &&
-            record.file_url && (
-              <>
-                <Tooltip content={t('预览发票')}>
-                  <Button
-                    icon={<IconEyeOpened />}
-                    size='small'
-                    onClick={() => handlePreview(record.file_url)}
-                  />
-                </Tooltip>
-                <Tooltip content={t('下载发票')}>
-                  <Button
-                    icon={<IconDownload />}
-                    size='small'
-                    onClick={() => handleDownload(record.file_url)}
-                  />
-                </Tooltip>
-              </>
-            )}
+          {(record.status === 'issued' || record.status === 'sent') && record.file_url && (
+            <>
+              <Tooltip content={t('预览发票')}>
+                <Button
+                  icon={<IconEyeOpened />}
+                  size='small'
+                  onClick={() => handlePreview(record.file_url)}
+                >
+                  {isMobile ? t('查看') : null}
+                </Button>
+              </Tooltip>
+              <Tooltip content={t('下载发票')}>
+                <Button
+                  icon={<IconDownload />}
+                  size='small'
+                  onClick={() => handleDownload(record.file_url)}
+                >
+                  {isMobile ? t('下载') : null}
+                </Button>
+              </Tooltip>
+            </>
+          )}
+          {record.status === 'issued' && (
+            <Tooltip
+              content={
+                boundEmail
+                  ? t('发送到已绑定邮箱')
+                  : t('请先在个人设置中绑定邮箱')
+              }
+            >
+              <Button
+                icon={<IconMail />}
+                size='small'
+                disabled={!boundEmail}
+                loading={sendingInvoiceId === record.id}
+                onClick={() => sendToBoundEmail(record)}
+              >
+                {isMobile ? t('发送') : null}
+              </Button>
+            </Tooltip>
+          )}
         </Space>
       ),
     },
   ];
 
   // 关联订单抽屉分页
-  const topupTotal = detailSheet.topups.length;
-  const topupPageData = detailSheet.topups.slice(
-    (detailSheet.topupPage - 1) * TOPUP_PAGE_SIZE,
-    detailSheet.topupPage * TOPUP_PAGE_SIZE,
-  );
+  const topupTotal =
+    detailSheet.topupTotal && detailSheet.topupTotal > 0
+      ? detailSheet.topupTotal
+      : detailSheet.topups.length;
+  const topupPageData = detailSheet.topups;
+  const detailInvoice = detailSheet.invoice;
+  const invoiceStatusCfg =
+    detailInvoice && (STATUS_CONFIG[detailInvoice.status] || { type: 'default', label: detailInvoice.status });
+  const invoiceMeta = detailInvoice
+    ? [
+        { label: t('发票抬头'), value: detailInvoice.title || '—' },
+        { label: t('税号'), value: detailInvoice.tax_id || '—' },
+        { label: t('接收邮箱'), value: detailInvoice.email || '—' },
+        {
+          label: t('申请时间'),
+          value: timestamp2string(detailInvoice.create_time) || '—',
+        },
+        {
+          label: t('状态'),
+          value: (
+            <Tag color={invoiceStatusCfg?.type || 'default'}>
+              {t(invoiceStatusCfg?.label || detailInvoice.status || '—')}
+            </Tag>
+          ),
+        },
+        {
+          label: t('金额'),
+          value: <Text strong>¥{Number(detailInvoice.amount || 0).toFixed(2)}</Text>,
+        },
+        {
+          label: t('说明'),
+          value:
+            detailInvoice.remark ||
+            detailInvoice.description ||
+            <Text type='tertiary'>—</Text>,
+        },
+      ]
+    : [];
+  const topupPagination = createCardProPagination({
+    currentPage: detailSheet.topupPage,
+    pageSize: detailSheet.topupPageSize,
+    total: topupTotal,
+    onPageChange: (p) => {
+      if (!detailInvoice) return;
+      loadTopups(detailInvoice, p, detailSheet.topupPageSize);
+    },
+    onPageSizeChange: (size) => {
+      if (!detailInvoice) return;
+      loadTopups(detailInvoice, 1, size);
+    },
+    isMobile,
+    t,
+  });
+  const listPagination = createCardProPagination({
+    currentPage: page,
+    pageSize,
+    total,
+    onPageChange: setPage,
+    isMobile,
+    t,
+  });
 
   return (
-    <div>
+    <div
+      style={{
+        paddingBottom: 32,
+        paddingInline: isMobile ? 0 : 8,
+      }}
+    >
       <div
         style={{
           display: 'flex',
@@ -297,11 +436,12 @@ const InvoiceList = () => {
         </Button>
       </div>
 
-      <Table
+      <CardTable
         columns={columns}
         dataSource={invoices}
         rowKey='id'
         loading={loading}
+        hidePagination
         empty={
           <Empty
             image={<IllustrationNoResult />}
@@ -309,14 +449,12 @@ const InvoiceList = () => {
             description={t('暂无发票记录')}
           />
         }
-        pagination={{
-          currentPage: page,
-          total,
-          pageSize,
-          onChange: setPage,
-          showTotal: true,
-        }}
       />
+      {listPagination && (
+        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+          {listPagination}
+        </div>
+      )}
 
       <InvoiceRequestModal
         visible={showModal}
@@ -347,48 +485,77 @@ const InvoiceList = () => {
         width={isMobile ? '100%' : 640}
         bodyStyle={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         footer={
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '12px 16px',
-            borderTop: '1px solid var(--semi-color-border)',
-          }}>
-            {topupTotal > TOPUP_PAGE_SIZE ? (
-              <Pagination
-                currentPage={detailSheet.topupPage}
-                pageSize={TOPUP_PAGE_SIZE}
-                total={topupTotal}
-                onChange={(p) => setDetailSheet((prev) => ({ ...prev, topupPage: p }))}
-                size='small'
-                showTotal
-              />
-            ) : (
-              <Text type='tertiary' size='small'>{t('共 {{n}} 条', { n: topupTotal })}</Text>
-            )}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '12px 16px',
+              borderTop: '1px solid var(--semi-color-border)',
+            }}
+          >
+            <div>
+              {topupPagination || (
+                <Text type='tertiary' size='small'>
+                  {t('共 {{n}} 条', { n: topupTotal })}
+                </Text>
+              )}
+            </div>
             <Button onClick={() => setDetailSheet((prev) => ({ ...prev, visible: false }))}>
               {t('关闭')}
             </Button>
           </div>
         }
       >
-        <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
-          <Spin spinning={detailSheet.loading}>
-            <Table
-              columns={topupColumns}
-              dataSource={topupPageData}
-              rowKey='id'
-              pagination={false}
-              size='small'
-              empty={
-                <Empty
-                  image={<IllustrationNoResult />}
-                  darkModeImage={<IllustrationNoResultDark />}
-                  description={t('暂无关联订单')}
-                />
-              }
-            />
-          </Spin>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          {invoiceMeta.length > 0 && (
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--semi-color-border)',
+                background: 'var(--semi-color-fill-0)',
+              }}
+            >
+              <Descriptions
+                data={invoiceMeta}
+                column={1}
+                size='small'
+                rowSize='small'
+                style={{ margin: 0 }}
+              />
+            </div>
+          )}
+          <div
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              padding: invoiceMeta.length > 0 ? '16px 20px' : '16px',
+            }}
+          >
+            <Spin spinning={detailSheet.loading}>
+              <Table
+                columns={topupColumns}
+                dataSource={topupPageData}
+                rowKey='id'
+                pagination={false}
+                size='small'
+                empty={
+                  <Empty
+                    image={<IllustrationNoResult />}
+                    darkModeImage={<IllustrationNoResultDark />}
+                    description={t('暂无关联订单')}
+                  />
+                }
+              />
+            </Spin>
+          </div>
         </div>
       </SideSheet>
 

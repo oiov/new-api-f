@@ -88,6 +88,8 @@ export function getLucideIcon(key, selected = false) {
       return <Server {...commonProps} color={iconColor} />;
     case 'subscription':
       return <CalendarClock {...commonProps} color={iconColor} />;
+    case 'checkinAdmin':
+      return <CalendarClock {...commonProps} color={iconColor} />;
     case 'about':
       return <Activity {...commonProps} color={iconColor} />;
     case 'contact':

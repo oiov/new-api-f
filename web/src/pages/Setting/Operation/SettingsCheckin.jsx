@@ -35,6 +35,7 @@ export default function SettingsCheckin(props) {
     'checkin_setting.enabled': false,
     'checkin_setting.min_quota': 1000,
     'checkin_setting.max_quota': 10000,
+    'checkin_setting.leaderboard_limit': 100,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -135,6 +136,17 @@ export default function SettingsCheckin(props) {
                   placeholder={t('签到奖励的最大额度')}
                   onChange={handleFieldChange('checkin_setting.max_quota')}
                   min={0}
+                  disabled={!inputs['checkin_setting.enabled']}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field={'checkin_setting.leaderboard_limit'}
+                  label={t('签到榜展示条数')}
+                  placeholder={t('对外展示签到榜的最大人数')}
+                  onChange={handleFieldChange('checkin_setting.leaderboard_limit')}
+                  min={1}
+                  max={1000}
                   disabled={!inputs['checkin_setting.enabled']}
                 />
               </Col>

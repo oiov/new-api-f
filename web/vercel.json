@@ -99,6 +99,10 @@
       "dest": "/api/rss"
     },
     {
+      "src": "^/robots\\.txt$",
+      "dest": "/api/robots"
+    },
+    {
       "handle": "filesystem"
     },
     {

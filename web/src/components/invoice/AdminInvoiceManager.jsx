@@ -403,9 +403,11 @@ const AdminInvoiceManager = () => {
       key: 'action',
       width: 230,
       render: (_, record) => (
-        <Space spacing={4}>
+        <Space wrap={isMobile} spacing={isMobile ? 8 : 4}>
           <Tooltip content={t('关联订单')}>
-            <Button icon={<IconList />} size='small' onClick={() => openDetail(record)} />
+            <Button icon={<IconList />} size='small' onClick={() => openDetail(record)}>
+              {isMobile ? t('订单') : null}
+            </Button>
           </Tooltip>
           <Tooltip content={t('编辑发票')}>
             <Button
@@ -415,7 +417,9 @@ const AdminInvoiceManager = () => {
                 setEditUploadedUrl('');
                 setEditModal({ visible: true, record });
               }}
-            />
+            >
+              {isMobile ? t('编辑') : null}
+            </Button>
           </Tooltip>
           {record.status === 'pending' && (
             <>
@@ -445,14 +449,18 @@ const AdminInvoiceManager = () => {
                   icon={<IconEyeOpened />}
                   size='small'
                   onClick={() => handlePreview(record.file_url)}
-                />
+                >
+                  {isMobile ? t('查看') : null}
+                </Button>
               </Tooltip>
               <Tooltip content={t('下载')}>
                 <Button
                   icon={<IconDownload />}
                   size='small'
                   onClick={() => window.open(resolveUrl(record.file_url), '_blank')}
-                />
+                >
+                  {isMobile ? t('下载') : null}
+                </Button>
               </Tooltip>
             </>
           )}
@@ -462,7 +470,9 @@ const AdminInvoiceManager = () => {
                 icon={<IconMail />}
                 size='small'
                 onClick={() => setSendModal({ visible: true, record })}
-              />
+              >
+                {isMobile ? t('邮件') : null}
+              </Button>
             </Tooltip>
           )}
         </Space>

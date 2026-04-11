@@ -44,7 +44,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "bun install --frozen-lockfile && bunx vite build",
+    "seo:generate": "node ./scripts/generate-seo-artifacts.mjs",
+    "build": "bun install --frozen-lockfile && bun run seo:generate && bunx vite build",
     "lint": "prettier . --check",
     "lint:fix": "prettier . --write",
     "eslint": "bunx eslint \"**/*.{js,jsx}\" --cache",

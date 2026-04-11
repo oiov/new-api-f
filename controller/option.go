@@ -351,6 +351,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "checkin_setting.leaderboard_limit":
+		count, parseErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
+		if parseErr != nil || count < 1 || count > 1000 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "签到榜展示条数必须是 1 到 1000 的整数",
+			})
+			return
+		}
 	case "error_setting.restrict_proxy_distribution_allowed_hosts", "error_setting.restrict_proxy_distribution_allowed_sources":
 		var hosts []string
 		if err = common.UnmarshalJsonStr(option.Value.(string), &hosts); err != nil {

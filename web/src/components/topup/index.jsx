@@ -156,6 +156,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const isPackagePage = mode === VIEW_PACKAGE;
   const shouldLoadTopupData = isTopupPage || isPackagePage;
   const isConsoleRoute = location.pathname.startsWith('/console');
+  const publicTopPadding = isConsoleRoute ? 0 : 88;
 
   const formatInvitePlanBenefit = (plan) => {
     if (!plan) {
@@ -908,9 +909,8 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
 
   return (
     <div
-      className={`w-full max-w-7xl mx-auto relative min-h-screen lg:min-h-0 px-2 ${
-        isConsoleRoute ? '' : 'mt-[60px]'
-      }`}
+      className='w-full max-w-7xl mx-auto relative min-h-screen lg:min-h-0 px-2'
+      style={{ paddingTop: publicTopPadding }}
     >
       {/* 划转模态框 */}
       <TransferModal
