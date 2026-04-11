@@ -286,6 +286,88 @@ func TestGetPreferredSubscriptionRouteForAggregateToken_SkipsUnavailableBoundKey
 	})
 }
 
+func TestAllocateSubscriptionPlanChannelFromPoolTx_SkipsActiveSubscriptionBindingsWithoutToken(t *testing.T) {
+	withSubscriptionAggregateTestDB(t, func() {
+		now := common.GetTimestamp()
+		tag := subscriptionPlanChannelPoolTag(2002)
+
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:                2002,
+			Title:             "Claude Lite",
+			Enabled:           true,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 15000,
+			DurationUnit:      SubscriptionDurationMonth,
+			DurationValue:     1,
+			UpgradeGroup:      "sub_plan_claude_lite",
+		}).Error)
+
+		require.NoError(t, DB.Create(&Channel{
+			Id:          3201,
+			Name:        "Claude Lite Pool",
+			Status:      common.ChannelStatusEnabled,
+			Key:         "upstream-key-0\nupstream-key-1\nupstream-key-2",
+			Group:       "sub_plan_claude_lite",
+			Tag:         &tag,
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 3,
+			},
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                      5201,
+			UserId:                  1201,
+			PlanId:                  2002,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       100,
+			Status:                  "active",
+			StartTime:               now - 3600,
+			EndTime:                 now + 7200,
+			UpgradeGroup:            "sub_plan_claude_lite",
+			SpecificChannelId:       3201,
+			SpecificChannelKeyIndex: 0,
+			CreatedAt:               now - 3600,
+			UpdatedAt:               now - 3600,
+		}).Error)
+		require.NoError(t, DB.Model(&UserSubscription{}).
+			Where("id = ?", 5201).
+			Update("specific_channel_key_index", 0).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                      5202,
+			UserId:                  1202,
+			PlanId:                  2002,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       100,
+			Status:                  "active",
+			StartTime:               now - 3600,
+			EndTime:                 now + 7200,
+			UpgradeGroup:            "sub_plan_claude_lite",
+			SpecificChannelId:       3201,
+			SpecificChannelKeyIndex: 1,
+			CreatedAt:               now - 3600,
+			UpdatedAt:               now - 3600,
+		}).Error)
+
+		var storedChannel Channel
+		require.NoError(t, DB.Where("id = ?", 3201).First(&storedChannel).Error)
+		require.True(t, storedChannel.ChannelInfo.IsMultiKey)
+		require.Len(t, storedChannel.GetKeys(), 3)
+		require.True(t, storedChannel.IsSpecificKeyAvailable(2))
+
+		require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+			channel, keyIndex, err := allocateSubscriptionPlanChannelFromPoolTx(tx, tag)
+			require.NoError(t, err)
+			require.NotNil(t, channel)
+			require.Equal(t, 3201, channel.Id)
+			require.Equal(t, 2, keyIndex)
+			return nil
+		}))
+	})
+}
+
 func TestGetPreferredSubscriptionRouteForAggregateToken_ReturnsExhaustedMessageWhenAllSubscriptionsExhausted(t *testing.T) {
 	withSubscriptionAggregateTestDB(t, func() {
 		now := common.GetTimestamp()

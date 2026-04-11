@@ -3409,9 +3409,27 @@ func allocateSubscriptionPlanChannelFromPoolTx(tx *gorm.DB, tag string) (*Channe
 		Find(&bindings).Error; err != nil {
 		return nil, -1, err
 	}
+	now := GetDBTimestampWithTx(tx)
+	var subscriptionBindings []boundKeyBinding
+	if err := tx.Model(&UserSubscription{}).
+		Select("specific_channel_id", "specific_channel_key_index").
+		Where("specific_channel_id > 0 AND status = ? AND end_time > ?", "active", now).
+		Find(&subscriptionBindings).Error; err != nil {
+		return nil, -1, err
+	}
 	usedKeyMap := make(map[string]struct{}, len(bindings))
 	usedWholeChannel := make(map[int]struct{})
 	for _, binding := range bindings {
+		if binding.SpecificChannelId <= 0 {
+			continue
+		}
+		if binding.SpecificChannelKeyIndex < 0 {
+			usedWholeChannel[binding.SpecificChannelId] = struct{}{}
+			continue
+		}
+		usedKeyMap[fmt.Sprintf("%d:%d", binding.SpecificChannelId, binding.SpecificChannelKeyIndex)] = struct{}{}
+	}
+	for _, binding := range subscriptionBindings {
 		if binding.SpecificChannelId <= 0 {
 			continue
 		}
