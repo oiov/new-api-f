@@ -60,6 +60,7 @@ const PageLayout = () => {
 
   const cardProPages = [
     '/console/channel',
+    '/console/ecomagent',
     '/console/log',
     '/console/redemption',
     '/console/user',

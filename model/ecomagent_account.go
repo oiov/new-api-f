@@ -1,0 +1,131 @@
+package model
+
+import (
+	"errors"
+	"strings"
+
+	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
+)
+
+type EcomAgentAccount struct {
+	Id                        int    `json:"id"`
+	Email                     string `json:"email" gorm:"size:255;not null;uniqueIndex"`
+	Password                  string `json:"password" gorm:"type:text;not null"`
+	BaseURL                   string `json:"base_url" gorm:"size:255;not null;default:''"`
+	SupabaseAuthURL           string `json:"supabase_auth_url" gorm:"size:255;not null;default:''"`
+	SupabaseAnonKey           string `json:"supabase_anon_key" gorm:"type:text;not null"`
+	ConfirmURL                string `json:"confirm_url" gorm:"type:text"`
+	AccountID                 string `json:"account_id" gorm:"size:128;index"`
+	RefreshToken              string `json:"refresh_token" gorm:"type:text"`
+	AccessToken               string `json:"access_token" gorm:"type:text"`
+	AccessTokenExpiresAt      int64  `json:"access_token_expires_at" gorm:"bigint;default:0"`
+	APIKey                    string `json:"api_key" gorm:"type:text"`
+	APIKeyCreatedAt           int64  `json:"api_key_created_at" gorm:"bigint;default:0"`
+	APIKeyExpiresAt           int64  `json:"api_key_expires_at" gorm:"bigint;default:0"`
+	Plan                      string `json:"plan" gorm:"size:128;default:''"`
+	RequestLimit              int64  `json:"request_limit" gorm:"bigint;default:0"`
+	TokenLimit                int64  `json:"token_limit" gorm:"bigint;default:0"`
+	UsageRequests             int64  `json:"usage_requests" gorm:"bigint;default:0"`
+	UsageTokens               int64  `json:"usage_tokens" gorm:"bigint;default:0"`
+	UsageUpdatedAt            int64  `json:"usage_updated_at" gorm:"bigint;default:0"`
+	RequiresEmailConfirmation bool   `json:"requires_email_confirmation" gorm:"default:false"`
+	SignupAt                  int64  `json:"signup_at" gorm:"bigint;default:0"`
+	ConfirmedAt               int64  `json:"confirmed_at" gorm:"bigint;default:0"`
+	ConfirmationStatusCode    int    `json:"confirmation_status_code" gorm:"default:0"`
+	ConfirmationFinalURL      string `json:"confirmation_final_url" gorm:"type:text"`
+	LoginAt                   int64  `json:"login_at" gorm:"bigint;default:0"`
+	LastSyncAt                int64  `json:"last_sync_at" gorm:"bigint;default:0"`
+	Status                    string `json:"status" gorm:"size:64;index;default:'initialized'"`
+	LastError                 string `json:"last_error" gorm:"type:text"`
+	SignupRaw                 string `json:"signup_raw" gorm:"type:text"`
+	KeyRaw                    string `json:"key_raw" gorm:"type:text"`
+	SubscriptionRaw           string `json:"subscription_raw" gorm:"type:text"`
+	UsageRaw                  string `json:"usage_raw" gorm:"type:text"`
+	CreatedTime               int64  `json:"created_time" gorm:"bigint"`
+	UpdatedTime               int64  `json:"updated_time" gorm:"bigint"`
+}
+
+func (a *EcomAgentAccount) PrepareDefaults() {
+	a.Email = strings.TrimSpace(strings.ToLower(a.Email))
+	a.Password = strings.TrimSpace(a.Password)
+	a.BaseURL = strings.TrimRight(strings.TrimSpace(a.BaseURL), "/")
+	a.SupabaseAuthURL = strings.TrimRight(strings.TrimSpace(a.SupabaseAuthURL), "/")
+	a.SupabaseAnonKey = strings.TrimSpace(a.SupabaseAnonKey)
+	a.ConfirmURL = strings.TrimSpace(a.ConfirmURL)
+	if a.Status == "" {
+		a.Status = "initialized"
+	}
+}
+
+func (a *EcomAgentAccount) Validate() error {
+	if a.Email == "" {
+		return errors.New("邮箱不能为空")
+	}
+	if a.Password == "" {
+		return errors.New("密码不能为空")
+	}
+	if a.BaseURL == "" {
+		return errors.New("base_url 不能为空")
+	}
+	if a.SupabaseAuthURL == "" {
+		return errors.New("supabase_auth_url 不能为空")
+	}
+	if a.SupabaseAnonKey == "" {
+		return errors.New("supabase_anon_key 不能为空")
+	}
+	return nil
+}
+
+func (a *EcomAgentAccount) Insert() error {
+	a.PrepareDefaults()
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	now := common.GetTimestamp()
+	a.CreatedTime = now
+	a.UpdatedTime = now
+	return DB.Create(a).Error
+}
+
+func (a *EcomAgentAccount) Update() error {
+	a.PrepareDefaults()
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	a.UpdatedTime = common.GetTimestamp()
+	return DB.Save(a).Error
+}
+
+func GetAllEcomAgentAccounts() ([]*EcomAgentAccount, error) {
+	accounts := make([]*EcomAgentAccount, 0)
+	err := DB.Order("updated_time DESC").Find(&accounts).Error
+	return accounts, err
+}
+
+func GetEcomAgentAccountByID(id int) (*EcomAgentAccount, error) {
+	account := &EcomAgentAccount{}
+	err := DB.First(account, id).Error
+	return account, err
+}
+
+func GetEcomAgentAccountByEmail(email string) (*EcomAgentAccount, error) {
+	account := &EcomAgentAccount{}
+	err := DB.Where("email = ?", strings.TrimSpace(strings.ToLower(email))).First(account).Error
+	return account, err
+}
+
+func IsEcomAgentAccountEmailDuplicated(id int, email string) (bool, error) {
+	var count int64
+	err := DB.Model(&EcomAgentAccount{}).
+		Where("email = ? AND id <> ?", strings.TrimSpace(strings.ToLower(email)), id).
+		Count(&count).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	return count > 0, err
+}
+
+func DeleteEcomAgentAccountByID(id int) error {
+	return DB.Delete(&EcomAgentAccount{}, id).Error
+}

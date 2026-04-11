@@ -47,6 +47,7 @@ const PasswordResetConfirm = lazy(
 const Channel = lazy(() => import('./pages/Channel'));
 const Token = lazy(() => import('./pages/Token'));
 const AdminToken = lazy(() => import('./pages/AdminToken'));
+const EcomAgent = lazy(() => import('./pages/EcomAgent'));
 const Redemption = lazy(() => import('./pages/Redemption'));
 const TopUp = lazy(() => import('./pages/TopUp'));
 const InvoicePage = lazy(() => import('./pages/Invoice'));
@@ -212,6 +213,14 @@ function App() {
               <PrivateRoute>
                 <Playground />
               </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/ecomagent'
+            element={
+              <RootRoute>
+                <EcomAgent />
+              </RootRoute>
             }
           />
           <Route

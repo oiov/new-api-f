@@ -36,6 +36,7 @@ const routerMap = {
   package: '/console/package',
   token: '/console/token',
   tokenAdmin: '/console/token/admin',
+  ecomagent: '/console/ecomagent',
   redemption: '/console/redemption',
   topup: '/console/topup',
   invoice: '/console/invoice',
@@ -236,6 +237,12 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         itemKey: 'tokenAdmin',
         to: '/console/token/admin',
         className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('EcomAgent账户'),
+        itemKey: 'ecomagent',
+        to: '/console/ecomagent',
+        className: isRoot() ? '' : 'tableHiddle',
       },
       {
         text: t('用户管理'),

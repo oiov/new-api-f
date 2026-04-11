@@ -61,6 +61,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     deployment: true,
     redemption: true,
     tokenAdmin: true,
+    ecomagent: true,
     user: true,
     subscription: true,
     setting: true,

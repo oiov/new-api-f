@@ -298,6 +298,15 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.POST("/upstream_updates/detect", controller.DetectChannelUpstreamModelUpdates)
 			channelRoute.POST("/upstream_updates/detect_all", controller.DetectAllChannelUpstreamModelUpdates)
 		}
+		ecomAgentRoute := apiRouter.Group("/ecomagent")
+		ecomAgentRoute.Use(middleware.RootAuth())
+		{
+			ecomAgentRoute.GET("/accounts", controller.GetEcomAgentAccounts)
+			ecomAgentRoute.POST("/accounts", controller.CreateEcomAgentAccount)
+			ecomAgentRoute.PUT("/accounts/:id", controller.UpdateEcomAgentAccount)
+			ecomAgentRoute.POST("/accounts/:id/sync", controller.SyncEcomAgentAccount)
+			ecomAgentRoute.DELETE("/accounts/:id", controller.DeleteEcomAgentAccount)
+		}
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{
