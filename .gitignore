@@ -35,6 +35,8 @@ data/
 .vercel
 /pricing/
 scripts/
+!web/scripts/
+!web/scripts/generate-seo-artifacts.mjs
 .env.2
 .playwright-mcp
 tsconfig.tsbuildinfo
