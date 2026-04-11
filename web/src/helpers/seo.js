@@ -617,6 +617,17 @@ const ROUTE_SEO_CONFIGS = [
       }),
   },
   {
+    pattern: '/console/ecomagent',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO EcomAgent页标题',
+        descriptionKey: 'SEO EcomAgent页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
     pattern: '/console/playground',
     build: (language, pathname) =>
       buildRouteSeo({

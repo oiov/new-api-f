@@ -51,6 +51,23 @@ import { getCurrencyConfig } from '../../helpers/render';
 const { Text } = Typography;
 const { TabPane } = Tabs;
 
+const getPaymentMethodLabel = (payMethod, t) => {
+  switch (payMethod?.type) {
+    case 'alipay':
+      return t('支付宝');
+    case 'wxpay':
+      return t('微信');
+    case 'stripe':
+      return t('Stripe');
+    case 'creem':
+      return t('Creem');
+    case 'waffo':
+      return t('Waffo');
+    default:
+      return payMethod?.name || payMethod?.type || '';
+  }
+};
+
 const RechargeCard = ({
   t,
   enableOnlineTopUp,
@@ -333,7 +350,7 @@ const RechargeCard = ({
                                   }
                                   className='!rounded-lg !px-4 !py-2'
                                 >
-                                  {payMethod.name}
+                                  {getPaymentMethodLabel(payMethod, t)}
                                 </Button>
                               );
 

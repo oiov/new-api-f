@@ -395,17 +395,18 @@ func GetUserTopUps(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
+	paymentMethod := c.Query("payment_method")
+	status := c.Query("status")
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 
-	var (
-		topups []*model.TopUp
-		total  int64
-		err    error
-	)
-	if keyword != "" {
-		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo)
-	} else {
-		topups, total, err = model.GetUserTopUps(userId, pageInfo)
-	}
+	topups, total, err := model.GetUserTopUpsWithFilters(userId, pageInfo, model.TopUpUserFilters{
+		Keyword:        keyword,
+		PaymentMethod:  paymentMethod,
+		Status:         status,
+		StartTimestamp: startTimestamp,
+		EndTimestamp:   endTimestamp,
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -428,6 +429,7 @@ func GetAllTopUps(c *gin.Context) {
 	topups, total, err := model.GetAllTopUpsWithFilters(pageInfo, model.TopUpAdminFilters{
 		UserID:         userId,
 		Keyword:        keyword,
+		PaymentMethod:  c.Query("payment_method"),
 		Status:         status,
 		StartTimestamp: startTimestamp,
 		EndTimestamp:   endTimestamp,
@@ -464,4 +466,3 @@ func AdminCompleteTopUp(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
-

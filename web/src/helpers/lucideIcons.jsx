@@ -62,6 +62,8 @@ export function getLucideIcon(key, selected = false) {
     case 'token':
     case 'tokenAdmin':
       return <Key {...commonProps} color={iconColor} />;
+    case 'ecomagent':
+      return <Boxes {...commonProps} color={iconColor} />;
     case 'log':
       return <BarChart3 {...commonProps} color={iconColor} />;
     case 'midjourney':

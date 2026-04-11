@@ -67,6 +67,13 @@ type RedemptionHistoryItem struct {
 	Username              string `json:"username"`
 }
 
+type RedemptionHistoryFilters struct {
+	Keyword         string
+	RedemptionType  string
+	StartTimestamp  int64
+	EndTimestamp    int64
+}
+
 func NormalizeRedemptionType(redemptionType string) string {
 	switch strings.TrimSpace(strings.ToLower(redemptionType)) {
 	case "", RedemptionTypeQuota:
@@ -159,6 +166,10 @@ func SearchRedemptions(keyword string, startIdx int, num int) (redemptions []*Re
 }
 
 func GetRedemptionHistory(userId int, keyword string, startIdx int, num int) (items []*RedemptionHistoryItem, total int64, err error) {
+	return GetRedemptionHistoryWithFilters(userId, RedemptionHistoryFilters{Keyword: keyword}, startIdx, num)
+}
+
+func GetRedemptionHistoryWithFilters(userId int, filters RedemptionHistoryFilters, startIdx int, num int) (items []*RedemptionHistoryItem, total int64, err error) {
 	tx := DB.Table("redemptions").
 		Select(
 			"redemptions.id, redemptions.name, redemptions.quota, redemptions.redemption_type, redemptions.subscription_plan_id, redemptions.redeemed_time, redemptions.used_user_id, COALESCE(users.username, '') as username",
@@ -170,7 +181,7 @@ func GetRedemptionHistory(userId int, keyword string, startIdx int, num int) (it
 		tx = tx.Where("redemptions.used_user_id = ?", userId)
 	}
 
-	keyword = strings.TrimSpace(keyword)
+	keyword := strings.TrimSpace(filters.Keyword)
 	if keyword != "" {
 		keywordTx := DB.Where("redemptions.name LIKE ?", "%"+keyword+"%")
 		if userId == 0 {
@@ -182,6 +193,15 @@ func GetRedemptionHistory(userId int, keyword string, startIdx int, num int) (it
 				Or("redemptions.used_user_id = ?", id)
 		}
 		tx = tx.Where(keywordTx)
+	}
+	if redemptionType := NormalizeRedemptionType(strings.TrimSpace(filters.RedemptionType)); strings.TrimSpace(filters.RedemptionType) != "" {
+		tx = tx.Where("redemptions.redemption_type = ?", redemptionType)
+	}
+	if filters.StartTimestamp > 0 {
+		tx = tx.Where("redemptions.redeemed_time >= ?", filters.StartTimestamp)
+	}
+	if filters.EndTimestamp > 0 {
+		tx = tx.Where("redemptions.redeemed_time <= ?", filters.EndTimestamp)
 	}
 
 	if err = tx.Count(&total).Error; err != nil {

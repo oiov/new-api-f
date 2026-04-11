@@ -29,6 +29,15 @@ type TopUp struct {
 type TopUpAdminFilters struct {
 	UserID         int
 	Keyword        string
+	PaymentMethod  string
+	Status         string
+	StartTimestamp int64
+	EndTimestamp   int64
+}
+
+type TopUpUserFilters struct {
+	Keyword        string
+	PaymentMethod  string
 	Status         string
 	StartTimestamp int64
 	EndTimestamp   int64
@@ -116,6 +125,10 @@ func Recharge(referenceId string, customerId string) (err error) {
 }
 
 func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+	return GetUserTopUpsWithFilters(userId, pageInfo, TopUpUserFilters{})
+}
+
+func GetUserTopUpsWithFilters(userId int, pageInfo *common.PageInfo, filters TopUpUserFilters) (topups []*TopUp, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -127,15 +140,18 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, tota
 		}
 	}()
 
+	query := tx.Model(&TopUp{}).Where("user_id = ?", userId)
+	query = applyTopUpUserFilters(query, filters)
+
 	// Get total count within transaction
-	err = tx.Model(&TopUp{}).Where("user_id = ?", userId).Count(&total).Error
+	err = query.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated topups within same transaction
-	err = tx.Where("user_id = ?", userId).Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error
+	err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -178,38 +194,8 @@ func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err 
 	return topups, total, nil
 }
 
-// SearchUserTopUps 按订单号搜索某用户的充值记录
 func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return nil, 0, tx.Error
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	query := tx.Model(&TopUp{}).Where("user_id = ?", userId)
-	if keyword != "" {
-		like := "%%" + keyword + "%%"
-		query = query.Where("trade_no LIKE ?", like)
-	}
-
-	if err = query.Count(&total).Error; err != nil {
-		tx.Rollback()
-		return nil, 0, err
-	}
-
-	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
-		tx.Rollback()
-		return nil, 0, err
-	}
-
-	if err = tx.Commit().Error; err != nil {
-		return nil, 0, err
-	}
-	return topups, total, nil
+	return GetUserTopUpsWithFilters(userId, pageInfo, TopUpUserFilters{Keyword: keyword})
 }
 
 // SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用）
@@ -229,8 +215,11 @@ func GetAllTopUpsWithFilters(pageInfo *common.PageInfo, filters TopUpAdminFilter
 	}()
 
 	// Build base query for counting
-	countQuery := tx.Model(&TopUp{})
-	countQuery = applyTopUpFilters(countQuery, filters)
+	countQuery := tx.Table("top_ups")
+	if strings.TrimSpace(filters.Keyword) != "" {
+		countQuery = countQuery.Joins("LEFT JOIN users ON top_ups.user_id = users.id")
+	}
+	countQuery = applyTopUpFiltersWithPrefix(countQuery, filters, "top_ups.")
 
 	if err = countQuery.Count(&total).Error; err != nil {
 		tx.Rollback()
@@ -270,7 +259,10 @@ func applyTopUpFiltersWithPrefix(query *gorm.DB, filters TopUpAdminFilters, pref
 	}
 	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
 		like := "%%" + keyword + "%%"
-		query = query.Where(prefix+"trade_no LIKE ?", like)
+		query = query.Where(prefix+"trade_no LIKE ? OR users.username LIKE ?", like, like)
+	}
+	if paymentMethod := strings.TrimSpace(filters.PaymentMethod); paymentMethod != "" {
+		query = query.Where(prefix+"payment_method = ?", paymentMethod)
 	}
 	if status := strings.TrimSpace(filters.Status); status != "" {
 		query = query.Where(prefix+"status = ?", status)
@@ -280,6 +272,26 @@ func applyTopUpFiltersWithPrefix(query *gorm.DB, filters TopUpAdminFilters, pref
 	}
 	if filters.EndTimestamp > 0 {
 		query = query.Where(prefix+"create_time <= ?", filters.EndTimestamp)
+	}
+	return query
+}
+
+func applyTopUpUserFilters(query *gorm.DB, filters TopUpUserFilters) *gorm.DB {
+	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
+		like := "%%" + keyword + "%%"
+		query = query.Where("trade_no LIKE ?", like)
+	}
+	if paymentMethod := strings.TrimSpace(filters.PaymentMethod); paymentMethod != "" {
+		query = query.Where("payment_method = ?", paymentMethod)
+	}
+	if status := strings.TrimSpace(filters.Status); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if filters.StartTimestamp > 0 {
+		query = query.Where("create_time >= ?", filters.StartTimestamp)
+	}
+	if filters.EndTimestamp > 0 {
+		query = query.Where("create_time <= ?", filters.EndTimestamp)
 	}
 	return query
 }

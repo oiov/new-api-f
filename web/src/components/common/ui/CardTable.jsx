@@ -26,6 +26,7 @@ import {
   Pagination,
   Empty,
   Button,
+  Checkbox,
   Collapsible,
 } from '@douyinfe/semi-ui';
 import { IconChevronDown, IconChevronUp } from '@douyinfe/semi-icons';
@@ -55,6 +56,14 @@ const CardTable = ({
   const getRowKey = (record, index) => {
     if (typeof rowKey === 'function') return rowKey(record);
     return record[rowKey] !== undefined ? record[rowKey] : index;
+  };
+
+  const selectedRowKeys = tableProps.rowSelection?.selectedRowKeys || [];
+
+  const buildSelectedRows = (keys) => {
+    return dataSource.filter((record, index) =>
+      keys.includes(getRowKey(record, index)),
+    );
   };
 
   if (!isMobile) {
@@ -133,13 +142,38 @@ const CardTable = ({
   const MobileRowCard = ({ record, index }) => {
     const [showDetails, setShowDetails] = useState(false);
     const rowKeyVal = getRowKey(record, index);
+    const isSelected = selectedRowKeys.includes(rowKeyVal);
 
     const hasDetails =
       tableProps.expandedRowRender &&
       (!tableProps.rowExpandable || tableProps.rowExpandable(record));
 
+    const handleSelectionChange = (e) => {
+      e?.stopPropagation?.();
+      if (!tableProps.rowSelection?.onChange) return;
+
+      const nextKeys = e.target.checked
+        ? Array.from(new Set([...selectedRowKeys, rowKeyVal]))
+        : selectedRowKeys.filter((key) => key !== rowKeyVal);
+
+      tableProps.rowSelection.onChange(nextKeys, buildSelectedRows(nextKeys));
+    };
+
     return (
-      <Card key={rowKeyVal} className='!rounded-2xl shadow-sm'>
+      <Card
+        key={rowKeyVal}
+        className={`!rounded-2xl shadow-sm ${isSelected ? 'ring-1 ring-[var(--semi-color-primary)]' : ''}`}
+      >
+        {tableProps.rowSelection && (
+          <div
+            className='flex items-center justify-between pb-2 mb-2 border-b border-dashed'
+            style={{ borderColor: 'var(--semi-color-border)' }}
+          >
+            <Checkbox checked={isSelected} onChange={handleSelectionChange}>
+              {t('选择')}
+            </Checkbox>
+          </div>
+        )}
         {columns.map((col, colIdx) => {
           if (
             tableProps?.visibleColumns &&

@@ -3,10 +3,12 @@ package service
 import (
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -89,6 +91,26 @@ type ecomAgentClient struct {
 	supabaseAuthURL string
 	supabaseAnonKey string
 	httpClient      *http.Client
+	fingerprint     *ecomAgentBrowserFingerprint
+}
+
+type ecomAgentBrowserFingerprint struct {
+	UserAgent              string
+	AcceptLanguage         string
+	Priority               string
+	SecChUa                string
+	SecChUaArch            string
+	SecChUaBitness         string
+	SecChUaFullVersion     string
+	SecChUaFullVersionList string
+	SecChUaMobile          string
+	SecChUaModel           string
+	SecChUaPlatform        string
+	SecChUaPlatformVersion string
+	SecFetchDest           string
+	SecFetchMode           string
+	SecFetchSite           string
+	SecGpc                 string
 }
 
 func EcomAgentDefaultBaseURL() string {
@@ -136,23 +158,32 @@ func SyncEcomAgentAccountWithOptions(ctx context.Context, account *model.EcomAge
 		supabaseAuthURL: account.SupabaseAuthURL,
 		supabaseAnonKey: account.SupabaseAnonKey,
 		httpClient:      cloneDefaultHTTPClient(),
+		fingerprint:     newRandomEcomAgentBrowserFingerprint(),
 	}
 	if account.SignupAt == 0 && account.AccountID == "" {
 		signupResp, signupRaw, err := client.signup(ctx, account.Email, account.Password)
 		if err != nil {
-			account.Status = "signup_failed"
-			account.LastError = err.Error()
-			return err
-		}
-		account.SignupRaw = signupRaw
-		account.RequiresEmailConfirmation = signupResp.RequiresEmailConfirmation
-		account.SignupAt = common.GetTimestamp()
-		if signupResp.RequiresEmailConfirmation {
-			account.Status = "pending_email_confirmation"
+			if isEcomAgentAccountAlreadyExistsError(err) {
+				account.SignupRaw = signupRaw
+				account.SignupAt = common.GetTimestamp()
+				account.Status = "signup_skipped_existing"
+				account.LastError = ""
+			} else {
+				account.Status = "signup_failed"
+				account.LastError = err.Error()
+				return err
+			}
 		} else {
-			account.Status = "signed_up"
+			account.SignupRaw = signupRaw
+			account.RequiresEmailConfirmation = signupResp.RequiresEmailConfirmation
+			account.SignupAt = common.GetTimestamp()
+			if signupResp.RequiresEmailConfirmation {
+				account.Status = "pending_email_confirmation"
+			} else {
+				account.Status = "signed_up"
+			}
+			account.LastError = ""
 		}
-		account.LastError = ""
 	}
 
 	if account.ConfirmURL != "" && account.ConfirmedAt == 0 {
@@ -255,6 +286,18 @@ func hasUsableEcomAgentAPIKey(account *model.EcomAgentAccount) bool {
 	return account.APIKeyExpiresAt > common.GetTimestamp()
 }
 
+func isEcomAgentAccountAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(strings.TrimSpace(err.Error()))
+	if !strings.Contains(text, "http 409") {
+		return false
+	}
+	return strings.Contains(text, "already exists") ||
+		strings.Contains(text, "account with this email already exists")
+}
+
 func cloneDefaultHTTPClient() *http.Client {
 	base := GetHttpClient()
 	if base == nil {
@@ -288,12 +331,12 @@ func (c *ecomAgentClient) signup(ctx context.Context, email string, password str
 		"password": password,
 	}
 	resp := &ecomAgentSignupResponse{}
-	raw, err := c.requestJSON(ctx, http.MethodPost, c.baseURL+"/api/auth/signup", map[string]string{
+	raw, err := c.requestJSON(ctx, http.MethodPost, c.baseURL+"/api/auth/signup", c.browserHeaders(map[string]string{
 		"Accept":       "*/*",
 		"Content-Type": "application/json",
 		"Origin":       c.baseURL,
 		"Referer":      c.baseURL + "/signup",
-	}, payload, resp)
+	}), payload, resp)
 	return resp, raw, err
 }
 
@@ -301,6 +344,17 @@ func (c *ecomAgentClient) visitConfirmationLink(ctx context.Context, confirmURL 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, confirmURL, nil)
 	if err != nil {
 		return 0, "", err
+	}
+	for key, value := range c.browserHeaders(map[string]string{
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+		"Referer":                   c.baseURL + "/",
+		"Upgrade-Insecure-Requests": "1",
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "cross-site",
+		"Sec-Fetch-User":            "?1",
+	}) {
+		req.Header.Set(key, value)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -318,7 +372,7 @@ func (c *ecomAgentClient) passwordLogin(ctx context.Context, email string, passw
 		"gotrue_meta_security": map[string]any{},
 	}
 	resp := &ecomAgentPasswordLoginResponse{}
-	raw, err := c.requestJSON(ctx, http.MethodPost, c.supabaseAuthURL+"/token?grant_type=password", map[string]string{
+	raw, err := c.requestJSON(ctx, http.MethodPost, c.supabaseAuthURL+"/token?grant_type=password", c.browserHeaders(map[string]string{
 		"Accept":                 "*/*",
 		"Content-Type":           "application/json;charset=UTF-8",
 		"apikey":                 c.supabaseAnonKey,
@@ -327,7 +381,7 @@ func (c *ecomAgentClient) passwordLogin(ctx context.Context, email string, passw
 		"Referer":                c.baseURL + "/",
 		"X-Client-Info":          "supabase-js-web/2.98.0",
 		"X-Supabase-Api-Version": "2024-01-01",
-	}, payload, resp)
+	}), payload, resp)
 	return resp, raw, err
 }
 
@@ -336,11 +390,14 @@ func (c *ecomAgentClient) refreshAccessToken(ctx context.Context, refreshToken s
 		"refresh_token": refreshToken,
 	}
 	resp := &ecomAgentRefreshResponse{}
-	raw, err := c.requestJSON(ctx, http.MethodPost, c.supabaseAuthURL+"/token?grant_type=refresh_token", map[string]string{
-		"Accept":       "application/json",
-		"Content-Type": "application/json",
-		"apikey":       c.supabaseAnonKey,
-	}, payload, resp)
+	raw, err := c.requestJSON(ctx, http.MethodPost, c.supabaseAuthURL+"/token?grant_type=refresh_token", c.browserHeaders(map[string]string{
+		"Accept":        "application/json",
+		"Content-Type":  "application/json",
+		"apikey":        c.supabaseAnonKey,
+		"Authorization": "Bearer " + c.supabaseAnonKey,
+		"Origin":        c.baseURL,
+		"Referer":       c.baseURL + "/",
+	}), payload, resp)
 	return resp, raw, err
 }
 
@@ -350,33 +407,159 @@ func (c *ecomAgentClient) generateKey(ctx context.Context, accessToken string, a
 		"email":     email,
 	}
 	resp := &ecomAgentGenerateKeyResponse{}
-	raw, err := c.requestJSON(ctx, http.MethodPost, c.baseURL+"/api/generate-key", map[string]string{
+	raw, err := c.requestJSON(ctx, http.MethodPost, c.baseURL+"/api/generate-key", c.browserHeaders(map[string]string{
 		"Accept":        "*/*",
 		"Authorization": "Bearer " + accessToken,
 		"Content-Type":  "application/json",
 		"Origin":        c.baseURL,
 		"Referer":       c.baseURL + "/dashboard",
-	}, payload, resp)
+	}), payload, resp)
 	return resp, raw, err
 }
 
 func (c *ecomAgentClient) subscription(ctx context.Context, accessToken string, accountID string) (*ecomAgentSubscriptionEnvelope, string, error) {
 	resp := &ecomAgentSubscriptionEnvelope{}
-	raw, err := c.requestJSON(ctx, http.MethodGet, c.baseURL+"/api/subscription/"+accountID, map[string]string{
+	raw, err := c.requestJSON(ctx, http.MethodGet, c.baseURL+"/api/subscription/"+accountID, c.browserHeaders(map[string]string{
 		"Accept":        "*/*",
 		"Authorization": "Bearer " + accessToken,
-	}, nil, resp)
+		"Referer":       c.baseURL + "/dashboard?tab=billing",
+	}), nil, resp)
 	return resp, raw, err
 }
 
 func (c *ecomAgentClient) usage(ctx context.Context, accessToken string, accountID string) (*ecomAgentUsageEnvelope, string, error) {
 	resp := &ecomAgentUsageEnvelope{}
-	raw, err := c.requestJSON(ctx, http.MethodGet, c.baseURL+"/api/account-usage/"+accountID, map[string]string{
+	raw, err := c.requestJSON(ctx, http.MethodGet, c.baseURL+"/api/account-usage/"+accountID, c.browserHeaders(map[string]string{
 		"Accept":        "*/*",
 		"Authorization": "Bearer " + accessToken,
 		"Referer":       c.baseURL + "/dashboard?tab=billing",
-	}, nil, resp)
+	}), nil, resp)
 	return resp, raw, err
+}
+
+func (c *ecomAgentClient) browserHeaders(extra map[string]string) map[string]string {
+	fp := c.fingerprint
+	if fp == nil {
+		fp = newRandomEcomAgentBrowserFingerprint()
+	}
+	headers := map[string]string{
+		"Accept-Language":             fp.AcceptLanguage,
+		"Cache-Control":               "no-store",
+		"Pragma":                      "no-cache",
+		"Priority":                    fp.Priority,
+		"Sec-Ch-Ua":                   fp.SecChUa,
+		"Sec-Ch-Ua-Arch":              fp.SecChUaArch,
+		"Sec-Ch-Ua-Bitness":           fp.SecChUaBitness,
+		"Sec-Ch-Ua-Full-Version":      fp.SecChUaFullVersion,
+		"Sec-Ch-Ua-Full-Version-List": fp.SecChUaFullVersionList,
+		"Sec-Ch-Ua-Mobile":            fp.SecChUaMobile,
+		"Sec-Ch-Ua-Model":             fp.SecChUaModel,
+		"Sec-Ch-Ua-Platform":          fp.SecChUaPlatform,
+		"Sec-Ch-Ua-Platform-Version":  fp.SecChUaPlatformVersion,
+		"Sec-Fetch-Dest":              fp.SecFetchDest,
+		"Sec-Fetch-Mode":              fp.SecFetchMode,
+		"Sec-Fetch-Site":              fp.SecFetchSite,
+		"Sec-Gpc":                     fp.SecGpc,
+		"User-Agent":                  fp.UserAgent,
+	}
+	for key, value := range extra {
+		headers[key] = value
+	}
+	return headers
+}
+
+func newRandomEcomAgentBrowserFingerprint() *ecomAgentBrowserFingerprint {
+	type fingerprintPreset struct {
+		UserAgent              string
+		SecChUa                string
+		SecChUaArch            string
+		SecChUaBitness         string
+		SecChUaFullVersion     string
+		SecChUaFullVersionList string
+		SecChUaMobile          string
+		SecChUaModel           string
+		SecChUaPlatform        string
+		SecChUaPlatformVersion string
+	}
+
+	presets := []fingerprintPreset{
+		{
+			UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+			SecChUa:                `"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"`,
+			SecChUaArch:            `"x86"`,
+			SecChUaBitness:         `"64"`,
+			SecChUaFullVersion:     `"147.0.7727.55"`,
+			SecChUaFullVersionList: `"Google Chrome";v="147.0.7727.55", "Not.A/Brand";v="8.0.0.0", "Chromium";v="147.0.7727.55"`,
+			SecChUaMobile:          "?0",
+			SecChUaModel:           `""`,
+			SecChUaPlatform:        `"macOS"`,
+			SecChUaPlatformVersion: `"15.7.0"`,
+		},
+		{
+			UserAgent:              "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7499.40 Safari/537.36",
+			SecChUa:                `"Google Chrome";v="146", "Not.A/Brand";v="8", "Chromium";v="146"`,
+			SecChUaArch:            `"arm"`,
+			SecChUaBitness:         `"64"`,
+			SecChUaFullVersion:     `"146.0.7499.40"`,
+			SecChUaFullVersionList: `"Google Chrome";v="146.0.7499.40", "Not.A/Brand";v="8.0.0.0", "Chromium";v="146.0.7499.40"`,
+			SecChUaMobile:          "?0",
+			SecChUaModel:           `""`,
+			SecChUaPlatform:        `"macOS"`,
+			SecChUaPlatformVersion: `"13.6.6"`,
+		},
+		{
+			UserAgent:              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.55 Safari/537.36",
+			SecChUa:                `"Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"`,
+			SecChUaArch:            `"x86"`,
+			SecChUaBitness:         `"64"`,
+			SecChUaFullVersion:     `"147.0.7727.55"`,
+			SecChUaFullVersionList: `"Google Chrome";v="147.0.7727.55", "Not.A/Brand";v="8.0.0.0", "Chromium";v="147.0.7727.55"`,
+			SecChUaMobile:          "?0",
+			SecChUaModel:           `""`,
+			SecChUaPlatform:        `"Windows"`,
+			SecChUaPlatformVersion: `"10.0.0"`,
+		},
+	}
+
+	acceptLanguages := []string{
+		"zh-CN,zh;q=0.9,en;q=0.8",
+		"zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+		"en-US,en;q=0.9,zh-CN;q=0.7,zh;q=0.6",
+		"en-GB,en;q=0.9,zh-CN;q=0.7,zh;q=0.6",
+	}
+
+	priorities := []string{"u=1, i", "u=0, i"}
+
+	preset := presets[randomIndex(len(presets))]
+	return &ecomAgentBrowserFingerprint{
+		UserAgent:              preset.UserAgent,
+		AcceptLanguage:         acceptLanguages[randomIndex(len(acceptLanguages))],
+		Priority:               priorities[randomIndex(len(priorities))],
+		SecChUa:                preset.SecChUa,
+		SecChUaArch:            preset.SecChUaArch,
+		SecChUaBitness:         preset.SecChUaBitness,
+		SecChUaFullVersion:     preset.SecChUaFullVersion,
+		SecChUaFullVersionList: preset.SecChUaFullVersionList,
+		SecChUaMobile:          preset.SecChUaMobile,
+		SecChUaModel:           preset.SecChUaModel,
+		SecChUaPlatform:        preset.SecChUaPlatform,
+		SecChUaPlatformVersion: preset.SecChUaPlatformVersion,
+		SecFetchDest:           "empty",
+		SecFetchMode:           "cors",
+		SecFetchSite:           "same-origin",
+		SecGpc:                 "1",
+	}
+}
+
+func randomIndex(size int) int {
+	if size <= 1 {
+		return 0
+	}
+	n, err := cryptorand.Int(cryptorand.Reader, big.NewInt(int64(size)))
+	if err != nil {
+		return int(time.Now().UnixNano() % int64(size))
+	}
+	return int(n.Int64())
 }
 
 func (c *ecomAgentClient) requestJSON(ctx context.Context, method string, targetURL string, headers map[string]string, payload any, out any) (string, error) {

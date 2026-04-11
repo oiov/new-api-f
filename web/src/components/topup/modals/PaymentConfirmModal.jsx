@@ -24,6 +24,23 @@ import { CreditCard } from 'lucide-react';
 
 const { Text } = Typography;
 
+const getPaymentMethodLabel = (payMethod, t) => {
+  switch (payMethod?.type) {
+    case 'alipay':
+      return t('支付宝');
+    case 'wxpay':
+      return t('微信');
+    case 'stripe':
+      return t('Stripe');
+    case 'creem':
+      return t('Creem');
+    case 'waffo':
+      return t('Waffo');
+    default:
+      return payMethod?.name || payMethod?.type || '';
+  }
+};
+
 const PaymentConfirmModal = ({
   t,
   open,
@@ -150,7 +167,7 @@ const PaymentConfirmModal = ({
                           />
                         )}
                         <Text className='text-slate-900 dark:text-slate-100'>
-                          {payMethod.name}
+                          {getPaymentMethodLabel(payMethod, t)}
                         </Text>
                       </>
                     );
