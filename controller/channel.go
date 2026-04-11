@@ -908,6 +908,21 @@ func UpdateChannel(c *gin.Context) {
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
 
+	// 允许在编辑已有单密钥渠道时升级为多密钥渠道。
+	// 前端会在这种场景下传入 multi_key_mode，此时默认按追加模式保留原有密钥，
+	// 并将上方输入的新密钥追加到现有列表末尾。
+	upgradeToMultiKey := !originChannel.ChannelInfo.IsMultiKey &&
+		channel.MultiKeyMode != nil &&
+		*channel.MultiKeyMode != ""
+	if upgradeToMultiKey {
+		channel.ChannelInfo.IsMultiKey = true
+		channel.ChannelInfo.MultiKeyMode = constant.MultiKeyMode(*channel.MultiKeyMode)
+		if channel.KeyMode == nil || *channel.KeyMode == "" {
+			defaultKeyMode := "append"
+			channel.KeyMode = &defaultKeyMode
+		}
+	}
+
 	if originChannel.ChannelInfo.IsMultiKey && strings.TrimSpace(channel.Key) != "" {
 		allowAppendOnly := channel.KeyMode != nil && *channel.KeyMode == "append"
 		if !allowAppendOnly {
@@ -1009,6 +1024,22 @@ func UpdateChannel(c *gin.Context) {
 			}
 		case "replace":
 			// 覆盖模式：直接使用新密钥（默认行为，不需要特殊处理）
+		}
+	}
+	if upgradeToMultiKey {
+		keyCount := 0
+		for _, key := range channel.GetKeys() {
+			if strings.TrimSpace(key) == "" {
+				continue
+			}
+			keyCount++
+		}
+		if keyCount < 2 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "升级为多密钥渠道时，至少需要两个有效密钥",
+			})
+			return
 		}
 	}
 	err = channel.Update()

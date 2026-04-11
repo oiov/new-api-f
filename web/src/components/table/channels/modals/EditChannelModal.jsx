@@ -262,6 +262,7 @@ const EditChannelModal = (props) => {
   const [keyMode, setKeyMode] = useState('append'); // 密钥模式：replace（覆盖）或 append（追加）
   const [isEnterpriseAccount, setIsEnterpriseAccount] = useState(false); // 是否为企业账户
   const [doubaoApiEditUnlocked, setDoubaoApiEditUnlocked] = useState(false); // 豆包渠道自定义 API 地址隐藏入口
+  const canEditAsMultiKey = isEdit && inputs.type !== 57;
   const packagePoolName = useMemo(() => {
     const normalizedTag = (inputs.tag || '').trim();
     return PACKAGE_POOL_LABELS[normalizedTag] || '';
@@ -872,6 +873,8 @@ const EditChannelModal = (props) => {
       } else {
         setBatch(false);
         setMultiToSingle(false);
+        setMultiKeyMode('random');
+        data.multi_key_mode = 'random';
       }
       // 解析渠道额外设置并合并到data中
       if (data.setting) {
@@ -1837,10 +1840,16 @@ const EditChannelModal = (props) => {
     }
 
     if (isEdit) {
+      const shouldEnableMultiKey = batch;
       res = await API.put(`/api/channel/`, {
         ...localInputs,
         id: parseInt(channelId),
-        key_mode: isMultiKeyChannel ? keyMode : undefined, // 只在多key模式下传递
+        key_mode:
+          shouldEnableMultiKey || isMultiKeyChannel ? keyMode : undefined,
+        multi_key_mode:
+          shouldEnableMultiKey || isMultiKeyChannel
+            ? inputs.multi_key_mode || multiKeyMode
+            : undefined,
       });
     } else {
       res = await API.post(`/api/channel/`, {
@@ -1950,68 +1959,79 @@ const EditChannelModal = (props) => {
     }
   };
 
-  const batchAllowed = (!isEdit || isMultiKeyChannel) && inputs.type !== 57;
+  const batchAllowed =
+    (!isEdit || isMultiKeyChannel || canEditAsMultiKey) && inputs.type !== 57;
   const batchExtra = batchAllowed ? (
     <Space>
-      {!isEdit && (
-        <Checkbox
-          disabled={isEdit}
-          checked={batch}
-          onChange={(e) => {
-            const checked = e.target.checked;
+      <Checkbox
+        disabled={isEdit && isMultiKeyChannel}
+        checked={batch}
+        onChange={(e) => {
+          const checked = e.target.checked;
 
-            if (!checked && vertexFileList.length > 1) {
-              Modal.confirm({
-                title: t('切换为单密钥模式'),
-                content: t(
-                  '将仅保留第一个密钥文件，其余文件将被移除，是否继续？',
-                ),
-                onOk: () => {
-                  const firstFile = vertexFileList[0];
-                  const firstKey = vertexKeys[0] ? [vertexKeys[0]] : [];
+          if (!checked && vertexFileList.length > 1) {
+            Modal.confirm({
+              title: t('切换为单密钥模式'),
+              content: t(
+                '将仅保留第一个密钥文件，其余文件将被移除，是否继续？',
+              ),
+              onOk: () => {
+                const firstFile = vertexFileList[0];
+                const firstKey = vertexKeys[0] ? [vertexKeys[0]] : [];
 
-                  setVertexFileList([firstFile]);
-                  setVertexKeys(firstKey);
+                setVertexFileList([firstFile]);
+                setVertexKeys(firstKey);
 
-                  formApiRef.current?.setValue('vertex_files', [firstFile]);
-                  setInputs((prev) => ({ ...prev, vertex_files: [firstFile] }));
+                formApiRef.current?.setValue('vertex_files', [firstFile]);
+                setInputs((prev) => ({ ...prev, vertex_files: [firstFile] }));
 
-                  setBatch(false);
-                  setMultiToSingle(false);
-                  setMultiKeyMode('random');
-                },
-                onCancel: () => {
-                  setBatch(true);
-                },
-                centered: true,
-              });
-              return;
+                setBatch(false);
+                setMultiToSingle(false);
+                setMultiKeyMode('random');
+              },
+              onCancel: () => {
+                setBatch(true);
+              },
+              centered: true,
+            });
+            return;
+          }
+
+          setBatch(checked);
+          if (!checked) {
+            setMultiToSingle(false);
+            setMultiKeyMode('random');
+            setInputs((prevInputs) => {
+              const newInputs = { ...prevInputs };
+              delete newInputs.multi_key_mode;
+              return newInputs;
+            });
+          } else {
+            if (isEdit) {
+              setMultiToSingle(true);
+              setInputs((prevInputs) => ({
+                ...prevInputs,
+                multi_key_mode: prevInputs.multi_key_mode || multiKeyMode,
+              }));
             }
-
-            setBatch(checked);
-            if (!checked) {
-              setMultiToSingle(false);
-              setMultiKeyMode('random');
-            } else {
-              // 批量模式下禁用手动输入，并清空手动输入的内容
-              setUseManualInput(false);
-              if (inputs.type === 41) {
-                // 清空手动输入的密钥内容
-                if (formApiRef.current) {
-                  formApiRef.current.setValue('key', '');
-                }
-                handleInputChange('key', '');
+            // 批量模式下禁用手动输入，并清空手动输入的内容
+            setUseManualInput(false);
+            if (inputs.type === 41) {
+              // 清空手动输入的密钥内容
+              if (formApiRef.current) {
+                formApiRef.current.setValue('key', '');
               }
+              handleInputChange('key', '');
             }
-          }}
-        >
-          {t('批量创建')}
-        </Checkbox>
-      )}
-      {batch && (
+          }
+        }}
+      >
+        {isEdit ? t('开启多密钥') : t('批量创建')}
+      </Checkbox>
+      {batch && !isEdit && (
         <>
           <Checkbox
-            disabled={isEdit}
+            disabled={isEdit && isMultiKeyChannel}
             checked={multiToSingle}
             onChange={() => {
               setMultiToSingle((prev) => {
@@ -2425,7 +2445,7 @@ const EditChannelModal = (props) => {
                           extraText={
                             <div className='flex items-center gap-2 flex-wrap'>
                               {isEdit &&
-                                isMultiKeyChannel &&
+                                (isMultiKeyChannel || (batch && multiToSingle)) &&
                                 keyMode === 'append' && (
                                   <Text type='warning' size='small'>
                                     {t(
@@ -2640,7 +2660,7 @@ const EditChannelModal = (props) => {
                                       {t('请输入完整的 JSON 格式密钥内容')}
                                     </Text>
                                     {isEdit &&
-                                      isMultiKeyChannel &&
+                                      (isMultiKeyChannel || (batch && multiToSingle)) &&
                                       keyMode === 'append' && (
                                         <Text type='warning' size='small'>
                                           {t(
@@ -2648,7 +2668,7 @@ const EditChannelModal = (props) => {
                                           )}
                                         </Text>
                                       )}
-                                    {isEdit && isMultiKeyChannel && (
+                                    {isEdit && (isMultiKeyChannel || (batch && multiToSingle)) && (
                                       <Text type='tertiary' size='small'>
                                         {t(
                                           '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
@@ -2728,7 +2748,7 @@ const EditChannelModal = (props) => {
                             extraText={
                               <div className='flex items-center gap-2'>
                                 {isEdit &&
-                                  isMultiKeyChannel &&
+                                  (isMultiKeyChannel || (batch && multiToSingle)) &&
                                   keyMode === 'append' && (
                                     <Text type='warning' size='small'>
                                       {t(
@@ -2736,7 +2756,7 @@ const EditChannelModal = (props) => {
                                       )}
                                     </Text>
                                   )}
-                                {isEdit && isMultiKeyChannel && (
+                                {isEdit && (isMultiKeyChannel || (batch && multiToSingle)) && (
                                   <Text type='tertiary' size='small'>
                                     {t(
                                       '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
@@ -2762,7 +2782,7 @@ const EditChannelModal = (props) => {
                       </>
                     )}
 
-                    {isEdit && isMultiKeyChannel && (
+                    {isEdit && (isMultiKeyChannel || (batch && multiToSingle)) && (
                       <Form.Select
                         field='key_mode'
                         label={t('密钥修改方式')}
@@ -2787,7 +2807,7 @@ const EditChannelModal = (props) => {
                         }
                       />
                     )}
-                    {batch && multiToSingle && (
+                    {batch && (multiToSingle || isEdit) && (
                       <>
                         <Form.Select
                           field='multi_key_mode'
