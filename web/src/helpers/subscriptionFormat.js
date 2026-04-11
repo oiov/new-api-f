@@ -197,6 +197,49 @@ export function getSubscriptionPriceDisplay(plan) {
   };
 }
 
+function getSubscriptionDurationDays(plan) {
+  const unit = String(plan?.duration_unit || 'month');
+  const value = Number(plan?.duration_value || 1);
+  if (unit === 'custom') {
+    const seconds = Number(plan?.custom_seconds || 0);
+    return seconds > 0 ? seconds / 86400 : 0;
+  }
+  if (value <= 0) return 0;
+  const dayMap = {
+    year: 365,
+    month: 30,
+    week: 7,
+    day: 1,
+    hour: 1 / 24,
+  };
+  return value * (dayMap[unit] || 0);
+}
+
+function formatSubscriptionPriceAmount(amount) {
+  return Number(amount || 0).toFixed(Number.isInteger(amount) ? 0 : 2);
+}
+
+export function getSubscriptionDailyPriceDisplay(plan) {
+  const priceDisplay = getSubscriptionPriceDisplay(plan);
+  const durationDays = getSubscriptionDurationDays(plan);
+  if (durationDays <= 0 || priceDisplay.effectivePrice <= 0) {
+    return null;
+  }
+  const dailyPrice = priceDisplay.effectivePrice / durationDays;
+  return {
+    ...priceDisplay,
+    durationDays,
+    dailyPrice,
+    displayDailyPrice: formatSubscriptionPriceAmount(dailyPrice),
+    displayEffectivePrice: formatSubscriptionPriceAmount(
+      priceDisplay.effectivePrice,
+    ),
+    displayOriginalPrice: formatSubscriptionPriceAmount(
+      priceDisplay.originalPrice,
+    ),
+  };
+}
+
 export function formatSubscriptionResourceLabel(plan, t) {
   const isRequestCount = getSubscriptionResourceType(plan) === 'request_count';
   const isPeriodic = isSubscriptionResourcePeriodic(plan);

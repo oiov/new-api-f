@@ -32,6 +32,7 @@ import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
 import {
   formatSubscriptionSellingDuration,
+  getSubscriptionDailyPriceDisplay,
   getSubscriptionPriceDisplay,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
@@ -56,6 +57,7 @@ const SubscriptionPurchaseModal = ({
   onPayEpay,
 }) => {
   const plan = selectedPlan?.plan;
+  const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
   const { symbol, effectivePrice, originalPrice } =
     getSubscriptionPriceDisplay(plan);
   const hasActiveDiscount = isSubscriptionDiscountActive(plan);
@@ -183,10 +185,17 @@ const SubscriptionPurchaseModal = ({
               ) : null}
               <div className='subscription-purchase-modal__price-current'>
                 <span>{symbol}</span>
-                {displayPrice}
+                {isClaudePlan && dailyPriceDisplay
+                  ? dailyPriceDisplay.displayDailyPrice
+                  : displayPrice}
               </div>
               <div className='subscription-purchase-modal__price-duration'>
-                {formatSubscriptionSellingDuration(plan, t)}
+                {isClaudePlan && dailyPriceDisplay
+                  ? t('约每天成本，合计 {{price}} / {{duration}}', {
+                      price: `${symbol}${displayPrice}`,
+                      duration: formatSubscriptionSellingDuration(plan, t),
+                    })
+                  : formatSubscriptionSellingDuration(plan, t)}
               </div>
             </div>
           </section>

@@ -413,6 +413,8 @@ type SubscriptionOrder struct {
 	DeliveryAdminRemark string `json:"delivery_admin_remark" gorm:"type:text;default:''"`
 	DeliveredBy         int    `json:"delivered_by" gorm:"type:int;not null;default:0"`
 	DeliveredAt         int64  `json:"delivered_at" gorm:"type:bigint;not null;default:0"`
+	RefundToQuota       bool   `json:"refund_to_quota" gorm:"not null;default:false"`
+	RefundQuotaAmount   int64  `json:"refund_quota_amount" gorm:"type:bigint;not null;default:0"`
 
 	PlanDeliveryFieldSchema []SubscriptionDeliveryField       `json:"plan_delivery_field_schema,omitempty" gorm:"-"`
 	DeliveryPayload         []SubscriptionDeliveryPayloadItem `json:"delivery_payload,omitempty" gorm:"-"`
@@ -3638,11 +3640,22 @@ func resolveSubscriptionDeliveryBaseURL() string {
 	return strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/")
 }
 
-func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string) (*SubscriptionOrder, error) {
+func calcManualDeliveryOrderRefundQuota(order *SubscriptionOrder) int64 {
+	if order == nil || order.Money <= 0 {
+		return 0
+	}
+	return int64(convertSubscriptionConversionAmountToQuota(order.Money))
+}
+
+func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string, refundToQuota bool) (*SubscriptionOrder, error) {
 	if orderId <= 0 {
 		return nil, errors.New("invalid orderId")
 	}
 	var result SubscriptionOrder
+	var logUserId int
+	var refundQuota int64
+	var logContent string
+	var logType = LogTypeManage
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
@@ -3658,11 +3671,30 @@ func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string
 			return errors.New("该订单已发放，不能拒绝")
 		}
 		now := common.GetTimestamp()
+		logUserId = order.UserId
+		if refundToQuota && !order.RefundToQuota {
+			refundQuota = calcManualDeliveryOrderRefundQuota(&order)
+			if refundQuota <= 0 {
+				return errors.New("该订单没有可返还的额度")
+			}
+			if err := tx.Model(&User{}).
+				Where("id = ?", order.UserId).
+				Update("quota", gorm.Expr("quota + ?", refundQuota)).Error; err != nil {
+				return err
+			}
+		}
+		nextRefundToQuota := order.RefundToQuota || refundToQuota
+		nextRefundQuotaAmount := order.RefundQuotaAmount
+		if refundQuota > 0 {
+			nextRefundQuotaAmount += refundQuota
+		}
 		updates := map[string]any{
 			"fulfillment_status":    SubscriptionFulfillmentRejected,
 			"delivery_admin_remark": strings.TrimSpace(adminRemark),
 			"delivered_by":          adminId,
 			"delivered_at":          now,
+			"refund_to_quota":       nextRefundToQuota,
+			"refund_quota_amount":   nextRefundQuotaAmount,
 		}
 		if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", orderId).Updates(updates).Error; err != nil {
 			return err
@@ -3670,10 +3702,21 @@ func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string
 		if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
 			return err
 		}
+		if refundQuota > 0 {
+			logType = LogTypeRefund
+			logContent = fmt.Sprintf("管理员拒绝人工发放套餐订单，已返还余额额度: %d", refundQuota)
+		} else if result.RefundToQuota && result.RefundQuotaAmount > 0 {
+			logContent = fmt.Sprintf("管理员更新人工发放套餐订单拒绝原因；该订单已返还余额额度: %d", result.RefundQuotaAmount)
+		} else {
+			logContent = "管理员拒绝人工发放套餐订单，未返还余额额度"
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	if logUserId > 0 && logContent != "" {
+		RecordLog(logUserId, logType, logContent)
 	}
 	ApplySubscriptionOrderDeliveryFields(&result)
 	return &result, nil
@@ -4426,16 +4469,16 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 			}
 			upgradeGroup := strings.TrimSpace(lastExpired.UpgradeGroup)
 			prevGroup := strings.TrimSpace(lastExpired.PrevUserGroup)
-				if upgradeGroup == "" {
-					return nil
+			if upgradeGroup == "" {
+				return nil
+			}
+			if prevGroup == "" {
+				resolvedPrevGroup, resolveErr := resolveExpiredSubscriptionFallbackGroupTx(tx, userId, upgradeGroup)
+				if resolveErr != nil {
+					return resolveErr
 				}
-				if prevGroup == "" {
-					resolvedPrevGroup, resolveErr := resolveExpiredSubscriptionFallbackGroupTx(tx, userId, upgradeGroup)
-					if resolveErr != nil {
-						return resolveErr
-					}
-					prevGroup = resolvedPrevGroup
-				}
+				prevGroup = resolvedPrevGroup
+			}
 			if prevGroup == "" {
 				return nil
 			}

@@ -86,17 +86,23 @@ func notifyManualDeliveryOrderResult(order *model.SubscriptionOrder, approved bo
 	if approved {
 		content = "你购买的套餐订单已发放完成。<br/>套餐：<strong>{{value}}</strong><br/>订单号：<strong>{{value}}</strong><br/>你现在可以前往订阅页面查看交付内容。"
 	} else {
-		content = "你购买的套餐订单未通过发放审核。<br/>套餐：<strong>{{value}}</strong><br/>订单号：<strong>{{value}}</strong><br/>处理说明：{{value}}"
+		content = "你购买的套餐订单未通过发放审核。<br/>套餐：<strong>{{value}}</strong><br/>订单号：<strong>{{value}}</strong><br/>处理说明：{{value}}<br/>额度处理：<strong>{{value}}</strong>"
 	}
 	values := []interface{}{
 		strings.TrimSpace(order.PlanTitle),
 		strings.TrimSpace(order.TradeNo),
 		strings.TrimSpace(order.DeliveryAdminRemark),
+		"未补回余额额度",
 	}
 	if approved {
 		values = values[:2]
 	} else if strings.TrimSpace(order.DeliveryAdminRemark) == "" {
 		values[2] = "管理员暂未填写额外说明。"
+		if order.RefundToQuota && order.RefundQuotaAmount > 0 {
+			values[3] = fmt.Sprintf("已补回 %d 额度到用户余额", order.RefundQuotaAmount)
+		}
+	} else if order.RefundToQuota && order.RefundQuotaAmount > 0 {
+		values[3] = fmt.Sprintf("已补回 %d 额度到用户余额", order.RefundQuotaAmount)
 	}
 	_ = service.NotifyUser(
 		user.Id,
@@ -265,7 +271,8 @@ type AdminDeliverManualOrderPayload struct {
 }
 
 type AdminRejectManualOrderPayload struct {
-	AdminRemark string `json:"admin_remark"`
+	AdminRemark   string `json:"admin_remark"`
+	RefundToQuota bool   `json:"refund_to_quota"`
 }
 
 func AdminListSubscriptionConversionRequests(c *gin.Context) {
@@ -377,6 +384,7 @@ func AdminRejectManualDeliveryOrder(c *gin.Context) {
 		orderId,
 		c.GetInt("id"),
 		req.AdminRemark,
+		req.RefundToQuota,
 	)
 	if err != nil {
 		common.ApiError(c, err)

@@ -4333,6 +4333,7 @@
         "追加到现有密钥": "Append to existing key",
         "追加模式：将新密钥添加到现有密钥列表末尾": "Append mode: add new keys to the end of the existing key list",
         "追加模式：新密钥将添加到现有密钥列表的末尾": "Append mode: new keys will be added to the end of the existing key list",
+        "开启多密钥": "Enable multi-key",
         "追加模板": "Append Template",
         "退出": "Quit",
         "退出批量模式": "退出批量模式",
@@ -5021,6 +5022,14 @@
         "SEO 签到后台页描述": "Root users can view all check-in records, summary stats, and leaderboard display settings.",
         "有效期内上限": "Limit during validity period",
         "购买后至次日 {{time}} 前": "Valid until {{time}} next day after purchase",
-        "购买后至第 {{days}} 天 {{time}} 前": "Valid until {{time}} on day {{days}} after purchase"
+        "购买后至第 {{days}} 天 {{time}} 前": "Valid until {{time}} on day {{days}} after purchase",
+        "约每天成本": "Approx. daily cost",
+        "合计 {{price}} / {{duration}}": "Total {{price}} / {{duration}}",
+        "约每天成本，合计 {{price}} / {{duration}}": "Approx. daily cost, total {{price}} / {{duration}}",
+        "每天成本": "Daily cost",
+        "将付款补给用户额度": "Refund payment to user quota",
+        "该订单已补回 {{amount}} 额度，重复拒绝不会再次补回。": "This order has already refunded {{amount}} quota. Rejecting it again will not refund twice.",
+        "未补回": "Not refunded",
+        "已补回": "Refunded"
     }
 }

@@ -48,6 +48,7 @@ import SubscriptionPurchaseModal from '../../components/topup/modals/Subscriptio
 import { StatusContext } from '../../context/Status';
 import { API, copy, getUserData, renderGroup, renderQuota, showError, showSuccess } from '../../helpers';
 import {
+  getSubscriptionDailyPriceDisplay,
   formatSubscriptionDuration,
   formatSubscriptionSellingDuration,
   getSubscriptionPriceDisplay,
@@ -515,6 +516,7 @@ export default function SubscriptionPlanDetail() {
   const isClaudeMonthlyPlan =
     isClaudePlan && String(plan?.duration_unit || 'month') === 'month';
   const isManualDeliveryPlan = plan?.delivery_mode === 'manual_delivery';
+  const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
   const { symbol, effectivePrice, originalPrice } = getSubscriptionPriceDisplay(plan);
   const displayPrice = effectivePrice.toFixed(Number.isInteger(effectivePrice) ? 0 : 2);
   const displayOriginalPrice = originalPrice.toFixed(
@@ -531,9 +533,19 @@ export default function SubscriptionPlanDetail() {
   };
   const heroStats = [
     {
-      label: t('套餐价格'),
-      value: `${symbol}${displayPrice}`,
-      sub: formatSubscriptionSellingDuration(plan, t),
+      label:
+        isClaudePlan && dailyPriceDisplay ? t('每天成本') : t('套餐价格'),
+      value:
+        isClaudePlan && dailyPriceDisplay
+          ? `${symbol}${dailyPriceDisplay.displayDailyPrice}/${t('天')}`
+          : `${symbol}${displayPrice}`,
+      sub:
+        isClaudePlan && dailyPriceDisplay
+          ? t('合计 {{price}} / {{duration}}', {
+              price: `${symbol}${displayPrice}`,
+              duration: formatSubscriptionSellingDuration(plan, t),
+            })
+          : formatSubscriptionSellingDuration(plan, t),
     },
     {
       label: t('核心权益'),
@@ -738,9 +750,26 @@ export default function SubscriptionPlanDetail() {
                 </div>
                 <div className='pricing-plan-detail-buy-card__price'>
                   <span>{symbol}</span>
-                  {displayPrice}
+                  {isClaudePlan && dailyPriceDisplay
+                    ? dailyPriceDisplay.displayDailyPrice
+                    : displayPrice}
+                  {isClaudePlan && dailyPriceDisplay ? (
+                    <Text type='secondary' size='small'>
+                      / {t('天')}
+                    </Text>
+                  ) : null}
                 </div>
               </div>
+              {isClaudePlan && dailyPriceDisplay ? (
+                <div className='pricing-plan-detail-buy-card__price-note'>
+                  <Text type='tertiary'>
+                    {t('合计 {{price}} / {{duration}}', {
+                      price: `${symbol}${displayPrice}`,
+                      duration: formatSubscriptionSellingDuration(plan, t),
+                    })}
+                  </Text>
+                </div>
+              ) : null}
               {activeDiscount ? (
                 <div className='pricing-plan-detail-buy-card__price-note'>
                   <Text type='tertiary' delete>

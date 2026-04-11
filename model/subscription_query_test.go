@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -190,6 +191,68 @@ func TestSyncActiveSubscriptionsForPlanTx(t *testing.T) {
 		require.Equal(t, SubscriptionResetDaily, sub.ResetPeriod)
 		require.Empty(t, sub.UpgradeGroup)
 		require.NotZero(t, sub.NextResetTime)
+	})
+}
+
+func TestAdminRejectManualDeliveryOrder_RefundsQuotaOnlyOnce(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		oldQuotaPerUnit := common.QuotaPerUnit
+		oldQuotaDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+		oldUSDExchangeRate := operation_setting.USDExchangeRate
+		common.QuotaPerUnit = 100
+		operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeCNY
+		operation_setting.USDExchangeRate = 5
+		defer func() {
+			common.QuotaPerUnit = oldQuotaPerUnit
+			operation_setting.GetGeneralSetting().QuotaDisplayType = oldQuotaDisplayType
+			operation_setting.USDExchangeRate = oldUSDExchangeRate
+		}()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       99,
+			Username: "manual_refund_user",
+			AffCode:  "manual_refund_aff",
+			Status:   common.UserStatusEnabled,
+			Quota:    50,
+		}).Error)
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:                88,
+			UserId:            99,
+			PlanId:            7,
+			Money:             12.5,
+			TradeNo:           "manual-refund-order",
+			PaymentMethod:     "alipay",
+			Status:            common.TopUpStatusSuccess,
+			PlanTitle:         "manual-plan",
+			PlanDeliveryMode:  SubscriptionDeliveryModeManualDelivery,
+			FulfillmentStatus: SubscriptionFulfillmentPending,
+		}).Error)
+
+		order, err := AdminRejectManualDeliveryOrder(88, 3, "库存不足", true)
+		require.NoError(t, err)
+		require.NotNil(t, order)
+		require.True(t, order.RefundToQuota)
+		require.EqualValues(t, 250, order.RefundQuotaAmount)
+
+		var user User
+		require.NoError(t, DB.Where("id = ?", 99).First(&user).Error)
+		require.EqualValues(t, 300, user.Quota)
+
+		order, err = AdminRejectManualDeliveryOrder(88, 3, "补充说明", true)
+		require.NoError(t, err)
+		require.NotNil(t, order)
+		require.EqualValues(t, 250, order.RefundQuotaAmount)
+
+		require.NoError(t, DB.Where("id = ?", 99).First(&user).Error)
+		require.EqualValues(t, 300, user.Quota)
+
+		var logs []Log
+		require.NoError(t, DB.Where("user_id = ?", 99).Order("id asc").Find(&logs).Error)
+		require.Len(t, logs, 2)
+		require.Equal(t, LogTypeRefund, logs[0].Type)
+		require.Contains(t, logs[0].Content, "已返还余额额度: 250")
+		require.Equal(t, LogTypeManage, logs[1].Type)
+		require.Contains(t, logs[1].Content, "该订单已返还余额额度: 250")
 	})
 }
 

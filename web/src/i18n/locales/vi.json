@@ -4748,6 +4748,7 @@
         "追加到现有密钥": "Thêm vào khóa hiện có",
         "追加模式：将新密钥添加到现有密钥列表末尾": "Chế độ thêm: thêm khóa mới vào cuối danh sách khóa hiện có",
         "追加模式：新密钥将添加到现有密钥列表的末尾": "Chế độ thêm: khóa mới sẽ được thêm vào cuối danh sách khóa hiện có",
+        "开启多密钥": "Bật nhiều khóa",
         "追加模板": "Thêm mẫu",
         "退出": "Thoát",
         "退出全屏": "Thoát toàn màn hình",
@@ -5409,6 +5410,14 @@
         "SEO 签到后台页描述": "Người dùng root có thể xem toàn bộ bản ghi điểm danh, thống kê và cấu hình số lượng hiển thị bảng xếp hạng.",
         "有效期内上限": "Giới hạn trong thời hạn hiệu lực",
         "购买后至次日 {{time}} 前": "Có hiệu lực đến {{time}} ngày hôm sau sau khi mua",
-        "购买后至第 {{days}} 天 {{time}} 前": "Có hiệu lực đến {{time}} vào ngày thứ {{days}} sau khi mua"
+        "购买后至第 {{days}} 天 {{time}} 前": "Có hiệu lực đến {{time}} vào ngày thứ {{days}} sau khi mua",
+        "约每天成本": "Chi phí ước tính mỗi ngày",
+        "合计 {{price}} / {{duration}}": "Tổng cộng {{price}} / {{duration}}",
+        "约每天成本，合计 {{price}} / {{duration}}": "Chi phí ước tính mỗi ngày, tổng cộng {{price}} / {{duration}}",
+        "每天成本": "Chi phí mỗi ngày",
+        "将付款补给用户额度": "Hoàn số tiền thanh toán vào hạn mức người dùng",
+        "该订单已补回 {{amount}} 额度，重复拒绝不会再次补回。": "Đơn hàng này đã được hoàn lại {{amount}} hạn mức. Từ chối lại sẽ không hoàn thêm lần nữa.",
+        "未补回": "Chưa hoàn",
+        "已补回": "Đã hoàn"
     }
 }

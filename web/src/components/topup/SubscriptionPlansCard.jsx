@@ -71,6 +71,7 @@ import SubscriptionConsumeLogsModal from '../table/subscriptions/modals/Subscrip
 import CardTable from '../common/ui/CardTable';
 import {
   formatSubscriptionDuration,
+  getSubscriptionDailyPriceDisplay,
   formatSubscriptionSellingDuration,
   getSubscriptionPriceDisplay,
   formatSubscriptionResetPeriod,
@@ -1720,6 +1721,8 @@ const SubscriptionPlansCard = ({
         width: 140,
         render: (text, record) => {
           const plan = record?.plan || {};
+          const isClaudePlan = inferSubscriptionPlanSeries(plan) === 'claude';
+          const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
           const { symbol, effectivePrice, originalPrice } =
             getSubscriptionPriceDisplay(plan);
           const displayPrice = effectivePrice.toFixed(
@@ -1729,9 +1732,23 @@ const SubscriptionPlansCard = ({
           return (
             <div className='inline-flex flex-col items-start'>
               <div className='text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent'>
-                {symbol}
-                {displayPrice}
+                {isClaudePlan && dailyPriceDisplay ? (
+                  <>
+                    {symbol}
+                    {dailyPriceDisplay.displayDailyPrice}
+                  </>
+                ) : (
+                  <>
+                    {symbol}
+                    {displayPrice}
+                  </>
+                )}
               </div>
+              {isClaudePlan && dailyPriceDisplay ? (
+                <Text type='secondary' size='small'>
+                  {t('约每天成本')}
+                </Text>
+              ) : null}
               {activeDiscount ? (
                 <Text type='tertiary' size='small' delete>
                   {symbol}
@@ -1741,7 +1758,12 @@ const SubscriptionPlansCard = ({
                 </Text>
               ) : null}
               <Text type='tertiary' size='small'>
-                {formatSubscriptionSellingDuration(plan, t)}
+                {isClaudePlan && dailyPriceDisplay
+                  ? t('合计 {{price}} / {{duration}}', {
+                      price: `${symbol}${displayPrice}`,
+                      duration: formatSubscriptionSellingDuration(plan, t),
+                    })
+                  : formatSubscriptionSellingDuration(plan, t)}
               </Text>
               {activeDiscount ? (
                 <Text type='tertiary' size='small'>
@@ -1912,6 +1934,7 @@ const SubscriptionPlansCard = ({
   const renderPackagePlanCard = (record, index) => {
     const plan = record?.plan || {};
     const isClaudePlan = inferSubscriptionPlanSeries(plan) === 'claude';
+    const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
     const count = getPlanPurchaseCount(plan?.id);
     const limit = Number(plan?.max_purchase_per_user || 0);
     const reached = limit > 0 && count >= limit;
@@ -2004,12 +2027,32 @@ const SubscriptionPlansCard = ({
             <div className='subscription-plan-selling-card__price-row mt-5 flex items-end justify-between gap-3'>
               <div className='min-w-0 flex-1'>
                 <div className='subscription-plan-selling-card__price'>
-                  {symbol}
-                  {displayPrice}
+                  {isClaudePlan && dailyPriceDisplay ? (
+                    <>
+                      {symbol}
+                      {dailyPriceDisplay.displayDailyPrice}
+                    </>
+                  ) : (
+                    <>
+                      {symbol}
+                      {displayPrice}
+                    </>
+                  )}
                   <span className='subscription-plan-selling-card__duration'>
-                    / {formatSubscriptionSellingDuration(plan, t)}
+                    /{' '}
+                    {isClaudePlan && dailyPriceDisplay
+                      ? t('天')
+                      : formatSubscriptionSellingDuration(plan, t)}
                   </span>
                 </div>
+                {isClaudePlan && dailyPriceDisplay ? (
+                  <Text type='secondary' size='small' className='block'>
+                    {t('合计 {{price}} / {{duration}}', {
+                      price: `${symbol}${displayPrice}`,
+                      duration: formatSubscriptionSellingDuration(plan, t),
+                    })}
+                  </Text>
+                ) : null}
                 {activeDiscount ? (
                   <Text type='tertiary' size='small' delete>
                     {symbol}
