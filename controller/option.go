@@ -305,6 +305,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "console_setting.contact_channels":
+		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ContactChannels")
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "SelfServiceSubscriptionConversionCampaign":
 		err = model.ValidateSelfServiceSubscriptionConversionCampaign(option.Value.(string))
 		if err != nil {

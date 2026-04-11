@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { Button, Card, ImagePreview, Typography } from '@douyinfe/semi-ui';
 import {
   ArrowUpRight,
@@ -33,63 +33,73 @@ import { useTranslation } from 'react-i18next';
 import SeoMeta from '../../components/common/seo/SeoMeta';
 import { getContactSeo } from '../../helpers/seo';
 import { copy, showError, showSuccess } from '../../helpers/utils';
+import { StatusContext } from '../../context/Status';
 import './index.css';
 
 const { Title, Text } = Typography;
 const WECHAT_ID = 'FishXCode';
 const WECHAT_QR_IMAGE = `/${'fishxcode'}_user.jpg`;
-
-const CONTACT_CARDS = [
+const DEFAULT_CONTACT_CARDS = [
   {
     key: 'qq-group',
-    titleKey: 'QQ群',
-    subtitleKey: '用于问题答疑解决，适合群内交流与经验分享',
+    title: 'QQ群',
+    subtitle: '用于问题答疑解决，适合群内交流与经验分享',
     imageSrc: '/qq_group.jpg',
-    imageAltKey: 'QQ群二维码',
+    imageAlt: 'QQ群二维码',
     value: '373865837',
-    extraKey: '点击链接加入群聊 {{groupId}}【{{name}}】',
-    actionLabelKey: '加入QQ群',
     actionHref: 'https://qm.qq.com/q/Ce2PaYrbmo',
+    actionLabel: '加入QQ群',
     copyValue: '373865837',
-    icon: Users,
-    accentClassName: 'contact-card-accent-blue',
-    toneKey: '热门社区',
+    tone: '热门社区',
   },
   {
     key: 'wechat-account',
-    titleKey: '微信号',
-    subtitleKey: '用于发票开具相关沟通，也可一对一联系',
+    title: '微信号',
+    subtitle: '用于发票开具相关沟通，也可一对一联系',
     imageSrc: WECHAT_QR_IMAGE,
-    imageAltKey: '微信号二维码',
+    imageAlt: '微信号二维码',
     value: WECHAT_ID,
     copyValue: WECHAT_ID,
-    icon: MessageCircleMore,
-    accentClassName: 'contact-card-accent-emerald',
-    toneKey: '一对一沟通',
+    tone: '一对一沟通',
   },
   {
     key: 'wechat-group',
-    titleKey: '微信群',
-    subtitleKey: '用于问题答疑解决，适合接收群内公告与通知',
+    title: '微信群',
+    subtitle: '用于问题答疑解决，适合接收群内公告与通知',
     imageSrc: '/wechat_group.jpg',
-    imageAltKey: '微信群二维码',
-    icon: QrCode,
-    accentClassName: 'contact-card-accent-amber',
-    toneKey: '活动通知',
+    imageAlt: '微信群二维码',
+    tone: '活动通知',
   },
   {
     key: 'qq-service',
-    titleKey: 'QQ客服',
-    subtitleKey: '用于技术服务支持，处理账号、接入与售后问题',
+    title: 'QQ客服',
+    subtitle: '用于技术服务支持，处理账号、接入与售后问题',
     imageSrc: '/qq.png',
-    imageAltKey: 'QQ客服二维码',
+    imageAlt: 'QQ客服二维码',
     value: '2013571175',
     copyValue: '2013571175',
-    icon: Headphones,
-    accentClassName: 'contact-card-accent-rose',
-    toneKey: '官方支持',
+    tone: '官方支持',
   },
 ];
+
+const CARD_DECORATIONS = {
+  'qq-group': {
+    icon: Users,
+    accentClassName: 'contact-card-accent-blue',
+  },
+  'wechat-account': {
+    icon: MessageCircleMore,
+    accentClassName: 'contact-card-accent-emerald',
+  },
+  'wechat-group': {
+    icon: QrCode,
+    accentClassName: 'contact-card-accent-amber',
+  },
+  'qq-service': {
+    icon: Headphones,
+    accentClassName: 'contact-card-accent-rose',
+  },
+};
 
 const HERO_FEATURES = [
   {
@@ -120,12 +130,40 @@ const SUPPORT_NOTES = [
 
 const Contact = () => {
   const { t, i18n } = useTranslation();
+  const [statusState] = useContext(StatusContext);
   const [previewImage, setPreviewImage] = useState('');
   const [loadFailedMap, setLoadFailedMap] = useState({});
   const seo = getContactSeo(i18n.language);
 
-  const cards = useMemo(() => CONTACT_CARDS, []);
+  const cards = useMemo(() => {
+    const configuredCards = statusState?.status?.contact_channels;
+    const baseCards =
+      Array.isArray(configuredCards) && configuredCards.length > 0
+        ? configuredCards
+        : DEFAULT_CONTACT_CARDS;
+
+    return baseCards.map((card, index) => {
+      const decoration =
+        CARD_DECORATIONS[card.key] ||
+        Object.values(CARD_DECORATIONS)[index] || {
+          icon: QrCode,
+          accentClassName: 'contact-card-accent-blue',
+        };
+
+      return {
+        ...card,
+        imageAlt: card.imageAlt || `${card.title || t('联系我们')}二维码`,
+        icon: decoration.icon,
+        accentClassName: decoration.accentClassName,
+      };
+    });
+  }, [statusState?.status?.contact_channels, t]);
   const heroFeatures = useMemo(() => HERO_FEATURES, []);
+  const quickPrimaryCard = cards.find((item) => item.actionHref) || cards[0];
+  const quickSecondaryCard =
+    cards.find((item) => item.copyValue && item.key !== quickPrimaryCard?.key) ||
+    cards.find((item) => item.copyValue) ||
+    cards[1];
 
   const handleCopy = async (value) => {
     if (!value) {
@@ -163,9 +201,14 @@ const Contact = () => {
                 type='primary'
                 size='large'
                 className='contact-hero__primary-btn'
-                onClick={() => window.open('https://qm.qq.com/q/Ce2PaYrbmo', '_blank')}
+                disabled={!quickPrimaryCard?.actionHref}
+                onClick={() => {
+                  if (quickPrimaryCard?.actionHref) {
+                    window.open(quickPrimaryCard.actionHref, '_blank');
+                  }
+                }}
               >
-                {t('加入QQ群')}
+                {quickPrimaryCard?.actionLabel || t('加入QQ群')}
               </Button>
               <Button
                 theme='light'
@@ -173,9 +216,12 @@ const Contact = () => {
                 size='large'
                 icon={<CopyIcon size={16} />}
                 className='contact-hero__secondary-btn'
-                onClick={() => handleCopy(WECHAT_ID)}
+                disabled={!quickSecondaryCard?.copyValue}
+                onClick={() => handleCopy(quickSecondaryCard?.copyValue)}
               >
-                {t('复制微信号')}
+                {quickSecondaryCard?.title
+                  ? `${t('复制')} ${quickSecondaryCard.title}`
+                  : t('复制微信号')}
               </Button>
             </div>
 
@@ -207,33 +253,49 @@ const Contact = () => {
               <button
                 type='button'
                 className='contact-quick-card'
-                onClick={() => window.open('https://qm.qq.com/q/Ce2PaYrbmo', '_blank')}
+                onClick={() => {
+                  if (quickPrimaryCard?.actionHref) {
+                    window.open(quickPrimaryCard.actionHref, '_blank');
+                  }
+                }}
               >
                 <div className='contact-quick-card__meta'>
-                  <span className='contact-quick-card__badge'>{t('社区')}</span>
+                  <span className='contact-quick-card__badge'>
+                    {quickPrimaryCard?.tone || t('社区')}
+                  </span>
                   <ArrowUpRight size={18} />
                 </div>
-                <div className='contact-quick-card__title'>{t('加入QQ群')}</div>
-                <div className='contact-quick-card__desc'>
-                  {t('用于问题答疑解决，适合群内交流与经验分享')}
+                <div className='contact-quick-card__title'>
+                  {quickPrimaryCard?.actionLabel || t('加入QQ群')}
                 </div>
-                <div className='contact-quick-card__value'>373865837</div>
+                <div className='contact-quick-card__desc'>
+                  {quickPrimaryCard?.subtitle || t('用于问题答疑解决，适合群内交流与经验分享')}
+                </div>
+                <div className='contact-quick-card__value'>
+                  {quickPrimaryCard?.value || '-'}
+                </div>
               </button>
 
               <button
                 type='button'
                 className='contact-quick-card'
-                onClick={() => handleCopy(WECHAT_ID)}
+                onClick={() => handleCopy(quickSecondaryCard?.copyValue)}
               >
                 <div className='contact-quick-card__meta'>
-                  <span className='contact-quick-card__badge'>{t('私聊')}</span>
+                  <span className='contact-quick-card__badge'>
+                    {quickSecondaryCard?.tone || t('私聊')}
+                  </span>
                   <CopyIcon size={18} />
                 </div>
-                <div className='contact-quick-card__title'>{t('添加微信号')}</div>
-                <div className='contact-quick-card__desc'>
-                  {t('用于发票开具相关沟通，也可一对一联系')}
+                <div className='contact-quick-card__title'>
+                  {quickSecondaryCard?.title || t('添加微信号')}
                 </div>
-                <div className='contact-quick-card__value'>{WECHAT_ID}</div>
+                <div className='contact-quick-card__desc'>
+                  {quickSecondaryCard?.subtitle || t('用于发票开具相关沟通，也可一对一联系')}
+                </div>
+                <div className='contact-quick-card__value'>
+                  {quickSecondaryCard?.value || '-'}
+                </div>
               </button>
             </div>
           </div>
@@ -256,10 +318,10 @@ const Contact = () => {
                       <Icon size={20} strokeWidth={2} />
                     </div>
                     <div className='contact-channel-card__copy'>
-                      <div className='contact-channel-card__tone'>{t(card.toneKey)}</div>
-                      <div className='contact-channel-card__title'>{t(card.titleKey)}</div>
+                      <div className='contact-channel-card__tone'>{card.tone || ''}</div>
+                      <div className='contact-channel-card__title'>{card.title}</div>
                       <div className='contact-channel-card__subtitle'>
-                        {t(card.subtitleKey)}
+                        {card.subtitle || ''}
                       </div>
                     </div>
                     {card.copyValue && (
@@ -286,7 +348,7 @@ const Contact = () => {
                       )}
 
                       <div className='contact-channel-card__badges'>
-                        <span className='contact-channel-card__badge'>{t(card.titleKey)}</span>
+                        <span className='contact-channel-card__badge'>{card.title}</span>
                         <span className='contact-channel-card__badge'>
                           {card.copyValue ? t('可复制') : t('扫码加入')}
                         </span>
@@ -310,11 +372,11 @@ const Contact = () => {
                             type='button'
                             className='contact-channel-card__preview-btn'
                             onClick={() => setPreviewImage(card.imageSrc)}
-                            aria-label={t(card.imageAltKey)}
+                            aria-label={card.imageAlt}
                           >
                             <img
                               src={card.imageSrc}
-                              alt={t(card.imageAltKey)}
+                              alt={card.imageAlt}
                               className='contact-channel-card__image'
                               onError={() => {
                                 setLoadFailedMap((prev) => ({
@@ -340,7 +402,7 @@ const Contact = () => {
                         icon={<ArrowUpRight size={15} />}
                         onClick={() => window.open(card.actionHref, '_blank')}
                       >
-                        {t(card.actionLabelKey)}
+                        {card.actionLabel || t('打开')}
                       </Button>
                     ) : (
                       <Button

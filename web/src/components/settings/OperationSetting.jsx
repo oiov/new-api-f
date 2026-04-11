@@ -27,6 +27,7 @@ import SettingsLog from '../../pages/Setting/Operation/SettingsLog';
 import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring';
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
+import SettingsContactPage from '../../pages/Setting/Operation/SettingsContactPage';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -59,6 +60,9 @@ const OperationSetting = () => {
 
     /* 左侧边栏模块管理（管理员） */
     SidebarModulesAdmin: '',
+
+    /* 联系页面配置 */
+    'console_setting.contact_channels': '',
 
     /* 敏感词设置 */
     CheckSensitiveEnabled: false,
@@ -140,6 +144,10 @@ const OperationSetting = () => {
         <div style={{ marginTop: '10px' }}>
           <SettingsSidebarModulesAdmin options={inputs} refresh={onRefresh} />
         </div>
+        {/* 联系页面配置 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsContactPage options={inputs} refresh={onRefresh} />
+        </Card>
         {/* 屏蔽词过滤设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsSensitiveWords options={inputs} refresh={onRefresh} />
