@@ -35,16 +35,33 @@ import { useTranslation } from 'react-i18next';
 import CardPro from '../../components/common/ui/CardPro';
 import CardTable from '../../components/common/ui/CardTable';
 import { API, showError, timestamp2string } from '../../helpers';
+import { renderNumber } from '../../helpers/render';
 import { createCardProPagination } from '../../helpers/utils';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 
 const { Text } = Typography;
+const CHECKIN_QUOTA_PER_CNY = 500000;
 
 const DEFAULT_FILTERS = {
   keyword: '',
   userId: undefined,
   startDate: '',
   endDate: '',
+};
+
+const quotaToCNY = (quota) => {
+  const value = Number(quota || 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '¥0.00';
+  }
+  const cny = value / CHECKIN_QUOTA_PER_CNY;
+  if (cny >= 1000) {
+    return `¥${cny.toFixed(2)}`;
+  }
+  if (cny >= 1) {
+    return `¥${cny.toFixed(3)}`;
+  }
+  return `¥${cny.toFixed(4)}`;
 };
 
 const CheckinAdminPage = () => {
@@ -129,6 +146,19 @@ const CheckinAdminPage = () => {
         title: t('奖励额度'),
         dataIndex: 'quota_awarded',
         key: 'quota_awarded',
+        render: (_, record) => {
+          const quota = Number(record?.quota_awarded || 0);
+          return (
+            <div className='leading-tight'>
+              <div className='font-semibold text-semi-color-text-0'>
+                {quotaToCNY(quota)}
+              </div>
+              <div className='mt-1 text-xs text-semi-color-text-2'>
+                {renderNumber(quota)} token
+              </div>
+            </div>
+          );
+        },
       },
       {
         title: t('创建时间'),
@@ -158,7 +188,10 @@ const CheckinAdminPage = () => {
       <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'>
         <div className='text-xs text-gray-500'>{t('发放总额度')}</div>
         <div className='mt-1 text-xl font-semibold'>
-          {Number(stats?.total_quota || 0)}
+          {quotaToCNY(stats?.total_quota || 0)}
+        </div>
+        <div className='mt-1 text-xs text-semi-color-text-2'>
+          {renderNumber(Number(stats?.total_quota || 0))} token
         </div>
       </div>
       <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'>

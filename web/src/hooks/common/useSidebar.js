@@ -49,6 +49,8 @@ export const DEFAULT_ADMIN_CONFIG = {
   },
   public: {
     enabled: true,
+    pricing: true,
+    docs: true,
     about: true,
     contact: true,
   },

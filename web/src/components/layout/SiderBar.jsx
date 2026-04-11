@@ -171,6 +171,16 @@ const SiderBar = ({ onNavigate = () => { } }) => {
   const publicItems = useMemo(() => {
     const items = [
       {
+        text: t('价格方案'),
+        itemKey: 'pricing',
+        to: '/pricing',
+      },
+      {
+        text: t('开发文档'),
+        itemKey: 'docs',
+        to: '/docs',
+      },
+      {
         text: t('系统状态'),
         itemKey: 'about',
         to: '/status',
