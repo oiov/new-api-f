@@ -19,6 +19,30 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { getCurrencyConfig, renderQuota } from './render';
 
+export function isSubscriptionFixedDeadlineDayPlan(plan) {
+  return (
+    isSubscriptionClaudePlan(plan) &&
+    String(plan?.duration_unit || '') === 'day' &&
+    Number(plan?.duration_value || 0) > 0 &&
+    getSubscriptionResetPeriodValue(plan) === 'never' &&
+    getSubscriptionResetFixedClock(plan) &&
+    getSubscriptionResetFixedSeconds(plan) > 0
+  );
+}
+
+export function isSubscriptionClaudePlan(plan) {
+  const text = [
+    plan?.title,
+    plan?.upgrade_group,
+    plan?.allowed_groups_json,
+    ...(Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return text.includes('claude');
+}
+
 export function formatSubscriptionDuration(plan, t) {
   const unit = plan?.duration_unit || 'month';
   const value = plan?.duration_value || 1;
@@ -37,6 +61,20 @@ export function formatSubscriptionDuration(plan, t) {
     return `${seconds} ${t('秒')}`;
   }
   return `${value} ${unitLabels[unit] || unit}`;
+}
+
+export function formatSubscriptionSellingDuration(plan, t) {
+  if (isSubscriptionFixedDeadlineDayPlan(plan)) {
+    const time = formatSubscriptionResetFixedTime(
+      getSubscriptionResetFixedSeconds(plan),
+    );
+    const days = Number(plan?.duration_value || 1);
+    if (days === 1) {
+      return t('购买后至次日 {{time}} 前', { time });
+    }
+    return t('购买后至第 {{days}} 天 {{time}} 前', { days, time });
+  }
+  return formatSubscriptionDuration(plan, t);
 }
 
 export function getSubscriptionResourceType(plan) {
@@ -273,6 +311,9 @@ export function formatSubscriptionResetFixedTime(seconds) {
 }
 
 export function formatSubscriptionResetHint(plan, t) {
+  if (isSubscriptionFixedDeadlineDayPlan(plan)) {
+    return t('不重置');
+  }
   const period = getSubscriptionResetPeriodValue(plan);
   if (period === 'never') return t('不重置');
   const useFixedClock = getSubscriptionResetFixedClock(plan);
@@ -329,12 +370,37 @@ export function getSubscriptionRestrictionSummary(plan) {
 export function getSubscriptionPlanMetricItems(plan, t) {
   const resourceType = getSubscriptionResourceType(plan);
   const resetPeriod = getSubscriptionResetPeriodValue(plan);
-  const durationText = formatSubscriptionDuration(plan, t);
+  const durationText = formatSubscriptionSellingDuration(plan, t);
   const resetHintText = formatSubscriptionResetHint(plan, t);
+  const isFixedDeadlineDayPlan = isSubscriptionFixedDeadlineDayPlan(plan);
 
   if (resourceType === 'request_count') {
     const periodLimit = Number(plan?.request_count_period_total || 0);
     const totalLimit = Number(plan?.request_count_total || 0);
+    if (isFixedDeadlineDayPlan) {
+      return [
+        {
+          key: 'lifetime_limit',
+          label: t('有效期内上限'),
+          value: totalLimit > 0 ? `${totalLimit} ${t('次')}` : t('不限'),
+        },
+        {
+          key: 'resource_type',
+          label: t('权益类型'),
+          value: t('按次'),
+        },
+        {
+          key: 'reset_time',
+          label: t('重置规则'),
+          value: resetHintText,
+        },
+        {
+          key: 'duration',
+          label: t('有效期'),
+          value: durationText,
+        },
+      ];
+    }
     const periodLabel =
       resetPeriod === 'never'
         ? t('周期上限')

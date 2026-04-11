@@ -31,7 +31,7 @@ import { Crown, Package, Sparkles } from 'lucide-react';
 import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
 import {
-  formatSubscriptionDuration,
+  formatSubscriptionSellingDuration,
   getSubscriptionPriceDisplay,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
@@ -186,7 +186,7 @@ const SubscriptionPurchaseModal = ({
                 {displayPrice}
               </div>
               <div className='subscription-purchase-modal__price-duration'>
-                {formatSubscriptionDuration(plan, t)}
+                {formatSubscriptionSellingDuration(plan, t)}
               </div>
             </div>
           </section>

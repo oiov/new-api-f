@@ -709,6 +709,9 @@ func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	if plan.DurationValue <= 0 && plan.DurationUnit != SubscriptionDurationCustom {
 		return 0, errors.New("duration_value must be > 0")
 	}
+	if endUnix, ok := calcFixedClockDeadlineEndTime(start, plan); ok {
+		return endUnix, nil
+	}
 	switch plan.DurationUnit {
 	case SubscriptionDurationYear:
 		return start.AddDate(plan.DurationValue, 0, 0).Unix(), nil
@@ -728,6 +731,92 @@ func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	default:
 		return 0, fmt.Errorf("invalid duration_unit: %s", plan.DurationUnit)
 	}
+}
+
+func isClaudePlan(plan *SubscriptionPlan) bool {
+	if plan == nil {
+		return false
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(plan.Title)), "claude") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(plan.UpgradeGroup)), "claude") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(plan.AllowedGroupsJSON)), "claude") {
+		return true
+	}
+	for _, group := range plan.AllowedGroups {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(group)), "claude") {
+			return true
+		}
+	}
+	return false
+}
+
+func calcFixedClockDeadlineEndTime(start time.Time, plan *SubscriptionPlan) (int64, bool) {
+	if plan == nil {
+		return 0, false
+	}
+	if !isClaudePlan(plan) {
+		return 0, false
+	}
+	if plan.DurationUnit != SubscriptionDurationDay || plan.DurationValue <= 0 {
+		return 0, false
+	}
+	if NormalizeResetPeriod(plan.QuotaResetPeriod) != SubscriptionResetNever {
+		return 0, false
+	}
+	useFixed, fixedSeconds := normalizeResetFixedClock(
+		plan.QuotaResetUseFixedClock,
+		plan.QuotaResetFixedSeconds,
+		SubscriptionResetDaily,
+	)
+	if !useFixed {
+		return 0, false
+	}
+	localStart := subscriptionResetTime(start)
+	targetDay := localStart.AddDate(0, 0, plan.DurationValue)
+	hour := int(fixedSeconds / 3600)
+	minute := int((fixedSeconds % 3600) / 60)
+	second := int(fixedSeconds % 60)
+	deadline := time.Date(
+		targetDay.Year(),
+		targetDay.Month(),
+		targetDay.Day(),
+		hour,
+		minute,
+		second,
+		0,
+		targetDay.Location(),
+	)
+	if !deadline.After(localStart) {
+		deadline = deadline.AddDate(0, 0, 1)
+	}
+	return deadline.Unix(), true
+}
+
+func resolveExpiredSubscriptionFallbackGroupTx(tx *gorm.DB, userId int, upgradeGroup string) (string, error) {
+	if tx == nil || userId <= 0 {
+		return "", nil
+	}
+	upgradeGroup = strings.TrimSpace(upgradeGroup)
+	if upgradeGroup == "" {
+		return "", nil
+	}
+	var previousSub UserSubscription
+	err := tx.Where("user_id = ? AND prev_user_group <> '' AND prev_user_group <> ?",
+		userId, upgradeGroup).
+		Order("updated_at desc, end_time desc, id desc").
+		Limit(1).
+		Find(&previousSub).Error
+	if err != nil {
+		return "", err
+	}
+	if previousSub.Id > 0 {
+		return strings.TrimSpace(previousSub.PrevUserGroup), nil
+	}
+	return "default", nil
 }
 
 func NormalizeResetPeriod(period string) string {
@@ -4089,6 +4178,11 @@ func applyPlanDurationToUnix(baseUnix int64, plan *SubscriptionPlan, direction i
 		multiplier = 1
 	}
 	base := time.Unix(baseUnix, 0)
+	if direction > 0 && multiplier == 1 {
+		if endUnix, ok := calcFixedClockDeadlineEndTime(base, plan); ok {
+			return endUnix, nil
+		}
+	}
 	step := int(multiplier)
 	switch plan.DurationUnit {
 	case SubscriptionDurationYear:
@@ -4332,7 +4426,17 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 			}
 			upgradeGroup := strings.TrimSpace(lastExpired.UpgradeGroup)
 			prevGroup := strings.TrimSpace(lastExpired.PrevUserGroup)
-			if upgradeGroup == "" || prevGroup == "" {
+				if upgradeGroup == "" {
+					return nil
+				}
+				if prevGroup == "" {
+					resolvedPrevGroup, resolveErr := resolveExpiredSubscriptionFallbackGroupTx(tx, userId, upgradeGroup)
+					if resolveErr != nil {
+						return resolveErr
+					}
+					prevGroup = resolvedPrevGroup
+				}
+			if prevGroup == "" {
 				return nil
 			}
 			currentGroup, err := getUserGroupByIdTx(tx, userId)

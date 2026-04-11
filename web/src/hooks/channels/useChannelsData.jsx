@@ -139,12 +139,12 @@ export const useChannelsData = () => {
 
   const PACKAGE_POOL_GROUPS = [
     { value: 'sub_plan_claude_lite', label: 'Claude Lite' },
+    { value: 'sub_plan_claude_lite_day', label: 'Claude Lite Day' },
     { value: 'sub_plan_claude_mini_plus', label: 'Claude Mini Plus' },
     { value: 'sub_plan_claude_mini_max', label: 'Claude Mini Max' },
     { value: 'sub_plan_claude_premium', label: 'Claude Premium' },
     { value: 'sub_plan_claude_premium_plus', label: 'Claude Premium+' },
-    { value: 'sub_plan_claude_nano', label: 'Claude Nano' },
-    { value: 'sub_plan_claude_micro', label: 'Claude Micro' },
+    { value: 'sub_plan_claude_nano_day', label: 'Claude Nano Day' },
   ];
   const PACKAGE_POOL_GROUP_VALUES = PACKAGE_POOL_GROUPS.map((item) => item.value);
 

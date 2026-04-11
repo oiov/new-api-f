@@ -714,6 +714,34 @@ html.dark .sbg-variant-green {
   border-bottom: 1px solid var(--semi-color-border);
 }
 
+.subscription-plan-selling-card__summary {
+  display: flex;
+  flex-direction: column;
+  min-height: 104px;
+}
+
+.subscription-plan-selling-card__title-row {
+  align-items: flex-start;
+  min-height: 28px;
+}
+
+.subscription-plan-selling-card__title {
+  line-height: 1.45;
+}
+
+.subscription-plan-selling-card__subtitle {
+  min-height: 48px;
+}
+
+.subscription-plan-selling-card__hint {
+  min-height: 20px;
+}
+
+.subscription-plan-selling-card__hint-spacer {
+  display: block;
+  min-height: 20px;
+}
+
 .subscription-plan-selling-card__price {
   font-size: 34px;
   line-height: 1;

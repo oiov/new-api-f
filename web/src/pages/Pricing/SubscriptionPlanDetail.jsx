@@ -49,9 +49,11 @@ import { StatusContext } from '../../context/Status';
 import { API, copy, getUserData, renderGroup, renderQuota, showError, showSuccess } from '../../helpers';
 import {
   formatSubscriptionDuration,
+  formatSubscriptionSellingDuration,
   getSubscriptionPriceDisplay,
   formatSubscriptionResourceLabel,
   formatSubscriptionResetHint,
+  isSubscriptionFixedDeadlineDayPlan,
   getSubscriptionRestrictionSummary,
   getSubscriptionResourceType,
   getSubscriptionSaleSummary,
@@ -104,7 +106,7 @@ function getPlanBenefitDescription(plan, t) {
   if (usageSummary.unlimited) {
     return t('有效期内不限使用');
   }
-  return `${formatSubscriptionResourceLabel(plan, t)} ${amountText} · ${t('有效期')} ${formatSubscriptionDuration(plan, t)}`;
+  return `${formatSubscriptionResourceLabel(plan, t)} ${amountText} · ${t('有效期')} ${formatSubscriptionSellingDuration(plan, t)}`;
 }
 
 function inferSubscriptionPlanSeries(plan) {
@@ -520,6 +522,9 @@ export default function SubscriptionPlanDetail() {
   );
   const activeDiscount = isSubscriptionDiscountActive(plan);
   const resetHint = formatSubscriptionResetHint(plan, t);
+  const scheduleHint = isSubscriptionFixedDeadlineDayPlan(plan)
+    ? formatSubscriptionSellingDuration(plan, t)
+    : resetHint;
   const purchaseLimitInfo = {
     limit,
     count,
@@ -528,7 +533,7 @@ export default function SubscriptionPlanDetail() {
     {
       label: t('套餐价格'),
       value: `${symbol}${displayPrice}`,
-      sub: formatSubscriptionDuration(plan, t),
+      sub: formatSubscriptionSellingDuration(plan, t),
     },
     {
       label: t('核心权益'),
@@ -620,7 +625,7 @@ export default function SubscriptionPlanDetail() {
                   </Text>
                   <div className='mt-2 inline-flex max-w-full items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-xs font-medium text-semi-color-text-1 shadow-sm dark:bg-white/10'>
                     <Clock3 size={14} className='flex-shrink-0' />
-                    <span>{resetHint}</span>
+                    <span>{scheduleHint}</span>
                   </div>
                 </div>
                 <div className='pricing-plan-detail-hero__badge'>
@@ -793,7 +798,7 @@ export default function SubscriptionPlanDetail() {
                 </div>
                 <div className='pricing-plan-detail-buy-card__meta-row'>
                   <span>{t('有效期')}</span>
-                  <strong>{formatSubscriptionDuration(plan, t)}</strong>
+                  <strong>{formatSubscriptionSellingDuration(plan, t)}</strong>
                 </div>
                 <div className='pricing-plan-detail-buy-card__meta-row'>
                   <span>{t('购买状态')}</span>

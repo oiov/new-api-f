@@ -71,6 +71,7 @@ import SubscriptionConsumeLogsModal from '../table/subscriptions/modals/Subscrip
 import CardTable from '../common/ui/CardTable';
 import {
   formatSubscriptionDuration,
+  formatSubscriptionSellingDuration,
   getSubscriptionPriceDisplay,
   formatSubscriptionResetPeriod,
   formatSubscriptionResourceLabel,
@@ -1519,7 +1520,7 @@ const SubscriptionPlansCard = ({
           <div className='mt-1 text-sm text-semi-color-text-0 break-all'>
             {usageSummary.unlimited
               ? `${formatSubscriptionResourceLabel(plan, t)}: ${t('不限')}`
-              : `${getPlanBenefitDescription(plan, t)} · ${t('有效期')} ${formatSubscriptionDuration(plan, t)}`}
+              : `${getPlanBenefitDescription(plan, t)} · ${t('有效期')} ${formatSubscriptionSellingDuration(plan, t)}`}
           </div>
         </div>
         {metricItems.map((item) => (
@@ -1740,7 +1741,7 @@ const SubscriptionPlansCard = ({
                 </Text>
               ) : null}
               <Text type='tertiary' size='small'>
-                {formatSubscriptionDuration(plan, t)}
+                {formatSubscriptionSellingDuration(plan, t)}
               </Text>
               {activeDiscount ? (
                 <Text type='tertiary' size='small'>
@@ -1952,9 +1953,9 @@ const SubscriptionPlansCard = ({
         <div className='subscription-plan-selling-card__inner'>
           <div className='subscription-plan-selling-card__top'>
             <div className='flex items-start justify-between gap-3'>
-              <div className='min-w-0 flex-1'>
-                <div className='flex flex-wrap items-center gap-2'>
-                  <Text strong className='text-base'>
+              <div className='subscription-plan-selling-card__summary min-w-0 flex-1'>
+                <div className='subscription-plan-selling-card__title-row flex flex-wrap items-center gap-2'>
+                  <Text strong className='subscription-plan-selling-card__title text-base'>
                     {plan?.title || t('订阅套餐')}
                   </Text>
                   {isClaudePlan && (
@@ -1976,14 +1977,20 @@ const SubscriptionPlansCard = ({
                 <Text
                   type='tertiary'
                   size='small'
-                  className='mt-2 block leading-6'
+                  className='subscription-plan-selling-card__subtitle mt-2 block leading-6'
                 >
                   {plan?.subtitle || t('以套餐配置为准')}
                 </Text>
-                {isClaudePlan && (
-                  <Text type='secondary' size='small' className='mt-2 block leading-5'>
+                {isClaudePlan ? (
+                  <Text
+                    type='secondary'
+                    size='small'
+                    className='subscription-plan-selling-card__hint mt-2 block leading-5'
+                  >
                     {t('支付成功后自动生效。')}
                   </Text>
+                ) : (
+                  <span className='subscription-plan-selling-card__hint-spacer' />
                 )}
               </div>
               <div className='rounded-2xl bg-white/80 p-2 shadow-sm dark:bg-white/10'>
@@ -2000,7 +2007,7 @@ const SubscriptionPlansCard = ({
                   {symbol}
                   {displayPrice}
                   <span className='subscription-plan-selling-card__duration'>
-                    / {formatSubscriptionDuration(plan, t)}
+                    / {formatSubscriptionSellingDuration(plan, t)}
                   </span>
                 </div>
                 {activeDiscount ? (

@@ -18,7 +18,7 @@ var defaultGroupRatio = map[string]float64{
 	"sub_plan_claude_mini_max":     1,
 	"sub_plan_claude_premium":      1,
 	"sub_plan_claude_premium_plus": 1,
-	"sub_plan_claude_nano":         1,
+	"sub_plan_claude_nano_day":     1,
 	"sub_plan_claude_micro":        1,
 }
 

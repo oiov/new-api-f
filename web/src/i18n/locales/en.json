@@ -5018,6 +5018,9 @@
         "当前展示第 {{start}} - {{end}} 位，共 {{total}} 位": "Showing ranks {{start}} - {{end}} of {{total}}",
         "当站内出现签到数据后，将展示前 {{count}} 名用户": "The top {{count}} users will appear once check-in data is available",
         "SEO 签到后台页标题": "Check-in management",
-        "SEO 签到后台页描述": "Root users can view all check-in records, summary stats, and leaderboard display settings."
+        "SEO 签到后台页描述": "Root users can view all check-in records, summary stats, and leaderboard display settings.",
+        "有效期内上限": "Limit during validity period",
+        "购买后至次日 {{time}} 前": "Valid until {{time}} next day after purchase",
+        "购买后至第 {{days}} 天 {{time}} 前": "Valid until {{time}} on day {{days}} after purchase"
     }
 }

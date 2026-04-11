@@ -15,8 +15,8 @@ var userUsableGroups = map[string]string{
 	"sub_plan_claude_mini_max":     "Claude Mini Max 订阅专属分组",
 	"sub_plan_claude_premium":      "Claude Premium 订阅专属分组",
 	"sub_plan_claude_premium_plus": "Claude Premium+ 订阅专属分组",
-	"sub_plan_claude_nano":         "Claude Nano 订阅专属分组",
-	"sub_plan_claude_micro":        "Claude Micro 订阅专属分组",
+	"sub_plan_claude_nano_day":     "Claude Nano Day 订阅专属分组",
+	"sub_plan_claude_lite_day":     "Claude Lite Day 订阅专属分组",
 }
 var userUsableGroupsMutex sync.RWMutex
 

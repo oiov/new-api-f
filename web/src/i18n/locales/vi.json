@@ -5406,6 +5406,9 @@
         "当前展示第 {{start}} - {{end}} 位，共 {{total}} 位": "Đang hiển thị vị trí {{start}} - {{end}} trên tổng {{total}}",
         "当站内出现签到数据后，将展示前 {{count}} 名用户": "Top {{count}} người dùng sẽ được hiển thị khi hệ thống có dữ liệu điểm danh",
         "SEO 签到后台页标题": "Quản lý điểm danh",
-        "SEO 签到后台页描述": "Người dùng root có thể xem toàn bộ bản ghi điểm danh, thống kê và cấu hình số lượng hiển thị bảng xếp hạng."
+        "SEO 签到后台页描述": "Người dùng root có thể xem toàn bộ bản ghi điểm danh, thống kê và cấu hình số lượng hiển thị bảng xếp hạng.",
+        "有效期内上限": "Giới hạn trong thời hạn hiệu lực",
+        "购买后至次日 {{time}} 前": "Có hiệu lực đến {{time}} ngày hôm sau sau khi mua",
+        "购买后至第 {{days}} 天 {{time}} 前": "Có hiệu lực đến {{time}} vào ngày thứ {{days}} sau khi mua"
     }
 }
