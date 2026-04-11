@@ -41,7 +41,30 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import Turnstile from 'react-turnstile';
-import { API, showError, showSuccess, renderQuota } from '../../../../helpers';
+import {
+  API,
+  showError,
+  showSuccess,
+  renderQuota,
+  renderNumber,
+} from '../../../../helpers';
+
+const CHECKIN_QUOTA_PER_CNY = 500000;
+
+const quotaToCNY = (quota) => {
+  const value = Number(quota || 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '¥0.00';
+  }
+  const amount = value / CHECKIN_QUOTA_PER_CNY;
+  if (amount >= 1000) {
+    return `¥${amount.toFixed(2)}`;
+  }
+  if (amount >= 1) {
+    return `¥${amount.toFixed(3)}`;
+  }
+  return `¥${amount.toFixed(4)}`;
+};
 
 const CheckinCalendar = ({
   t,
@@ -60,6 +83,12 @@ const CheckinCalendar = ({
   const [leaderboardPage, setLeaderboardPage] = useState(1);
   const [leaderboardPageSize] = useState(10);
   const [leaderboardTotal, setLeaderboardTotal] = useState(0);
+  const [leaderboardStats, setLeaderboardStats] = useState({
+    today_checkins: 0,
+    today_quota: 0,
+    total_users: 0,
+    total_quota: 0,
+  });
   const [checkinData, setCheckinData] = useState({
     enabled: false,
     stats: {
@@ -113,6 +142,40 @@ const CheckinCalendar = ({
     return { start, end };
   }, [leaderboard, leaderboardPage, leaderboardPageSize, leaderboardTotal]);
 
+  const leaderboardSummaryCards = useMemo(
+    () => [
+      {
+        key: 'today_checkins',
+        label: t('今日签到人数'),
+        value: Number(leaderboardStats?.today_checkins || 0),
+        tone: 'text-emerald-600',
+        detail: t('今日签到次数') + ` ${Number(leaderboardStats?.today_checkins || 0)}`,
+      },
+      {
+        key: 'today_quota',
+        label: t('今日发放'),
+        value: quotaToCNY(leaderboardStats?.today_quota || 0),
+        tone: 'text-sky-600',
+        detail: `${renderNumber(Number(leaderboardStats?.today_quota || 0))} ${t('原始 Token')}`,
+      },
+      {
+        key: 'total_users',
+        label: t('累计签到人数'),
+        value: Number(leaderboardStats?.total_users || 0),
+        tone: 'text-violet-600',
+        detail: t('覆盖全部签到用户'),
+      },
+      {
+        key: 'total_quota',
+        label: t('累计发放'),
+        value: quotaToCNY(leaderboardStats?.total_quota || 0),
+        tone: 'text-amber-600',
+        detail: `${renderNumber(Number(leaderboardStats?.total_quota || 0))} ${t('原始 Token')}`,
+      },
+    ],
+    [leaderboardStats, leaderboardTotal, t],
+  );
+
   const fetchCheckinLeaderboard = async (page = leaderboardPage) => {
     setLeaderboardLoading(true);
     try {
@@ -130,6 +193,12 @@ const CheckinCalendar = ({
         setLeaderboardLimit(Number(data?.limit || 100));
         setLeaderboard(nextItems);
         setLeaderboardPage(nextPage);
+        setLeaderboardStats({
+          today_checkins: Number(data?.today_checkins || 0),
+          today_quota: Number(data?.today_quota || 0),
+          total_users: Number(data?.total_users || 0),
+          total_quota: Number(data?.total_quota || 0),
+        });
         setLeaderboardTotal(
           nextTotal > 0
             ? nextTotal
@@ -385,6 +454,25 @@ const CheckinCalendar = ({
                 </div>
               </div>
 
+              <div className='mb-4 grid grid-cols-2 gap-2 lg:grid-cols-4'>
+                {leaderboardSummaryCards.map((item) => (
+                  <div
+                    key={item.key}
+                    className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 px-3 py-2.5'
+                  >
+                    <div className='text-[11px] text-semi-color-text-2'>
+                      {item.label}
+                    </div>
+                    <div className={`mt-1 text-sm font-semibold ${item.tone}`}>
+                      {item.value}
+                    </div>
+                    <div className='mt-1 text-[11px] text-semi-color-text-2'>
+                      {item.detail}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               <Spin spinning={loading}>
                 <div className='border rounded-lg overflow-hidden checkin-calendar'>
                   <style>{`
@@ -480,6 +568,24 @@ const CheckinCalendar = ({
                         </div>
                       </div>
                     </div>
+                  </div>
+                  <div className='grid grid-cols-2 gap-2 lg:grid-cols-4'>
+                    {leaderboardSummaryCards.map((item) => (
+                      <div
+                        key={`leaderboard-${item.key}`}
+                        className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 px-3 py-2.5'
+                      >
+                        <div className='text-[11px] text-semi-color-text-2'>
+                          {item.label}
+                        </div>
+                        <div className={`mt-1 text-sm font-semibold ${item.tone}`}>
+                          {item.value}
+                        </div>
+                        <div className='mt-1 text-[11px] text-semi-color-text-2'>
+                          {item.detail}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                   {leaderboard.length > 0 ? (
                     <>

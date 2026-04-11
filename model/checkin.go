@@ -33,11 +33,15 @@ type CheckinLeaderboardItem struct {
 }
 
 type CheckinLeaderboardPage struct {
-	Items    []CheckinLeaderboardItem `json:"items"`
-	Total    int64                    `json:"total"`
-	Page     int                      `json:"page"`
-	PageSize int                      `json:"page_size"`
-	Limit    int                      `json:"limit"`
+	Items         []CheckinLeaderboardItem `json:"items"`
+	Total         int64                    `json:"total"`
+	Page          int                      `json:"page"`
+	PageSize      int                      `json:"page_size"`
+	Limit         int                      `json:"limit"`
+	TodayCheckins int64                    `json:"today_checkins"`
+	TodayQuota    int64                    `json:"today_quota"`
+	TotalUsers    int64                    `json:"total_users"`
+	TotalQuota    int64                    `json:"total_quota"`
 }
 
 type AdminCheckinRecord struct {
@@ -260,23 +264,45 @@ func GetCheckinLeaderboard(page int, pageSize int, limit int) (*CheckinLeaderboa
 		Joins("LEFT JOIN users ON users.id = checkins.user_id").
 		Where("users.deleted_at IS NULL")
 
-	var total int64
+	var totalUsers int64
 	if err := baseQuery.Session(&gorm.Session{}).
 		Distinct("checkins.user_id").
-		Count(&total).Error; err != nil {
+		Count(&totalUsers).Error; err != nil {
 		return nil, err
 	}
+	total := totalUsers
 	if total > int64(limit) {
 		total = int64(limit)
 	}
 
 	pageData := &CheckinLeaderboardPage{
-		Items:    make([]CheckinLeaderboardItem, 0),
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-		Limit:    limit,
+		Items:      make([]CheckinLeaderboardItem, 0),
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		Limit:      limit,
+		TotalUsers: totalUsers,
 	}
+
+	if err := baseQuery.Session(&gorm.Session{}).
+		Select("COALESCE(SUM(checkins.quota_awarded), 0)").
+		Scan(&pageData.TotalQuota).Error; err != nil {
+		return nil, err
+	}
+
+	today := time.Now().Format("2006-01-02")
+	todayQuery := baseQuery.Session(&gorm.Session{}).
+		Where("checkins.checkin_date = ?", today)
+
+	if err := todayQuery.Count(&pageData.TodayCheckins).Error; err != nil {
+		return nil, err
+	}
+	if err := todayQuery.Session(&gorm.Session{}).
+		Select("COALESCE(SUM(checkins.quota_awarded), 0)").
+		Scan(&pageData.TodayQuota).Error; err != nil {
+		return nil, err
+	}
+
 	if total == 0 {
 		return pageData, nil
 	}
