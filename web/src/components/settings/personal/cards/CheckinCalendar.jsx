@@ -31,6 +31,7 @@ import {
   Tabs,
   TabPane,
   Empty,
+  Pagination,
 } from '@douyinfe/semi-ui';
 import {
   CalendarCheck,
@@ -56,6 +57,9 @@ const CheckinCalendar = ({
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboard, setLeaderboard] = useState([]);
   const [leaderboardLimit, setLeaderboardLimit] = useState(100);
+  const [leaderboardPage, setLeaderboardPage] = useState(1);
+  const [leaderboardPageSize] = useState(10);
+  const [leaderboardTotal, setLeaderboardTotal] = useState(0);
   const [checkinData, setCheckinData] = useState({
     enabled: false,
     stats: {
@@ -93,14 +97,46 @@ const CheckinCalendar = ({
     );
   }, [checkinData.stats?.records]);
 
-  const fetchCheckinLeaderboard = async () => {
+  const leaderboardRange = useMemo(() => {
+    const safeTotal =
+      leaderboardTotal > 0
+        ? leaderboardTotal
+        : leaderboard.length > 0
+          ? (leaderboardPage - 1) * leaderboardPageSize + leaderboard.length
+          : 0;
+
+    if (safeTotal <= 0) {
+      return { start: 0, end: 0 };
+    }
+    const start = (leaderboardPage - 1) * leaderboardPageSize + 1;
+    const end = Math.min(leaderboardPage * leaderboardPageSize, safeTotal);
+    return { start, end };
+  }, [leaderboard, leaderboardPage, leaderboardPageSize, leaderboardTotal]);
+
+  const fetchCheckinLeaderboard = async (page = leaderboardPage) => {
     setLeaderboardLoading(true);
     try {
-      const res = await API.get('/api/user/checkin/leaderboard');
+      const res = await API.get('/api/user/checkin/leaderboard', {
+        params: {
+          page,
+          page_size: leaderboardPageSize,
+        },
+      });
       const { success, data, message } = res.data;
       if (success) {
-        setLeaderboard(Array.isArray(data?.items) ? data.items : []);
+        const nextItems = Array.isArray(data?.items) ? data.items : [];
+        const nextPage = Number(data?.page || page);
+        const nextTotal = Number(data?.total || 0);
         setLeaderboardLimit(Number(data?.limit || 100));
+        setLeaderboard(nextItems);
+        setLeaderboardPage(nextPage);
+        setLeaderboardTotal(
+          nextTotal > 0
+            ? nextTotal
+            : nextItems.length > 0
+              ? (nextPage - 1) * leaderboardPageSize + nextItems.length
+              : 0,
+        );
       } else {
         showError(message || t('获取签到榜失败'));
       }
@@ -167,7 +203,7 @@ const CheckinCalendar = ({
         );
         // 刷新签到状态
         fetchCheckinStatus(currentMonth);
-        fetchCheckinLeaderboard();
+        fetchCheckinLeaderboard(leaderboardPage);
         setTurnstileModalVisible(false);
       } else {
         if (!token && shouldTriggerTurnstile(message)) {
@@ -198,9 +234,9 @@ const CheckinCalendar = ({
 
   useEffect(() => {
     if (status?.checkin_enabled) {
-      fetchCheckinLeaderboard();
+      fetchCheckinLeaderboard(leaderboardPage);
     }
-  }, [status?.checkin_enabled]);
+  }, [status?.checkin_enabled, leaderboardPage, leaderboardPageSize]);
 
   // 如果签到功能未启用，不显示组件
   if (!status?.checkin_enabled) {
@@ -419,37 +455,94 @@ const CheckinCalendar = ({
             <TabPane tab={t('签到榜')} itemKey='leaderboard'>
               <Spin spinning={leaderboardLoading}>
                 <div className='space-y-3'>
-                  <div className='text-xs text-gray-500'>
-                    {t('仅展示前 {{count}} 位', { count: leaderboardLimit })}
-                  </div>
-                  {leaderboard.length > 0 ? (
-                    leaderboard.map((item, index) => (
-                      <div
-                        key={`${item.display_name || 'anonymous'}-${index + 1}`}
-                        className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'
-                      >
-                        <div className='flex items-center justify-between gap-3'>
-                          <div className='min-w-0 flex items-center gap-3'>
-                            <div className='flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 font-semibold text-emerald-600'>
-                              {index + 1}
-                            </div>
-                            <div className='min-w-0'>
-                              <div className='truncate font-medium text-semi-color-text-0'>
-                                {item.display_name || t('匿名用户')}
-                              </div>
-                            </div>
-                          </div>
-                          <div className='text-right'>
-                            <div className='font-semibold text-semi-color-text-0'>
-                              {item.total_checkins || 0} {t('天')}
-                            </div>
-                            <div className='text-xs text-gray-500'>
-                              {t('累计获得')} {renderQuota(item.total_quota || 0, 6)}
-                            </div>
-                          </div>
+                  <div className='rounded-xl border border-semi-color-border bg-[linear-gradient(135deg,rgba(16,185,129,0.06),rgba(59,130,246,0.04))] px-3 py-2.5'>
+                    <div className='flex flex-wrap items-start justify-between gap-3'>
+                      <div className='min-w-0'>
+                        <div className='text-[13px] font-semibold leading-none text-semi-color-text-0'>
+                          {t('签到达人榜')}
+                        </div>
+                        <div className='mt-1 text-[11px] text-semi-color-text-2'>
+                          {t('仅展示前 {{count}} 位', { count: leaderboardLimit })}
                         </div>
                       </div>
-                    ))
+                      <div className='rounded-lg bg-white/70 px-2.5 py-1.5 text-right shadow-sm dark:bg-black/10'>
+                        <div className='text-[11px] text-semi-color-text-2'>
+                          {leaderboardTotal > 0
+                            ? t('当前展示第 {{start}} - {{end}} 位，共 {{total}} 位', {
+                                start: leaderboardRange.start,
+                                end: leaderboardRange.end,
+                                total:
+                                  leaderboardTotal > 0
+                                    ? leaderboardTotal
+                                    : leaderboardRange.end,
+                              })
+                            : t('暂无排行榜数据')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {leaderboard.length > 0 ? (
+                    <>
+                      <div className='space-y-2'>
+                        {leaderboard.map((item, index) => {
+                          const rank =
+                            (leaderboardPage - 1) * leaderboardPageSize + index + 1;
+                          const isTopThree = rank <= 3;
+                          return (
+                            <div
+                              key={`${item.display_name || 'anonymous'}-${rank}`}
+                              className={`rounded-xl border px-3 py-2.5 transition-colors hover:bg-semi-color-fill-1 ${
+                                isTopThree
+                                  ? 'border-emerald-200 bg-[linear-gradient(135deg,rgba(16,185,129,0.06),rgba(255,255,255,0.96))]'
+                                  : 'border-semi-color-border bg-semi-color-fill-0'
+                              }`}
+                            >
+                              <div className='grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-3'>
+                                <div
+                                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
+                                    isTopThree
+                                      ? 'bg-emerald-500 text-white shadow-sm'
+                                      : 'bg-semi-color-fill-1 text-semi-color-text-0'
+                                  }`}
+                                >
+                                  {rank}
+                                </div>
+                                <div className='min-w-0'>
+                                  <div className='truncate text-[13px] font-semibold leading-none text-semi-color-text-0'>
+                                    {item.display_name || t('匿名用户')}
+                                  </div>
+                                  <div className='mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-semi-color-text-2'>
+                                    <span className='rounded-full bg-semi-color-fill-1 px-2 py-0.5 leading-none'>
+                                      {t('累计签到')} {item.total_checkins || 0} {t('天')}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className='text-right'>
+                                  <div className='text-[11px] text-semi-color-text-2'>
+                                    {t('累计获得')}
+                                  </div>
+                                  <div className='mt-1 inline-flex rounded-full bg-semi-color-fill-1 px-2.5 py-1 text-[12px] font-semibold leading-none text-semi-color-text-0'>
+                                    {renderQuota(item.total_quota || 0, 6)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {leaderboardTotal > leaderboardPageSize ? (
+                        <div className='flex justify-center border-t border-semi-color-border pt-2'>
+                          <Pagination
+                            currentPage={leaderboardPage}
+                            pageSize={leaderboardPageSize}
+                            total={leaderboardTotal}
+                            showSizeChanger={false}
+                            size='small'
+                            onPageChange={(page) => setLeaderboardPage(page)}
+                          />
+                        </div>
+                      ) : null}
+                    </>
                   ) : (
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}

@@ -4889,6 +4889,8 @@
         "结束日期": "Date de fin",
         "暂无签到记录": "Aucun enregistrement de pointage",
         "仅展示前 {{count}} 位": "Affichage des {{count}} premiers uniquement",
+        "签到达人榜": "Classement des meilleurs pointages",
+        "当前展示第 {{start}} - {{end}} 位，共 {{total}} 位": "Affichage des rangs {{start}} à {{end}} sur {{total}}",
         "当站内出现签到数据后，将展示前 {{count}} 名用户": "Les {{count}} premiers utilisateurs seront affichés dès que des données de pointage seront disponibles",
         "SEO 签到后台页标题": "Gestion des pointages",
         "SEO 签到后台页描述": "Les utilisateurs root peuvent consulter tous les pointages, les statistiques et le réglage d’affichage du classement."

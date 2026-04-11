@@ -53,11 +53,13 @@ func GetCheckinLeaderboard(c *gin.Context) {
 		return
 	}
 
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
 	limit := setting.LeaderboardLimit
 	if limit <= 0 {
 		limit = 100
 	}
-	items, err := model.GetCheckinLeaderboard(limit)
+	data, err := model.GetCheckinLeaderboard(page, pageSize, limit)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -68,10 +70,7 @@ func GetCheckinLeaderboard(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data": gin.H{
-			"items": items,
-			"limit": limit,
-		},
+		"data":    data,
 	})
 }
 

@@ -32,6 +32,14 @@ type CheckinLeaderboardItem struct {
 	TotalQuota    int64  `json:"total_quota"`
 }
 
+type CheckinLeaderboardPage struct {
+	Items    []CheckinLeaderboardItem `json:"items"`
+	Total    int64                    `json:"total"`
+	Page     int                      `json:"page"`
+	PageSize int                      `json:"page_size"`
+	Limit    int                      `json:"limit"`
+}
+
 type AdminCheckinRecord struct {
 	Id           int    `json:"id"`
 	UserId       int    `json:"user_id"`
@@ -229,12 +237,16 @@ func normalizeCheckinPage(page int, pageSize int) (int, int) {
 	return page, pageSize
 }
 
-func GetCheckinLeaderboard(limit int) ([]CheckinLeaderboardItem, error) {
+func GetCheckinLeaderboard(page int, pageSize int, limit int) (*CheckinLeaderboardPage, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	if limit > 1000 {
 		limit = 1000
+	}
+	page, pageSize = normalizeCheckinPage(page, pageSize)
+	if pageSize > limit {
+		pageSize = limit
 	}
 
 	type checkinLeaderboardRow struct {
@@ -244,19 +256,54 @@ func GetCheckinLeaderboard(limit int) ([]CheckinLeaderboardItem, error) {
 		TotalQuota    int64
 	}
 
-	rows := make([]checkinLeaderboardRow, 0, limit)
-	err := DB.Model(&Checkin{}).
+	baseQuery := DB.Model(&Checkin{}).
+		Joins("LEFT JOIN users ON users.id = checkins.user_id").
+		Where("users.deleted_at IS NULL")
+
+	var total int64
+	if err := baseQuery.Session(&gorm.Session{}).
+		Distinct("checkins.user_id").
+		Count(&total).Error; err != nil {
+		return nil, err
+	}
+	if total > int64(limit) {
+		total = int64(limit)
+	}
+
+	pageData := &CheckinLeaderboardPage{
+		Items:    make([]CheckinLeaderboardItem, 0),
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+		Limit:    limit,
+	}
+	if total == 0 {
+		return pageData, nil
+	}
+
+	offset := (page - 1) * pageSize
+	if int64(offset) >= total {
+		return pageData, nil
+	}
+
+	queryLimit := pageSize
+	remaining := int(total) - offset
+	if remaining < queryLimit {
+		queryLimit = remaining
+	}
+
+	rows := make([]checkinLeaderboardRow, 0, queryLimit)
+	err := baseQuery.Session(&gorm.Session{}).
 		Select(
 			"users.display_name AS display_name",
 			"users.username AS username",
 			"COUNT(checkins.id) AS total_checkins",
 			"COALESCE(SUM(checkins.quota_awarded), 0) AS total_quota",
 		).
-		Joins("LEFT JOIN users ON users.id = checkins.user_id").
-		Where("users.deleted_at IS NULL").
 		Group("checkins.user_id, users.display_name, users.username").
 		Order("total_quota DESC, total_checkins DESC, checkins.user_id ASC").
-		Limit(limit).
+		Offset(offset).
+		Limit(queryLimit).
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err
@@ -274,37 +321,22 @@ func GetCheckinLeaderboard(limit int) ([]CheckinLeaderboardItem, error) {
 			TotalQuota:    row.TotalQuota,
 		})
 	}
-	return items, nil
+	pageData.Items = items
+	return pageData, nil
 }
 
 func GetAdminCheckinRecords(page int, pageSize int, keyword string, userId int, startDate string, endDate string) ([]AdminCheckinRecord, int64, *AdminCheckinStats, error) {
 	page, pageSize = normalizeCheckinPage(page, pageSize)
 
-	baseQuery := DB.Model(&Checkin{}).
-		Joins("LEFT JOIN users ON users.id = checkins.user_id")
-
-	keyword = strings.TrimSpace(keyword)
-	if keyword != "" {
-		likeKeyword := "%" + keyword + "%"
-		baseQuery = baseQuery.Where("users.username LIKE ? OR users.display_name LIKE ?", likeKeyword, likeKeyword)
-	}
-	if userId > 0 {
-		baseQuery = baseQuery.Where("checkins.user_id = ?", userId)
-	}
-	if startDate != "" {
-		baseQuery = baseQuery.Where("checkins.checkin_date >= ?", startDate)
-	}
-	if endDate != "" {
-		baseQuery = baseQuery.Where("checkins.checkin_date <= ?", endDate)
-	}
+	baseQuery := buildAdminCheckinRecordsQuery(keyword, userId, startDate, endDate)
 
 	var total int64
-	if err := baseQuery.Count(&total).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, nil, err
 	}
 
 	rows := make([]AdminCheckinRecord, 0, pageSize)
-	err := baseQuery.
+	err := baseQuery.Session(&gorm.Session{}).
 		Select(
 			"checkins.id",
 			"checkins.user_id",
@@ -323,20 +355,44 @@ func GetAdminCheckinRecords(page int, pageSize int, keyword string, userId int, 
 	}
 
 	stats := &AdminCheckinStats{}
-	if err := baseQuery.Count(&stats.TotalCheckins).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Count(&stats.TotalCheckins).Error; err != nil {
 		return nil, 0, nil, err
 	}
-	if err := baseQuery.Distinct("checkins.user_id").Count(&stats.TotalUsers).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Distinct("checkins.user_id").Count(&stats.TotalUsers).Error; err != nil {
 		return nil, 0, nil, err
 	}
-	if err := baseQuery.Select("COALESCE(SUM(checkins.quota_awarded), 0)").Scan(&stats.TotalQuota).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Select("COALESCE(SUM(checkins.quota_awarded), 0)").Scan(&stats.TotalQuota).Error; err != nil {
 		return nil, 0, nil, err
 	}
 
 	today := time.Now().Format("2006-01-02")
-	if err := baseQuery.Where("checkins.checkin_date = ?", today).Count(&stats.TodayCheckins).Error; err != nil {
+	if err := buildAdminCheckinRecordsQuery(keyword, userId, startDate, endDate).
+		Where("checkins.checkin_date = ?", today).
+		Count(&stats.TodayCheckins).Error; err != nil {
 		return nil, 0, nil, err
 	}
 
 	return rows, total, stats, nil
+}
+
+func buildAdminCheckinRecordsQuery(keyword string, userId int, startDate string, endDate string) *gorm.DB {
+	query := DB.Model(&Checkin{}).
+		Joins("LEFT JOIN users ON users.id = checkins.user_id")
+
+	keyword = strings.TrimSpace(keyword)
+	if keyword != "" {
+		likeKeyword := "%" + keyword + "%"
+		query = query.Where("users.username LIKE ? OR users.display_name LIKE ?", likeKeyword, likeKeyword)
+	}
+	if userId > 0 {
+		query = query.Where("checkins.user_id = ?", userId)
+	}
+	if startDate != "" {
+		query = query.Where("checkins.checkin_date >= ?", startDate)
+	}
+	if endDate != "" {
+		query = query.Where("checkins.checkin_date <= ?", endDate)
+	}
+
+	return query
 }
