@@ -70,6 +70,9 @@ import {
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
 import SubscriptionConsumeLogsModal from '../table/subscriptions/modals/SubscriptionConsumeLogsModal';
 import CardTable from '../common/ui/CardTable';
+import CardPro from '../common/ui/CardPro';
+import { createCardProPagination } from '../../helpers/utils';
+import { useIsMobile } from '../../hooks/common/useIsMobile';
 import {
   formatSubscriptionDuration,
   getSubscriptionDailyPriceDisplay,
@@ -355,7 +358,9 @@ const SubscriptionPlansCard = ({
 }) => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isMobile = useIsMobile();
   const isPackageVariant = uiVariant === 'package';
+  const usePackageConsoleLayout = isPackageVariant && showUserSubscriptions;
   const renderSubscriptionPanel =
     showUserSubscriptions && mainPanelMode !== 'plans';
   const renderPlanListPanel = mainPanelMode !== 'subscriptions';
@@ -386,7 +391,7 @@ const SubscriptionPlansCard = ({
   );
   const initialPlanViewMode =
     searchParams.get(PLAN_URL_PARAM_KEYS.view) ||
-    (isPackageVariant ? 'card' : 'table');
+    (usePackageConsoleLayout ? 'table' : isPackageVariant ? 'card' : 'table');
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [paying, setPaying] = useState(false);
@@ -399,9 +404,13 @@ const SubscriptionPlansCard = ({
   const [planSort, setPlanSort] = useState(initialPlanSort);
   const [planSeriesFilter, setPlanSeriesFilter] = useState(initialPlanSeries);
   const [expandedSubscriptionKeys, setExpandedSubscriptionKeys] = useState([]);
+  const [expandedManualDeliveryKeys, setExpandedManualDeliveryKeys] = useState(
+    [],
+  );
   const [consumeLogsFilter, setConsumeLogsFilter] = useState(null);
   const [planPage, setPlanPage] = useState(initialPlanPage);
   const [planPageSize, setPlanPageSize] = useState(initialPlanPageSize);
+  const [planKeyword, setPlanKeyword] = useState('');
   const [subscriptionKeyword, setSubscriptionKeyword] = useState('');
   const [subscriptionPlanFilter, setSubscriptionPlanFilter] = useState('all');
   const [subscriptionResourceFilter, setSubscriptionResourceFilter] =
@@ -705,8 +714,10 @@ const SubscriptionPlansCard = ({
   }, [hasAnySubscription, showUserSubscriptions, uiVariant]);
 
   useEffect(() => {
-    setPlanViewMode(isPackageVariant ? 'card' : 'table');
-  }, [isPackageVariant]);
+    setPlanViewMode(
+      usePackageConsoleLayout ? 'table' : isPackageVariant ? 'card' : 'table',
+    );
+  }, [isPackageVariant, usePackageConsoleLayout]);
 
   useEffect(() => {
     loadConversionPreview();
@@ -814,6 +825,23 @@ const SubscriptionPlansCard = ({
       };
     });
   }, [manualDeliveryOrders, planMap, t]);
+
+  useEffect(() => {
+    if (normalizedManualDeliveryOrders.length === 0) {
+      setExpandedManualDeliveryKeys([]);
+      return;
+    }
+    setExpandedManualDeliveryKeys((prev) => {
+      const validKeys = new Set(normalizedManualDeliveryOrders.map((item) => item.key));
+      const nextKeys = prev.filter((key) => validKeys.has(key));
+      if (nextKeys.length > 0) {
+        return nextKeys;
+      }
+      return normalizedManualDeliveryOrders
+        .filter((item) => item?.order?.fulfillment_status === 'pending_delivery')
+        .map((item) => item.key);
+    });
+  }, [normalizedManualDeliveryOrders]);
 
   const activeSubscriptionItems = useMemo(
     () => normalizedSubscriptions.filter((item) => item.state === 'active'),
@@ -942,18 +970,38 @@ const SubscriptionPlansCard = ({
 
   const filteredPlans = useMemo(() => {
     const result = [...(plans || [])];
-    if (planSeriesFilter === 'all') {
-      return result;
-    }
+    const keyword = planKeyword.trim().toLowerCase();
     return result.filter((item) => {
       const plan = item?.plan || {};
+      const matchesKeyword =
+        !keyword ||
+        [
+          plan?.title,
+          plan?.subtitle,
+          plan?.upgrade_group,
+          ...(Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : []),
+          ...(Array.isArray(plan?.allowed_models) ? plan.allowed_models : []),
+          ...(Array.isArray(plan?.allowed_vendor_names)
+            ? plan.allowed_vendor_names
+            : []),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(keyword);
+      if (!matchesKeyword) {
+        return false;
+      }
+      if (planSeriesFilter === 'all') {
+        return true;
+      }
       const series = inferSubscriptionPlanSeries(plan);
       if (planSeriesFilter === 'mixed') {
         return series === 'mixed';
       }
       return series === planSeriesFilter;
     });
-  }, [plans, planSeriesFilter]);
+  }, [planKeyword, plans, planSeriesFilter]);
 
   const sortedPlans = useMemo(() => {
     const result = [...filteredPlans];
@@ -1065,7 +1113,7 @@ const SubscriptionPlansCard = ({
 
   useEffect(() => {
     setPlanPage(1);
-  }, [planSort, planSeriesFilter, filteredPlans.length]);
+  }, [planKeyword, planSort, planSeriesFilter, filteredPlans.length]);
 
   const totalPlanPages = Math.max(
     1,
@@ -1693,7 +1741,57 @@ const SubscriptionPlansCard = ({
     return item.value;
   };
 
-  const renderManualDeliveryOrderCard = (item) => {
+  const renderManualDeliveryOrderSummary = (item, expanded) => {
+    const order = item?.order || {};
+    const payload = Array.isArray(order?.delivery_payload)
+      ? order.delivery_payload
+      : [];
+    const payloadCount = payload.length;
+    return (
+      <div className='flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+        <div className='min-w-0 flex-1'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <Text strong>{item.title}</Text>
+            <Tag color={item.statusMeta.color} shape='circle' size='small'>
+              {item.statusMeta.text}
+            </Tag>
+            {payloadCount > 0 ? (
+              <Tag size='small' color='grey' shape='circle'>
+                {payloadCount} {t('项交付内容')}
+              </Tag>
+            ) : null}
+          </div>
+          <div className='mt-1 text-sm text-semi-color-text-2'>
+            #{order?.id || '--'} · {order?.trade_no || '--'}
+          </div>
+          {item?.plan?.subtitle ? (
+            <div className='mt-1 text-sm text-semi-color-text-2 line-clamp-2'>
+              {item.plan.subtitle}
+            </div>
+          ) : null}
+        </div>
+        <div className='grid grid-cols-1 gap-1 text-sm text-semi-color-text-1 lg:min-w-[320px] lg:text-right'>
+          <div>
+            {t('支付完成')}：{formatDateTime(order?.complete_time)}
+          </div>
+          <div>
+            {t('处理时间')}：{formatDateTime(order?.delivered_at)}
+          </div>
+          <div className='flex items-center gap-2 lg:justify-end'>
+            <Text type='tertiary' size='small'>
+              {expanded ? t('收起详情') : t('展开详情')}
+            </Text>
+            <ChevronRight
+              size={16}
+              className={`transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderManualDeliveryOrderBody = (item) => {
     const order = item?.order || {};
     const payload = Array.isArray(order?.delivery_payload)
       ? order.delivery_payload
@@ -1701,46 +1799,47 @@ const SubscriptionPlansCard = ({
     const hasPayload = payload.length > 0;
 
     return (
-      <div
-        key={item.key}
-        className='rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-4'
-      >
-        <div className='flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
-          <div className='min-w-0 flex-1'>
-            <div className='flex flex-wrap items-center gap-2'>
-              <Text strong>{item.title}</Text>
-              <Tag color={item.statusMeta.color} shape='circle' size='small'>
-                {item.statusMeta.text}
-              </Tag>
-            </div>
-            <div className='mt-1 text-sm text-semi-color-text-2'>
-              #{order?.id || '--'} · {order?.trade_no || '--'}
-            </div>
-            {item?.plan?.subtitle ? (
-              <div className='mt-1 text-sm text-semi-color-text-2'>
-                {item.plan.subtitle}
-              </div>
-            ) : null}
-          </div>
-          <div className='grid grid-cols-1 gap-2 text-sm lg:min-w-[280px]'>
-            <div>
-              {t('支付完成')}：{formatDateTime(order?.complete_time)}
-            </div>
-            <div>
-              {t('处理时间')}：{formatDateTime(order?.delivered_at)}
-            </div>
-          </div>
-        </div>
-
+      <div className='rounded-xl bg-semi-color-fill-0 p-3 lg:p-4'>
         {order?.fulfillment_status === 'pending_delivery' ? (
-          <Banner
-            type='warning'
-            closeIcon={null}
-            className='!mt-3 !rounded-xl'
-            description={t(
-              '已支付成功，当前套餐正在等待发放。发放完成后可在此查看交付内容。',
-            )}
-          />
+          <div className='space-y-3'>
+            <Banner
+              type='warning'
+              closeIcon={null}
+              className='!rounded-xl'
+              description={t(
+                '已支付成功，当前套餐正在等待发放。发放完成后可在此查看交付内容。',
+              )}
+            />
+            <Banner
+              type='info'
+              closeIcon={null}
+              className='!rounded-xl'
+              description={
+                <div className='space-y-2 text-sm leading-6'>
+                  <div>
+                    {t(
+                      '发放成功后，系统会自动为你创建一个名字为 Subscription Access 的 Key。',
+                    )}
+                  </div>
+                  <div>
+                    {t(
+                      '创建后系统会自动发送一条测试消息用于激活；成功后会通过通知邮件和站内信提醒你，请及时查收。',
+                    )}
+                  </div>
+                  <div>
+                    {t(
+                      '拿到 Key 后，可按以下方式使用：ANTHROPIC_AUTH_TOKEN=Subscription Access 的 Key，ANTHROPIC_BASE_URL=https://fishxcode.com。',
+                    )}
+                  </div>
+                  <div>
+                    {t(
+                      '你也可以前往 https://fishxcode.com/console/token ，使用 CC Switch 一键导入。',
+                    )}
+                  </div>
+                </div>
+              }
+            />
+          </div>
         ) : null}
 
         {hasPayload ? (
@@ -2182,6 +2281,14 @@ const SubscriptionPlansCard = ({
                     )}
                   </Text>
                 ) : null}
+                {activeDiscount ? (
+                  <Text type='tertiary' size='small' className='block'>
+                    {t('优惠截止时间')}：{' '}
+                    {new Date(
+                      Number(plan?.discount_deadline || 0) * 1000,
+                    ).toLocaleString()}
+                  </Text>
+                ) : null}
               </div>
               <div className='subscription-plan-selling-card__sale-meta text-right text-xs text-semi-color-text-2'>
                 <div>
@@ -2435,6 +2542,785 @@ const SubscriptionPlansCard = ({
     );
   };
 
+  const planSeriesOptions = useMemo(
+    () => [
+      { value: 'all', label: `${t('全部系列')} (${plans.length})` },
+      { value: 'claude', label: t('Claude 系列') },
+      { value: 'codex', label: t('Codex 系列') },
+      { value: 'mixed', label: t('混合系列') },
+    ],
+    [plans.length, t],
+  );
+
+  const planSortOptions = useMemo(
+    () => [
+      { value: 'price_asc', label: t('价格从低到高') },
+      { value: 'price_desc', label: t('价格从高到低') },
+      { value: 'value_desc', label: t('权益从多到少') },
+      { value: 'recommended', label: t('推荐优先') },
+    ],
+    [t],
+  );
+
+  const packageConsoleStatsArea = useMemo(
+    () => (
+      <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4'>
+        {overviewItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div
+              key={item.label}
+              className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'
+            >
+              <div className='flex items-start justify-between gap-3'>
+                <div className='min-w-0'>
+                  <div className='text-xs text-semi-color-text-2'>
+                    {item.label}
+                  </div>
+                  <div className='mt-1 text-base font-semibold text-semi-color-text-0 break-all'>
+                    {item.value}
+                  </div>
+                  <div className='mt-1 text-xs text-semi-color-text-2'>
+                    {item.helper}
+                  </div>
+                </div>
+                <div className={`rounded-lg p-2 ${item.iconBg}`}>
+                  <Icon size={16} className={item.iconColor} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    ),
+    [overviewItems],
+  );
+
+  const packageConsoleSearchArea = useMemo(
+    () => (
+      <div className='flex flex-col gap-3'>
+        <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
+          <Space wrap>
+            {renderSubscriptionPanel && (
+              <Button
+                theme={
+                  activeMainTab === 'my_subscriptions' ? 'solid' : 'outline'
+                }
+                type='primary'
+                size='small'
+                onClick={() => setActiveMainTab('my_subscriptions')}
+              >
+                {t('我的订阅')} ({allSubscriptions.length})
+              </Button>
+            )}
+            {renderPlanListPanel && (
+              <Button
+                theme={activeMainTab === 'plan_list' ? 'solid' : 'outline'}
+                type='tertiary'
+                size='small'
+                onClick={() => setActiveMainTab('plan_list')}
+              >
+                {t('套餐列表')} ({sortedPlans.length})
+              </Button>
+            )}
+          </Space>
+          <Text type='tertiary' size='small'>
+            {activeMainTab === 'plan_list'
+              ? t('按系列、排序和关键字快速定位适合的套餐')
+              : t('查看已生效订阅、历史订阅与人工发放订单')}
+          </Text>
+        </div>
+
+        {activeMainTab === 'plan_list' && (
+          <div className='grid grid-cols-1 gap-2 lg:grid-cols-12'>
+            <div className='lg:col-span-5'>
+              <Input
+                value={planKeyword}
+                onChange={setPlanKeyword}
+                placeholder={t('搜索套餐名 / 副标题 / 模型 / 分组')}
+                showClear
+              />
+            </div>
+            <div className='lg:col-span-3'>
+              <Select
+                value={planSeriesFilter}
+                onChange={setPlanSeriesFilter}
+                optionList={planSeriesOptions}
+              />
+            </div>
+            <div className='lg:col-span-2'>
+              <Select
+                value={planSort}
+                onChange={setPlanSort}
+                optionList={planSortOptions}
+              />
+            </div>
+            <div className='lg:col-span-2 flex items-center justify-between gap-2 rounded-lg border border-semi-color-border bg-semi-color-bg-0 px-2'>
+              <Text type='tertiary' size='small'>
+                {t('表格模式')}
+              </Text>
+              <Button
+                theme='borderless'
+                type='tertiary'
+                size='small'
+                onClick={() => {
+                  setPlanKeyword('');
+                  setPlanSeriesFilter(isPackageVariant ? 'claude' : 'all');
+                  setPlanSort(isPackageVariant ? 'recommended' : 'price_asc');
+                  setPlanPage(1);
+                }}
+              >
+                {t('重置')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    ),
+    [
+      activeMainTab,
+      allSubscriptions.length,
+      isPackageVariant,
+      planKeyword,
+      planSeriesFilter,
+      planSeriesOptions,
+      planSort,
+      planSortOptions,
+      renderPlanListPanel,
+      renderSubscriptionPanel,
+      sortedPlans.length,
+      t,
+    ],
+  );
+
+  const subscriptionPanelContent = (
+    <div className='space-y-3'>
+      <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <Tag
+            color={subscriptionView === 'active' ? 'green' : 'white'}
+            shape='circle'
+            size='small'
+          >
+            {activeSubscriptionItems.length} {t('个生效中')}
+          </Tag>
+          {historySubscriptionItems.length > 0 && (
+            <Tag
+              color={subscriptionView === 'history' ? 'orange' : 'white'}
+              shape='circle'
+              size='small'
+            >
+              {historySubscriptionItems.length} {t('个历史记录')}
+            </Tag>
+          )}
+        </div>
+        <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
+          <Space wrap>
+            <Button
+              theme={subscriptionView === 'active' ? 'solid' : 'outline'}
+              type='primary'
+              size='small'
+              onClick={() => setSubscriptionView('active')}
+            >
+              {t('生效中')}
+            </Button>
+            <Button
+              theme={subscriptionView === 'history' ? 'solid' : 'outline'}
+              type='tertiary'
+              size='small'
+              onClick={() => setSubscriptionView('history')}
+            >
+              {t('历史订阅')}
+            </Button>
+            <Button
+              theme={subscriptionView === 'all' ? 'solid' : 'outline'}
+              type='tertiary'
+              size='small'
+              onClick={() => setSubscriptionView('all')}
+            >
+              {t('全部')}
+            </Button>
+            <Button
+              theme='outline'
+              type='tertiary'
+              size='small'
+              onClick={() => setConsumeLogsFilter({})}
+            >
+              {t('全部订阅消耗')}
+            </Button>
+          </Space>
+          <div className='flex items-center gap-2'>
+            <Select
+              value={displayBillingPreference}
+              onChange={onChangeBillingPreference}
+              size='small'
+              optionList={[
+                {
+                  value: 'subscription_first',
+                  label: disableSubscriptionPreference
+                    ? `${t('优先订阅')} (${t('无生效')})`
+                    : t('优先订阅'),
+                  disabled: disableSubscriptionPreference,
+                },
+                { value: 'wallet_first', label: t('优先钱包') },
+                {
+                  value: 'subscription_only',
+                  label: disableSubscriptionPreference
+                    ? `${t('仅用订阅')} (${t('无生效')})`
+                    : t('仅用订阅'),
+                  disabled: disableSubscriptionPreference,
+                },
+                { value: 'wallet_only', label: t('仅用钱包') },
+              ]}
+            />
+            <Button
+              size='small'
+              theme='light'
+              type='tertiary'
+              icon={
+                <RefreshCw
+                  size={12}
+                  className={refreshing ? 'animate-spin' : ''}
+                />
+              }
+              onClick={handleRefresh}
+              loading={refreshing}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className='flex flex-col gap-2 rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3 xl:flex-row xl:items-center'>
+        <Input
+          value={subscriptionKeyword}
+          onChange={setSubscriptionKeyword}
+          placeholder={t('搜索套餐名 / 说明 / 订阅 ID')}
+          showClear
+          className='min-w-0 flex-1'
+        />
+        <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3'>
+          <Select
+            value={subscriptionPlanFilter}
+            onChange={setSubscriptionPlanFilter}
+            size='small'
+            optionList={subscriptionPlanOptions}
+          />
+          <Select
+            value={subscriptionResourceFilter}
+            onChange={setSubscriptionResourceFilter}
+            size='small'
+            optionList={[
+              { value: 'all', label: t('全部资源类型') },
+              { value: 'quota', label: t('按额度') },
+              { value: 'request_count', label: t('按次数') },
+            ]}
+          />
+          <Select
+            value={subscriptionResetFilter}
+            onChange={setSubscriptionResetFilter}
+            size='small'
+            optionList={resetPeriodOptions}
+          />
+        </div>
+        <Button
+          theme='outline'
+          type='tertiary'
+          size='small'
+          onClick={() => {
+            setSubscriptionKeyword('');
+            setSubscriptionPlanFilter('all');
+            setSubscriptionResourceFilter('all');
+            setSubscriptionResetFilter('all');
+          }}
+        >
+          {t('清空筛选')}
+        </Button>
+      </div>
+
+      {disableSubscriptionPreference && isSubscriptionPreference && (
+        <Text type='tertiary' size='small' className='block'>
+          {t('已保存偏好为')}
+          {subscriptionPreferenceLabel}
+          {t('，当前无生效订阅，将自动使用钱包')}
+        </Text>
+      )}
+
+      {shouldShowConversionCampaign && (
+        <Card
+          className='!rounded-2xl border border-amber-200 bg-amber-50/70 shadow-none'
+          bodyStyle={{ padding: '16px' }}
+        >
+          <div className='space-y-3'>
+            <div className='flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
+              <div className='min-w-0 space-y-1'>
+                <Space wrap>
+                  <Text strong>
+                    {conversionPreview?.campaign?.title || t('套餐转余额')}
+                  </Text>
+                  <Tag
+                    color={
+                      latestConversionRequestStatusMeta?.color ||
+                      (conversionPreview?.can_execute ? 'green' : 'grey')
+                    }
+                    shape='circle'
+                    size='small'
+                  >
+                    {latestConversionRequestStatusMeta?.text ||
+                      (conversionPreview?.can_execute
+                        ? t('可申请')
+                        : conversionPreview?.closed_reason || t('仅展示记录'))}
+                  </Tag>
+                  {conversionLoading && (
+                    <Tag color='white' shape='circle' size='small'>
+                      {t('加载中')}
+                    </Tag>
+                  )}
+                </Space>
+                <Text type='tertiary' size='small'>
+                  {conversionCampaignSummary}
+                </Text>
+              </div>
+              <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
+                <div className='rounded-lg bg-white/80 p-3'>
+                  <div className='text-xs text-gray-500'>{t('活动截止')}</div>
+                  <div className='mt-1 font-medium'>
+                    {formatDateTime(conversionPreview?.campaign?.deadline)}
+                  </div>
+                </div>
+                <div className='rounded-lg bg-white/80 p-3'>
+                  <div className='text-xs text-gray-500'>
+                    {t('申请预计返还')}
+                  </div>
+                  <div className='mt-1 font-medium'>
+                    {renderQuota(
+                      conversionPreview?.total_convertible_quota || 0,
+                    )}
+                  </div>
+                </div>
+                <div className='rounded-lg bg-white/80 p-3'>
+                  <div className='text-xs text-gray-500'>
+                    {t('可申请套餐')}
+                  </div>
+                  <div className='mt-1 font-medium'>
+                    {(conversionPreview?.items || []).length} {t('个')}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Banner
+              type='warning'
+              closeIcon={null}
+              description={
+                <div className='space-y-1 text-sm'>
+                  <div>{t('提交申请后，相关套餐会暂停使用。')}</div>
+                  <div>
+                    {t(
+                      '审核通过后，剩余额度将按规则转换为账户余额，原套餐失效。',
+                    )}
+                  </div>
+                  <div>{t('审核拒绝后，套餐会恢复使用。')}</div>
+                </div>
+              }
+            />
+
+            {(conversionPreview?.campaign?.conversion_rule ||
+              (conversionPreview?.campaign?.billing_rules || []).length > 0 ||
+              (conversionPreview?.campaign?.charge_rules || []).length > 0) && (
+              <Collapse>
+                <Collapse.Panel
+                  itemKey='conversion-rules'
+                  header={t('详细规则与计算方式')}
+                >
+                  <div className='space-y-2 text-sm text-semi-color-text-1'>
+                    {conversionPreview?.campaign?.conversion_rule ? (
+                      <div>{conversionPreview.campaign.conversion_rule}</div>
+                    ) : null}
+                    {(conversionPreview?.campaign?.billing_rules || []).map(
+                      (rule) => (
+                        <div key={rule}>• {rule}</div>
+                      ),
+                    )}
+                    {(conversionPreview?.campaign?.charge_rules || []).map(
+                      (rule) => (
+                        <div key={rule}>• {rule}</div>
+                      ),
+                    )}
+                  </div>
+                </Collapse.Panel>
+              </Collapse>
+            )}
+
+            {(conversionPreview?.items || []).length > 0 && (
+              <div className='rounded-xl bg-white/70 p-3'>
+                <div className='mb-2 flex items-center justify-between'>
+                  <Text strong>{t('本次可申请转换的套餐')}</Text>
+                  <Text type='tertiary' size='small'>
+                    {(conversionPreview?.items || []).length} {t('个')}
+                  </Text>
+                </div>
+                <div className='space-y-2'>
+                  {(conversionPreview?.items || []).map((item) => (
+                    <div
+                      key={item.user_subscription_id}
+                      className='rounded-lg border border-semi-color-border bg-semi-color-bg-0 p-3'
+                    >
+                      <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+                        <div>
+                          <div className='font-medium'>{item.plan_title}</div>
+                          <Text type='tertiary' size='small'>
+                            #{item.user_subscription_id} · {t('来源')}{' '}
+                            {item.source || '--'}
+                          </Text>
+                          <Text
+                            type='tertiary'
+                            size='small'
+                            className='block'
+                          >
+                            {t('购买价格')}{' '}
+                            {renderQuotaWithAmount(
+                              Number(item.price_basis_amount || 0),
+                            )}{' '}
+                            · {t('仅统计有支付订单的套餐')}
+                          </Text>
+                        </div>
+                        <div className='text-left lg:text-right'>
+                          <div className='font-semibold'>
+                            {renderQuota(item.convertible_quota || 0)}
+                          </div>
+                          <Text type='tertiary' size='small'>
+                            {t('折算比例')}{' '}
+                            {Math.round(
+                              Number(item.remaining_ratio || 0) * 10000,
+                            ) / 100}
+                            %
+                          </Text>
+                          <Text
+                            type='tertiary'
+                            size='small'
+                            className='block'
+                          >
+                            {t('已使用 {{days}} 天，计费 {{billableDays}} 天', {
+                              days: Number(item.used_days || 0),
+                              billableDays: Number(
+                                item.billable_used_days || 0,
+                              ),
+                            })}
+                          </Text>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {conversionPreview?.latest_request && (
+              <div className='rounded-xl bg-white/70 p-3'>
+                <Space wrap align='center'>
+                  <Text strong>{t('申请进度')}</Text>
+                  <Tag
+                    color={latestConversionRequestStatusMeta?.color}
+                    shape='circle'
+                    size='small'
+                  >
+                    {latestConversionRequestStatusMeta?.text}
+                  </Tag>
+                </Space>
+                <div className='mt-2 grid grid-cols-1 gap-2 text-sm lg:grid-cols-2'>
+                  <div>
+                    {t('申请单')} #{conversionPreview.latest_request.id}
+                  </div>
+                  <div>
+                    {t('申请时间')}：
+                    {formatDateTime(
+                      conversionPreview.latest_request.create_time,
+                    )}
+                  </div>
+                  {conversionPreview.latest_request.disabled_at ? (
+                    <div>
+                      {t('禁用时间')}：
+                      {formatDateTime(
+                        conversionPreview.latest_request.disabled_at,
+                      )}
+                    </div>
+                  ) : null}
+                  {conversionPreview.latest_request.admin_remark ? (
+                    <div>
+                      {t('管理员备注')}：
+                      {conversionPreview.latest_request.admin_remark}
+                    </div>
+                  ) : null}
+                </div>
+                <Text type='tertiary' size='small' className='mt-2 block'>
+                  {conversionPreview.latest_request.status === 'pending'
+                    ? t('申请提交后，相关套餐会暂停使用，直到审核通过或拒绝。')
+                    : conversionPreview.latest_request.status === 'approved'
+                      ? t(
+                        '申请已通过，系统会把核准后的额度转入账户余额，原套餐失效。',
+                      )
+                      : t('申请未通过，系统会恢复原套餐，你可以继续使用。')}
+                </Text>
+              </div>
+            )}
+
+            <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+              <Text type='tertiary' size='small'>
+                {conversionPreview?.closed_reason ||
+                  t('管理员可审核并调整最终返还比例或额度。')}
+              </Text>
+              <Button
+                theme='solid'
+                type='warning'
+                loading={submittingConversionRequest}
+                disabled={
+                  !conversionPreview?.can_execute ||
+                  submittingConversionRequest ||
+                  conversionPreview?.latest_request?.status === 'pending'
+                }
+                onClick={handleSubmitConversionRequest}
+              >
+                {conversionPreview?.latest_request?.status === 'pending'
+                  ? t('申请审核中')
+                  : t('提交套餐转余额申请')}
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {normalizedManualDeliveryOrders.length > 0 ? (
+        <Card
+          className='!rounded-2xl border border-sky-200 bg-sky-50/70 shadow-none'
+          bodyStyle={{ padding: '16px' }}
+        >
+          <div className='space-y-3'>
+            <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+              <div>
+                <Text strong>{t('人工发放订单')}</Text>
+                <div className='mt-1 text-sm text-semi-color-text-2'>
+                  {t('这里会显示待发放或已发放完成的订单内容。')}
+                  <br />
+                  {t(
+                    'Claude 系列人工发放完成后，会自动创建 Subscription Access Key、发送测试消息激活，并通过邮件和站内信通知。',
+                  )}
+                </div>
+              </div>
+              <Tag color='blue' shape='circle' size='small'>
+                {normalizedManualDeliveryOrders.length} {t('个订单')}
+              </Tag>
+            </div>
+            <Collapse
+              activeKey={expandedManualDeliveryKeys}
+              onChange={setExpandedManualDeliveryKeys}
+              className='overflow-hidden rounded-2xl border border-semi-color-border bg-white/90'
+            >
+              {normalizedManualDeliveryOrders.map((item) => (
+                <Collapse.Panel
+                  key={item.key}
+                  itemKey={item.key}
+                  className='border-b border-semi-color-border last:border-b-0'
+                  header={renderManualDeliveryOrderSummary(
+                    item,
+                    expandedManualDeliveryKeys.includes(item.key),
+                  )}
+                >
+                  {renderManualDeliveryOrderBody(item)}
+                </Collapse.Panel>
+              ))}
+            </Collapse>
+          </div>
+        </Card>
+      ) : null}
+
+      <Divider margin={8} />
+
+      {hasAnySubscription ? (
+        filteredVisibleSubscriptionItems.length > 0 ? (
+          <Collapse
+            activeKey={expandedSubscriptionKeys}
+            onChange={setExpandedSubscriptionKeys}
+          >
+            {filteredVisibleSubscriptionItems.map((item) => (
+              <Collapse.Panel
+                key={item.key}
+                itemKey={item.key}
+                header={renderSubscriptionHeader(item)}
+              >
+                {renderSubscriptionBody(item)}
+              </Collapse.Panel>
+            ))}
+          </Collapse>
+        ) : (
+          renderSubscriptionEmptyState({
+            title:
+              subscriptionView === 'history'
+                ? t('暂无历史订阅')
+                : t('暂无生效订阅'),
+            description:
+              subscriptionKeyword ||
+              subscriptionPlanFilter !== 'all' ||
+              subscriptionResourceFilter !== 'all' ||
+              subscriptionResetFilter !== 'all'
+                ? t('当前组合筛选下没有匹配结果')
+                : t('调整筛选条件后，或购买套餐后，会显示在这里。'),
+            showPurchaseGuide:
+              !subscriptionKeyword &&
+              subscriptionPlanFilter === 'all' &&
+              subscriptionResourceFilter === 'all' &&
+              subscriptionResetFilter === 'all' &&
+              subscriptionView !== 'history' &&
+              recommendedEmptyStatePlans.length > 0,
+          })
+        )
+      ) : (
+        renderSubscriptionEmptyState({
+          title: t('暂无订阅记录'),
+          description: t(
+            '现在开通套餐后，请求会优先走订阅权益，成本和体验都会更稳定。',
+          ),
+          showPurchaseGuide: recommendedEmptyStatePlans.length > 0,
+        })
+      )}
+    </div>
+  );
+
+  const planListPanelContent = (
+    <div className='space-y-3'>
+      {!usePackageConsoleLayout && (
+        <div className='subscription-plan-selling-toolbar'>
+          <div className='subscription-plan-selling-toolbar__tabs'>
+            <Tabs
+              type='button'
+              collapsible={false}
+              activeKey={planSeriesFilter}
+              onChange={setPlanSeriesFilter}
+            >
+              {planSeriesOptions.map((option) => (
+                <TabPane
+                  key={option.value}
+                  itemKey={option.value}
+                  tab={option.label}
+                />
+              ))}
+            </Tabs>
+          </div>
+          <div className='subscription-plan-selling-toolbar__controls'>
+            <div className='subscription-plan-selling-toolbar__switch'>
+              <Tooltip content={t('卡片视图')}>
+                <Button
+                  theme={planViewMode === 'card' ? 'solid' : 'borderless'}
+                  type={planViewMode === 'card' ? 'primary' : 'tertiary'}
+                  icon={<LayoutGrid size={14} />}
+                  size='small'
+                  onClick={() => setPlanViewMode('card')}
+                  aria-label={t('卡片视图')}
+                />
+              </Tooltip>
+              <Tooltip content={t('列表视图')}>
+                <Button
+                  theme={planViewMode === 'table' ? 'solid' : 'borderless'}
+                  type={planViewMode === 'table' ? 'primary' : 'tertiary'}
+                  icon={<List size={14} />}
+                  size='small'
+                  onClick={() => setPlanViewMode('table')}
+                  aria-label={t('列表视图')}
+                />
+              </Tooltip>
+            </div>
+            <div className='subscription-plan-selling-toolbar__sort'>
+              <Select
+                value={planSort}
+                size='small'
+                onChange={setPlanSort}
+                optionList={planSortOptions}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sortedPlans.length > 0 ? (
+        planViewMode === 'card' ? (
+          <div className='subscription-plan-selling-content space-y-4'>
+            <div className='subscription-plan-selling-grid'>
+              {pagedPlans.map((record, index) =>
+                renderPackagePlanCard(record, index),
+              )}
+            </div>
+            <div className='subscription-plan-selling-pagination'>
+              <Text type='tertiary' size='small'>
+                {t('显示第 {{start}} 条-第 {{end}} 条，共 {{total}} 条', {
+                  start:
+                    sortedPlans.length === 0
+                      ? 0
+                      : (planPage - 1) * planPageSize + 1,
+                  end: Math.min(planPage * planPageSize, sortedPlans.length),
+                  total: sortedPlans.length,
+                })}
+              </Text>
+              <div className='flex justify-end'>
+                <Select
+                  value={planPageSize}
+                  size='small'
+                  onChange={(size) => {
+                    setPlanPageSize(size);
+                    setPlanPage(1);
+                  }}
+                  optionList={[6, 9, 12, 18].map((size) => ({
+                    value: size,
+                    label: `${t('每页')} ${size}`,
+                  }))}
+                />
+              </div>
+            </div>
+            <div className='flex flex-col gap-3 border-t border-semi-color-border pt-4 lg:flex-row lg:items-center lg:justify-between'>
+              <Pagination
+                currentPage={planPage}
+                pageSize={planPageSize}
+                total={sortedPlans.length}
+                pageSizeOptions={[6, 9, 12, 18]}
+                showSizeChanger={false}
+                onPageChange={setPlanPage}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className='subscription-plan-selling-content'>
+            <CardTable
+              columns={planTableColumns}
+              dataSource={pagedPlans}
+              rowKey={(row) => row?.plan?.id}
+              loading={loading}
+              hidePagination={false}
+              pagination={{
+                currentPage: planPage,
+                pageSize: planPageSize,
+                total: sortedPlans.length,
+                pageSizeOpts: [10, 20, 50],
+                showSizeChanger: true,
+                onPageChange: setPlanPage,
+                onPageSizeChange: (size) => {
+                  setPlanPageSize(size);
+                  setPlanPage(1);
+                },
+              }}
+              expandedRowRender={renderPlanExpandedContent}
+            />
+          </div>
+        )
+      ) : (
+        <div className='py-8'>
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            title={t('暂无可购买套餐')}
+            description={t('管理员暂未上架套餐，请稍后再试或联系管理员')}
+          />
+        </div>
+      )}
+    </div>
+  );
+
   const cardContent = (
     <>
       {loading ? (
@@ -2487,6 +3373,45 @@ const SubscriptionPlansCard = ({
           )}
         </div>
       ) : (
+        usePackageConsoleLayout ? (
+          <CardPro
+            type='type2'
+            className='package-page-shell'
+            statsArea={packageConsoleStatsArea}
+            searchArea={packageConsoleSearchArea}
+            paginationArea={
+              activeMainTab === 'plan_list'
+                ? createCardProPagination({
+                  currentPage: planPage,
+                  pageSize: planPageSize,
+                  total: sortedPlans.length,
+                  onPageChange: setPlanPage,
+                  onPageSizeChange: (size) => {
+                    setPlanPageSize(size);
+                    setPlanPage(1);
+                  },
+                  isMobile,
+                  pageSizeOpts: [10, 20, 50],
+                  t,
+                })
+                : null
+            }
+            t={t}
+          >
+            {activeMainTab === 'plan_list'
+              ? (
+                <CardTable
+                  columns={planTableColumns}
+                  dataSource={pagedPlans}
+                  rowKey={(row) => row?.plan?.id}
+                  loading={loading}
+                  hidePagination
+                  expandedRowRender={renderPlanExpandedContent}
+                />
+              )
+              : subscriptionPanelContent}
+          </CardPro>
+        ) : (
         <Space vertical style={{ width: '100%' }} spacing={12}>
           <Card
             className='!rounded-xl w-full border-0 shadow-sm'
@@ -2517,534 +3442,7 @@ const SubscriptionPlansCard = ({
                   itemKey='my_subscriptions'
                   tab={`${t('我的订阅')} (${allSubscriptions.length})`}
                 >
-                  <div className='space-y-3'>
-                    <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
-                      <div className='flex flex-wrap items-center gap-2'>
-                        <Tag
-                          color={
-                            subscriptionView === 'active' ? 'green' : 'white'
-                          }
-                          shape='circle'
-                          size='small'
-                        >
-                          {activeSubscriptionItems.length} {t('个生效中')}
-                        </Tag>
-                        {historySubscriptionItems.length > 0 && (
-                          <Tag
-                            color={
-                              subscriptionView === 'history'
-                                ? 'orange'
-                                : 'white'
-                            }
-                            shape='circle'
-                            size='small'
-                          >
-                            {historySubscriptionItems.length} {t('个历史记录')}
-                          </Tag>
-                        )}
-                      </div>
-                      <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
-                        <Space wrap>
-                          <Button
-                            theme={
-                              subscriptionView === 'active'
-                                ? 'solid'
-                                : 'outline'
-                            }
-                            type='primary'
-                            size='small'
-                            onClick={() => setSubscriptionView('active')}
-                          >
-                            {t('生效中')}
-                          </Button>
-                          <Button
-                            theme={
-                              subscriptionView === 'history'
-                                ? 'solid'
-                                : 'outline'
-                            }
-                            type='tertiary'
-                            size='small'
-                            onClick={() => setSubscriptionView('history')}
-                          >
-                            {t('历史订阅')}
-                          </Button>
-                          <Button
-                            theme={
-                              subscriptionView === 'all' ? 'solid' : 'outline'
-                            }
-                            type='tertiary'
-                            size='small'
-                            onClick={() => setSubscriptionView('all')}
-                          >
-                            {t('全部')}
-                          </Button>
-                          <Button
-                            theme='outline'
-                            type='tertiary'
-                            size='small'
-                            onClick={() => setConsumeLogsFilter({})}
-                          >
-                            {t('全部订阅消耗')}
-                          </Button>
-                        </Space>
-                        <div className='flex items-center gap-2'>
-                          <Select
-                            value={displayBillingPreference}
-                            onChange={onChangeBillingPreference}
-                            size='small'
-                            optionList={[
-                              {
-                                value: 'subscription_first',
-                                label: disableSubscriptionPreference
-                                  ? `${t('优先订阅')} (${t('无生效')})`
-                                  : t('优先订阅'),
-                                disabled: disableSubscriptionPreference,
-                              },
-                              { value: 'wallet_first', label: t('优先钱包') },
-                              {
-                                value: 'subscription_only',
-                                label: disableSubscriptionPreference
-                                  ? `${t('仅用订阅')} (${t('无生效')})`
-                                  : t('仅用订阅'),
-                                disabled: disableSubscriptionPreference,
-                              },
-                              { value: 'wallet_only', label: t('仅用钱包') },
-                            ]}
-                          />
-                          <Button
-                            size='small'
-                            theme='light'
-                            type='tertiary'
-                            icon={
-                              <RefreshCw
-                                size={12}
-                                className={refreshing ? 'animate-spin' : ''}
-                              />
-                            }
-                            onClick={handleRefresh}
-                            loading={refreshing}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className='flex flex-col gap-2 rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3 xl:flex-row xl:items-center'>
-                      <Input
-                        value={subscriptionKeyword}
-                        onChange={setSubscriptionKeyword}
-                        placeholder={t('搜索套餐名 / 说明 / 订阅 ID')}
-                        showClear
-                        className='min-w-0 flex-1'
-                      />
-                      <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3'>
-                        <Select
-                          value={subscriptionPlanFilter}
-                          onChange={setSubscriptionPlanFilter}
-                          size='small'
-                          optionList={subscriptionPlanOptions}
-                        />
-                        <Select
-                          value={subscriptionResourceFilter}
-                          onChange={setSubscriptionResourceFilter}
-                          size='small'
-                          optionList={[
-                            { value: 'all', label: t('全部资源类型') },
-                            { value: 'quota', label: t('按额度') },
-                            { value: 'request_count', label: t('按次数') },
-                          ]}
-                        />
-                        <Select
-                          value={subscriptionResetFilter}
-                          onChange={setSubscriptionResetFilter}
-                          size='small'
-                          optionList={resetPeriodOptions}
-                        />
-                      </div>
-                      <Button
-                        theme='outline'
-                        type='tertiary'
-                        size='small'
-                        onClick={() => {
-                          setSubscriptionKeyword('');
-                          setSubscriptionPlanFilter('all');
-                          setSubscriptionResourceFilter('all');
-                          setSubscriptionResetFilter('all');
-                        }}
-                      >
-                        {t('清空筛选')}
-                      </Button>
-                    </div>
-
-                    {disableSubscriptionPreference &&
-                      isSubscriptionPreference && (
-                        <Text type='tertiary' size='small' className='block'>
-                          {t('已保存偏好为')}
-                          {subscriptionPreferenceLabel}
-                          {t('，当前无生效订阅，将自动使用钱包')}
-                        </Text>
-                      )}
-
-                    {shouldShowConversionCampaign && (
-                      <Card
-                        className='!rounded-2xl border border-amber-200 bg-amber-50/70 shadow-none'
-                        bodyStyle={{ padding: '16px' }}
-                      >
-                        <div className='space-y-3'>
-                          <div className='flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
-                            <div className='min-w-0 space-y-1'>
-                              <Space wrap>
-                                <Text strong>
-                                  {conversionPreview?.campaign?.title ||
-                                    t('套餐转余额')}
-                                </Text>
-                                <Tag
-                                  color={
-                                    latestConversionRequestStatusMeta?.color ||
-                                    (conversionPreview?.can_execute
-                                      ? 'green'
-                                      : 'grey')
-                                  }
-                                  shape='circle'
-                                  size='small'
-                                >
-                                  {latestConversionRequestStatusMeta?.text ||
-                                    (conversionPreview?.can_execute
-                                      ? t('可申请')
-                                      : conversionPreview?.closed_reason ||
-                                      t('仅展示记录'))}
-                                </Tag>
-                                {conversionLoading && (
-                                  <Tag color='white' shape='circle' size='small'>
-                                    {t('加载中')}
-                                  </Tag>
-                                )}
-                              </Space>
-                              <Text type='tertiary' size='small'>
-                                {conversionCampaignSummary}
-                              </Text>
-                            </div>
-                            <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
-                              <div className='rounded-lg bg-white/80 p-3'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('活动截止')}
-                                </div>
-                                <div className='mt-1 font-medium'>
-                                  {formatDateTime(
-                                    conversionPreview?.campaign?.deadline,
-                                  )}
-                                </div>
-                              </div>
-                              <div className='rounded-lg bg-white/80 p-3'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('申请预计返还')}
-                                </div>
-                                <div className='mt-1 font-medium'>
-                                  {renderQuota(
-                                    conversionPreview?.total_convertible_quota ||
-                                    0,
-                                  )}
-                                </div>
-                              </div>
-                              <div className='rounded-lg bg-white/80 p-3'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('可申请套餐')}
-                                </div>
-                                <div className='mt-1 font-medium'>
-                                  {(conversionPreview?.items || []).length} {t('个')}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <Banner
-                            type='warning'
-                            closeIcon={null}
-                            description={
-                              <div className='space-y-1 text-sm'>
-                                <div>
-                                  {t('提交申请后，相关套餐会暂停使用。')}
-                                </div>
-                                <div>
-                                  {t(
-                                    '审核通过后，剩余额度将按规则转换为账户余额，原套餐失效。',
-                                  )}
-                                </div>
-                                <div>
-                                  {t('审核拒绝后，套餐会恢复使用。')}
-                                </div>
-                              </div>
-                            }
-                          />
-
-                          {(conversionPreview?.campaign?.conversion_rule ||
-                            (conversionPreview?.campaign?.billing_rules || [])
-                              .length > 0 ||
-                            (conversionPreview?.campaign?.charge_rules || [])
-                              .length > 0) && (
-                              <Collapse>
-                                <Collapse.Panel
-                                  itemKey='conversion-rules'
-                                  header={t('详细规则与计算方式')}
-                                >
-                                  <div className='space-y-2 text-sm text-semi-color-text-1'>
-                                    {conversionPreview?.campaign?.conversion_rule ? (
-                                      <div>
-                                        {conversionPreview.campaign.conversion_rule}
-                                      </div>
-                                    ) : null}
-                                    {(
-                                      conversionPreview?.campaign?.billing_rules ||
-                                      []
-                                    ).map((rule) => (
-                                      <div key={rule}>• {rule}</div>
-                                    ))}
-                                    {(
-                                      conversionPreview?.campaign?.charge_rules ||
-                                      []
-                                    ).map((rule) => (
-                                      <div key={rule}>• {rule}</div>
-                                    ))}
-                                  </div>
-                                </Collapse.Panel>
-                              </Collapse>
-                            )}
-
-                          {(conversionPreview?.items || []).length > 0 && (
-                            <div className='rounded-xl bg-white/70 p-3'>
-                              <div className='mb-2 flex items-center justify-between'>
-                                <Text strong>{t('本次可申请转换的套餐')}</Text>
-                                <Text type='tertiary' size='small'>
-                                  {(conversionPreview?.items || []).length} {t('个')}
-                                </Text>
-                              </div>
-                              <div className='space-y-2'>
-                                {(conversionPreview?.items || []).map((item) => (
-                                  <div
-                                    key={item.user_subscription_id}
-                                    className='rounded-lg border border-semi-color-border bg-semi-color-bg-0 p-3'
-                                  >
-                                    <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
-                                      <div>
-                                        <div className='font-medium'>
-                                          {item.plan_title}
-                                        </div>
-                                        <Text type='tertiary' size='small'>
-                                          #{item.user_subscription_id} · {t('来源')}{' '}
-                                          {item.source || '--'}
-                                        </Text>
-                                        <Text
-                                          type='tertiary'
-                                          size='small'
-                                          className='block'
-                                        >
-                                          {t('购买价格')} {renderQuotaWithAmount(
-                                            Number(item.price_basis_amount || 0),
-                                          )}{' '}
-                                          · {t('仅统计有支付订单的套餐')}
-                                        </Text>
-                                      </div>
-                                      <div className='text-left lg:text-right'>
-                                        <div className='font-semibold'>
-                                          {renderQuota(
-                                            item.convertible_quota || 0,
-                                          )}
-                                        </div>
-                                        <Text type='tertiary' size='small'>
-                                          {t('折算比例')} {Math.round(
-                                            Number(item.remaining_ratio || 0) *
-                                            10000,
-                                          ) / 100}
-                                          %
-                                        </Text>
-                                        <Text
-                                          type='tertiary'
-                                          size='small'
-                                          className='block'
-                                        >
-                                          {t(
-                                            '已使用 {{days}} 天，计费 {{billableDays}} 天',
-                                            {
-                                              days: Number(item.used_days || 0),
-                                              billableDays: Number(
-                                                item.billable_used_days || 0,
-                                              ),
-                                            },
-                                          )}
-                                        </Text>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {conversionPreview?.latest_request && (
-                            <div className='rounded-xl bg-white/70 p-3'>
-                              <Space wrap align='center'>
-                                <Text strong>{t('申请进度')}</Text>
-                                <Tag
-                                  color={latestConversionRequestStatusMeta?.color}
-                                  shape='circle'
-                                  size='small'
-                                >
-                                  {latestConversionRequestStatusMeta?.text}
-                                </Tag>
-                              </Space>
-                              <div className='mt-2 grid grid-cols-1 gap-2 text-sm lg:grid-cols-2'>
-                                <div>
-                                  {t('申请单')} #{conversionPreview.latest_request.id}
-                                </div>
-                                <div>
-                                  {t('申请时间')}：
-                                  {formatDateTime(
-                                    conversionPreview.latest_request.create_time,
-                                  )}
-                                </div>
-                                {conversionPreview.latest_request.disabled_at ? (
-                                  <div>
-                                    {t('禁用时间')}：
-                                    {formatDateTime(
-                                      conversionPreview.latest_request
-                                        .disabled_at,
-                                    )}
-                                  </div>
-                                ) : null}
-                                {conversionPreview.latest_request.admin_remark ? (
-                                  <div>
-                                    {t('管理员备注')}：
-                                    {conversionPreview.latest_request.admin_remark}
-                                  </div>
-                                ) : null}
-                              </div>
-                              <Text
-                                type='tertiary'
-                                size='small'
-                                className='mt-2 block'
-                              >
-                                {conversionPreview.latest_request.status ===
-                                  'pending'
-                                  ? t(
-                                    '申请提交后，相关套餐会暂停使用，直到审核通过或拒绝。',
-                                  )
-                                  : conversionPreview.latest_request.status ===
-                                    'approved'
-                                    ? t(
-                                      '申请已通过，系统会把核准后的额度转入账户余额，原套餐失效。',
-                                    )
-                                    : t(
-                                      '申请未通过，系统会恢复原套餐，你可以继续使用。',
-                                    )}
-                              </Text>
-                            </div>
-                          )}
-
-                          <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
-                            <Text type='tertiary' size='small'>
-                              {conversionPreview?.closed_reason ||
-                                t('管理员可审核并调整最终返还比例或额度。')}
-                            </Text>
-                            <Button
-                              theme='solid'
-                              type='warning'
-                              loading={submittingConversionRequest}
-                              disabled={
-                                !conversionPreview?.can_execute ||
-                                submittingConversionRequest ||
-                                conversionPreview?.latest_request?.status ===
-                                'pending'
-                              }
-                              onClick={handleSubmitConversionRequest}
-                            >
-                              {conversionPreview?.latest_request?.status ===
-                                'pending'
-                                ? t('申请审核中')
-                                : t('提交套餐转余额申请')}
-                            </Button>
-                          </div>
-                        </div>
-                      </Card>
-                    )}
-
-                    {normalizedManualDeliveryOrders.length > 0 ? (
-                      <Card
-                        className='!rounded-2xl border border-sky-200 bg-sky-50/70 shadow-none'
-                        bodyStyle={{ padding: '16px' }}
-                      >
-                        <div className='space-y-3'>
-                          <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
-                            <div>
-                              <Text strong>{t('人工发放订单')}</Text>
-                              <div className='mt-1 text-sm text-semi-color-text-2'>
-                                {t(
-                                  '这里会显示待发放或已发放完成的订单内容。',
-                                )}
-                              </div>
-                            </div>
-                            <Tag color='blue' shape='circle' size='small'>
-                              {normalizedManualDeliveryOrders.length} {t('个订单')}
-                            </Tag>
-                          </div>
-                          <div className='space-y-3'>
-                            {normalizedManualDeliveryOrders.map((item) =>
-                              renderManualDeliveryOrderCard(item),
-                            )}
-                          </div>
-                        </div>
-                      </Card>
-                    ) : null}
-
-                    <Divider margin={8} />
-
-                    {hasAnySubscription ? (
-                      filteredVisibleSubscriptionItems.length > 0 ? (
-                        <Collapse
-                          activeKey={expandedSubscriptionKeys}
-                          onChange={setExpandedSubscriptionKeys}
-                        >
-                          {filteredVisibleSubscriptionItems.map((item) => (
-                            <Collapse.Panel
-                              key={item.key}
-                              itemKey={item.key}
-                              header={renderSubscriptionHeader(item)}
-                            >
-                              {renderSubscriptionBody(item)}
-                            </Collapse.Panel>
-                          ))}
-                        </Collapse>
-                      ) : (
-                        renderSubscriptionEmptyState({
-                          title:
-                            subscriptionView === 'history'
-                              ? t('暂无历史订阅')
-                              : t('暂无生效订阅'),
-                          description:
-                            subscriptionKeyword ||
-                            subscriptionPlanFilter !== 'all' ||
-                            subscriptionResourceFilter !== 'all' ||
-                            subscriptionResetFilter !== 'all'
-                              ? t('当前组合筛选下没有匹配结果')
-                              : t('调整筛选条件后，或购买套餐后，会显示在这里。'),
-                          showPurchaseGuide:
-                            !subscriptionKeyword &&
-                            subscriptionPlanFilter === 'all' &&
-                            subscriptionResourceFilter === 'all' &&
-                            subscriptionResetFilter === 'all' &&
-                            subscriptionView !== 'history' &&
-                            recommendedEmptyStatePlans.length > 0,
-                        })
-                      )
-                    ) : (
-                      renderSubscriptionEmptyState({
-                        title: t('暂无订阅记录'),
-                        description: t(
-                          '现在开通套餐后，请求会优先走订阅权益，成本和体验都会更稳定。',
-                        ),
-                        showPurchaseGuide: recommendedEmptyStatePlans.length > 0,
-                      })
-                    )}
-                  </div>
+                  {subscriptionPanelContent}
                 </TabPane>
               )}
 
@@ -3053,179 +3451,20 @@ const SubscriptionPlansCard = ({
                   itemKey='plan_list'
                   tab={`${t('套餐列表')} (${sortedPlans.length})`}
                 >
-                  <div className='space-y-3'>
-                    <div className='subscription-plan-selling-toolbar'>
-                      <div className='subscription-plan-selling-toolbar__tabs'>
-                        <Tabs
-                          type='button'
-                          collapsible={false}
-                          activeKey={planSeriesFilter}
-                          onChange={setPlanSeriesFilter}
-                        >
-                          <TabPane
-                            itemKey='all'
-                            tab={`${t('全部系列')} (${plans.length})`}
-                          />
-                          <TabPane
-                            itemKey='claude'
-                            tab={t('Claude 系列')}
-                          />
-                          <TabPane
-                            itemKey='codex'
-                            tab={t('Codex 系列')}
-                          />
-                          <TabPane
-                            itemKey='mixed'
-                            tab={t('混合系列')}
-                          />
-                        </Tabs>
-                      </div>
-                      <div className='subscription-plan-selling-toolbar__controls'>
-                        <div className='subscription-plan-selling-toolbar__switch'>
-                          <Tooltip content={t('卡片视图')}>
-                            <Button
-                              theme={
-                                planViewMode === 'card' ? 'solid' : 'borderless'
-                              }
-                              type={
-                                planViewMode === 'card' ? 'primary' : 'tertiary'
-                              }
-                              icon={<LayoutGrid size={14} />}
-                              size='small'
-                              onClick={() => setPlanViewMode('card')}
-                              aria-label={t('卡片视图')}
-                            />
-                          </Tooltip>
-                          <Tooltip content={t('列表视图')}>
-                            <Button
-                              theme={
-                                planViewMode === 'table' ? 'solid' : 'borderless'
-                              }
-                              type={
-                                planViewMode === 'table' ? 'primary' : 'tertiary'
-                              }
-                              icon={<List size={14} />}
-                              size='small'
-                              onClick={() => setPlanViewMode('table')}
-                              aria-label={t('列表视图')}
-                            />
-                          </Tooltip>
-                        </div>
-                        <div className='subscription-plan-selling-toolbar__sort'>
-                          <Select
-                            value={planSort}
-                            size='small'
-                            onChange={setPlanSort}
-                            optionList={[
-                              { value: 'price_asc', label: t('价格从低到高') },
-                              { value: 'price_desc', label: t('价格从高到低') },
-                              { value: 'value_desc', label: t('权益从多到少') },
-                              { value: 'recommended', label: t('推荐优先') },
-                            ]}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {sortedPlans.length > 0 ? (
-                      planViewMode === 'card' ? (
-                        <div className='subscription-plan-selling-content space-y-4'>
-                          <div className='subscription-plan-selling-grid'>
-                            {pagedPlans.map((record, index) =>
-                              renderPackagePlanCard(record, index),
-                            )}
-                          </div>
-                          <div className='subscription-plan-selling-pagination'>
-                            <Text type='tertiary' size='small'>
-                              {t(
-                                '显示第 {{start}} 条-第 {{end}} 条，共 {{total}} 条',
-                                {
-                                  start:
-                                    sortedPlans.length === 0
-                                      ? 0
-                                      : (planPage - 1) * planPageSize + 1,
-                                  end: Math.min(
-                                    planPage * planPageSize,
-                                    sortedPlans.length,
-                                  ),
-                                  total: sortedPlans.length,
-                                },
-                              )}
-                            </Text>
-                            <div className='flex justify-end'>
-                              <Select
-                                value={planPageSize}
-                                size='small'
-                                onChange={(size) => {
-                                  setPlanPageSize(size);
-                                  setPlanPage(1);
-                                }}
-                                optionList={[6, 9, 12, 18].map((size) => ({
-                                  value: size,
-                                  label: `${t('每页')} ${size}`,
-                                }))}
-                              />
-                            </div>
-                          </div>
-                          <div className='flex flex-col gap-3 border-t border-semi-color-border pt-4 lg:flex-row lg:items-center lg:justify-between'>
-                            <Pagination
-                              currentPage={planPage}
-                              pageSize={planPageSize}
-                              total={sortedPlans.length}
-                              pageSizeOptions={[6, 9, 12, 18]}
-                              showSizeChanger={false}
-                              onPageChange={setPlanPage}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className='subscription-plan-selling-content'>
-                          <CardTable
-                            columns={planTableColumns}
-                            dataSource={pagedPlans}
-                            rowKey={(row) => row?.plan?.id}
-                            loading={loading}
-                            hidePagination={false}
-                            pagination={{
-                              currentPage: planPage,
-                              pageSize: planPageSize,
-                              total: sortedPlans.length,
-                              pageSizeOpts: [10, 20, 50],
-                              showSizeChanger: true,
-                              onPageChange: setPlanPage,
-                              onPageSizeChange: (size) => {
-                                setPlanPageSize(size);
-                                setPlanPage(1);
-                              },
-                            }}
-                            expandedRowRender={renderPlanExpandedContent}
-                          />
-                        </div>
-                      )
-                    ) : (
-                      <div className='py-8'>
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          title={t('暂无可购买套餐')}
-                          description={t(
-                            '管理员暂未上架套餐，请稍后再试或联系管理员',
-                          )}
-                        />
-                      </div>
-                    )}
-                  </div>
+                  {planListPanelContent}
                 </TabPane>
               )}
             </Tabs>
           </Card>
         </Space>
+        )
       )}
     </>
   );
 
   return (
     <>
-      {withCard ? (
+      {withCard && !usePackageConsoleLayout ? (
         <Card
           className={
             isPackageVariant
