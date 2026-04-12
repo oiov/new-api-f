@@ -23,9 +23,11 @@ import {
 } from '@douyinfe/semi-ui';
 import {
   IconDelete,
+  IconEyeClosed,
   IconEdit,
   IconEyeOpened,
   IconHistory,
+  IconKey,
   IconRefresh,
   IconSend,
 } from '@douyinfe/semi-icons';
@@ -111,6 +113,12 @@ const ORDER_BINDING_OPTIONS = [
   { value: '', labelKey: '全部订单关联' },
   { value: 'linked', labelKey: '已关联订单' },
   { value: 'unlinked', labelKey: '未关联订单' },
+];
+
+const API_KEY_STATUS_OPTIONS = [
+  { value: '', labelKey: '全部 API Key 状态' },
+  { value: 'present', labelKey: '有 API Key' },
+  { value: 'missing', labelKey: '无 API Key' },
 ];
 
 function normalizePlanValue(value) {
@@ -562,8 +570,22 @@ const EcomAgentPage = () => {
   const [assignmentStatusFilter, setAssignmentStatusFilter] = useState('');
   const [channelBindingFilter, setChannelBindingFilter] = useState('');
   const [orderBindingFilter, setOrderBindingFilter] = useState('');
+  const [apiKeyFilter, setApiKeyFilter] = useState('');
+  const [maskMode, setMaskMode] = useState(true);
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageSize = 10;
+
+  const renderEmail = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    return maskMode ? maskEmail(text) : text;
+  };
+
+  const renderApiKey = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    return maskMode ? maskApiKey(text) : text;
+  };
 
   const handleCopy = async (value, successMessage) => {
     if (!value) {
@@ -938,12 +960,18 @@ const EcomAgentPage = () => {
         (orderBindingFilter === 'linked'
           ? hasAssignedOrder(record)
           : !hasAssignedOrder(record));
+      const matchesApiKey =
+        !apiKeyFilter ||
+        (apiKeyFilter === 'present'
+          ? Boolean(String(record.api_key || '').trim())
+          : !String(record.api_key || '').trim());
       if (
         !matchesPlan ||
         !matchesStatus ||
         !matchesAssignmentStatus ||
         !matchesChannelBinding ||
-        !matchesOrderBinding
+        !matchesOrderBinding ||
+        !matchesApiKey
       ) {
         return false;
       }
@@ -978,6 +1006,7 @@ const EcomAgentPage = () => {
   }, [
     accounts,
     assignmentStatusFilter,
+    apiKeyFilter,
     channelBindingFilter,
     keyword,
     orderBindingFilter,
@@ -992,7 +1021,8 @@ const EcomAgentPage = () => {
     statusFilter ||
     assignmentStatusFilter ||
     channelBindingFilter ||
-    orderBindingFilter;
+    orderBindingFilter ||
+    apiKeyFilter;
 
   const resetFilters = () => {
     setKeyword('');
@@ -1001,6 +1031,7 @@ const EcomAgentPage = () => {
     setAssignmentStatusFilter('');
     setChannelBindingFilter('');
     setOrderBindingFilter('');
+    setApiKeyFilter('');
     setCurrentPage(1);
   };
 
@@ -1122,20 +1153,30 @@ const EcomAgentPage = () => {
   };
 
   const handleSync = async (record, options = {}) => {
-    const { silent = false } = options;
+    const { silent = false, forceGenerateKey = false } = options;
     setSyncingId(record.id);
     try {
-      const res = await API.post(`/api/ecomagent/accounts/${record.id}/sync`);
+      const res = await API.post(
+        `/api/ecomagent/accounts/${record.id}/sync${
+          forceGenerateKey ? '?force_generate_key=true' : ''
+        }`,
+      );
       if (res.data.success) {
         if (!silent) {
-          showSuccess(t('同步完成'));
+          showSuccess(forceGenerateKey ? t('API Key 创建完成') : t('同步完成'));
         }
       } else {
-        showError(res.data.message || t('同步失败'));
+        showError(
+          res.data.message ||
+            (forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
+        );
       }
       await loadAccounts();
     } catch (error) {
-      showError(error?.message || t('同步失败'));
+      showError(
+        error?.message ||
+          (forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
+      );
       await loadAccounts();
     } finally {
       setSyncingId(null);
@@ -1224,7 +1265,6 @@ const EcomAgentPage = () => {
         `/api/ecomagent/accounts/${assignmentRecord.id}/deliver_manual_order`,
         {
           order_id: orderId,
-          admin_remark: t('由 EcomAgent 账户发放'),
         },
       );
       if (res.data?.success) {
@@ -1243,7 +1283,7 @@ const EcomAgentPage = () => {
   const confirmDelete = (record) => {
     Modal.confirm({
       title: t('确认删除'),
-      content: record?.email || '-',
+      content: renderEmail(record?.email),
       okText: t('确认删除'),
       cancelText: t('取消'),
       okButtonProps: { color: 'red' },
@@ -1337,7 +1377,7 @@ const EcomAgentPage = () => {
               ellipsis={{ showTooltip: true }}
               style={{ maxWidth: isMobile ? 170 : 220 }}
             >
-              {maskEmail(record.email) || '-'}
+              {renderEmail(record.email)}
             </Text>
             <Text size='small' type='tertiary' ellipsis={{ showTooltip: true }}>
               {getAccountSummary(record, t)}
@@ -1386,7 +1426,7 @@ const EcomAgentPage = () => {
                 ellipsis={{ showTooltip: true }}
                 style={{ maxWidth: isMobile ? 180 : 220 }}
               >
-                {maskApiKey(record.api_key)}
+                {renderApiKey(record.api_key)}
               </Text>
             ) : (
               <Text size='small' type='tertiary'>
@@ -1399,7 +1439,7 @@ const EcomAgentPage = () => {
       {
         title: t('操作'),
         dataIndex: 'id',
-        width: isMobile ? 220 : 260,
+        width: isMobile ? 250 : 300,
         render: (_, record) => (
           <Space spacing={2} wrap={false}>
             <Tooltip content={t('详情')}>
@@ -1439,6 +1479,21 @@ const EcomAgentPage = () => {
                 }}
               />
             </Tooltip>
+            {!String(record.api_key || '').trim() ? (
+              <Tooltip content={t('创建 API Key')}>
+                <Button
+                  size='small'
+                  theme='borderless'
+                  type='warning'
+                  icon={<IconKey />}
+                  loading={syncingId === record.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSync(record, { forceGenerateKey: true });
+                  }}
+                />
+              </Tooltip>
+            ) : null}
             <Tooltip content={t('历史消耗')}>
               <Button
                 size='small'
@@ -1479,7 +1534,7 @@ const EcomAgentPage = () => {
         ),
       },
     ],
-    [isMobile, syncingId, t],
+    [isMobile, maskMode, syncingId, t],
   );
 
   const paginatedAccounts = useMemo(() => {
@@ -1521,7 +1576,7 @@ const EcomAgentPage = () => {
       {
         key: 'email',
         label: t('邮箱'),
-        value: maskEmail(record.email) || '-',
+        value: renderEmail(record.email),
       },
       {
         key: 'account_id',
@@ -1558,7 +1613,7 @@ const EcomAgentPage = () => {
       {
         key: 'login_identity',
         label: t('登录标识'),
-        value: `${record.email || '-'} / ${record.account_id || subscription?.accountId || '-'}`,
+        value: `${renderEmail(record.email)} / ${record.account_id || subscription?.accountId || '-'}`,
       },
       {
         key: 'api_key_name',
@@ -1709,7 +1764,7 @@ const EcomAgentPage = () => {
               <div className='mt-2 rounded-lg border border-[var(--semi-color-border)] px-3 py-2'>
                 <div className='flex items-center gap-2 flex-wrap'>
                   <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: isMobile ? 240 : 360 }}>
-                    {record.api_key ? maskApiKey(record.api_key) : '-'}
+                    {record.api_key ? renderApiKey(record.api_key) : '-'}
                   </Text>
                   {record.api_key ? (
                     <Button
@@ -1943,7 +1998,7 @@ const EcomAgentPage = () => {
           <div className='flex flex-col gap-4'>
             <div className='flex items-center justify-between gap-2 flex-wrap rounded-lg border border-[var(--semi-color-border)] p-3 bg-[var(--semi-color-fill-0)]'>
               <div className='min-w-0'>
-                <Text strong>{maskEmail(detailRecord.email) || '-'}</Text>
+                <Text strong>{renderEmail(detailRecord.email)}</Text>
                 <div className='mt-1'>
                   <Text size='small' type='tertiary'>
                     {getAssignedOrderLabel(detailRecord, t)} / {getAssignedChannelLabel(detailRecord, t)}
@@ -1973,11 +2028,11 @@ const EcomAgentPage = () => {
             <div className='grid grid-cols-1 gap-3'>
               <div>
                 <Text type='tertiary'>{t('邮箱')}</Text>
-                <div>{maskEmail(detailRecord.email) || '-'}</div>
+                <div>{renderEmail(detailRecord.email)}</div>
               </div>
               <div>
                 <Text type='tertiary'>{t('登录标识')}</Text>
-                <div>{maskEmail(detailRecord.email) || '-'} / {detailRecord.account_id || '-'}</div>
+                <div>{renderEmail(detailRecord.email)} / {detailRecord.account_id || '-'}</div>
               </div>
               <div>
                 <Text type='tertiary'>accountId</Text>
@@ -2049,7 +2104,7 @@ const EcomAgentPage = () => {
                   <Text size='small'>API Key</Text>
                   {detailRecord.api_key ? (
                     <div className='flex items-center gap-2 flex-wrap'>
-                      <Text>{maskApiKey(detailRecord.api_key)}</Text>
+                      <Text>{renderApiKey(detailRecord.api_key)}</Text>
                       <Button
                         size='small'
                         type='primary'
@@ -2127,7 +2182,7 @@ const EcomAgentPage = () => {
         {assignmentRecord ? (
           <div className='flex flex-col gap-4'>
             <div className='rounded-lg border border-[var(--semi-color-border)] p-3 bg-[var(--semi-color-fill-0)]'>
-              <Text strong>{maskEmail(assignmentRecord.email) || '-'}</Text>
+              <Text strong>{renderEmail(assignmentRecord.email)}</Text>
               <div className='mt-1'>
                 <Text size='small' type='tertiary'>
                   accountId: {assignmentRecord.account_id || getSubscriptionData(assignmentRecord)?.accountId || '-'}
@@ -2389,7 +2444,7 @@ const EcomAgentPage = () => {
         {historyRecord ? (
           <div className='flex flex-col gap-4'>
             <div>
-              <Text strong>{historyRecord.email || '-'}</Text>
+              <Text strong>{renderEmail(historyRecord.email)}</Text>
               <div className='mt-1'>
                 <Text type='tertiary'>
                   accountId: {historyRecord.account_id || getSubscriptionData(historyRecord)?.accountId || '-'}
@@ -2517,6 +2572,18 @@ const EcomAgentPage = () => {
                     }))}
                     style={{ width: isMobile ? '100%' : 180 }}
                   />
+                  <Select
+                    value={apiKeyFilter}
+                    onChange={(value) => {
+                      setApiKeyFilter(value || '');
+                      setCurrentPage(1);
+                    }}
+                    optionList={API_KEY_STATUS_OPTIONS.map((item) => ({
+                      label: t(item.labelKey),
+                      value: item.value,
+                    }))}
+                    style={{ width: isMobile ? '100%' : 180 }}
+                  />
                   {hasActiveFilters ? (
                     <Button type='tertiary' onClick={resetFilters}>
                       {t('重置筛选')}
@@ -2579,6 +2646,13 @@ const EcomAgentPage = () => {
                   ) : null}
                   <Button theme='solid' onClick={openCreate}>
                     {t('新增账户')}
+                  </Button>
+                  <Button
+                    type='tertiary'
+                    icon={maskMode ? <IconEyeClosed /> : <IconEyeOpened />}
+                    onClick={() => setMaskMode((prev) => !prev)}
+                  >
+                    {maskMode ? t('显示明文') : t('开启打码')}
                   </Button>
                 </div>
               </div>
