@@ -138,6 +138,43 @@ function getAssignmentStatusLabel(status, t) {
   return t('未分配');
 }
 
+function formatShanghaiDateTime(value) {
+  if (value === undefined || value === null || value === '') return '-';
+
+  let date;
+  if (typeof value === 'number') {
+    const normalized = value > 1e12 ? value : value * 1000;
+    date = new Date(normalized);
+  } else {
+    const raw = String(value).trim();
+    if (!raw) return '-';
+    const normalized = /^\d+$/.test(raw)
+      ? Number(raw)
+      : raw.includes('T')
+        ? raw
+        : raw.replace(' ', 'T') + 'Z';
+    date =
+      typeof normalized === 'number'
+        ? new Date(normalized > 1e12 ? normalized : normalized * 1000)
+        : new Date(normalized);
+  }
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date).replace(/\//g, '-');
+}
+
 function parseTags(value) {
   return String(value || '')
     .split(',')
@@ -416,7 +453,8 @@ function getAccountSummary(record, t) {
   const status = record.status || '-';
   const plan = getPlanLabel(record.plan);
   const remain = getRequestRemain(record);
-  return `${status} / ${plan} / ${t('剩余请求')}: ${remain} / ${getAssignmentStatusLabel(record.assignment_status, t)}`;
+  const total = getRequestLimit(record);
+  return `${status} / ${plan} / ${t('剩余请求')}/${t('总请求')}: ${remain}/${total || 0} / ${getAssignmentStatusLabel(record.assignment_status, t)}`;
 }
 
 function usageSummary(record, t) {
@@ -2047,7 +2085,7 @@ const EcomAgentPage = () => {
                   {getRecentLogs(detailRecord).length > 0 ? (
                     getRecentLogs(detailRecord).map((item, index) => (
                       <Text key={`${item?.timestamp || 'log'}-${index}`} size='small'>
-                        {item?.timestamp || '-'} · {item?.model || '-'} · {t('状态')} {item?.status || '-'} · Tokens {Number(item?.tokens || 0)}
+                        {formatShanghaiDateTime(item?.timestamp)} · {item?.model || '-'} · {t('状态')} {item?.status || '-'} · Tokens {Number(item?.tokens || 0)}
                       </Text>
                     ))
                   ) : (
@@ -2378,7 +2416,7 @@ const EcomAgentPage = () => {
                       </div>
                       <div className='mt-2 flex flex-col gap-1'>
                         <Text size='small' type='tertiary'>
-                          {t('时间')}: {item?.timestamp || '-'}
+                          {t('时间')}: {formatShanghaiDateTime(item?.timestamp)}
                         </Text>
                         <Text size='small' type='tertiary'>
                           Tokens: {Number(item?.tokens || 0)}

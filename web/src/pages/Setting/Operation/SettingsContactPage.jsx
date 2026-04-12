@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState } from 'react';
-import { Banner, Button, Form, Space } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, Space, Typography, TextArea } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess, verifyJSON } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -139,17 +139,20 @@ export default function SettingsContactPage({ options, refresh }) {
         style={{ marginBottom: 16 }}
       />
 
-      <Form.TextArea
-        field='console_setting.contact_channels'
-        label={t('联系渠道 JSON')}
-        autosize={{ minRows: 14 }}
+      <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+        {t('联系渠道 JSON')}
+      </Typography.Text>
+      <TextArea
         value={value}
         onChange={setValue}
+        autosize={{ minRows: 14 }}
         placeholder={DEFAULT_CONTACT_CHANNELS_EXAMPLE}
-        extraText={t(
+      />
+      <Typography.Text type='tertiary' style={{ display: 'block', marginTop: 8 }}>
+        {t(
           '支持字段：key、title、subtitle、imageSrc、value、copyValue、actionHref、actionLabel、tone、i18n。key 必填且不能重复；imageSrc 仅支持 https:// 地址或站内 /xxx.jpg 路径；i18n 可按语言覆盖 title、subtitle、tone、actionLabel。',
         )}
-      />
+      </Typography.Text>
 
       <div style={{ marginTop: 12 }}>
         <Space>
