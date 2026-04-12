@@ -5151,6 +5151,7 @@
         "待发放套餐": "Plan to deliver",
         "当前账号权益": "Current account benefits",
         "发放前请核对": "Verify before delivery",
+        "当前订单预留槽位": "Reserved slot for current order",
         "分配/发放": "Assign/Deliver"
     }
 }

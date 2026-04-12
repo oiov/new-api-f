@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -395,6 +396,7 @@ func DeliverEcomAgentManualDeliveryOrder(c *gin.Context) {
 		common.ApiErrorMsg(c, "请先关联人工发放订单")
 		return
 	}
+
 	if strings.TrimSpace(account.APIKey) == "" {
 		if err := service.SyncEcomAgentAccount(c.Request.Context(), account); err != nil {
 			if saveErr := account.Update(); saveErr != nil {
@@ -405,19 +407,19 @@ func DeliverEcomAgentManualDeliveryOrder(c *gin.Context) {
 			return
 		}
 	}
-	baseURL := strings.TrimRight(strings.TrimSpace(account.BaseURL), "/")
+	baseURL := strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/")
 	if baseURL == "" {
-		baseURL = service.EcomAgentDefaultBaseURL()
+		common.ApiErrorMsg(c, "当前未配置站点地址(ServerAddress)，无法完成发放")
+		return
 	}
 	if strings.TrimSpace(account.APIKey) == "" {
 		common.ApiErrorMsg(c, "当前账号没有可用 API Key，请先同步账号")
 		return
 	}
-
 	deliveryPayload := []model.SubscriptionDeliveryPayloadItem{
 		{Key: "api_key", Label: "API Key", Type: "text", Value: strings.TrimSpace(account.APIKey)},
 		{Key: "base_url", Label: "Base URL", Type: "text", Value: baseURL},
-		{Key: "usage_query_url", Label: "Usage URL", Type: "text", Value: baseURL + "/dashboard?tab=usage"},
+		{Key: "usage_query_url", Label: "Usage URL", Type: "text", Value: "https://api-key-tool.fishxcode.com/"},
 	}
 	order, err := model.AdminDeliverManualDeliveryOrder(orderID, c.GetInt("id"), deliveryPayload, strings.TrimSpace(req.AdminRemark))
 	if err != nil {
@@ -447,6 +449,7 @@ func DeliverEcomAgentManualDeliveryOrder(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	go notifyManualDeliveryOrderResult(order, true)
 	common.ApiSuccess(c, gin.H{
 		"account":              buildEcomAgentAccountResponse(account),
 		"order":                order,

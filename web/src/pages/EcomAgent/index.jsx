@@ -172,6 +172,14 @@ function hasAssignedOrder(record) {
   return Number(record?.assigned_subscription_order_id || 0) > 0;
 }
 
+function getManualOrderReservedChannelId(item) {
+  return Number(item?.order?.reserved_channel_id || 0);
+}
+
+function getManualOrderReservedChannelKeyIndex(item) {
+  return Number(item?.order?.reserved_channel_key_index ?? -1);
+}
+
 function buildManualOrderOptionLabel(item, t) {
   const order = item?.order || {};
   const username = item?.username || '-';
@@ -230,6 +238,10 @@ function buildEditableSessionJSON(record) {
     null,
     2,
   );
+}
+
+function getCurrentUnixTimestamp() {
+  return Math.floor(Date.now() / 1000);
 }
 
 function buildFormFromAccountRecord(record) {
@@ -541,6 +553,9 @@ const EcomAgentPage = () => {
     setDetailRecord(null);
     setAssignmentRecord(record);
     setAssignmentForm(buildAssignmentFormFromRecord(record));
+    if (record?.id) {
+      handleSync(record, { silent: true });
+    }
   };
 
   const loadAccounts = async () => {
@@ -584,6 +599,42 @@ const EcomAgentPage = () => {
     return [];
   };
 
+  const loadManualOrdersForAssignment = async () => {
+    const params = {
+      p: 1,
+      page_size: 200,
+      fulfillment_status: 'pending_delivery',
+    };
+
+    try {
+      return await API.get('/api/ecomagent/manual_orders', {
+        params,
+        skipErrorHandler: true,
+      });
+    } catch (error) {
+      const status = Number(error?.response?.status || 0);
+      const errorType = String(error?.response?.data?.error?.type || '').trim();
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        '';
+      if (
+        status === 404 ||
+        errorType === 'invalid_request_error' ||
+        (typeof message === 'string' &&
+          (message.includes('Invalid URL (GET /api/ecomagent/manual_orders)') ||
+            message.includes('/api/ecomagent/manual_orders')))
+      ) {
+        return API.get('/api/subscription/admin/manual_orders', {
+          params,
+          skipErrorHandler: true,
+        });
+      }
+      throw error;
+    }
+  };
+
   const loadAssignmentMeta = async () => {
     const [plansRes, channelsRes, manualOrdersRes] = await Promise.allSettled([
       API.get('/api/subscription/plans', { skipErrorHandler: true }),
@@ -591,10 +642,7 @@ const EcomAgentPage = () => {
         params: { p: 1, page_size: 100, id_sort: true },
         skipErrorHandler: true,
       }),
-      API.get('/api/ecomagent/manual_orders', {
-        params: { p: 1, page_size: 200, fulfillment_status: 'pending_delivery' },
-        skipErrorHandler: true,
-      }),
+      loadManualOrdersForAssignment(),
     ]);
 
     if (plansRes.status === 'fulfilled' && plansRes.value.data?.success) {
@@ -702,6 +750,15 @@ const EcomAgentPage = () => {
 
   const selectedManualPlan =
     selectedManualOrder?.plan || selectedManualOrder?.order || null;
+  const selectedManualReservedChannelId = getManualOrderReservedChannelId(
+    selectedManualOrder,
+  );
+  const selectedManualReservedChannelKeyIndex = getManualOrderReservedChannelKeyIndex(
+    selectedManualOrder,
+  );
+  const hasSelectedManualReservedSlot =
+    selectedManualReservedChannelId > 0 &&
+    selectedManualReservedChannelKeyIndex >= 0;
 
   const assignedChannelKeyOptions = useMemo(() => {
     if (!selectedAssignedChannel) return [];
@@ -715,11 +772,52 @@ const EcomAgentPage = () => {
     const userSuffix = currentUserId > 0
       ? ` · UID ${currentUserId}${currentUsername ? ` · ${currentUsername}` : ''}`
       : '';
-    return Array.from({ length: total }, (_, index) => ({
-      label: `Key #${index}${userSuffix}`,
-      value: String(index),
-    }));
-  }, [selectedAssignedChannel, selectedManualOrder]);
+    return Array.from({ length: total }, (_, index) => {
+      const isReservedForCurrentOrder =
+        hasSelectedManualReservedSlot &&
+        String(selectedAssignedChannel.id) === String(selectedManualReservedChannelId) &&
+        index === selectedManualReservedChannelKeyIndex;
+      return {
+        label: isReservedForCurrentOrder
+          ? `Key #${index}${userSuffix} · ${t('当前订单预留槽位')}`
+          : `Key #${index}${userSuffix}`,
+        value: String(index),
+        disabled: hasSelectedManualReservedSlot && !isReservedForCurrentOrder,
+      };
+    });
+  }, [
+    hasSelectedManualReservedSlot,
+    selectedAssignedChannel,
+    selectedManualOrder,
+    selectedManualReservedChannelId,
+    selectedManualReservedChannelKeyIndex,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (!hasSelectedManualReservedSlot) {
+      return;
+    }
+    setAssignmentForm((prev) => {
+      const nextChannelId = String(selectedManualReservedChannelId);
+      const nextKeyIndex = String(selectedManualReservedChannelKeyIndex);
+      if (
+        prev.assigned_channel_id === nextChannelId &&
+        prev.assigned_channel_key_index === nextKeyIndex
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        assigned_channel_id: nextChannelId,
+        assigned_channel_key_index: nextKeyIndex,
+      };
+    });
+  }, [
+    hasSelectedManualReservedSlot,
+    selectedManualReservedChannelId,
+    selectedManualReservedChannelKeyIndex,
+  ]);
 
   useEffect(() => {
     if (!selectedAssignedChannel) {
@@ -985,12 +1083,15 @@ const EcomAgentPage = () => {
     }
   };
 
-  const handleSync = async (record) => {
+  const handleSync = async (record, options = {}) => {
+    const { silent = false } = options;
     setSyncingId(record.id);
     try {
       const res = await API.post(`/api/ecomagent/accounts/${record.id}/sync`);
       if (res.data.success) {
-        showSuccess(t('同步完成'));
+        if (!silent) {
+          showSuccess(t('同步完成'));
+        }
       } else {
         showError(res.data.message || t('同步失败'));
       }
@@ -1548,16 +1649,6 @@ const EcomAgentPage = () => {
                       value: getAssignedOrderLabel(record, t),
                     },
                     {
-                      key: 'assigned_subscription',
-                      label: t('用户订阅 ID'),
-                      value: record.assigned_user_subscription_id || '-',
-                    },
-                    {
-                      key: 'assigned_at',
-                      label: t('分配时间'),
-                      value: formatTs(record.assigned_at),
-                    },
-                    {
                       key: 'tags',
                       label: t('标签'),
                       value: record.tags || '-',
@@ -2004,7 +2095,17 @@ const EcomAgentPage = () => {
                   accountId: {assignmentRecord.account_id || getSubscriptionData(assignmentRecord)?.accountId || '-'}
                 </Text>
               </div>
+              <div className='mt-1'>
+                <Text size='small' type='tertiary'>
+                  {t('同步时间')}: {formatTs(assignmentRecord.last_sync_at)}
+                  {syncingId === assignmentRecord.id ? ` · ${t('同步中')}` : ''}
+                </Text>
+              </div>
               <div className='mt-3 grid grid-cols-2 gap-3 md:grid-cols-4'>
+                <div>
+                  <Text size='small' type='tertiary'>{t('套餐')}</Text>
+                  <div className='mt-1'>{getPlanLabel(assignmentRecord.plan)}</div>
+                </div>
                 <div>
                   <Text size='small' type='tertiary'>{t('套餐类型')}</Text>
                   <div className='mt-1'>{getPlanType(assignmentRecord, t)}</div>
@@ -2020,6 +2121,10 @@ const EcomAgentPage = () => {
                 <div>
                   <Text size='small' type='tertiary'>{t('剩余请求')}</Text>
                   <div className='mt-1'>{getRequestRemain(assignmentRecord)}</div>
+                </div>
+                <div>
+                  <Text size='small' type='tertiary'>{t('Token额度')}</Text>
+                  <div className='mt-1'>{getTokenLimitLabel(assignmentRecord, t)}</div>
                 </div>
               </div>
             </div>
@@ -2058,14 +2163,37 @@ const EcomAgentPage = () => {
                   value={assignmentForm.assigned_subscription_order_id}
                   onChange={(value) => {
                     const nextValue = value || '';
-                    const selectedOrder = manualOrderOptions.find(
-                      (item) => item.value === nextValue,
+                    const selectedOrder = manualOrders.find(
+                      (item) => String(item?.order?.id || '') === nextValue,
+                    );
+                    const reservedChannelId = getManualOrderReservedChannelId(selectedOrder);
+                    const reservedKeyIndex =
+                      getManualOrderReservedChannelKeyIndex(selectedOrder);
+                    const linkedUserSubscriptionId = Number(
+                      selectedOrder?.user_subscription_id || 0,
                     );
                     setAssignmentForm((prev) => ({
                       ...prev,
                       assigned_subscription_order_id: nextValue,
                       assigned_plan:
-                        selectedOrder?.planTitle || prev.assigned_plan,
+                        selectedOrder?.order?.plan_title ||
+                        selectedOrder?.plan?.title ||
+                        prev.assigned_plan,
+                      assigned_channel_id:
+                        reservedChannelId > 0
+                          ? String(reservedChannelId)
+                          : prev.assigned_channel_id,
+                      assigned_channel_key_index:
+                        reservedKeyIndex >= 0
+                          ? String(reservedKeyIndex)
+                          : prev.assigned_channel_key_index,
+                      assigned_user_subscription_id:
+                        linkedUserSubscriptionId > 0
+                          ? String(linkedUserSubscriptionId)
+                          : '',
+                      assigned_at: nextValue
+                        ? String(getCurrentUnixTimestamp())
+                        : '',
                     }));
                   }}
                   optionList={manualOrderOptions}
@@ -2116,134 +2244,85 @@ const EcomAgentPage = () => {
                     </Text>
                   </div>
                 )}
-                <div className='rounded-lg border border-[var(--semi-color-border)] p-3'>
-                  <Text strong>{t('当前账号权益')}</Text>
-                  <div className='mt-2'>
-                    <Descriptions
-                      data={[
-                        {
-                          key: 'plan',
-                          label: t('套餐'),
-                          value: getPlanLabel(assignmentRecord.plan),
-                        },
-                        {
-                          key: 'plan_type',
-                          label: t('套餐类型'),
-                          value: getPlanType(assignmentRecord, t),
-                        },
-                        {
-                          key: 'total_requests',
-                          label: t('请求额度'),
-                          value: getRequestLimitLabel(assignmentRecord),
-                        },
-                        {
-                          key: 'used_requests',
-                          label: t('已用请求'),
-                          value: getUsedRequests(assignmentRecord),
-                        },
-                        {
-                          key: 'remain_requests',
-                          label: t('剩余请求'),
-                          value: getRequestRemain(assignmentRecord),
-                        },
-                        {
-                          key: 'token_limit',
-                          label: t('Token额度'),
-                          value: getTokenLimitLabel(assignmentRecord, t),
-                        },
-                      ]}
-                      column={isMobile ? 1 : 2}
-                      size='small'
-                      rowSize='small'
-                    />
+                {hasSelectedManualReservedSlot ? (
+                  <div className='rounded-lg border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3'>
+                    <Text size='small' type='tertiary'>{t('已自动匹配发放渠道')}</Text>
+                    <div className='mt-1'>
+                      {t('渠道')} #{selectedManualReservedChannelId} · Key #
+                      {selectedManualReservedChannelKeyIndex}
+                    </div>
                   </div>
-                </div>
-                <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-                  <Select
-                    value={assignmentForm.assigned_channel_id}
-                    onChange={(value) =>
-                      setAssignmentForm((prev) => ({
-                        ...prev,
-                        assigned_channel_id: value || '',
-                        assigned_channel_key_index: '',
-                      }))
-                    }
-                    optionList={channelOptions}
-                    placeholder={t('渠道 ID')}
-                    filter
-                    showClear
-                  />
-                  {assignedChannelKeyOptions.length > 0 ? (
+                ) : (
+                  <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
                     <Select
-                      value={assignmentForm.assigned_channel_key_index}
+                      value={assignmentForm.assigned_channel_id}
                       onChange={(value) =>
                         setAssignmentForm((prev) => ({
                           ...prev,
-                          assigned_channel_key_index: value || '',
+                          assigned_channel_id: value || '',
+                          assigned_channel_key_index: '',
                         }))
                       }
-                      optionList={assignedChannelKeyOptions}
-                      placeholder={t('Key 序号')}
+                      optionList={channelOptions}
+                      placeholder={t('渠道 ID')}
+                      filter
                       showClear
                     />
-                  ) : (
-                    <Input
-                      value={assignmentForm.assigned_channel_key_index}
-                      onChange={(value) =>
-                        setAssignmentForm((prev) => ({
-                          ...prev,
-                          assigned_channel_key_index: value,
-                        }))
-                      }
-                      placeholder={t('Key 序号')}
-                    />
-                  )}
-                  <Input
-                    value={assignmentForm.assigned_user_subscription_id}
-                    onChange={(value) =>
-                      setAssignmentForm((prev) => ({
-                        ...prev,
-                        assigned_user_subscription_id: value,
-                      }))
-                    }
-                    placeholder={t('用户订阅 ID')}
-                  />
-                  <Input
-                    value={assignmentForm.assigned_at}
-                    onChange={(value) =>
-                      setAssignmentForm((prev) => ({
-                        ...prev,
-                        assigned_at: value,
-                      }))
-                    }
-                    placeholder={t('分配时间戳')}
-                  />
-                </div>
+                    {assignedChannelKeyOptions.length > 0 ? (
+                      <Select
+                        value={assignmentForm.assigned_channel_key_index}
+                        onChange={(value) =>
+                          setAssignmentForm((prev) => ({
+                            ...prev,
+                            assigned_channel_key_index: value || '',
+                          }))
+                        }
+                        optionList={assignedChannelKeyOptions}
+                        placeholder={t('Key 序号')}
+                        showClear
+                      />
+                    ) : (
+                      <Input
+                        value={assignmentForm.assigned_channel_key_index}
+                        onChange={(value) =>
+                          setAssignmentForm((prev) => ({
+                            ...prev,
+                            assigned_channel_key_index: value,
+                          }))
+                        }
+                        placeholder={t('Key 序号')}
+                      />
+                    )}
+                  </div>
+                )}
                 {selectedAssignedChannel ? (
-                  <Text size='small' type='tertiary'>
-                    {t('已读取渠道配置')}:
-                    {' '}
-                    {selectedAssignedChannel.name || `#${selectedAssignedChannel.id}`}
-                    {' · '}
-                    {selectedAssignedChannel.channel_info?.is_multi_key
-                      ? t('多 Key {{count}} 个', {
-                          count: Number(
-                            selectedAssignedChannel.channel_info?.multi_key_size || 0,
-                          ),
-                        })
-                      : t('单 Key')}
-                  </Text>
+                  <div className='flex flex-col gap-1'>
+                    <Text size='small' type='tertiary'>
+                      {t('已读取渠道配置')}:
+                      {' '}
+                      {selectedAssignedChannel.name || `#${selectedAssignedChannel.id}`}
+                      {' · '}
+                      {selectedAssignedChannel.channel_info?.is_multi_key
+                        ? t('多 Key {{count}} 个', {
+                            count: Number(
+                              selectedAssignedChannel.channel_info?.multi_key_size || 0,
+                            ),
+                          })
+                        : t('单 Key')}
+                    </Text>
+                    {hasSelectedManualReservedSlot ? (
+                      <Text size='small' type='tertiary'>
+                        {t('当前订单预留槽位')}:
+                        {' '}
+                        {t('渠道')} #{selectedManualReservedChannelId} · Key #
+                        {selectedManualReservedChannelKeyIndex}
+                      </Text>
+                    ) : null}
+                  </div>
                 ) : null}
                 <Text size='small' type='tertiary'>
                   {t('关联订单后，可直接调用人工发放订单 API，用当前账号 API Key 完成发放并自动回写绑定信息。')}
                 </Text>
-                <Input
-                  value={assignmentForm.tags}
-                  onChange={(value) =>
-                    setAssignmentForm((prev) => ({ ...prev, tags: value }))
-                  }
-                  placeholder={t('输入标签或使用\",\"分隔多个标签')}
-                />
                 <TextArea
                   autosize={{ minRows: 3, maxRows: 6 }}
                   value={assignmentForm.remark}

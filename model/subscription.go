@@ -118,6 +118,7 @@ type AdminSubscriptionManualDeliverySummary struct {
 	Plan        *SubscriptionPlan               `json:"plan,omitempty"`
 	Username    string                          `json:"username"`
 	UserGroup   string                          `json:"user_group"`
+	UserSubscriptionId int                      `json:"user_subscription_id"`
 	RefundOrder *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
 }
 
@@ -2975,6 +2976,40 @@ func buildManualDeliverySummary(order *SubscriptionOrder, username string, userG
 	}, nil
 }
 
+func buildLatestUserSubscriptionIDMapBySourceOrderIDs(orderIDs []int, tx *gorm.DB) (map[int]int, error) {
+	result := make(map[int]int)
+	if len(orderIDs) == 0 {
+		return result, nil
+	}
+	db := DB
+	if tx != nil {
+		db = tx
+	}
+	type row struct {
+		SourceOrderId int `gorm:"column:source_order_id"`
+		Id            int `gorm:"column:id"`
+	}
+	var rows []row
+	if err := db.
+		Table("user_subscriptions").
+		Select("source_order_id, id").
+		Where("source_order_id IN ?", orderIDs).
+		Order("source_order_id asc, id desc").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range rows {
+		if item.SourceOrderId <= 0 || item.Id <= 0 {
+			continue
+		}
+		if _, exists := result[item.SourceOrderId]; exists {
+			continue
+		}
+		result[item.SourceOrderId] = item.Id
+	}
+	return result, nil
+}
+
 func buildSelfManualDeliverySummary(order *SubscriptionOrder) (*SubscriptionManualDeliverySummary, error) {
 	if order == nil {
 		return nil, nil
@@ -3155,6 +3190,17 @@ func GetAdminManualDeliveryOrders(pageInfo *common.PageInfo, keyword string, ful
 		return nil, 0, err
 	}
 
+	orderIDs := make([]int, 0, len(rows))
+	for i := range rows {
+		if rows[i].SubscriptionOrder.Id > 0 {
+			orderIDs = append(orderIDs, rows[i].SubscriptionOrder.Id)
+		}
+	}
+	userSubscriptionIDMap, err := buildLatestUserSubscriptionIDMapBySourceOrderIDs(orderIDs, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	items := make([]AdminSubscriptionManualDeliverySummary, 0, len(rows))
 	for i := range rows {
 		orderCopy := rows[i].SubscriptionOrder
@@ -3163,6 +3209,7 @@ func GetAdminManualDeliveryOrders(pageInfo *common.PageInfo, keyword string, ful
 			return nil, 0, err
 		}
 		if summary != nil {
+			summary.UserSubscriptionId = userSubscriptionIDMap[orderCopy.Id]
 			items = append(items, *summary)
 		}
 	}
