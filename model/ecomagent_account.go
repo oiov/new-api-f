@@ -59,6 +59,14 @@ type EcomAgentAccount struct {
 	UpdatedTime                 int64  `json:"updated_time" gorm:"bigint"`
 }
 
+type EcomAgentAssignedUserInfo struct {
+	UserID   int    `json:"user_id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	OrderID  int    `json:"order_id"`
+	SubID    int    `json:"subscription_id"`
+}
+
 func (a *EcomAgentAccount) PrepareDefaults() {
 	a.Email = strings.TrimSpace(strings.ToLower(a.Email))
 	a.Password = strings.TrimSpace(a.Password)
@@ -221,6 +229,133 @@ func GetEcomAgentAccountByEmail(email string) (*EcomAgentAccount, error) {
 	account := &EcomAgentAccount{}
 	err := DB.Where("email = ?", strings.TrimSpace(strings.ToLower(email))).First(account).Error
 	return account, err
+}
+
+func GetEcomAgentAssignedUserInfoMap(accounts []*EcomAgentAccount) (map[int]*EcomAgentAssignedUserInfo, error) {
+	result := make(map[int]*EcomAgentAssignedUserInfo, len(accounts))
+	if len(accounts) == 0 {
+		return result, nil
+	}
+
+	subscriptionIDSet := make(map[int]struct{})
+	orderIDSet := make(map[int]struct{})
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		if account.AssignedUserSubscriptionID > 0 {
+			subscriptionIDSet[account.AssignedUserSubscriptionID] = struct{}{}
+		}
+		if account.AssignedSubscriptionOrderID > 0 {
+			orderIDSet[account.AssignedSubscriptionOrderID] = struct{}{}
+		}
+	}
+
+	subscriptionIDs := make([]int, 0, len(subscriptionIDSet))
+	for id := range subscriptionIDSet {
+		subscriptionIDs = append(subscriptionIDs, id)
+	}
+	orderIDs := make([]int, 0, len(orderIDSet))
+	for id := range orderIDSet {
+		orderIDs = append(orderIDs, id)
+	}
+
+	subscriptions := make([]UserSubscription, 0, len(subscriptionIDs))
+	if len(subscriptionIDs) > 0 {
+		if err := DB.Where("id IN ?", subscriptionIDs).Find(&subscriptions).Error; err != nil {
+			return nil, err
+		}
+	}
+	subscriptionMap := make(map[int]*UserSubscription, len(subscriptions))
+	for i := range subscriptions {
+		subscription := subscriptions[i]
+		subscriptionMap[subscription.Id] = &subscription
+		if subscription.SourceOrderId > 0 {
+			orderIDSet[subscription.SourceOrderId] = struct{}{}
+		}
+	}
+
+	orderIDs = orderIDs[:0]
+	for id := range orderIDSet {
+		orderIDs = append(orderIDs, id)
+	}
+	orders := make([]SubscriptionOrder, 0, len(orderIDs))
+	if len(orderIDs) > 0 {
+		if err := DB.Where("id IN ?", orderIDs).Find(&orders).Error; err != nil {
+			return nil, err
+		}
+	}
+	orderMap := make(map[int]*SubscriptionOrder, len(orders))
+	for i := range orders {
+		order := orders[i]
+		orderMap[order.Id] = &order
+	}
+
+	userIDSet := make(map[int]struct{})
+	for _, subscription := range subscriptions {
+		if subscription.UserId > 0 {
+			userIDSet[subscription.UserId] = struct{}{}
+		}
+	}
+	for _, order := range orders {
+		if order.UserId > 0 {
+			userIDSet[order.UserId] = struct{}{}
+		}
+	}
+
+	userIDs := make([]int, 0, len(userIDSet))
+	for id := range userIDSet {
+		userIDs = append(userIDs, id)
+	}
+	users := make([]User, 0, len(userIDs))
+	if len(userIDs) > 0 {
+		if err := DB.Select("id", "username", "display_name", "email").Where("id IN ?", userIDs).Find(&users).Error; err != nil {
+			return nil, err
+		}
+	}
+	userMap := make(map[int]*User, len(users))
+	for i := range users {
+		user := users[i]
+		userMap[user.Id] = &user
+	}
+
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		info := &EcomAgentAssignedUserInfo{
+			OrderID: account.AssignedSubscriptionOrderID,
+			SubID:   account.AssignedUserSubscriptionID,
+		}
+		subscription := subscriptionMap[account.AssignedUserSubscriptionID]
+		order := orderMap[account.AssignedSubscriptionOrderID]
+		if order == nil && subscription != nil && subscription.SourceOrderId > 0 {
+			order = orderMap[subscription.SourceOrderId]
+			if info.OrderID == 0 {
+				info.OrderID = subscription.SourceOrderId
+			}
+		}
+		userID := 0
+		if subscription != nil && subscription.UserId > 0 {
+			userID = subscription.UserId
+		} else if order != nil && order.UserId > 0 {
+			userID = order.UserId
+		}
+		if userID <= 0 {
+			continue
+		}
+		info.UserID = userID
+		if user := userMap[userID]; user != nil {
+			info.Username = strings.TrimSpace(user.DisplayName)
+			if info.Username == "" {
+				info.Username = strings.TrimSpace(user.Username)
+			}
+			info.Email = strings.TrimSpace(user.Email)
+		}
+		result[account.Id] = info
+	}
+
+	return result, nil
 }
 
 func IsEcomAgentAccountEmailDuplicated(id int, email string) (bool, error) {

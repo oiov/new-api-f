@@ -240,6 +240,43 @@ export function getSubscriptionDailyPriceDisplay(plan) {
   };
 }
 
+export function isClaudeMonthlySubscriptionPlan(plan) {
+  return (
+    isSubscriptionClaudePlan(plan) &&
+    String(plan?.duration_unit || 'month') === 'month'
+  );
+}
+
+export function getClaudeMonthlyMarketingSubtitle(plan, t) {
+  if (!isClaudeMonthlySubscriptionPlan(plan)) {
+    return '';
+  }
+
+  const priceDisplay = getSubscriptionPriceDisplay(plan);
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const periodTotal = getSubscriptionRequestCountPeriodLimit(plan);
+  const resetPeriod = getSubscriptionResetPeriodValue(plan);
+  const pricePerRequest =
+    usageSummary.total > 0
+      ? Number(priceDisplay.effectivePrice || 0) / usageSummary.total
+      : 0;
+
+  if (
+    resetPeriod === 'daily' &&
+    periodTotal > 0 &&
+    usageSummary.total > 0 &&
+    pricePerRequest > 0
+  ) {
+    return t('{{period}}次/天，月共{{total}}次，每月重置【单次成本 {{price}}】', {
+      period: periodTotal,
+      total: usageSummary.total,
+      price: `${priceDisplay.symbol}${pricePerRequest.toFixed(4)}`,
+    });
+  }
+
+  return '';
+}
+
 export function formatSubscriptionResourceLabel(plan, t) {
   const isRequestCount = getSubscriptionResourceType(plan) === 'request_count';
   const isPeriodic = isSubscriptionResourcePeriodic(plan);

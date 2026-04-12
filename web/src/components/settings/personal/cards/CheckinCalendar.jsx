@@ -52,6 +52,33 @@ import {
 } from '../../../../helpers';
 
 const CHECKIN_QUOTA_PER_CNY = 500000;
+const CHECKIN_WEEKDAY_LABELS = {
+  '0': '周日',
+  '1': '周一',
+  '2': '周二',
+  '3': '周三',
+  '4': '周四',
+  '5': '周五',
+  '6': '周六',
+};
+
+const normalizeCheckinWeekdays = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).filter(Boolean);
+  }
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const formatCheckinTime = (seconds) => {
+  const safeSeconds = Number(seconds || 0);
+  const normalized = Math.max(0, Math.min(86399, safeSeconds));
+  const hours = String(Math.floor(normalized / 3600)).padStart(2, '0');
+  const minutes = String(Math.floor((normalized % 3600) / 60)).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
 
 const quotaToCNY = (quota) => {
   const value = Number(quota || 0);
@@ -177,6 +204,40 @@ const CheckinCalendar = ({
     ],
     [leaderboardStats, leaderboardTotal, t],
   );
+
+  const checkinScheduleText = useMemo(() => {
+    const weekdays = normalizeCheckinWeekdays(
+      status?.['checkin_setting.open_weekdays'],
+    );
+    const weekdayText = weekdays
+      .map((item) => CHECKIN_WEEKDAY_LABELS[item])
+      .filter(Boolean)
+      .map((label) => t(label))
+      .join('、');
+    const startSeconds = Number(status?.['checkin_setting.open_start_seconds']);
+    const endSeconds = Number(status?.['checkin_setting.open_end_seconds']);
+    const dailyUserLimit = Number(status?.['checkin_setting.daily_user_limit'] || 0);
+    const parts = [];
+
+    if (weekdayText) {
+      parts.push(weekdayText);
+    }
+    if (Number.isFinite(startSeconds) && Number.isFinite(endSeconds)) {
+      parts.push(
+        `${formatCheckinTime(startSeconds)} - ${formatCheckinTime(endSeconds)}`,
+      );
+    }
+    if (dailyUserLimit > 0) {
+      parts.push(t('每日前 {{count}} 人可签到', { count: dailyUserLimit }));
+    }
+
+    if (!parts.length) {
+      return '';
+    }
+    return t('签到开放时间：{{schedule}}', {
+      schedule: parts.join(' · '),
+    });
+  }, [status, t]);
 
   const fetchCheckinLeaderboard = async (page = leaderboardPage) => {
     setLeaderboardLoading(true);
@@ -415,6 +476,11 @@ const CheckinCalendar = ({
                     t('天')
                   : t('每日签到可获得随机额度奖励')}
             </div>
+            {checkinScheduleText ? (
+              <div className='mt-1 text-xs text-emerald-600 dark:text-emerald-400'>
+                {checkinScheduleText}
+              </div>
+            ) : null}
           </div>
         </div>
         <Button

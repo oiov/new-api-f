@@ -119,6 +119,17 @@ func GetEcomAgentAccounts(c *gin.Context) {
 	common.ApiSuccess(c, buildEcomAgentAccountResponses(accounts))
 }
 
+func buildSingleEcomAgentAccountResponse(account *model.EcomAgentAccount) *EcomAgentAccountResponse {
+	if account == nil {
+		return nil
+	}
+	assignedUserMap, err := model.GetEcomAgentAssignedUserInfoMap([]*model.EcomAgentAccount{account})
+	if err != nil {
+		assignedUserMap = map[int]*model.EcomAgentAssignedUserInfo{}
+	}
+	return buildEcomAgentAccountResponse(account, assignedUserMap[account.Id])
+}
+
 func GetEcomAgentAccount(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -220,7 +231,7 @@ func CreateEcomAgentAccount(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, buildEcomAgentAccountResponse(account))
+	common.ApiSuccess(c, buildSingleEcomAgentAccountResponse(account))
 }
 
 func UpdateEcomAgentAccount(c *gin.Context) {
@@ -319,7 +330,7 @@ func UpdateEcomAgentAccount(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, buildEcomAgentAccountResponse(account))
+	common.ApiSuccess(c, buildSingleEcomAgentAccountResponse(account))
 }
 
 func DeleteEcomAgentAccount(c *gin.Context) {
@@ -358,11 +369,11 @@ func SyncEcomAgentAccount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": err.Error(),
-			"data":    buildEcomAgentAccountResponse(account),
+			"data":    buildSingleEcomAgentAccountResponse(account),
 		})
 		return
 	}
-	common.ApiSuccess(c, buildEcomAgentAccountResponse(account))
+	common.ApiSuccess(c, buildSingleEcomAgentAccountResponse(account))
 }
 
 func GetEcomAgentManualDeliveryOrders(c *gin.Context) {
@@ -456,7 +467,7 @@ func DeliverEcomAgentManualDeliveryOrder(c *gin.Context) {
 	}
 	go notifyManualDeliveryOrderResult(order, true)
 	common.ApiSuccess(c, gin.H{
-		"account":              buildEcomAgentAccountResponse(account),
+		"account":              buildSingleEcomAgentAccountResponse(account),
 		"order":                order,
 		"user_subscription_id": account.AssignedUserSubscriptionID,
 	})
@@ -491,6 +502,9 @@ type EcomAgentAccountResponse struct {
 	AssignedChannelID           int    `json:"assigned_channel_id"`
 	AssignedChannelKeyIndex     int    `json:"assigned_channel_key_index"`
 	AssignedUserSubscriptionID  int    `json:"assigned_user_subscription_id"`
+	AssignedUserID              int    `json:"assigned_user_id"`
+	AssignedUsername            string `json:"assigned_username"`
+	AssignedUserEmail           string `json:"assigned_user_email"`
 	AssignedAt                  int64  `json:"assigned_at"`
 	Tags                        string `json:"tags"`
 	Remark                      string `json:"remark"`
@@ -520,14 +534,18 @@ type EcomAgentAccountEditResponse struct {
 }
 
 func buildEcomAgentAccountResponses(accounts []*model.EcomAgentAccount) []*EcomAgentAccountResponse {
+	assignedUserMap, err := model.GetEcomAgentAssignedUserInfoMap(accounts)
+	if err != nil {
+		assignedUserMap = map[int]*model.EcomAgentAssignedUserInfo{}
+	}
 	responses := make([]*EcomAgentAccountResponse, 0, len(accounts))
 	for _, account := range accounts {
-		responses = append(responses, buildEcomAgentAccountResponse(account))
+		responses = append(responses, buildEcomAgentAccountResponse(account, assignedUserMap[account.Id]))
 	}
 	return responses
 }
 
-func buildEcomAgentAccountResponse(account *model.EcomAgentAccount) *EcomAgentAccountResponse {
+func buildEcomAgentAccountResponse(account *model.EcomAgentAccount, assignedUser *model.EcomAgentAssignedUserInfo) *EcomAgentAccountResponse {
 	if account == nil {
 		return nil
 	}
@@ -560,25 +578,43 @@ func buildEcomAgentAccountResponse(account *model.EcomAgentAccount) *EcomAgentAc
 		AssignedChannelID:           account.AssignedChannelID,
 		AssignedChannelKeyIndex:     account.AssignedChannelKeyIndex,
 		AssignedUserSubscriptionID:  account.AssignedUserSubscriptionID,
-		AssignedAt:                  account.AssignedAt,
-		Tags:                        account.Tags,
-		Remark:                      account.Remark,
-		LoginAt:                     account.LoginAt,
-		LastSyncAt:                  account.LastSyncAt,
-		Status:                      account.Status,
-		LastError:                   account.LastError,
-		CreatedTime:                 account.CreatedTime,
-		UpdatedTime:                 account.UpdatedTime,
-		APIKey:                      account.APIKey,
-		SubscriptionRaw:             account.SubscriptionRaw,
-		UsageRaw:                    account.UsageRaw,
-		HasPassword:                 strings.TrimSpace(account.Password) != "",
-		HasRefreshToken:             strings.TrimSpace(account.RefreshToken) != "",
-		HasAccessToken:              strings.TrimSpace(account.AccessToken) != "",
-		HasAPIKey:                   strings.TrimSpace(account.APIKey) != "",
-		MaskedRefreshToken:          maskSensitiveValue(account.RefreshToken),
-		MaskedAccessToken:           maskSensitiveValue(account.AccessToken),
-		MaskedAPIKey:                maskSensitiveValue(account.APIKey),
+		AssignedUserID: func() int {
+			if assignedUser == nil {
+				return 0
+			}
+			return assignedUser.UserID
+		}(),
+		AssignedUsername: func() string {
+			if assignedUser == nil {
+				return ""
+			}
+			return assignedUser.Username
+		}(),
+		AssignedUserEmail: func() string {
+			if assignedUser == nil {
+				return ""
+			}
+			return assignedUser.Email
+		}(),
+		AssignedAt:         account.AssignedAt,
+		Tags:               account.Tags,
+		Remark:             account.Remark,
+		LoginAt:            account.LoginAt,
+		LastSyncAt:         account.LastSyncAt,
+		Status:             account.Status,
+		LastError:          account.LastError,
+		CreatedTime:        account.CreatedTime,
+		UpdatedTime:        account.UpdatedTime,
+		APIKey:             account.APIKey,
+		SubscriptionRaw:    account.SubscriptionRaw,
+		UsageRaw:           account.UsageRaw,
+		HasPassword:        strings.TrimSpace(account.Password) != "",
+		HasRefreshToken:    strings.TrimSpace(account.RefreshToken) != "",
+		HasAccessToken:     strings.TrimSpace(account.AccessToken) != "",
+		HasAPIKey:          strings.TrimSpace(account.APIKey) != "",
+		MaskedRefreshToken: maskSensitiveValue(account.RefreshToken),
+		MaskedAccessToken:  maskSensitiveValue(account.AccessToken),
+		MaskedAPIKey:       maskSensitiveValue(account.APIKey),
 	}
 }
 
@@ -608,7 +644,7 @@ func buildEcomAgentImportedSessionJSON(account *model.EcomAgentAccount) string {
 }
 
 func buildEcomAgentAccountEditResponse(account *model.EcomAgentAccount) *EcomAgentAccountEditResponse {
-	base := buildEcomAgentAccountResponse(account)
+	base := buildSingleEcomAgentAccountResponse(account)
 	if base == nil || account == nil {
 		return nil
 	}

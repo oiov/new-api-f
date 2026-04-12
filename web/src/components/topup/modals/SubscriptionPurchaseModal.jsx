@@ -32,10 +32,13 @@ import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
 import {
   formatSubscriptionSellingDuration,
+  getClaudeMonthlyMarketingSubtitle,
   getSubscriptionDailyPriceDisplay,
   getSubscriptionPriceDisplay,
   getSubscriptionResourceType,
   getSubscriptionUsageSummary,
+  isClaudeMonthlySubscriptionPlan,
+  isSubscriptionClaudePlan,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
 
@@ -44,6 +47,11 @@ const { Text } = Typography;
 function getPlanComputedSubtitle(plan, t, symbol, effectivePrice) {
   if (!plan) {
     return t('以套餐配置为准');
+  }
+
+  const claudeMonthlySubtitle = getClaudeMonthlyMarketingSubtitle(plan, t);
+  if (claudeMonthlySubtitle) {
+    return claudeMonthlySubtitle;
   }
 
   const resourceType = getSubscriptionResourceType(plan);
@@ -122,22 +130,8 @@ const SubscriptionPurchaseModal = ({
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
     purchaseLimit > 0 && purchaseCount >= purchaseLimit;
-  const planText = [
-    plan?.title,
-    plan?.subtitle,
-    plan?.upgrade_group,
-    ...(Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : []),
-    ...(Array.isArray(plan?.allowed_models) ? plan.allowed_models : []),
-    ...(Array.isArray(plan?.allowed_vendor_names) ? plan.allowed_vendor_names : []),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  const isClaudePlan =
-    (planText.includes('claude') || planText.includes('anthropic')) &&
-    !planText.includes('codex');
-  const isClaudeMonthlyPlan =
-    isClaudePlan && String(plan?.duration_unit || 'month') === 'month';
+  const isClaudePlan = isSubscriptionClaudePlan(plan);
+  const isClaudeMonthlyPlan = isClaudeMonthlySubscriptionPlan(plan);
   const isManualDeliveryPlan = plan?.delivery_mode === 'manual_delivery';
   const noticeItems = [
     isManualDeliveryPlan
@@ -154,6 +148,13 @@ const SubscriptionPurchaseModal = ({
           key: 'claude_auto',
           type: 'warning',
           text: t('Claude 系列套餐支付成功后自动生效。'),
+        }
+      : null,
+    isClaudeMonthlyPlan
+      ? {
+          key: 'claude_monthly_discount',
+          type: 'success',
+          text: t('当前所有 Claude 系列月卡套餐五折'),
         }
       : null,
     isClaudeMonthlyPlan

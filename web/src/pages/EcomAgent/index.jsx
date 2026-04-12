@@ -214,6 +214,21 @@ function getAssignedOrderLabel(record, t) {
   return `${t('人工发放订单')} #${orderId}`;
 }
 
+function getAssignedUserLabel(record, t) {
+  const userId = Number(record?.assigned_user_id || 0);
+  const username = String(record?.assigned_username || '').trim();
+  if (userId <= 0 && !username) {
+    return t('未绑定用户');
+  }
+  if (username && userId > 0) {
+    return `${username} / UID ${userId}`;
+  }
+  if (userId > 0) {
+    return `UID ${userId}`;
+  }
+  return username;
+}
+
 function hasAssignedOrder(record) {
   return Number(record?.assigned_subscription_order_id || 0) > 0;
 }
@@ -1041,6 +1056,9 @@ const EcomAgentPage = () => {
         String(record.assigned_subscription_order_id || ''),
         record.tags,
         record.remark,
+        record.assigned_username,
+        record.assigned_user_email,
+        String(record.assigned_user_id || ''),
         String(record.assigned_channel_id || ''),
         String(record.assigned_channel_key_index || ''),
         String(record.assigned_user_subscription_id || ''),
@@ -1447,6 +1465,9 @@ const EcomAgentPage = () => {
             <Text size='small' type='tertiary' ellipsis={{ showTooltip: true }}>
               {getAccountSummary(record, t)}
             </Text>
+            <Text size='small' type='tertiary' ellipsis={{ showTooltip: true }}>
+              {t('绑定用户')}: {getAssignedUserLabel(record, t)}
+            </Text>
             <div className='flex items-center gap-1 flex-wrap'>
               <Tag
                 color={
@@ -1678,6 +1699,16 @@ const EcomAgentPage = () => {
         label: t('关联订单'),
         value: getAssignedOrderLabel(record, t),
       },
+      {
+        key: 'assigned_user',
+        label: t('绑定用户'),
+        value: getAssignedUserLabel(record, t),
+      },
+      {
+        key: 'assigned_user_email',
+        label: t('绑定邮箱'),
+        value: renderEmail(record.assigned_user_email),
+      },
     ];
     const planDescriptions = [
       {
@@ -1810,6 +1841,16 @@ const EcomAgentPage = () => {
                       key: 'assigned_order',
                       label: t('关联订单'),
                       value: getAssignedOrderLabel(record, t),
+                    },
+                    {
+                      key: 'assigned_user',
+                      label: t('绑定用户'),
+                      value: getAssignedUserLabel(record, t),
+                    },
+                    {
+                      key: 'assigned_user_email',
+                      label: t('绑定邮箱'),
+                      value: renderEmail(record.assigned_user_email),
                     },
                     {
                       key: 'tags',
@@ -2131,6 +2172,14 @@ const EcomAgentPage = () => {
                 <div>{getAssignedChannelLabel(detailRecord, t)}</div>
               </div>
               <div>
+                <Text type='tertiary'>{t('绑定用户')}</Text>
+                <div>{getAssignedUserLabel(detailRecord, t)}</div>
+              </div>
+              <div>
+                <Text type='tertiary'>{t('绑定邮箱')}</Text>
+                <div>{renderEmail(detailRecord.assigned_user_email)}</div>
+              </div>
+              <div>
                 <Text type='tertiary'>{t('注册时间')}</Text>
                 <div>{formatTs(detailRecord.signup_at)}</div>
               </div>
@@ -2156,6 +2205,9 @@ const EcomAgentPage = () => {
                 </Text>
                 <Text size='small' type='tertiary'>
                   {t('关联订单')}: {getAssignedOrderLabel(detailRecord, t)}
+                </Text>
+                <Text size='small' type='tertiary'>
+                  {t('绑定用户')}: {getAssignedUserLabel(detailRecord, t)}
                 </Text>
               </div>
             </div>
@@ -2272,6 +2324,13 @@ const EcomAgentPage = () => {
                 <Text size='small' type='tertiary'>
                   {t('同步时间')}: {formatTs(assignmentRecord.last_sync_at)}
                   {syncingId === assignmentRecord.id ? ` · ${t('同步中')}` : ''}
+                </Text>
+              </div>
+              <div className='mt-1'>
+                <Text size='small' type='tertiary'>
+                  {t('绑定用户')}: {getAssignedUserLabel(assignmentRecord, t)}
+                  {' · '}
+                  {t('绑定邮箱')}: {renderEmail(assignmentRecord.assigned_user_email)}
                 </Text>
               </div>
               <div className='mt-3 grid grid-cols-2 gap-3 md:grid-cols-4'>

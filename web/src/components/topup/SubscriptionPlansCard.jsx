@@ -74,6 +74,7 @@ import CardPro from '../common/ui/CardPro';
 import { createCardProPagination } from '../../helpers/utils';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import {
+  getClaudeMonthlyMarketingSubtitle,
   formatSubscriptionDuration,
   getSubscriptionDailyPriceDisplay,
   formatSubscriptionSellingDuration,
@@ -86,6 +87,7 @@ import {
   getSubscriptionResourceType,
   getSubscriptionSaleSummary,
   getSubscriptionUsageSummary,
+  isClaudeMonthlySubscriptionPlan,
   isSubscriptionDiscountActive,
 } from '../../helpers/subscriptionFormat';
 

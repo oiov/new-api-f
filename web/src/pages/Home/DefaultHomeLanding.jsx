@@ -130,19 +130,22 @@ const featureItems = (t) => [
 
 const subscriptionMarketingItems = (t) => [
   {
-    badge: t('Claude 热卖'),
-    title: t('Claude Lite / Mini Plus / Premium+ 持续热销'),
-    description: t('适合长期稳定写代码、日常对话、团队协作与高频 API 调用场景，很多用户会直接从轻量套餐一路升级到月卡。'),
+    icon: <IconBolt size='large' />,
+    badge: t('按次套餐'),
+    title: t('按次数'),
+    description: t('以套餐配置为准'),
   },
   {
-    badge: t('Codex 增长快'),
-    title: t('Codex 系列更适合高强度开发与自动化场景'),
-    description: t('如果你需要更激进的代码生成、修复与批量执行能力，可以直接选择 Codex 套餐，单价和稳定性都更适合重度开发者。'),
+    icon: <IconActivity size='large' />,
+    badge: t('全部订阅消耗'),
+    title: t('按套餐明细结算'),
+    description: t('按实际调用'),
   },
   {
-    badge: t('代发放更省心'),
-    title: t('购买成功后自动走发放链路，适合不会折腾配置的用户'),
-    description: t('Claude 系列代发放完成后会自动创建 Subscription Access Key、发送激活测试消息，并通过邮件和站内信提醒你开始使用。'),
+    icon: <IconSafe size='large' />,
+    badge: t('人工发放'),
+    title: t('支付后进入待发放状态'),
+    description: t('人工发放套餐支付成功后不会自动开通，需要管理员填写交付信息后完成发放。'),
   },
 ];
 
@@ -402,49 +405,51 @@ const DesktopHomeLanding = ({
 
       {/* ── Subscription marketing ── */}
       <section className='mx-auto w-full max-w-[1280px] px-4 py-10 md:px-6 md:py-14 lg:px-8'>
-        <div className='overflow-hidden rounded-[28px] border border-semi-color-border bg-[linear-gradient(135deg,rgba(6,182,212,0.08),rgba(249,115,22,0.08)_58%,rgba(255,255,255,0.88))] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.06)] backdrop-blur sm:rounded-[32px] sm:p-7'>
-          <div className='grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] xl:items-start'>
-            <div className='space-y-4'>
-              <Tag color='red' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
-                {t('订阅套餐正在热卖')}
-              </Tag>
-              <Title heading={2} className='!mb-0 !max-w-xl !leading-[1.15]'>
-                {t('很多用户现在不是先试模型价格，而是直接买 Claude / Codex 套餐')}
+        <div className='overflow-hidden rounded-[28px] border border-semi-color-border bg-[linear-gradient(135deg,rgba(59,130,246,0.06),rgba(16,185,129,0.05)_42%,rgba(255,255,255,0.92))] shadow-[0_24px_80px_rgba(15,23,42,0.06)] backdrop-blur sm:rounded-[32px]'>
+          <div className='grid gap-10 p-5 sm:p-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)] lg:items-center'>
+            <div className='relative z-[1]'>
+              <div className='mb-5 flex flex-wrap items-center gap-3'>
+                <Tag color='red' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
+                  {t('人工发放')}
+                </Tag>
+                <Tag color='cyan' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
+                  {t('Claude / Codex 套餐')}
+                </Tag>
+                <Tag color='green' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
+                  {t('更适合长期用')}
+                </Tag>
+              </div>
+
+              <Title
+                heading={2}
+                className={`!mb-5 !max-w-3xl !text-2xl !font-black !leading-[1.1] sm:!text-4xl ${isChinese ? 'tracking-[-0.03em]' : ''}`}
+              >
+                <span className='hl-gradient-text'>
+                  {t('Claude / Codex 套餐，便宜量大，长期用更划算')}
+                </span>
               </Title>
-              <Paragraph className='!mb-0 !max-w-2xl !text-base !leading-7 !text-semi-color-text-1'>
-                {t('原因很直接：价格更稳、额度更清楚、发放链路更省心。对持续使用 Claude 或 Codex 的用户来说，套餐制已经比临时按量计费更容易下单。')}
+
+              <Paragraph className='!mb-0 max-w-3xl !text-base !leading-7 !text-semi-color-text-1 md:!text-lg'>
+                {t('当前所有 Claude 系列月卡五折。以 Claude Lite 为例，低至一天不到 5 块钱，500 次/天，月共 15000 次，支付成功后自动生效，适合长期稳定调用。')}
               </Paragraph>
 
-              <div className='grid gap-3 sm:grid-cols-3'>
+              <div className='mt-6 flex flex-wrap gap-3 text-sm text-semi-color-text-1'>
                 {[
-                  {
-                    value: t('轻量起步'),
-                    label: t('天卡、轻量包、月卡都能快速上手'),
-                  },
-                  {
-                    value: t('自动发放'),
-                    label: t('成功后自动创建可用 Key 并通知'),
-                  },
-                  {
-                    value: t('更适合长期用'),
-                    label: t('适合个人开发者与小团队持续调用'),
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className='rounded-2xl border border-white/60 bg-white/75 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]'
+                  t('天卡、轻量包、月卡都能快速上手'),
+                  t('支付后进入待发放状态'),
+                  t('适合个人开发者与小团队持续调用'),
+                ].map((text) => (
+                  <span
+                    key={text}
+                    className='hl-chip-hover inline-flex items-center gap-2 rounded-full border border-semi-color-border bg-white/70 px-3 py-1.5 backdrop-blur dark:bg-white/5'
                   >
-                    <div className='text-sm font-bold text-semi-color-text-0'>
-                      {item.value}
-                    </div>
-                    <div className='mt-2 text-xs leading-6 text-semi-color-text-2'>
-                      {item.label}
-                    </div>
-                  </div>
+                    <IconTickCircle className='text-emerald-500' />
+                    {text}
+                  </span>
                 ))}
               </div>
 
-              <div className='flex flex-wrap gap-3 pt-1'>
+              <div className='mt-8 flex flex-wrap items-center gap-4'>
                 <Link to='/pricing?currency=CNY&plan_series=all'>
                   <Button
                     theme='solid'
@@ -452,7 +457,7 @@ const DesktopHomeLanding = ({
                     size={isMobile ? 'default' : 'large'}
                     className='!rounded-full !px-7'
                   >
-                    {t('去看热卖订阅套餐')}
+                    {t('查看全部套餐')}
                   </Button>
                 </Link>
                 <Link to='/pricing?currency=CNY&vendor=Anthropic'>
@@ -464,28 +469,83 @@ const DesktopHomeLanding = ({
                   </Button>
                 </Link>
               </div>
+
+              <div className='mt-10 grid grid-cols-1 gap-3 sm:grid-cols-3'>
+                {[
+                  {
+                    value: t('轻量起步'),
+                    label: t('天卡、轻量包、月卡都能快速上手'),
+                  },
+                  {
+                    value: t('人工发放'),
+                    label: t('支付后进入待发放状态'),
+                  },
+                  {
+                    value: t('更适合长期用'),
+                    label: t('适合个人开发者与小团队持续调用'),
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className='hl-stat-hover rounded-3xl border border-semi-color-border bg-white/75 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.06)] backdrop-blur dark:bg-white/5 sm:p-5'
+                  >
+                    <div className='text-lg font-black text-semi-color-text-0 sm:text-xl'>
+                      {item.value}
+                    </div>
+                    <div className='mt-2 text-sm leading-6 text-semi-color-text-2'>
+                      {item.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className='grid gap-4 md:grid-cols-3 xl:grid-cols-1'>
-              {hotSubscriptionItems.map((item) => (
-                <div
-                  key={item.title}
-                  className='rounded-[24px] border border-semi-color-border bg-white/82 p-5 shadow-[0_16px_36px_rgba(15,23,42,0.05)] backdrop-blur'
-                >
-                  <div className='mb-3 flex items-center gap-2'>
-                    <span className='inline-flex h-2.5 w-2.5 rounded-full bg-cyan-500' />
-                    <Text className='!text-xs !font-semibold !uppercase !tracking-[0.18em] !text-cyan-700'>
-                      {item.badge}
+            <div className='relative z-[1]'>
+              <div className='hl-card-hover rounded-[24px] border border-semi-color-border bg-white/85 p-4 shadow-[0_32px_120px_rgba(59,130,246,0.12)] backdrop-blur dark:bg-[#0b1120]/80 sm:rounded-[32px] sm:p-6'>
+                <div className='mb-5 flex items-start justify-between gap-4'>
+                  <div>
+                    <Text className='!text-xs !font-semibold !uppercase !tracking-[0.2em] !text-cyan-600 dark:!text-cyan-300'>
+                      {t('按次套餐')}
                     </Text>
+                    <Title heading={4} className='!mb-0 !mt-2'>
+                      {t('按套餐明细结算')}
+                    </Title>
                   </div>
-                  <Title heading={5} className='!mb-2 !leading-6'>
-                    {item.title}
-                  </Title>
-                  <Paragraph className='!mb-0 !text-sm !leading-6 !text-semi-color-text-2'>
-                    {item.description}
-                  </Paragraph>
+                  <div className='rounded-2xl bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-700 dark:text-cyan-200'>
+                    {t('人工发放')}
+                  </div>
                 </div>
-              ))}
+
+                <Paragraph className='!mb-5 !text-sm !leading-6 !text-semi-color-text-1'>
+                  {t('以套餐配置为准')}
+                </Paragraph>
+
+                <div className='space-y-3'>
+                  {hotSubscriptionItems.map((item) => (
+                    <div
+                      key={item.title}
+                      className='hl-trust-hover rounded-2xl border border-semi-color-border bg-semi-color-bg-0/80 p-4 dark:bg-white/[0.03]'
+                    >
+                      <div className='flex items-start gap-3'>
+                        <div className='mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-700 dark:text-cyan-200'>
+                          {item.icon}
+                        </div>
+                        <div>
+                          <div className='text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-300'>
+                            {item.badge}
+                          </div>
+                          <div className='mt-2 font-semibold text-semi-color-text-0'>
+                            {item.title}
+                          </div>
+                          <div className='mt-1 text-sm leading-6 text-semi-color-text-2'>
+                            {item.description}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
