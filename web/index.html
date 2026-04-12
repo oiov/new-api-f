@@ -1,8 +1,17 @@
 <!doctype html>
-<html lang="zh">
+<html lang="zh-CN">
+<!-- https://x.com/xkajon/status/2041223004072628688 -->
 
+<!-- 现在如果你想坑一个人，就让他去做中转站，这是一定的。你要解决：
+1. 引流问题
+2. 技术问题
+3. 售后问题
+4. 封号问题
+5. 退款问题
+
+这只是我能说出来的 5 个细节，还有更多的细节是那种隐性知识我还没有说出来的。这 5 个问题都够你忙活大半天了。 -->
 <head>
-  <script charset="UTF-8" id="LA_COLLECT" src="https://sdk.51.la/js-sdk-pro.min.js"></script>
+  <!-- <script charset="UTF-8" id="LA_COLLECT" src="https://sdk.51.la/js-sdk-pro.min.js"></script>
   <script>
     if (window.LA && typeof window.LA.init === 'function') {
       LA.init({ id: "L92d4eR2HMR83TPC", ck: "L92d4eR2HMR83TPC", autoTrack: true, hashMode: true, screenRecord: true });
@@ -13,17 +22,22 @@
     if (window.LingQue && typeof window.LingQue.Monitor === 'function') {
       new LingQue.Monitor().init({ id: "L92dGCu3rpzaaztc" });
     }
-  </script>
+  </script> -->
 
   <meta charset="utf-8" />
   <link rel="icon" href="/favicon.ico" />
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/logo.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#ffffff" />
+  <meta name="theme-color" content="#f6f9ff" />
+  <meta name="color-scheme" content="light" />
+  <meta name="format-detection" content="telephone=no, email=no, address=no" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="keywords" content="Claude API,Claude中转,Anthropic官方通道,企业级Claude API,AI中转服务,智能缓存,企业采购,增值税发票,GPT,Gemini" />
   <meta name="robots" content="index,follow" />
   <link rel="canonical" href="https://fishxcode.com/" />
+  <link rel="preconnect" href="https://fishxcode.com" crossorigin />
+  <link rel="dns-prefetch" href="//fishxcode.com" />
   <meta name="description" lang="zh"
     content="FishXCode AI 提供企业级 Claude API 官方通道中转，优先提供稳定的 Claude 官方通道接入，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。" />
   <meta name="description" lang="en"
@@ -41,7 +55,9 @@
   <meta property="og:image:height" content="180" />
   <meta property="og:image:alt" content="FishXCode AI" />
   <meta property="og:locale" content="zh_CN" />
+  <meta property="og:locale:alternate" content="en_US" />
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@fishxcode" />
   <meta name="twitter:title" content="企业级 Claude API 官方通道中转 | FishXCode AI" />
   <meta name="twitter:description"
     content="FishXCode AI 提供企业级 Claude API 官方通道中转，优先提供稳定的 Claude 官方通道接入，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。" />
@@ -52,13 +68,233 @@
   <meta itemprop="image" content="https://fishxcode.com/logo.png" />
   <meta name="generator" content="new-api" />
   <title>企业级 Claude API 官方通道中转 | FishXCode AI</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --fx-bg: #eef5ff;
+      --fx-bg-2: #fff7ef;
+      --fx-card: rgba(255, 255, 255, 0.9);
+      --fx-border: rgba(25, 99, 247, 0.08);
+      --fx-text: #111827;
+      --fx-muted: #667085;
+      --fx-primary: #2563eb;
+      --fx-shadow: 0 24px 80px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body,
+    #root {
+      min-height: 100%;
+    }
+
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+        "Helvetica Neue", sans-serif;
+      color: var(--fx-text);
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 32%),
+        radial-gradient(circle at top right, rgba(249, 115, 22, 0.12), transparent 28%),
+        linear-gradient(180deg, var(--fx-bg) 0%, #ffffff 38%, var(--fx-bg-2) 100%);
+      background-attachment: fixed;
+    }
+
+    .fx-shell {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+    }
+
+    .fx-loading-card {
+      width: min(100%, 520px);
+      padding: 28px;
+      border-radius: 28px;
+      border: 1px solid var(--fx-border);
+      background: var(--fx-card);
+      box-shadow: var(--fx-shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    .fx-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .fx-brand img {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(37, 99, 235, 0.16);
+    }
+
+    .fx-brand-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .fx-brand-subtitle {
+      margin: 4px 0 0;
+      color: var(--fx-muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .fx-loading-headline {
+      margin: 0 0 10px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #1d4ed8;
+    }
+
+    .fx-loading-copy {
+      margin: 0;
+      color: var(--fx-muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .fx-loading-bar {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      height: 10px;
+      margin-top: 22px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.16);
+    }
+
+    .fx-loading-bar::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      width: 35%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #60a5fa 0%, #2563eb 55%, #fb923c 100%);
+      animation: fx-loading-slide 1.4s ease-in-out infinite;
+    }
+
+    .fx-loading-tips {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .fx-tip {
+      padding: 12px 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      font-size: 12px;
+      color: var(--fx-muted);
+      text-align: center;
+    }
+
+    .fx-noscript {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(254, 242, 242, 0.92);
+      border: 1px solid rgba(239, 68, 68, 0.14);
+      color: #991b1b;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    @keyframes fx-loading-slide {
+      0% {
+        transform: translateX(-120%);
+      }
+      100% {
+        transform: translateX(320%);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .fx-loading-card {
+        padding: 22px;
+        border-radius: 24px;
+      }
+
+      .fx-loading-tips {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "FishXCode AI",
+      "url": "https://fishxcode.com/",
+      "logo": "https://fishxcode.com/logo.png",
+      "sameAs": [
+        "https://fishxcode.com/contact"
+      ]
+    }
+  </script>
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "FishXCode AI",
+      "url": "https://fishxcode.com/",
+      "inLanguage": [
+        "zh-CN",
+        "en"
+      ],
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://fishxcode.com/pricing?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+  </script>
   <!--umami-->
   <!--Google Analytics-->
 </head>
 
 <body>
-  <noscript>You need to enable JavaScript to run this app.</noscript>
-  <div id="root"></div>
+  <div id="root">
+    <div class="fx-shell">
+      <div class="fx-loading-card">
+        <div class="fx-brand">
+          <img src="/logo.png" alt="FishXCode AI" />
+          <div>
+            <h1 class="fx-brand-title">FishXCode AI</h1>
+            <p class="fx-brand-subtitle">稳定接入 Claude、Codex、GPT、Gemini 等常用模型</p>
+          </div>
+        </div>
+        <p class="fx-loading-headline">正在加载控制台与套餐信息</p>
+        <p class="fx-loading-copy">
+          页面初始化时会同步站点配置、登录状态与可售套餐。若停留时间过长，请检查网络或稍后刷新重试。
+        </p>
+        <div class="fx-loading-bar" aria-hidden="true"></div>
+        <div class="fx-loading-tips" aria-hidden="true">
+          <div class="fx-tip">官方通道优先</div>
+          <div class="fx-tip">企业采购支持</div>
+          <div class="fx-tip">订阅与代发放整合</div>
+        </div>
+        <noscript>
+          <div class="fx-noscript">
+            当前页面依赖 JavaScript 运行。请开启浏览器脚本支持后重试，或直接访问
+            <a href="https://fishxcode.com/pricing?currency=CNY">套餐页</a>
+            查看可购买内容。
+          </div>
+        </noscript>
+      </div>
+    </div>
+  </div>
   <script type="module" src="/src/index.jsx"></script>
 </body>
 

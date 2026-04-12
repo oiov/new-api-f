@@ -34,10 +34,56 @@ import {
   formatSubscriptionSellingDuration,
   getSubscriptionDailyPriceDisplay,
   getSubscriptionPriceDisplay,
+  getSubscriptionResourceType,
+  getSubscriptionUsageSummary,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
+
+function getPlanComputedSubtitle(plan, t, symbol, effectivePrice) {
+  if (!plan) {
+    return t('以套餐配置为准');
+  }
+
+  const resourceType = getSubscriptionResourceType(plan);
+  if (resourceType !== 'request_count') {
+    return plan.subtitle || t('以套餐配置为准');
+  }
+
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const durationText = formatSubscriptionSellingDuration(plan, t);
+  const subtitleParts = [];
+
+  if (!usageSummary.unlimited && usageSummary.total > 0) {
+    subtitleParts.push(
+      t('总计 {{count}} 次', {
+        count: usageSummary.total,
+      }),
+    );
+  }
+
+  subtitleParts.push(
+    t('有效期 {{duration}}', {
+      duration: durationText,
+    }),
+  );
+
+  const pricePerRequest =
+    usageSummary.total > 0
+      ? Number(effectivePrice || 0) / usageSummary.total
+      : 0;
+
+  if (pricePerRequest > 0) {
+    subtitleParts.push(
+      t('折合约 {{price}}/次', {
+        price: `${symbol}${pricePerRequest.toFixed(4)}`,
+      }),
+    );
+  }
+
+  return subtitleParts.join('，');
+}
 
 const SubscriptionPurchaseModal = ({
   t,
@@ -64,6 +110,7 @@ const SubscriptionPurchaseModal = ({
   const displayPrice = effectivePrice.toFixed(
     Number.isInteger(effectivePrice) ? 0 : 2,
   );
+  const computedSubtitle = getPlanComputedSubtitle(plan, t, symbol, effectivePrice);
   // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
   const hasStripe =
     enableStripeTopUp && !!plan?.stripe_price_id && !hasActiveDiscount;
@@ -173,7 +220,7 @@ const SubscriptionPurchaseModal = ({
                 {plan.title}
               </Typography.Text>
               <Text className='subscription-purchase-modal__subtitle' type='secondary'>
-                {plan.subtitle || t('以套餐配置为准')}
+                {computedSubtitle}
               </Text>
             </div>
             <div className='subscription-purchase-modal__price-box'>

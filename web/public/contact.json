@@ -1,0 +1,101 @@
+[
+  {
+    "key": "qq-group",
+    "title": "QQ群",
+    "subtitle": "用于问题答疑解决，适合群内交流与经验分享",
+    "imageSrc": "https://fishxcode.com/qq_group.jpg",
+    "value": "373865837",
+    "copyValue": "373865837",
+    "actionHref": "https://qm.qq.com/q/Ce2PaYrbmo",
+    "actionLabel": "加入QQ群",
+    "tone": "热门社区",
+    "i18n": {
+      "en": {
+        "title": "QQ Group",
+        "subtitle": "Community support, discussions, and experience sharing",
+        "actionLabel": "Join QQ Group",
+        "tone": "Popular Community"
+      },
+      "fr": {
+        "title": "Groupe QQ",
+        "subtitle": "Pour l'entraide, les discussions en groupe et le partage d'experience",
+        "actionLabel": "Rejoindre le groupe QQ",
+        "tone": "Communaute populaire"
+      },
+      "ja": {
+        "title": "QQグループ",
+        "subtitle": "質問対応、グループ交流、ノウハウ共有に適しています",
+        "actionLabel": "QQグループに参加",
+        "tone": "人気コミュニティ"
+      },
+      "ru": {
+        "title": "Группа QQ",
+        "subtitle": "Для ответов на вопросы, общения в сообществе и обмена опытом",
+        "actionLabel": "Вступить в группу QQ",
+        "tone": "Популярное сообщество"
+      },
+      "vi": {
+        "title": "Nhom QQ",
+        "subtitle": "Dung de giai dap, trao doi trong nhom va chia se kinh nghiem",
+        "actionLabel": "Tham gia nhom QQ",
+        "tone": "Cong dong noi bat"
+      },
+      "zh-CN": {
+        "title": "QQ群",
+        "subtitle": "用于问题答疑解决，适合群内交流与经验分享",
+        "actionLabel": "加入QQ群",
+        "tone": "热门社区"
+      },
+      "zh-TW": {
+        "title": "QQ群",
+        "subtitle": "用於問題答疑與交流，適合群內互動和經驗分享",
+        "actionLabel": "加入QQ群",
+        "tone": "熱門社群"
+      }
+    }
+  },
+  {
+    "key": "wechat-group",
+    "title": "微信群",
+    "subtitle": "用于问题答疑解决，适合接收群内公告与通知",
+    "imageSrc": "https://fishxcode.com/wechat_group.jpg",
+    "tone": "活动通知",
+    "i18n": {
+      "en": {
+        "title": "WeChat Group",
+        "subtitle": "For Q&A, group announcements, and important notices",
+        "tone": "Announcements"
+      },
+      "fr": {
+        "title": "Groupe WeChat",
+        "subtitle": "Pour les questions-reponses, les annonces du groupe et les notifications importantes",
+        "tone": "Annonces"
+      },
+      "ja": {
+        "title": "WeChatグループ",
+        "subtitle": "質問対応、グループ告知、重要なお知らせの受け取りに適しています",
+        "tone": "お知らせ"
+      },
+      "ru": {
+        "title": "Группа WeChat",
+        "subtitle": "Для ответов на вопросы, объявлений группы и важных уведомлений",
+        "tone": "Уведомления"
+      },
+      "vi": {
+        "title": "Nhom WeChat",
+        "subtitle": "Dung de hoi dap, nhan thong bao nhom va cac thong tin quan trong",
+        "tone": "Thong bao"
+      },
+      "zh-CN": {
+        "title": "微信群",
+        "subtitle": "用于问题答疑解决，适合接收群内公告与通知",
+        "tone": "活动通知"
+      },
+      "zh-TW": {
+        "title": "微信群",
+        "subtitle": "用於問題答疑與通知接收，適合查看群內公告",
+        "tone": "活動通知"
+      }
+    }
+  }
+]
