@@ -231,25 +231,24 @@ func SyncEcomAgentAccountWithOptions(ctx context.Context, account *model.EcomAge
 	}
 
 	shouldGenerateKey := options.ForceGenerateKey || !hasUsableEcomAgentAPIKey(account)
+	var generateKeyErr error
 	if shouldGenerateKey {
 		keyResp, keyRaw, err := client.generateKey(ctx, account.AccessToken, account.AccountID, account.Email)
 		if err != nil {
-			account.Status = "generate_key_failed"
-			account.LastError = err.Error()
-			return err
+			generateKeyErr = err
+		} else {
+			apiKey := firstNonEmptyString(keyResp.Key, keyResp.APIKey)
+			if apiKey == "" {
+				generateKeyErr = errors.New("响应缺少 api key")
+			} else {
+				account.APIKey = apiKey
+				account.APIKeyCreatedAt = parseTimestampOrNow(keyResp.CreatedAt)
+				account.APIKeyExpiresAt = parseTimestampOrDefault(keyResp.ExpiresAt, account.APIKeyCreatedAt+ecomAgentAPIKeyTTLSeconds)
+				account.KeyRaw = keyRaw
+				account.Status = "key_ready"
+				account.LastError = ""
+			}
 		}
-		apiKey := firstNonEmptyString(keyResp.Key, keyResp.APIKey)
-		if apiKey == "" {
-			account.Status = "generate_key_failed"
-			account.LastError = "响应缺少 api key"
-			return errors.New("响应缺少 api key")
-		}
-		account.APIKey = apiKey
-		account.APIKeyCreatedAt = parseTimestampOrNow(keyResp.CreatedAt)
-		account.APIKeyExpiresAt = parseTimestampOrDefault(keyResp.ExpiresAt, account.APIKeyCreatedAt+ecomAgentAPIKeyTTLSeconds)
-		account.KeyRaw = keyRaw
-		account.Status = "key_ready"
-		account.LastError = ""
 	}
 
 	subscriptionResp, subscriptionRaw, subErr := client.subscription(ctx, account.AccessToken, account.AccountID)
@@ -270,8 +269,10 @@ func SyncEcomAgentAccountWithOptions(ctx context.Context, account *model.EcomAge
 		account.RequestLimit = parseFlexibleInt64(subscriptionResp.Subscription.RequestLimitRaw)
 		account.TokenLimit = parseFlexibleInt64(subscriptionResp.Subscription.TokenLimitRaw)
 		account.SubscriptionRaw = subscriptionRaw
-		if account.APIKey == "" {
-			account.APIKey = subscriptionResp.Subscription.APIKey
+		if strings.TrimSpace(subscriptionResp.Subscription.APIKey) != "" {
+			account.APIKey = strings.TrimSpace(subscriptionResp.Subscription.APIKey)
+			account.APIKeyCreatedAt = parseTimestampOrNow(subscriptionResp.Subscription.APIKeyCreatedAt)
+			account.APIKeyExpiresAt = parseTimestampOrDefault(subscriptionResp.Subscription.PlanEndsAt, account.APIKeyCreatedAt+ecomAgentAPIKeyTTLSeconds)
 		}
 	}
 	if usageErr == nil {
@@ -282,6 +283,12 @@ func SyncEcomAgentAccountWithOptions(ctx context.Context, account *model.EcomAge
 		}
 		account.UsageUpdatedAt = parseTimestampOrDefault(usageResp.Usage.LastUpdated, common.GetTimestamp())
 		account.UsageRaw = usageRaw
+	}
+	if generateKeyErr != nil && !hasUsableEcomAgentAPIKey(account) {
+		account.LastSyncAt = common.GetTimestamp()
+		account.Status = "generate_key_failed"
+		account.LastError = generateKeyErr.Error()
+		return generateKeyErr
 	}
 	account.LastSyncAt = common.GetTimestamp()
 	account.Status = "ready"
@@ -328,11 +335,19 @@ func ensureEcomAgentAccessToken(ctx context.Context, client *ecomAgentClient, ac
 	if strings.TrimSpace(account.AccessToken) != "" && !isEcomAgentTokenExpired(account.AccessToken) {
 		return account.AccessToken, account.RefreshToken, firstNonEmptyString(account.AccountID, extractEcomAgentAccountID(account.AccessToken)), account.AccessTokenExpiresAt, "token_reused", nil
 	}
+	var refreshErr error
 	if strings.TrimSpace(account.RefreshToken) != "" {
 		refreshResp, _, err := client.refreshAccessToken(ctx, account.RefreshToken)
 		if err == nil {
 			return refreshResp.AccessToken, firstNonEmptyString(refreshResp.RefreshToken, account.RefreshToken), firstNonEmptyString(account.AccountID, refreshResp.User.ID, extractEcomAgentAccountID(refreshResp.AccessToken)), normalizeEcomAgentExpiry(refreshResp.ExpiresAt, refreshResp.ExpiresIn), "token_refreshed", nil
 		}
+		refreshErr = err
+	}
+	if strings.TrimSpace(account.Password) == "" {
+		if refreshErr != nil {
+			return "", "", "", 0, "auth_failed", fmt.Errorf("refresh_token 已失效，请重新导入登录态或补录密码: %w", refreshErr)
+		}
+		return "", "", "", 0, "auth_failed", errors.New("当前账号未保存密码，且没有可用登录态，请重新导入登录态或补录密码")
 	}
 	loginResp, _, err := client.passwordLogin(ctx, account.Email, account.Password)
 	if err != nil {
