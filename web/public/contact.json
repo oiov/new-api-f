@@ -1,5 +1,59 @@
 [
   {
+    "key": "qq-support-group",
+    "title": "QQ售后群",
+    "subtitle": "用于订单、发放、补单与售后问题处理，进群请提供订单号，群备注改为站内 ID",
+    "imageSrc": "/server.jpg",
+    "value": "fishxcode 售后群",
+    "actionHref": "https://qm.qq.com/q/92haL6QzAY",
+    "actionLabel": "加入售后群",
+    "tone": "售后支持",
+    "i18n": {
+      "en": {
+        "title": "QQ Support Group",
+        "subtitle": "For orders, fulfillment, replenishment, and after-sales support. Please provide your order number and set your group note to your site ID",
+        "actionLabel": "Join Support Group",
+        "tone": "After-sales Support"
+      },
+      "fr": {
+        "title": "Groupe QQ SAV",
+        "subtitle": "Pour les commandes, la livraison, les complements et le support apres-vente",
+        "actionLabel": "Rejoindre le groupe SAV",
+        "tone": "Support apres-vente"
+      },
+      "ja": {
+        "title": "QQアフターサービスグループ",
+        "subtitle": "注文、発放、補充注文、アフターサポート対応用です",
+        "actionLabel": "サポートグループに参加",
+        "tone": "アフターサポート"
+      },
+      "ru": {
+        "title": "Группа QQ поддержки",
+        "subtitle": "Для заказов, выдачи, дозаказа и послепродажной поддержки",
+        "actionLabel": "Вступить в группу поддержки",
+        "tone": "Поддержка"
+      },
+      "vi": {
+        "title": "Nhom ho tro QQ",
+        "subtitle": "Dung cho don hang, cap phat, bo sung va ho tro sau ban hang",
+        "actionLabel": "Tham gia nhom ho tro",
+        "tone": "Ho tro sau ban hang"
+      },
+      "zh-CN": {
+        "title": "QQ售后群",
+        "subtitle": "用于订单、发放、补单与售后问题处理，进群请提供订单号，群备注改为站内 ID",
+        "actionLabel": "加入售后群",
+        "tone": "售后支持"
+      },
+      "zh-TW": {
+        "title": "QQ售後群",
+        "subtitle": "用於訂單、發放、補單與售後問題處理，進群請提供訂單號，群備註改為站內 ID",
+        "actionLabel": "加入售後群",
+        "tone": "售後支援"
+      }
+    }
+  },
+  {
     "key": "qq-group",
     "title": "QQ群",
     "subtitle": "用于问题答疑解决，适合群内交流与经验分享",

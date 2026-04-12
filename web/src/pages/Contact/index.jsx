@@ -42,6 +42,17 @@ const WECHAT_ID = 'FishXCode';
 const WECHAT_QR_IMAGE = `/${'fishxcode'}_user.jpg`;
 const DEFAULT_CONTACT_CARDS = [
   {
+    key: 'qq-support-group',
+    title: 'QQ售后群',
+    subtitle: '用于订单、发放、补单与售后问题处理，进群请提供订单号，群备注改为站内 ID',
+    imageSrc: '/server.jpg',
+    imageAlt: 'QQ售后群二维码',
+    value: 'fishxcode 售后群',
+    actionHref: 'https://qm.qq.com/q/92haL6QzAY',
+    actionLabel: '加入售后群',
+    tone: '售后支持',
+  },
+  {
     key: 'qq-group',
     title: 'QQ群',
     subtitle: '用于问题答疑解决，适合群内交流与经验分享',
@@ -84,6 +95,10 @@ const DEFAULT_CONTACT_CARDS = [
 ];
 
 const CARD_DECORATIONS = {
+  'qq-support-group': {
+    icon: Headphones,
+    accentClassName: 'contact-card-accent-rose',
+  },
   'qq-group': {
     icon: Users,
     accentClassName: 'contact-card-accent-blue',

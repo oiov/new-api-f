@@ -17,12 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
-import { Tag, Typography, Divider } from '@douyinfe/semi-ui';
+import React, { useState } from 'react';
+import { Tag, Typography, Divider, ImagePreview } from '@douyinfe/semi-ui';
 import {
   IconAlertTriangle,
-  IconStop,
-  IconBookStroked,
   IconFile,
   IconRefresh,
   IconLink,
@@ -63,6 +61,7 @@ const Row = ({ label, value }) => (
 
 const DefaultNotice = () => {
   const { t } = useTranslation();
+  const [previewVisible, setPreviewVisible] = useState(false);
 
   return (
     <div style={{ fontSize: 13, lineHeight: 1.7 }}>
@@ -95,43 +94,6 @@ const DefaultNotice = () => {
           <Text strong size='small'>{t('按量用户')}</Text>
           {t(' → 选择按量分组')}
         </Item>
-        <Item>
-          <Text type='danger' size='small' strong>{t('各分组校验签名机制不同，分组之间不能混用。')}</Text>
-          {t('使用错误分组的令牌调用将直接返回鉴权错误，无法降级兼容。')}
-        </Item>
-        <Item style={{ marginTop: 4 }}>
-          {t('claude 模型仅限 Claude Code 内调用，禁止在外部工具中测试，否则触发风控。')}
-        </Item>
-      </Section>
-
-      <Divider style={{ margin: '12px 0' }} />
-
-      {/* 防封 */}
-      <Section
-        icon={<IconStop size='small' />}
-        title={t('防封规则')}
-        color='var(--semi-color-danger)'
-        badge={t('即日生效')}
-      >
-        <Item label={t('禁止')}>
-          {t('使用篡改请求的代理软件（如 CCSwitch 代理功能）。')}
-        </Item>
-        <Item>
-          {t('请保持全局透传，任何修改请求头或请求体的代理工具均会触发风控并拒绝请求。')}
-        </Item>
-      </Section>
-
-      <Divider style={{ margin: '12px 0' }} />
-
-      {/* 必读 */}
-      <Section
-        icon={<IconBookStroked size='small' />}
-        title={t('必读')}
-        color='var(--semi-color-primary)'
-      >
-        <Item label={t('务必指定项目绝对路径')}>
-          {t('系统会将账号绑定到首次请求的对话路径。每次对话请主动告知 AI 项目绝对路径，如 /Users/xxx/my-project。未指定将使用首次请求的工作空间，可能导致文件读写定位错误。')}
-        </Item>
       </Section>
 
       <Divider style={{ margin: '12px 0' }} />
@@ -159,6 +121,65 @@ const DefaultNotice = () => {
 
       <Divider style={{ margin: '12px 0' }} />
 
+      <Section icon={<IconLink size='small' />} title={t('售后群')}>
+        <Item>
+          {t('订单、发放、补单和售后问题建议优先进入 QQ 售后群处理。进群后请主动提供订单号，群备注改为站内 ID。')}
+        </Item>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 16,
+            alignItems: 'center',
+            marginTop: 8,
+          }}
+        >
+          <button
+            type='button'
+            onClick={() => setPreviewVisible(true)}
+            style={{
+              padding: 0,
+              border: '1px solid var(--semi-color-border)',
+              borderRadius: 12,
+              overflow: 'hidden',
+              background: 'var(--semi-color-bg-0)',
+              cursor: 'pointer',
+              width: 104,
+              height: 104,
+            }}
+          >
+            <img
+              src='/server.jpg'
+              alt={t('QQ售后群二维码')}
+              style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          </button>
+          <div style={{ minWidth: 220 }}>
+            <Text strong size='small' style={{ display: 'block', marginBottom: 4 }}>
+              {t('fishxcode 售后群')}
+            </Text>
+            <Text size='small' type='secondary' style={{ display: 'block', marginBottom: 6 }}>
+              {t('进群请提供订单号，群备注改为站内 ID。')}
+            </Text>
+            <a
+              href='https://qm.qq.com/q/92haL6QzAY'
+              target='_blank'
+              rel='noreferrer'
+              style={{
+                display: 'inline-block',
+                color: 'var(--semi-color-primary)',
+                textDecoration: 'none',
+                marginBottom: 6,
+              }}
+            >
+              {t('点击链接加入群聊【fishxcode 售后群】')} →
+            </a>
+          </div>
+        </div>
+      </Section>
+
+      <Divider style={{ margin: '12px 0' }} />
+
       {/* 快速链接 */}
       <Section icon={<IconLink size='small' />} title={t('快速入口')}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
@@ -182,6 +203,12 @@ const DefaultNotice = () => {
           ))}
         </div>
       </Section>
+
+      <ImagePreview
+        src='/server.jpg'
+        visible={previewVisible}
+        onVisibleChange={setPreviewVisible}
+      />
     </div>
   );
 };

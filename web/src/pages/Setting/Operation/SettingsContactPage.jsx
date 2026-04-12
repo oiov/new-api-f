@@ -25,6 +25,24 @@ import { useTranslation } from 'react-i18next';
 const DEFAULT_CONTACT_CHANNELS_EXAMPLE = JSON.stringify(
   [
     {
+      key: 'qq-support-group',
+      title: 'QQ售后群',
+      subtitle: '用于订单、发放、补单与售后问题处理，建议优先加入',
+      imageSrc: '/server.jpg',
+      value: 'fishxcode 售后群',
+      actionHref: 'https://qm.qq.com/q/92haL6QzAY',
+      actionLabel: '加入售后群',
+      tone: '售后支持',
+      i18n: {
+        en: {
+          title: 'QQ Support Group',
+          subtitle: 'For orders, fulfillment, replenishment, and after-sales support',
+          actionLabel: 'Join Support Group',
+          tone: 'After-sales Support',
+        },
+      },
+    },
+    {
       key: 'qq-group',
       title: 'QQ群',
       subtitle: '用于问题答疑解决，适合群内交流与经验分享',
