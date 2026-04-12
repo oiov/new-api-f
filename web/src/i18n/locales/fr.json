@@ -5024,6 +5024,10 @@
         "请先关联人工发放订单": "Liez d'abord une commande de remise manuelle",
         "由 EcomAgent 账户发放": "Livré par le compte EcomAgent",
         "发放成功并已回写关联信息": "Livraison réussie et informations de liaison réécrites",
+        "副标题": "Sous-titre",
+        "待发放套餐": "Forfait à livrer",
+        "当前账号权益": "Avantages du compte actuel",
+        "发放前请核对": "Vérifiez avant la livraison",
         "分配/发放": "Affecter/Livrer"
     }
 }

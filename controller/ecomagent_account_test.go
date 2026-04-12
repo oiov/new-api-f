@@ -226,3 +226,50 @@ func TestUpdateEcomAgentAccountClearsAssignmentFields(t *testing.T) {
 		t.Fatalf("expected remark to be cleared, got %q", reloaded.Remark)
 	}
 }
+
+func TestGetEcomAgentAccountReturnsEditableAuthFields(t *testing.T) {
+	setupEcomAgentAccountControllerTestDB(t)
+
+	account := &model.EcomAgentAccount{
+		Email:                "editable@example.com",
+		Password:             "password123",
+		BaseURL:              "https://ecomagent.in",
+		SupabaseAuthURL:      "https://example.supabase.co/auth/v1",
+		SupabaseAnonKey:      "anon-key",
+		AccountID:            "acc-123",
+		AccessToken:          "access-token-123456",
+		RefreshToken:         "refresh-token-654321",
+		AccessTokenExpiresAt: 1775959211,
+	}
+	if err := account.Insert(); err != nil {
+		t.Fatalf("failed to create seed account: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, fmt.Sprintf("/api/ecomagent/accounts/%d/edit", account.Id), nil, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", account.Id)}}
+
+	GetEcomAgentAccount(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	dataMap := map[string]any{}
+	if err := common.Unmarshal(response.Data, &dataMap); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if got := dataMap["access_token"]; got != "access-token-123456" {
+		t.Fatalf("expected access token to be returned, got %#v", got)
+	}
+	if got := dataMap["refresh_token"]; got != "refresh-token-654321" {
+		t.Fatalf("expected refresh token to be returned, got %#v", got)
+	}
+	sessionJSON, _ := dataMap["session_json"].(string)
+	if !strings.Contains(sessionJSON, "\"access_token\":\"access-token-123456\"") {
+		t.Fatalf("expected session_json to include access token, got %q", sessionJSON)
+	}
+	if !strings.Contains(sessionJSON, "\"id\":\"acc-123\"") {
+		t.Fatalf("expected session_json to include account id, got %q", sessionJSON)
+	}
+}

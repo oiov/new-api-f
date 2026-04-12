@@ -34,11 +34,22 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
-import { API, showError, showSuccess, timestamp2string } from '../../helpers';
+import {
+  API,
+  renderQuota,
+  showError,
+  showSuccess,
+  timestamp2string,
+} from '../../helpers';
 import CardPro from '../../components/common/ui/CardPro';
 import CardTable from '../../components/common/ui/CardTable';
 import { createCardProPagination } from '../../helpers/utils';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
+import {
+  formatSubscriptionResetPeriod,
+  formatSubscriptionResourceLabel,
+  getSubscriptionUsageSummary,
+} from '../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
 
@@ -165,11 +176,77 @@ function buildManualOrderOptionLabel(item, t) {
   const order = item?.order || {};
   const username = item?.username || '-';
   const planTitle = order?.plan_title || item?.plan?.title || '-';
-  return `#${order?.id || '-'} · ${username} · ${planTitle}`;
+  const userId = Number(order?.user_id || 0);
+  const userLabel = userId > 0 ? `UID ${userId}` : 'UID -';
+  return `#${order?.id || '-'} · ${userLabel} · ${username} · ${planTitle}`;
 }
 
 function buildAssignmentFormFromRecord(record) {
   return {
+    assignment_status:
+      normalizeAssignmentStatus(record?.assignment_status) || 'unassigned',
+    assigned_plan: record?.assigned_plan || '',
+    assigned_subscription_order_id:
+      record?.assigned_subscription_order_id > 0
+        ? String(record.assigned_subscription_order_id)
+        : '',
+    assigned_channel_id:
+      record?.assigned_channel_id > 0 ? String(record.assigned_channel_id) : '',
+    assigned_channel_key_index:
+      Number(record?.assigned_channel_key_index) >= 0
+        ? String(record.assigned_channel_key_index)
+        : '',
+    assigned_user_subscription_id:
+      record?.assigned_user_subscription_id > 0
+        ? String(record.assigned_user_subscription_id)
+        : '',
+    assigned_at: record?.assigned_at ? String(record.assigned_at) : '',
+    tags: record?.tags || '',
+    remark: record?.remark || '',
+  };
+}
+
+function buildEditableSessionJSON(record) {
+  const sessionText = String(record?.session_json || '').trim();
+  if (sessionText) return sessionText;
+  const accessToken = String(record?.access_token || '').trim();
+  const refreshToken = String(record?.refresh_token || '').trim();
+  const accountId = String(record?.account_id || '').trim();
+  const email = String(record?.email || '').trim();
+  const expiresAt = Number(record?.access_token_expires_at || 0);
+  if (!accessToken && !refreshToken && !accountId && !email && expiresAt <= 0) {
+    return '';
+  }
+  return JSON.stringify(
+    {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: expiresAt || 0,
+      user: {
+        id: accountId,
+        email,
+      },
+    },
+    null,
+    2,
+  );
+}
+
+function buildFormFromAccountRecord(record) {
+  return {
+    email: record?.email || '',
+    password: '',
+    account_id: record?.account_id || '',
+    access_token: record?.access_token || '',
+    refresh_token: record?.refresh_token || '',
+    access_token_expires_at: record?.access_token_expires_at || '',
+    session_json: buildEditableSessionJSON(record),
+    base_url: record?.base_url || defaultFormState.base_url,
+    supabase_auth_url:
+      record?.supabase_auth_url || defaultFormState.supabase_auth_url,
+    supabase_anon_key:
+      record?.supabase_anon_key || defaultFormState.supabase_anon_key,
+    confirm_url: record?.confirm_url || '',
     assignment_status:
       normalizeAssignmentStatus(record?.assignment_status) || 'unassigned',
     assigned_plan: record?.assigned_plan || '',
@@ -201,6 +278,9 @@ function inferLoginModeFromRecord(record) {
       record.has_refresh_token)
   ) {
     return 'token';
+  }
+  if (String(record?.session_json || '').trim()) {
+    return 'session';
   }
   return 'password';
 }
@@ -294,6 +374,15 @@ function getRequestLimit(record) {
   return Number(subscription?.requestLimit || 0);
 }
 
+function getRequestLimitLabel(record) {
+  const directValue = Number(record.request_limit || 0);
+  if (directValue > 0) return String(directValue);
+  const subscription = getSubscriptionData(record);
+  const subscriptionValue = String(subscription?.requestLimit || '').trim();
+  if (subscriptionValue) return subscriptionValue;
+  return '0';
+}
+
 function getTokenLimitLabel(record, t) {
   const subscription = getSubscriptionData(record);
   const tokenLimit = subscription?.tokenLimit;
@@ -330,6 +419,31 @@ function usageSummary(record, t) {
     `${t('已用请求')}: ${usedRequests}`,
     `${t('已用Tokens')}: ${usedTokens}`,
   ].join(' / ');
+}
+
+function formatManualDeliveryBenefit(plan, t) {
+  if (!plan) return '-';
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const resourceLabel = formatSubscriptionResourceLabel(plan, t);
+  const resetPeriod = formatSubscriptionResetPeriod(plan, t);
+
+  if (usageSummary.unlimited) {
+    return `${resourceLabel}: ${t('不限')}`;
+  }
+
+  if (usageSummary.resourceType === 'request_count') {
+    const totalText = `${Number(usageSummary.total || 0)} ${t('次')}`;
+    if (resetPeriod === t('不重置')) {
+      return `${resourceLabel}: ${totalText}`;
+    }
+    return `${resourceLabel}: ${totalText} / ${t('重置')} ${resetPeriod}`;
+  }
+
+  const totalText = renderQuota(Number(usageSummary.total || 0));
+  if (resetPeriod === t('不重置')) {
+    return `${resourceLabel}: ${totalText}`;
+  }
+  return `${resourceLabel}: ${totalText} / ${t('重置')} ${resetPeriod}`;
 }
 
 function getRequestRemain(record) {
@@ -574,6 +688,21 @@ const EcomAgentPage = () => {
     [assignmentForm.assigned_channel_id, channels],
   );
 
+  const selectedManualOrder = useMemo(() => {
+    const selectedOrderId = String(
+      assignmentForm.assigned_subscription_order_id || '',
+    ).trim();
+    if (!selectedOrderId) return null;
+    return (
+      manualOrders.find(
+        (item) => String(item?.order?.id || '') === selectedOrderId,
+      ) || null
+    );
+  }, [assignmentForm.assigned_subscription_order_id, manualOrders]);
+
+  const selectedManualPlan =
+    selectedManualOrder?.plan || selectedManualOrder?.order || null;
+
   const assignedChannelKeyOptions = useMemo(() => {
     if (!selectedAssignedChannel) return [];
     const isMultiKey = Boolean(selectedAssignedChannel.channel_info?.is_multi_key);
@@ -581,11 +710,16 @@ const EcomAgentPage = () => {
       selectedAssignedChannel.channel_info?.multi_key_size || 0,
     );
     const total = isMultiKey ? Math.max(multiKeySize, 0) : 1;
+    const currentUserId = Number(selectedManualOrder?.order?.user_id || 0);
+    const currentUsername = String(selectedManualOrder?.username || '').trim();
+    const userSuffix = currentUserId > 0
+      ? ` · UID ${currentUserId}${currentUsername ? ` · ${currentUsername}` : ''}`
+      : '';
     return Array.from({ length: total }, (_, index) => ({
-      label: `Key #${index}`,
+      label: `Key #${index}${userSuffix}`,
       value: String(index),
     }));
-  }, [selectedAssignedChannel]);
+  }, [selectedAssignedChannel, selectedManualOrder]);
 
   useEffect(() => {
     if (!selectedAssignedChannel) {
@@ -755,45 +889,22 @@ const EcomAgentPage = () => {
     setVisible(true);
   };
 
-  const openEdit = (record) => {
-    setEditing(record);
+  const openEdit = async (record) => {
+    let editableRecord = record;
+    try {
+      const res = await API.post(`/api/ecomagent/accounts/${record.id}/edit`, {}, {
+        skipErrorHandler: true,
+      });
+      if (res.data?.success && res.data?.data) {
+        editableRecord = { ...record, ...res.data.data };
+      }
+    } catch (error) {
+      showError(error?.response?.data?.message || error?.message || t('加载失败'));
+    }
+    setEditing(editableRecord);
     setFormTab('login');
-    setForm({
-      email: record.email || '',
-      password: '',
-      account_id: record.account_id || '',
-      access_token: '',
-      refresh_token: '',
-      access_token_expires_at: record.access_token_expires_at || '',
-      session_json: '',
-      base_url: record.base_url || defaultFormState.base_url,
-      supabase_auth_url:
-        record.supabase_auth_url || defaultFormState.supabase_auth_url,
-      supabase_anon_key:
-        record.supabase_anon_key || defaultFormState.supabase_anon_key,
-      confirm_url: record.confirm_url || '',
-      assignment_status:
-        normalizeAssignmentStatus(record.assignment_status) || 'unassigned',
-      assigned_plan: record.assigned_plan || '',
-      assigned_subscription_order_id:
-        record.assigned_subscription_order_id > 0
-          ? String(record.assigned_subscription_order_id)
-          : '',
-      assigned_channel_id:
-        record.assigned_channel_id > 0 ? String(record.assigned_channel_id) : '',
-      assigned_channel_key_index:
-        Number(record.assigned_channel_key_index) >= 0
-          ? String(record.assigned_channel_key_index)
-          : '',
-      assigned_user_subscription_id:
-        record.assigned_user_subscription_id > 0
-          ? String(record.assigned_user_subscription_id)
-          : '',
-      assigned_at: record.assigned_at ? String(record.assigned_at) : '',
-      tags: record.tags || '',
-      remark: record.remark || '',
-    });
-    setLoginMode(inferLoginModeFromRecord(record));
+    setForm(buildFormFromAccountRecord(editableRecord));
+    setLoginMode(inferLoginModeFromRecord(editableRecord));
     setVisible(true);
   };
 
@@ -1558,6 +1669,11 @@ const EcomAgentPage = () => {
                       <Text size='small' type='tertiary'>
                         {t('用于自动注册、密码登录和后续 refresh_token 续期。')}
                       </Text>
+                      {editing?.has_password ? (
+                        <Text size='small' type='tertiary'>
+                          {t('密码，留空表示不修改')}
+                        </Text>
+                      ) : null}
                       <Input
                         value={form.email}
                         onChange={(value) => setForm((prev) => ({ ...prev, email: value }))}
@@ -1888,6 +2004,24 @@ const EcomAgentPage = () => {
                   accountId: {assignmentRecord.account_id || getSubscriptionData(assignmentRecord)?.accountId || '-'}
                 </Text>
               </div>
+              <div className='mt-3 grid grid-cols-2 gap-3 md:grid-cols-4'>
+                <div>
+                  <Text size='small' type='tertiary'>{t('套餐类型')}</Text>
+                  <div className='mt-1'>{getPlanType(assignmentRecord, t)}</div>
+                </div>
+                <div>
+                  <Text size='small' type='tertiary'>{t('请求额度')}</Text>
+                  <div className='mt-1'>{getRequestLimitLabel(assignmentRecord)}</div>
+                </div>
+                <div>
+                  <Text size='small' type='tertiary'>{t('已用请求')}</Text>
+                  <div className='mt-1'>{getUsedRequests(assignmentRecord)}</div>
+                </div>
+                <div>
+                  <Text size='small' type='tertiary'>{t('剩余请求')}</Text>
+                  <div className='mt-1'>{getRequestRemain(assignmentRecord)}</div>
+                </div>
+              </div>
             </div>
 
             <div className='rounded-lg border border-[var(--semi-color-border)] p-3'>
@@ -1940,6 +2074,90 @@ const EcomAgentPage = () => {
                   showClear
                   emptyContent={t('暂无人工发放订单')}
                 />
+                {selectedManualOrder ? (
+                  <div className='rounded-lg border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3'>
+                    <Text strong>{t('待发放套餐')}</Text>
+                    <div className='mt-2 flex flex-col gap-2'>
+                      <div>
+                        <Text>{selectedManualOrder?.order?.plan_title || selectedManualPlan?.title || '-'}</Text>
+                        {selectedManualPlan?.subtitle ? (
+                          <div className='mt-1'>
+                            <Text size='small' type='tertiary'>
+                              {t('副标题')}: {selectedManualPlan.subtitle}
+                            </Text>
+                          </div>
+                        ) : null}
+                      </div>
+                      <Descriptions
+                        data={[
+                          {
+                            key: 'order_id',
+                            label: t('关联订单'),
+                            value: `#${selectedManualOrder?.order?.id || '-'} · UID ${
+                              selectedManualOrder?.order?.user_id || '-'
+                            }`,
+                          },
+                          {
+                            key: 'benefit',
+                            label: t('权益'),
+                            value: formatManualDeliveryBenefit(selectedManualPlan, t),
+                          },
+                        ]}
+                        column={1}
+                        size='small'
+                        rowSize='small'
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className='rounded-lg border border-dashed border-[var(--semi-color-border)] p-3'>
+                    <Text size='small' type='tertiary'>
+                      {t('发放前请核对')}: {t('待发放套餐')} / {t('当前账号权益')}
+                    </Text>
+                  </div>
+                )}
+                <div className='rounded-lg border border-[var(--semi-color-border)] p-3'>
+                  <Text strong>{t('当前账号权益')}</Text>
+                  <div className='mt-2'>
+                    <Descriptions
+                      data={[
+                        {
+                          key: 'plan',
+                          label: t('套餐'),
+                          value: getPlanLabel(assignmentRecord.plan),
+                        },
+                        {
+                          key: 'plan_type',
+                          label: t('套餐类型'),
+                          value: getPlanType(assignmentRecord, t),
+                        },
+                        {
+                          key: 'total_requests',
+                          label: t('请求额度'),
+                          value: getRequestLimitLabel(assignmentRecord),
+                        },
+                        {
+                          key: 'used_requests',
+                          label: t('已用请求'),
+                          value: getUsedRequests(assignmentRecord),
+                        },
+                        {
+                          key: 'remain_requests',
+                          label: t('剩余请求'),
+                          value: getRequestRemain(assignmentRecord),
+                        },
+                        {
+                          key: 'token_limit',
+                          label: t('Token额度'),
+                          value: getTokenLimitLabel(assignmentRecord, t),
+                        },
+                      ]}
+                      column={isMobile ? 1 : 2}
+                      size='small'
+                      rowSize='small'
+                    />
+                  </div>
+                </div>
                 <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
                   <Select
                     value={assignmentForm.assigned_channel_id}

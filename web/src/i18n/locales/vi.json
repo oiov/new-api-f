@@ -5536,6 +5536,10 @@
         "请先关联人工发放订单": "Hãy liên kết đơn phát thủ công trước",
         "由 EcomAgent 账户发放": "Phát bởi tài khoản EcomAgent",
         "发放成功并已回写关联信息": "Phát thành công và đã ghi lại thông tin liên kết",
+        "副标题": "Phụ đề",
+        "待发放套餐": "Gói sẽ phát",
+        "当前账号权益": "Quyền lợi tài khoản hiện tại",
+        "发放前请核对": "Hãy kiểm tra trước khi phát",
         "分配/发放": "Phân bổ/Phát"
     }
 }

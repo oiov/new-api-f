@@ -304,6 +304,7 @@ func SetApiRouter(router *gin.Engine) {
 			ecomAgentRoute.GET("/accounts", controller.GetEcomAgentAccounts)
 			ecomAgentRoute.GET("/manual_orders", controller.GetEcomAgentManualDeliveryOrders)
 			ecomAgentRoute.POST("/accounts", controller.CreateEcomAgentAccount)
+			ecomAgentRoute.POST("/accounts/:id/edit", controller.GetEcomAgentAccount)
 			ecomAgentRoute.PUT("/accounts/:id", controller.UpdateEcomAgentAccount)
 			ecomAgentRoute.POST("/accounts/:id/sync", controller.SyncEcomAgentAccount)
 			ecomAgentRoute.POST("/accounts/:id/deliver_manual_order", controller.DeliverEcomAgentManualDeliveryOrder)

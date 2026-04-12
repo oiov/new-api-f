@@ -117,6 +117,20 @@ func GetEcomAgentAccounts(c *gin.Context) {
 	common.ApiSuccess(c, buildEcomAgentAccountResponses(accounts))
 }
 
+func GetEcomAgentAccount(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	account, err := model.GetEcomAgentAccountByID(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, buildEcomAgentAccountEditResponse(account))
+}
+
 func CreateEcomAgentAccount(c *gin.Context) {
 	req := EcomAgentAccountRequest{}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -489,6 +503,13 @@ type EcomAgentAccountResponse struct {
 	MaskedAPIKey                string `json:"masked_api_key"`
 }
 
+type EcomAgentAccountEditResponse struct {
+	*EcomAgentAccountResponse
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	SessionJSON  string `json:"session_json"`
+}
+
 func buildEcomAgentAccountResponses(accounts []*model.EcomAgentAccount) []*EcomAgentAccountResponse {
 	responses := make([]*EcomAgentAccountResponse, 0, len(accounts))
 	for _, account := range accounts {
@@ -548,6 +569,44 @@ func buildEcomAgentAccountResponse(account *model.EcomAgentAccount) *EcomAgentAc
 		MaskedRefreshToken:          maskSensitiveValue(account.RefreshToken),
 		MaskedAccessToken:           maskSensitiveValue(account.AccessToken),
 		MaskedAPIKey:                maskSensitiveValue(account.APIKey),
+	}
+}
+
+func buildEcomAgentImportedSessionJSON(account *model.EcomAgentAccount) string {
+	if account == nil {
+		return ""
+	}
+	session := ecomAgentImportedSession{
+		AccessToken:  strings.TrimSpace(account.AccessToken),
+		RefreshToken: strings.TrimSpace(account.RefreshToken),
+		ExpiresAt:    account.AccessTokenExpiresAt,
+	}
+	session.User.ID = strings.TrimSpace(account.AccountID)
+	session.User.Email = strings.TrimSpace(account.GetDisplayEmail())
+	if session.AccessToken == "" &&
+		session.RefreshToken == "" &&
+		session.ExpiresAt <= 0 &&
+		session.User.ID == "" &&
+		session.User.Email == "" {
+		return ""
+	}
+	data, err := common.Marshal(session)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func buildEcomAgentAccountEditResponse(account *model.EcomAgentAccount) *EcomAgentAccountEditResponse {
+	base := buildEcomAgentAccountResponse(account)
+	if base == nil || account == nil {
+		return nil
+	}
+	return &EcomAgentAccountEditResponse{
+		EcomAgentAccountResponse: base,
+		AccessToken:              strings.TrimSpace(account.AccessToken),
+		RefreshToken:             strings.TrimSpace(account.RefreshToken),
+		SessionJSON:              buildEcomAgentImportedSessionJSON(account),
 	}
 }
 
