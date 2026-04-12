@@ -55,7 +55,7 @@ const APP_CONFIGS = {
 const DEFAULT_MODELS = {
   claude: {
     model: 'claude-opus-4-6',
-    haikuModel: 'claude-haiku-4-5',
+    haikuModel: 'claude-haiku-4-5-20251001',
     sonnetModel: 'claude-sonnet-4-6',
     opusModel: 'claude-opus-4-6',
   },
@@ -68,7 +68,7 @@ const RECOMMENDED_MODELS = {
   claude: [
     'claude-opus-4-6',
     'claude-sonnet-4-6',
-    'claude-haiku-4-5',
+    'claude-haiku-4-5-20251001',
   ],
   codex: ['gpt-5.4', 'gpt-5', 'gpt-5-mini', 'gpt-5.2'],
 };

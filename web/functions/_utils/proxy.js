@@ -34,6 +34,8 @@ const HOP_BY_HOP_HEADERS = [
 
 const PUBLIC_CACHE_RULES = [
   { pattern: /^\/api\/status\/?$/, ttl: 30 },
+  { pattern: /^\/api\/pricing\/?$/, ttl: 30 },
+  { pattern: /^\/api\/subscription\/plans\/?$/, ttl: 30 },
   { pattern: /^\/api\/notice\/?$/, ttl: 60 },
   { pattern: /^\/api\/about\/?$/, ttl: 300 },
   { pattern: /^\/api\/user-agreement\/?$/, ttl: 300 },

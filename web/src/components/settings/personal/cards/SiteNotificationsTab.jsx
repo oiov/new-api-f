@@ -27,6 +27,30 @@ const LEVEL_COLOR_MAP = {
   danger: 'red',
 };
 
+function decodeHtmlEntities(content) {
+  if (!content || typeof window === 'undefined') {
+    return content || '';
+  }
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = content;
+  return textarea.value;
+}
+
+function normalizeNotificationContent(content) {
+  if (!content) return '-';
+
+  const normalizedHtml = String(content)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<(p|div|ul|ol|li|h[1-6])[^>]*>/gi, '')
+    .replace(/<\/?(strong|b|em|i|u|span)[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '');
+
+  return decodeHtmlEntities(normalizedHtml)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export default function SiteNotificationsTab({ t }) {
   const [userState, userDispatch] = useContext(UserContext);
   const [loading, setLoading] = useState(false);
@@ -180,6 +204,7 @@ export default function SiteNotificationsTab({ t }) {
         dataSource={items}
         renderItem={(item) => {
           const isRead = item?.is_read === true;
+          const content = normalizeNotificationContent(item?.content);
           return (
             <List.Item
               key={item?.id}
@@ -221,7 +246,7 @@ export default function SiteNotificationsTab({ t }) {
                     </div>
                   </div>
                   <div className='whitespace-pre-wrap break-words text-sm leading-6 text-[var(--semi-color-text-1)]'>
-                    {item?.content || '-'}
+                    {content || '-'}
                   </div>
                 </div>
               }
@@ -245,4 +270,3 @@ export default function SiteNotificationsTab({ t }) {
     </div>
   );
 }
-

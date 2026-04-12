@@ -154,6 +154,32 @@ function formatDateTime(timestamp) {
   return new Date(timestamp * 1000).toLocaleString();
 }
 
+function getRangeTimestampsByKey(rangeKey) {
+  const nowDate = new Date();
+  const endTimestamp = Math.floor(nowDate.getTime() / 1000);
+
+  if (rangeKey === 'today') {
+    const todayStart = new Date(nowDate);
+    todayStart.setHours(0, 0, 0, 0);
+    return {
+      startTimestamp: Math.floor(todayStart.getTime() / 1000),
+      endTimestamp,
+    };
+  }
+
+  if (rangeKey === '30d') {
+    return {
+      startTimestamp: endTimestamp - 30 * 24 * 3600,
+      endTimestamp,
+    };
+  }
+
+  return {
+    startTimestamp: endTimestamp - 7 * 24 * 3600,
+    endTimestamp,
+  };
+}
+
 function formatNextResetDisplay(subscription, t) {
   const nextResetTime = Number(subscription?.next_reset_time || 0);
   if (nextResetTime > 0) {
@@ -420,6 +446,9 @@ const SubscriptionPlansCard = ({
   const [conversionLoading, setConversionLoading] = useState(false);
   const [submittingConversionRequest, setSubmittingConversionRequest] =
     useState(false);
+  const [globalRangeKey, setGlobalRangeKey] = useState('7d');
+  const [opsConsumeSummary, setOpsConsumeSummary] = useState(null);
+  const [opsSummaryLoading, setOpsSummaryLoading] = useState(false);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
   const [planViewMode, setPlanViewMode] = useState(initialPlanViewMode);
@@ -541,6 +570,75 @@ const SubscriptionPlansCard = ({
       setConversionLoading(false);
     }
   };
+
+  const loadOpsConsumeSummary = useCallback(async () => {
+    if (!showUserSubscriptions) {
+      setOpsConsumeSummary(null);
+      return;
+    }
+
+    const range = getRangeTimestampsByKey(globalRangeKey);
+    const searchParams = new URLSearchParams({
+      p: '1',
+      page_size: '1',
+      subscription_id: '',
+      plan_id: '',
+      user_id: '',
+      start_timestamp: String(range.startTimestamp),
+      end_timestamp: String(range.endTimestamp),
+    });
+
+    setOpsSummaryLoading(true);
+    try {
+      const res = await API.get(
+        `/api/subscription/self/consume_logs?${searchParams.toString()}`,
+      );
+      if (res.data?.success) {
+        setOpsConsumeSummary(res.data?.data?.summary || null);
+      } else {
+        setOpsConsumeSummary(null);
+      }
+    } catch {
+      setOpsConsumeSummary(null);
+    } finally {
+      setOpsSummaryLoading(false);
+    }
+  }, [globalRangeKey, showUserSubscriptions]);
+
+  const openConsumeLogs = useCallback(
+    ({ subscriptionId, planId, rangeKey } = {}) => {
+      const range = getRangeTimestampsByKey(rangeKey || globalRangeKey);
+      setConsumeLogsFilter({
+        subscriptionId: subscriptionId || undefined,
+        planId: planId || undefined,
+        startTimestamp: range.startTimestamp,
+        endTimestamp: range.endTimestamp,
+      });
+    },
+    [globalRangeKey],
+  );
+
+  const handleSelectGlobalRange = useCallback((nextRangeKey) => {
+    setGlobalRangeKey(nextRangeKey);
+  }, []);
+
+  const handleOpenAllConsumeLogs = useCallback(() => {
+    openConsumeLogs({});
+  }, [openConsumeLogs]);
+
+  const handleOpenPlanConsumeLogs = useCallback(
+    (planId) => {
+      openConsumeLogs({ planId });
+    },
+    [openConsumeLogs],
+  );
+
+  const handleOpenSubscriptionConsumeLogs = useCallback(
+    (subscriptionId, planId) => {
+      openConsumeLogs({ subscriptionId, planId });
+    },
+    [openConsumeLogs],
+  );
 
   const handleSubmitConversionRequest = async () => {
     if (
@@ -722,6 +820,10 @@ const SubscriptionPlansCard = ({
   useEffect(() => {
     loadConversionPreview();
   }, [showUserSubscriptions]);
+
+  useEffect(() => {
+    loadOpsConsumeSummary();
+  }, [loadOpsConsumeSummary]);
 
   useEffect(() => {
     if (!renderPlanListPanel) {
@@ -1151,6 +1253,75 @@ const SubscriptionPlansCard = ({
     const fallback = planItems.filter((item) => !existingIds.has(item?.plan?.id));
     return [...picked, ...fallback].slice(0, 6);
   }, [getPlanPurchaseAvailability, sortedPlans, t]);
+
+  const globalRangeOptions = useMemo(
+    () => [
+      { key: 'today', label: t('今日') },
+      { key: '7d', label: t('近7天') },
+      { key: '30d', label: t('近30天') },
+    ],
+    [t],
+  );
+
+  const globalRangeDays = useMemo(() => {
+    if (globalRangeKey === 'today') return 1;
+    if (globalRangeKey === '30d') return 30;
+    return 7;
+  }, [globalRangeKey]);
+
+  const selectedOpsSummary = useMemo(() => {
+    const summary = opsConsumeSummary || {};
+    if (globalRangeKey === 'today') {
+      return {
+        successCount: Number(summary.today_success_count || 0),
+        requestConsumed: Number(summary.today_request_consumed || 0),
+        quotaConsumed: Number(summary.today_quota_consumed || 0),
+        label: t('今日订阅消耗'),
+      };
+    }
+    if (globalRangeKey === '30d') {
+      return {
+        successCount: Number(summary.total_success_count || 0),
+        requestConsumed: Number(summary.total_request_consumed || 0),
+        quotaConsumed: Number(summary.total_quota_consumed || 0),
+        label: t('累计订阅消耗'),
+      };
+    }
+    return {
+      successCount: Number(summary.seven_day_success_count || 0),
+      requestConsumed: Number(summary.seven_day_request_consumed || 0),
+      quotaConsumed: Number(summary.seven_day_quota_consumed || 0),
+      label: t('近7天订阅消耗'),
+    };
+  }, [globalRangeKey, opsConsumeSummary, t]);
+
+  const expiringSubscriptionCount = useMemo(() => {
+    const now = Date.now() / 1000;
+    const threshold = now + globalRangeDays * 24 * 3600;
+    return activeSubscriptionItems.filter((item) => {
+      const endTime = Number(item?.subscription?.end_time || 0);
+      return endTime > 0 && endTime <= threshold;
+    }).length;
+  }, [activeSubscriptionItems, globalRangeDays]);
+
+  const topPurchasedPlanInfo = useMemo(() => {
+    let maxCount = 0;
+    let targetPlanId = 0;
+    planPurchaseCountMap.forEach((count, planId) => {
+      if (count > maxCount) {
+        maxCount = count;
+        targetPlanId = Number(planId || 0);
+      }
+    });
+    if (targetPlanId <= 0 || maxCount <= 0) {
+      return null;
+    }
+    return {
+      planId: targetPlanId,
+      count: maxCount,
+      title: planTitleMap.get(targetPlanId) || `#${targetPlanId}`,
+    };
+  }, [planPurchaseCountMap, planTitleMap]);
 
   const overviewItems = [
     {

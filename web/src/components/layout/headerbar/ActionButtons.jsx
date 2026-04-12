@@ -21,7 +21,6 @@ import React from 'react';
 import NewYearButton from './NewYearButton';
 import NotificationButton from './NotificationButton';
 import SiteNotificationButton from './SiteNotificationButton';
-import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
 import UserArea from './UserArea';
 
@@ -29,11 +28,8 @@ const ActionButtons = ({
   isNewYear,
   unreadCount,
   onNoticeOpen,
-  theme,
-  onThemeToggle,
   currentLang,
   onLanguageChange,
-  languageVersion,
   userState,
   isLoading,
   isMobile,
@@ -62,13 +58,6 @@ const ActionButtons = ({
         unreadCount={unreadCount}
         onNoticeOpen={onNoticeOpen}
         t={t}
-      />
-
-      <ThemeToggle
-        theme={theme}
-        onThemeToggle={onThemeToggle}
-        t={t}
-        languageVersion={languageVersion}
       />
 
       <LanguageSelector
