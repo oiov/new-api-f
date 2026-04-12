@@ -68,7 +68,7 @@ const OAuth2Callback = (props) => {
         showSuccess(
           authIntent === 'register' ? t('注册成功！') : t('登录成功！'),
         );
-        navigate('/console/package');
+        navigate('/console');
       }
     } catch (error) {
       // 网络错误等可重试

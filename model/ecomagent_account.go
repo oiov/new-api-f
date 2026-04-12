@@ -2,11 +2,14 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
+
+const ecomAgentPlaceholderEmailDomain = "placeholder.ecomagent.local"
 
 type EcomAgentAccount struct {
 	Id                        int    `json:"id"`
@@ -49,6 +52,9 @@ type EcomAgentAccount struct {
 func (a *EcomAgentAccount) PrepareDefaults() {
 	a.Email = strings.TrimSpace(strings.ToLower(a.Email))
 	a.Password = strings.TrimSpace(a.Password)
+	a.AccountID = strings.TrimSpace(a.AccountID)
+	a.RefreshToken = strings.TrimSpace(a.RefreshToken)
+	a.AccessToken = strings.TrimSpace(a.AccessToken)
 	a.BaseURL = strings.TrimRight(strings.TrimSpace(a.BaseURL), "/")
 	a.SupabaseAuthURL = strings.TrimRight(strings.TrimSpace(a.SupabaseAuthURL), "/")
 	a.SupabaseAnonKey = strings.TrimSpace(a.SupabaseAnonKey)
@@ -58,12 +64,78 @@ func (a *EcomAgentAccount) PrepareDefaults() {
 	}
 }
 
+func IsEcomAgentPlaceholderEmail(email string) bool {
+	email = strings.TrimSpace(strings.ToLower(email))
+	return strings.HasSuffix(email, "@"+ecomAgentPlaceholderEmailDomain)
+}
+
+func (a *EcomAgentAccount) HasRealEmail() bool {
+	if a == nil {
+		return false
+	}
+	email := strings.TrimSpace(strings.ToLower(a.Email))
+	return email != "" && !IsEcomAgentPlaceholderEmail(email)
+}
+
+func (a *EcomAgentAccount) GetDisplayEmail() string {
+	if a == nil || !a.HasRealEmail() {
+		return ""
+	}
+	return strings.TrimSpace(strings.ToLower(a.Email))
+}
+
+func (a *EcomAgentAccount) ensureStorageEmail() error {
+	if a == nil {
+		return errors.New("账号不能为空")
+	}
+	if strings.TrimSpace(a.Email) != "" {
+		return nil
+	}
+	if strings.TrimSpace(a.AccessToken) == "" &&
+		strings.TrimSpace(a.RefreshToken) == "" &&
+		strings.TrimSpace(a.AccountID) == "" {
+		return nil
+	}
+	localPart := sanitizeEcomAgentPlaceholderLocalPart(a.AccountID)
+	if localPart == "" {
+		randomPart, err := common.GenerateRandomCharsKey(16)
+		if err != nil {
+			return err
+		}
+		localPart = "pending-" + strings.ToLower(randomPart)
+	}
+	a.Email = fmt.Sprintf("ecomagent+%s@%s", localPart, ecomAgentPlaceholderEmailDomain)
+	return nil
+}
+
+func sanitizeEcomAgentPlaceholderLocalPart(accountID string) string {
+	accountID = strings.TrimSpace(strings.ToLower(accountID))
+	if accountID == "" {
+		return ""
+	}
+	var builder strings.Builder
+	for _, ch := range accountID {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+			builder.WriteRune(ch)
+		case ch >= '0' && ch <= '9':
+			builder.WriteRune(ch)
+		case ch == '-' || ch == '_':
+			builder.WriteRune('-')
+		}
+		if builder.Len() >= 40 {
+			break
+		}
+	}
+	return strings.Trim(builder.String(), "-")
+}
+
 func (a *EcomAgentAccount) Validate() error {
-	if a.Email == "" {
+	if a.Email == "" && strings.TrimSpace(a.AccessToken) == "" && strings.TrimSpace(a.RefreshToken) == "" {
 		return errors.New("邮箱不能为空")
 	}
-	if a.Password == "" {
-		return errors.New("密码不能为空")
+	if a.Password == "" && strings.TrimSpace(a.AccessToken) == "" && strings.TrimSpace(a.RefreshToken) == "" {
+		return errors.New("密码或登录态至少填写一种")
 	}
 	if a.BaseURL == "" {
 		return errors.New("base_url 不能为空")
@@ -79,6 +151,9 @@ func (a *EcomAgentAccount) Validate() error {
 
 func (a *EcomAgentAccount) Insert() error {
 	a.PrepareDefaults()
+	if err := a.ensureStorageEmail(); err != nil {
+		return err
+	}
 	if err := a.Validate(); err != nil {
 		return err
 	}
@@ -90,6 +165,9 @@ func (a *EcomAgentAccount) Insert() error {
 
 func (a *EcomAgentAccount) Update() error {
 	a.PrepareDefaults()
+	if err := a.ensureStorageEmail(); err != nil {
+		return err
+	}
 	if err := a.Validate(); err != nil {
 		return err
 	}

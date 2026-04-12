@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,12 +67,18 @@ type ecomAgentSubscriptionEnvelope struct {
 }
 
 type ecomAgentSubscriptionResponse struct {
+	AccountID       string `json:"accountId"`
+	Email           string `json:"email"`
+	Role            string `json:"role"`
 	Plan            string `json:"plan"`
-	RequestLimit    int64  `json:"requestLimit"`
-	TokenLimit      int64  `json:"tokenLimit"`
+	RequestLimitRaw any    `json:"requestLimit"`
+	TokenLimitRaw   any    `json:"tokenLimit"`
 	APIKey          string `json:"apiKey"`
 	APIKeyName      string `json:"apiKeyName"`
+	PlanStartsAt    string `json:"planStartsAt"`
+	PlanEndsAt      string `json:"planEndsAt"`
 	APIKeyCreatedAt string `json:"apiKeyCreatedAt"`
+	UpdatedAt       string `json:"updatedAt"`
 }
 
 type ecomAgentUsageEnvelope struct {
@@ -160,7 +167,10 @@ func SyncEcomAgentAccountWithOptions(ctx context.Context, account *model.EcomAge
 		httpClient:      cloneDefaultHTTPClient(),
 		fingerprint:     newRandomEcomAgentBrowserFingerprint(),
 	}
-	if account.SignupAt == 0 && account.AccountID == "" {
+	if account.SignupAt == 0 &&
+		account.AccountID == "" &&
+		strings.TrimSpace(account.AccessToken) == "" &&
+		strings.TrimSpace(account.RefreshToken) == "" {
 		signupResp, signupRaw, err := client.signup(ctx, account.Email, account.Password)
 		if err != nil {
 			if isEcomAgentAccountAlreadyExistsError(err) {
@@ -250,9 +260,15 @@ func SyncEcomAgentAccountWithOptions(ctx context.Context, account *model.EcomAge
 		return errors.New(account.LastError)
 	}
 	if subErr == nil {
+		email := strings.TrimSpace(strings.ToLower(subscriptionResp.Subscription.Email))
+		if email != "" && (!account.HasRealEmail() || !strings.EqualFold(account.Email, email)) {
+			if duplicated, err := model.IsEcomAgentAccountEmailDuplicated(account.Id, email); err == nil && !duplicated {
+				account.Email = email
+			}
+		}
 		account.Plan = subscriptionResp.Subscription.Plan
-		account.RequestLimit = subscriptionResp.Subscription.RequestLimit
-		account.TokenLimit = subscriptionResp.Subscription.TokenLimit
+		account.RequestLimit = parseFlexibleInt64(subscriptionResp.Subscription.RequestLimitRaw)
+		account.TokenLimit = parseFlexibleInt64(subscriptionResp.Subscription.TokenLimitRaw)
 		account.SubscriptionRaw = subscriptionRaw
 		if account.APIKey == "" {
 			account.APIKey = subscriptionResp.Subscription.APIKey
@@ -671,4 +687,30 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func parseFlexibleInt64(value any) int64 {
+	switch v := value.(type) {
+	case nil:
+		return 0
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case float64:
+		return int64(v)
+	case string:
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return 0
+		}
+		if strings.EqualFold(v, "unlimited") {
+			return 0
+		}
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			return parsed
+		}
+	}
+	return 0
 }

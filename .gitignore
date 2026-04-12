@@ -37,6 +37,6 @@ data/
 scripts/
 !web/scripts/
 !web/scripts/generate-seo-artifacts.mjs
-.env.2
+.env.back
 .playwright-mcp
 tsconfig.tsbuildinfo

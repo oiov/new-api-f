@@ -995,8 +995,9 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
               allSubscriptions={allSubscriptions}
               manualDeliveryOrders={manualDeliveryOrders}
               reloadSubscriptionSelf={getSubscriptionSelf}
-              initialMainTab={PLAN_LIST_TAB}
-              uiVariant={PACKAGE_VARIANT}
+              initialMainTab={MY_SUBSCRIPTIONS_TAB}
+              uiVariant={SUBSCRIPTION_VARIANT}
+              mainPanelMode='subscriptions'
             />
           </div>
         )}

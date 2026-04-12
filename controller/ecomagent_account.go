@@ -18,6 +18,48 @@ type EcomAgentAccountRequest struct {
 	SupabaseAuthURL *string `json:"supabase_auth_url"`
 	SupabaseAnonKey *string `json:"supabase_anon_key"`
 	ConfirmURL      *string `json:"confirm_url"`
+	AccountID       *string `json:"account_id"`
+	AccessToken     *string `json:"access_token"`
+	RefreshToken    *string `json:"refresh_token"`
+	SessionJSON     *string `json:"session_json"`
+	ExpiresAt       *int64  `json:"access_token_expires_at"`
+}
+
+type ecomAgentImportedSession struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresAt    int64  `json:"expires_at"`
+	User         struct {
+		ID    string `json:"id"`
+		Email string `json:"email"`
+	} `json:"user"`
+}
+
+func applyImportedSession(account *model.EcomAgentAccount, sessionJSON string) error {
+	sessionJSON = strings.TrimSpace(sessionJSON)
+	if sessionJSON == "" {
+		return nil
+	}
+	session := ecomAgentImportedSession{}
+	if err := common.UnmarshalJsonStr(sessionJSON, &session); err != nil {
+		return err
+	}
+	if strings.TrimSpace(account.Email) == "" {
+		account.Email = strings.TrimSpace(session.User.Email)
+	}
+	if strings.TrimSpace(account.AccountID) == "" {
+		account.AccountID = strings.TrimSpace(session.User.ID)
+	}
+	if strings.TrimSpace(session.AccessToken) != "" {
+		account.AccessToken = strings.TrimSpace(session.AccessToken)
+	}
+	if strings.TrimSpace(session.RefreshToken) != "" {
+		account.RefreshToken = strings.TrimSpace(session.RefreshToken)
+	}
+	if session.ExpiresAt > 0 {
+		account.AccessTokenExpiresAt = session.ExpiresAt
+	}
+	return nil
 }
 
 func GetEcomAgentAccounts(c *gin.Context) {
@@ -42,6 +84,15 @@ func CreateEcomAgentAccount(c *gin.Context) {
 		SupabaseAuthURL: trimStringPointer(req.SupabaseAuthURL),
 		SupabaseAnonKey: trimStringPointer(req.SupabaseAnonKey),
 		ConfirmURL:      trimStringPointer(req.ConfirmURL),
+		AccountID:       trimStringPointer(req.AccountID),
+		AccessToken:     trimStringPointer(req.AccessToken),
+		RefreshToken:    trimStringPointer(req.RefreshToken),
+		AccessTokenExpiresAt: func() int64 {
+			if req.ExpiresAt == nil {
+				return 0
+			}
+			return *req.ExpiresAt
+		}(),
 	}
 	if account.BaseURL == "" {
 		account.BaseURL = service.EcomAgentDefaultBaseURL()
@@ -52,12 +103,18 @@ func CreateEcomAgentAccount(c *gin.Context) {
 	if account.SupabaseAnonKey == "" {
 		account.SupabaseAnonKey = service.EcomAgentDefaultSupabaseAnonKey()
 	}
-	if duplicated, err := model.IsEcomAgentAccountEmailDuplicated(0, account.Email); err != nil {
+	if err := applyImportedSession(account, trimStringPointer(req.SessionJSON)); err != nil {
 		common.ApiError(c, err)
 		return
-	} else if duplicated {
-		common.ApiErrorMsg(c, "邮箱已存在")
-		return
+	}
+	if account.HasRealEmail() {
+		if duplicated, err := model.IsEcomAgentAccountEmailDuplicated(0, account.Email); err != nil {
+			common.ApiError(c, err)
+			return
+		} else if duplicated {
+			common.ApiErrorMsg(c, "邮箱已存在")
+			return
+		}
 	}
 	if err := account.Insert(); err != nil {
 		common.ApiError(c, err)
@@ -107,6 +164,22 @@ func UpdateEcomAgentAccount(c *gin.Context) {
 	}
 	if nextConfirmURL := trimOptionalString(req.ConfirmURL); nextConfirmURL != nil {
 		account.ConfirmURL = *nextConfirmURL
+	}
+	if nextAccountID := trimOptionalString(req.AccountID); nextAccountID != nil {
+		account.AccountID = *nextAccountID
+	}
+	if nextAccessToken := trimOptionalString(req.AccessToken); nextAccessToken != nil {
+		account.AccessToken = *nextAccessToken
+	}
+	if nextRefreshToken := trimOptionalString(req.RefreshToken); nextRefreshToken != nil {
+		account.RefreshToken = *nextRefreshToken
+	}
+	if req.ExpiresAt != nil {
+		account.AccessTokenExpiresAt = *req.ExpiresAt
+	}
+	if err := applyImportedSession(account, trimStringPointer(req.SessionJSON)); err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	if err := account.Update(); err != nil {
 		common.ApiError(c, err)
@@ -186,6 +259,9 @@ type EcomAgentAccountResponse struct {
 	LastError                 string `json:"last_error"`
 	CreatedTime               int64  `json:"created_time"`
 	UpdatedTime               int64  `json:"updated_time"`
+	APIKey                    string `json:"api_key"`
+	SubscriptionRaw           string `json:"subscription_raw"`
+	UsageRaw                  string `json:"usage_raw"`
 	HasPassword               bool   `json:"has_password"`
 	HasRefreshToken           bool   `json:"has_refresh_token"`
 	HasAccessToken            bool   `json:"has_access_token"`
@@ -209,7 +285,7 @@ func buildEcomAgentAccountResponse(account *model.EcomAgentAccount) *EcomAgentAc
 	}
 	return &EcomAgentAccountResponse{
 		Id:                        account.Id,
-		Email:                     account.Email,
+		Email:                     account.GetDisplayEmail(),
 		BaseURL:                   account.BaseURL,
 		SupabaseAuthURL:           account.SupabaseAuthURL,
 		SupabaseAnonKey:           account.SupabaseAnonKey,
@@ -235,6 +311,9 @@ func buildEcomAgentAccountResponse(account *model.EcomAgentAccount) *EcomAgentAc
 		LastError:                 account.LastError,
 		CreatedTime:               account.CreatedTime,
 		UpdatedTime:               account.UpdatedTime,
+		APIKey:                    account.APIKey,
+		SubscriptionRaw:           account.SubscriptionRaw,
+		UsageRaw:                  account.UsageRaw,
 		HasPassword:               strings.TrimSpace(account.Password) != "",
 		HasRefreshToken:           strings.TrimSpace(account.RefreshToken) != "",
 		HasAccessToken:            strings.TrimSpace(account.AccessToken) != "",

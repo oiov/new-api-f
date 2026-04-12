@@ -18,11 +18,89 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { API } from './api';
+import i18next from 'i18next';
 
 let groupMetadataMap = {};
 let groupMetadataListeners = new Set();
 let adminGroupMetadataPromise = null;
 let adminGroupMetadataLoaded = false;
+
+const SUBSCRIPTION_GROUP_PREFIX = 'sub_plan_';
+const SUBSCRIPTION_GROUP_SUFFIX = '_sub';
+
+const formatSubscriptionGroupToken = (token) => {
+  const normalizedToken = String(token || '').trim().toLowerCase();
+  if (!normalizedToken) {
+    return '';
+  }
+
+  const tokenLabelMap = {
+    claude: 'Claude',
+    codex: 'Codex',
+    openai: 'OpenAI',
+    gpt: 'GPT',
+    nano: 'Nano',
+    micro: 'Micro',
+    lite: 'Lite',
+    mini: 'Mini',
+    plus: 'Plus',
+    max: 'Max',
+    premium: 'Premium',
+    ultra: 'Ultra',
+    pro: 'Pro',
+    day: 'Day',
+    month: 'Month',
+    year: 'Year',
+  };
+
+  if (tokenLabelMap[normalizedToken]) {
+    return tokenLabelMap[normalizedToken];
+  }
+
+  return normalizedToken.charAt(0).toUpperCase() + normalizedToken.slice(1);
+};
+
+export const inferGroupDescription = (groupName) => {
+  const normalizedGroup = String(groupName || '').trim();
+  if (!normalizedGroup) {
+    return '';
+  }
+
+  if (normalizedGroup.startsWith(SUBSCRIPTION_GROUP_PREFIX)) {
+    const namePart = normalizedGroup.slice(SUBSCRIPTION_GROUP_PREFIX.length);
+    const label = namePart
+      .split('_')
+      .map(formatSubscriptionGroupToken)
+      .filter(Boolean)
+      .join(' ');
+
+    if (label) {
+      return i18next.t('{{name}} 订阅专属分组', {
+        name: label,
+      });
+    }
+  }
+
+  if (normalizedGroup.endsWith(SUBSCRIPTION_GROUP_SUFFIX)) {
+    const namePart = normalizedGroup.slice(
+      0,
+      normalizedGroup.length - SUBSCRIPTION_GROUP_SUFFIX.length,
+    );
+    const label = namePart
+      .split('_')
+      .map(formatSubscriptionGroupToken)
+      .filter(Boolean)
+      .join(' ');
+
+    if (label) {
+      return i18next.t('{{name}} 订阅专属分组', {
+        name: label,
+      });
+    }
+  }
+
+  return '';
+};
 
 const notifyGroupMetadataListeners = () => {
   groupMetadataListeners.forEach((listener) => listener());
@@ -90,10 +168,15 @@ export const normalizeGroupMetadata = (data) => {
 
 export const primeGroupMetadata = (data) => {
   const normalized = normalizeGroupMetadata(data);
-  const merged = {
-    ...groupMetadataMap,
-    ...normalized,
-  };
+  const merged = { ...groupMetadataMap };
+
+  Object.entries(normalized).forEach(([groupName, info]) => {
+    const current = merged[groupName] || {};
+    merged[groupName] = {
+      ...current,
+      ...info,
+    };
+  });
 
   if (!hasMetadataChanged(merged)) {
     return merged;
@@ -111,7 +194,11 @@ export const getGroupDescription = (groupName) => {
   if (!normalizedGroup) {
     return '';
   }
-  return groupMetadataMap[normalizedGroup]?.desc || '';
+  return (
+    groupMetadataMap[normalizedGroup]?.desc ||
+    inferGroupDescription(normalizedGroup) ||
+    ''
+  );
 };
 
 export const subscribeGroupMetadata = (listener) => {

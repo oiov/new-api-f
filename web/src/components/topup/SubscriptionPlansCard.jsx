@@ -50,6 +50,7 @@ import {
   renderGroupTextWithDescription,
   renderQuota,
 } from '../../helpers';
+import { primeGroupMetadata } from '../../helpers/group';
 import { getCurrencyConfig, renderQuotaWithAmount } from '../../helpers/render';
 import {
   BarChart3,
@@ -324,13 +325,22 @@ const SubscriptionPlansCard = ({
   initialMainTab = 'my_subscriptions',
   uiVariant = 'subscription',
   showUserSubscriptions = true,
+  mainPanelMode = 'tabs',
 }) => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const isPackageVariant = uiVariant === 'package';
-  const enablePlanUrlSync = isPackageVariant;
+  const renderSubscriptionPanel =
+    showUserSubscriptions && mainPanelMode !== 'plans';
+  const renderPlanListPanel = mainPanelMode !== 'subscriptions';
+  const shouldShowMainTabs = renderSubscriptionPanel && renderPlanListPanel;
+  const enablePlanUrlSync = isPackageVariant && mainPanelMode === 'plans';
   const initialPlanMainTab =
-    searchParams.get(PLAN_URL_PARAM_KEYS.mainTab) || initialMainTab;
+    mainPanelMode === 'subscriptions'
+      ? 'my_subscriptions'
+      : mainPanelMode === 'plans'
+        ? 'plan_list'
+        : searchParams.get(PLAN_URL_PARAM_KEYS.mainTab) || initialMainTab;
   const initialSubscriptionView =
     searchParams.get(PLAN_URL_PARAM_KEYS.subscriptionView) || 'active';
   const initialPlanSort =
@@ -605,6 +615,27 @@ const SubscriptionPlansCard = ({
   useEffect(() => {
     loadConversionPreview();
   }, [showUserSubscriptions]);
+
+  useEffect(() => {
+    if (!renderPlanListPanel) {
+      return;
+    }
+
+    const loadGroupMetadata = async () => {
+      try {
+        const res = await API.get('/api/pricing', { skipErrorHandler: true });
+        if (res.data?.success) {
+          primeGroupMetadata(
+            res.data?.usable_group_meta || res.data?.usable_group || {},
+          );
+        }
+      } catch {
+        // noop
+      }
+    };
+
+    loadGroupMetadata();
+  }, [renderPlanListPanel]);
 
   const isSubscriptionPreference =
     billingPreference === 'subscription_first' ||
@@ -2241,13 +2272,26 @@ const SubscriptionPlansCard = ({
             bodyStyle={{ padding: '16px 20px' }}
           >
             <Tabs
-              className='topup-page-tabs'
+              className={`topup-page-tabs${
+                shouldShowMainTabs ? '' : ' topup-page-tabs--single'
+              }`}
               type='card'
               collapsible
-              activeKey={activeMainTab}
-              onChange={(key) => setActiveMainTab(key)}
+              activeKey={
+                shouldShowMainTabs
+                  ? activeMainTab
+                  : renderSubscriptionPanel
+                    ? 'my_subscriptions'
+                    : 'plan_list'
+              }
+              onChange={(key) => {
+                if (!shouldShowMainTabs) {
+                  return;
+                }
+                setActiveMainTab(key);
+              }}
             >
-              {showUserSubscriptions && (
+              {renderSubscriptionPanel && (
                 <TabPane
                   itemKey='my_subscriptions'
                   tab={`${t('我的订阅')} (${allSubscriptions.length})`}
@@ -2783,172 +2827,174 @@ const SubscriptionPlansCard = ({
                 </TabPane>
               )}
 
-              <TabPane
-                itemKey='plan_list'
-                tab={`${t('套餐列表')} (${sortedPlans.length})`}
-              >
-                <div className='space-y-3'>
-                  <div className='subscription-plan-selling-toolbar'>
-                    <div className='subscription-plan-selling-toolbar__tabs'>
-                      <Tabs
-                        type='button'
-                        collapsible={false}
-                        activeKey={planSeriesFilter}
-                        onChange={setPlanSeriesFilter}
-                      >
-                        <TabPane
-                          itemKey='all'
-                          tab={`${t('全部系列')} (${plans.length})`}
-                        />
-                        <TabPane
-                          itemKey='claude'
-                          tab={t('Claude 系列')}
-                        />
-                        <TabPane
-                          itemKey='codex'
-                          tab={t('Codex 系列')}
-                        />
-                        <TabPane
-                          itemKey='mixed'
-                          tab={t('混合系列')}
-                        />
-                      </Tabs>
-                    </div>
-                    <div className='subscription-plan-selling-toolbar__controls'>
-                      <div className='subscription-plan-selling-toolbar__switch'>
-                        <Tooltip content={t('卡片视图')}>
-                          <Button
-                            theme={
-                              planViewMode === 'card' ? 'solid' : 'borderless'
-                            }
-                            type={
-                              planViewMode === 'card' ? 'primary' : 'tertiary'
-                            }
-                            icon={<LayoutGrid size={14} />}
-                            size='small'
-                            onClick={() => setPlanViewMode('card')}
-                            aria-label={t('卡片视图')}
+              {renderPlanListPanel && (
+                <TabPane
+                  itemKey='plan_list'
+                  tab={`${t('套餐列表')} (${sortedPlans.length})`}
+                >
+                  <div className='space-y-3'>
+                    <div className='subscription-plan-selling-toolbar'>
+                      <div className='subscription-plan-selling-toolbar__tabs'>
+                        <Tabs
+                          type='button'
+                          collapsible={false}
+                          activeKey={planSeriesFilter}
+                          onChange={setPlanSeriesFilter}
+                        >
+                          <TabPane
+                            itemKey='all'
+                            tab={`${t('全部系列')} (${plans.length})`}
                           />
-                        </Tooltip>
-                        <Tooltip content={t('列表视图')}>
-                          <Button
-                            theme={
-                              planViewMode === 'table' ? 'solid' : 'borderless'
-                            }
-                            type={
-                              planViewMode === 'table' ? 'primary' : 'tertiary'
-                            }
-                            icon={<List size={14} />}
-                            size='small'
-                            onClick={() => setPlanViewMode('table')}
-                            aria-label={t('列表视图')}
+                          <TabPane
+                            itemKey='claude'
+                            tab={t('Claude 系列')}
                           />
-                        </Tooltip>
+                          <TabPane
+                            itemKey='codex'
+                            tab={t('Codex 系列')}
+                          />
+                          <TabPane
+                            itemKey='mixed'
+                            tab={t('混合系列')}
+                          />
+                        </Tabs>
                       </div>
-                      <div className='subscription-plan-selling-toolbar__sort'>
-                        <Select
-                          value={planSort}
-                          size='small'
-                          onChange={setPlanSort}
-                          optionList={[
-                            { value: 'price_asc', label: t('价格从低到高') },
-                            { value: 'price_desc', label: t('价格从高到低') },
-                            { value: 'value_desc', label: t('权益从多到少') },
-                            { value: 'recommended', label: t('推荐优先') },
-                          ]}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {sortedPlans.length > 0 ? (
-                    planViewMode === 'card' ? (
-                      <div className='subscription-plan-selling-content space-y-4'>
-                        <div className='subscription-plan-selling-grid'>
-                          {pagedPlans.map((record, index) =>
-                            renderPackagePlanCard(record, index),
-                          )}
-                        </div>
-                        <div className='subscription-plan-selling-pagination'>
-                          <Text type='tertiary' size='small'>
-                            {t(
-                              '显示第 {{start}} 条-第 {{end}} 条，共 {{total}} 条',
-                              {
-                                start:
-                                  sortedPlans.length === 0
-                                    ? 0
-                                    : (planPage - 1) * planPageSize + 1,
-                                end: Math.min(
-                                  planPage * planPageSize,
-                                  sortedPlans.length,
-                                ),
-                                total: sortedPlans.length,
-                              },
-                            )}
-                          </Text>
-                          <div className='flex justify-end'>
-                            <Select
-                              value={planPageSize}
+                      <div className='subscription-plan-selling-toolbar__controls'>
+                        <div className='subscription-plan-selling-toolbar__switch'>
+                          <Tooltip content={t('卡片视图')}>
+                            <Button
+                              theme={
+                                planViewMode === 'card' ? 'solid' : 'borderless'
+                              }
+                              type={
+                                planViewMode === 'card' ? 'primary' : 'tertiary'
+                              }
+                              icon={<LayoutGrid size={14} />}
                               size='small'
-                              onChange={(size) => {
-                                setPlanPageSize(size);
-                                setPlanPage(1);
-                              }}
-                              optionList={[6, 9, 12, 18].map((size) => ({
-                                value: size,
-                                label: `${t('每页')} ${size}`,
-                              }))}
+                              onClick={() => setPlanViewMode('card')}
+                              aria-label={t('卡片视图')}
+                            />
+                          </Tooltip>
+                          <Tooltip content={t('列表视图')}>
+                            <Button
+                              theme={
+                                planViewMode === 'table' ? 'solid' : 'borderless'
+                              }
+                              type={
+                                planViewMode === 'table' ? 'primary' : 'tertiary'
+                              }
+                              icon={<List size={14} />}
+                              size='small'
+                              onClick={() => setPlanViewMode('table')}
+                              aria-label={t('列表视图')}
+                            />
+                          </Tooltip>
+                        </div>
+                        <div className='subscription-plan-selling-toolbar__sort'>
+                          <Select
+                            value={planSort}
+                            size='small'
+                            onChange={setPlanSort}
+                            optionList={[
+                              { value: 'price_asc', label: t('价格从低到高') },
+                              { value: 'price_desc', label: t('价格从高到低') },
+                              { value: 'value_desc', label: t('权益从多到少') },
+                              { value: 'recommended', label: t('推荐优先') },
+                            ]}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {sortedPlans.length > 0 ? (
+                      planViewMode === 'card' ? (
+                        <div className='subscription-plan-selling-content space-y-4'>
+                          <div className='subscription-plan-selling-grid'>
+                            {pagedPlans.map((record, index) =>
+                              renderPackagePlanCard(record, index),
+                            )}
+                          </div>
+                          <div className='subscription-plan-selling-pagination'>
+                            <Text type='tertiary' size='small'>
+                              {t(
+                                '显示第 {{start}} 条-第 {{end}} 条，共 {{total}} 条',
+                                {
+                                  start:
+                                    sortedPlans.length === 0
+                                      ? 0
+                                      : (planPage - 1) * planPageSize + 1,
+                                  end: Math.min(
+                                    planPage * planPageSize,
+                                    sortedPlans.length,
+                                  ),
+                                  total: sortedPlans.length,
+                                },
+                              )}
+                            </Text>
+                            <div className='flex justify-end'>
+                              <Select
+                                value={planPageSize}
+                                size='small'
+                                onChange={(size) => {
+                                  setPlanPageSize(size);
+                                  setPlanPage(1);
+                                }}
+                                optionList={[6, 9, 12, 18].map((size) => ({
+                                  value: size,
+                                  label: `${t('每页')} ${size}`,
+                                }))}
+                              />
+                            </div>
+                          </div>
+                          <div className='flex flex-col gap-3 border-t border-semi-color-border pt-4 lg:flex-row lg:items-center lg:justify-between'>
+                            <Pagination
+                              currentPage={planPage}
+                              pageSize={planPageSize}
+                              total={sortedPlans.length}
+                              pageSizeOptions={[6, 9, 12, 18]}
+                              showSizeChanger={false}
+                              onPageChange={setPlanPage}
                             />
                           </div>
                         </div>
-                        <div className='flex flex-col gap-3 border-t border-semi-color-border pt-4 lg:flex-row lg:items-center lg:justify-between'>
-                          <Pagination
-                            currentPage={planPage}
-                            pageSize={planPageSize}
-                            total={sortedPlans.length}
-                            pageSizeOptions={[6, 9, 12, 18]}
-                            showSizeChanger={false}
-                            onPageChange={setPlanPage}
+                      ) : (
+                        <div className='subscription-plan-selling-content'>
+                          <CardTable
+                            columns={planTableColumns}
+                            dataSource={pagedPlans}
+                            rowKey={(row) => row?.plan?.id}
+                            loading={loading}
+                            hidePagination={false}
+                            pagination={{
+                              currentPage: planPage,
+                              pageSize: planPageSize,
+                              total: sortedPlans.length,
+                              pageSizeOpts: [10, 20, 50],
+                              showSizeChanger: true,
+                              onPageChange: setPlanPage,
+                              onPageSizeChange: (size) => {
+                                setPlanPageSize(size);
+                                setPlanPage(1);
+                              },
+                            }}
+                            expandedRowRender={renderPlanExpandedContent}
                           />
                         </div>
-                      </div>
+                      )
                     ) : (
-                      <div className='subscription-plan-selling-content'>
-                        <CardTable
-                          columns={planTableColumns}
-                          dataSource={pagedPlans}
-                          rowKey={(row) => row?.plan?.id}
-                          loading={loading}
-                          hidePagination={false}
-                          pagination={{
-                            currentPage: planPage,
-                            pageSize: planPageSize,
-                            total: sortedPlans.length,
-                            pageSizeOpts: [10, 20, 50],
-                            showSizeChanger: true,
-                            onPageChange: setPlanPage,
-                            onPageSizeChange: (size) => {
-                              setPlanPageSize(size);
-                              setPlanPage(1);
-                            },
-                          }}
-                          expandedRowRender={renderPlanExpandedContent}
+                      <div className='py-8'>
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          title={t('暂无可购买套餐')}
+                          description={t(
+                            '管理员暂未上架套餐，请稍后再试或联系管理员',
+                          )}
                         />
                       </div>
-                    )
-                  ) : (
-                    <div className='py-8'>
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        title={t('暂无可购买套餐')}
-                        description={t(
-                          '管理员暂未上架套餐，请稍后再试或联系管理员',
-                        )}
-                      />
-                    </div>
-                  )}
-                </div>
-              </TabPane>
+                    )}
+                  </div>
+                </TabPane>
+              )}
             </Tabs>
           </Card>
         </Space>

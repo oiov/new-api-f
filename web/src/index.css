@@ -860,6 +860,7 @@ html.dark .sbg-variant-green {
 
 .subscription-purchase-modal__hero {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -880,8 +881,8 @@ html.dark .sbg-variant-green {
 }
 
 .subscription-purchase-modal__hero-main {
-  min-width: 0;
-  flex: 1;
+  min-width: 180px;
+  flex: 1 1 180px;
 }
 
 .subscription-purchase-modal__eyebrow {
@@ -905,10 +906,14 @@ html.dark .sbg-variant-green {
   margin-top: 8px;
   font-size: 13px;
   line-height: 1.6;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .subscription-purchase-modal__price-box {
-  min-width: 118px;
+  min-width: 160px;
+  max-width: 100%;
+  flex: 0 1 220px;
   padding: 12px 14px;
   border-radius: 16px;
   text-align: right;
@@ -922,6 +927,11 @@ html.dark .sbg-variant-green {
   .subscription-purchase-modal__hero {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .subscription-purchase-modal__hero-main {
+    min-width: 0;
+    flex-basis: auto;
   }
 
   .subscription-purchase-modal__title {
@@ -1335,6 +1345,10 @@ html.dark .subscription-pricing-feature-card__icon {
 
 .topup-page-tabs > .semi-tabs-content .semi-tabs-pane > div {
   height: auto !important;
+}
+
+.topup-page-tabs--single > .semi-tabs-bar {
+  display: none !important;
 }
 
 .topup-recharge-tabs {

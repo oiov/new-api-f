@@ -1,8 +1,11 @@
 package model
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -753,7 +756,154 @@ func isClaudePlan(plan *SubscriptionPlan) bool {
 			return true
 		}
 	}
+	for _, modelName := range plan.AllowedModels {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "claude") {
+			return true
+		}
+	}
+	for _, modelName := range decodeSubscriptionStringList(plan.AllowedModelsJSON) {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "claude") {
+			return true
+		}
+	}
 	return false
+}
+
+func isClaudeSubscription(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(sub.UpgradeGroup)), "claude") {
+		return true
+	}
+	for _, group := range decodeUserSubscriptionAllowedGroups(sub) {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(group)), "claude") {
+			return true
+		}
+	}
+	for _, modelName := range decodeUserSubscriptionAllowedModels(sub) {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "claude") {
+			return true
+		}
+	}
+	return false
+}
+
+func canTriggerClaudeActivationProbe(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	if !isClaudeSubscription(sub) {
+		return false
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+		return false
+	}
+	if getUserSubscriptionRouteGroup(sub) == "" {
+		return false
+	}
+	return sub.SpecificChannelId > 0
+}
+
+func pickClaudeActivationModel(sub *UserSubscription, token *Token) string {
+	if sub != nil {
+		for _, modelName := range decodeUserSubscriptionAllowedModels(sub) {
+			modelName = strings.TrimSpace(modelName)
+			if strings.HasPrefix(strings.ToLower(modelName), "claude") {
+				return modelName
+			}
+		}
+	}
+	if token != nil {
+		for _, modelName := range token.GetModelLimits() {
+			modelName = strings.TrimSpace(modelName)
+			if strings.HasPrefix(strings.ToLower(modelName), "claude") {
+				return modelName
+			}
+		}
+	}
+	return "claude-sonnet-4-6"
+}
+
+func triggerClaudeSubscriptionActivationProbeAsync(userId int, sub *UserSubscription) {
+	if userId <= 0 || !canTriggerClaudeActivationProbe(sub) {
+		return
+	}
+	subCopy := *sub
+	gopool.Go(func() {
+		if err := runClaudeSubscriptionActivationProbe(userId, &subCopy); err != nil {
+			common.SysError(fmt.Sprintf("trigger Claude subscription activation probe failed for user %d subscription %d: %v", userId, subCopy.Id, err))
+		}
+	})
+}
+
+func runClaudeSubscriptionActivationProbe(userId int, sub *UserSubscription) error {
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	if !canTriggerClaudeActivationProbe(sub) {
+		return errors.New("subscription is not eligible for Claude activation probe")
+	}
+	baseURL := resolveSubscriptionDeliveryBaseURL()
+	if baseURL == "" {
+		return errors.New("server address is empty")
+	}
+	token, err := EnsureSubscriptionAggregateAccessTokenForUser(userId)
+	if err != nil {
+		return err
+	}
+	if token == nil {
+		return errors.New("aggregate access token not found")
+	}
+	if strings.TrimSpace(token.Key) == "" {
+		return errors.New("aggregate access token key is empty")
+	}
+	if token.Status != common.TokenStatusEnabled {
+		return fmt.Errorf("aggregate access token is disabled: %d", token.Status)
+	}
+
+	modelName := pickClaudeActivationModel(sub, token)
+	payload := map[string]any{
+		"model":      modelName,
+		"max_tokens": 32,
+		"system":     "activation test",
+		"messages": []map[string]any{
+			{
+				"role":    "user",
+				"content": "hi",
+			},
+		},
+		"stream": false,
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/v1/messages", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("x-api-key", "sk-"+token.Key)
+
+	client := &http.Client{Timeout: 45 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	if readErr != nil {
+		return readErr
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("activation probe http %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	return nil
 }
 
 func calcFixedClockDeadlineEndTime(start time.Time, plan *SubscriptionPlan) (int64, bool) {
@@ -1951,6 +2101,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	var logMoney float64
 	var logPaymentMethod string
 	var upgradeGroup string
+	var createdSub *UserSubscription
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
@@ -2011,6 +2162,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		sub.SourceOrderTradeNo = order.TradeNo
 		sub.SourceOrderPaymentMethod = order.PaymentMethod
 		sub.SourceOrderMoney = order.Money
+		createdSub = sub
 		if err := provisionAggregateAccessForSubscriptionTx(tx, sub); err != nil {
 			return err
 		}
@@ -2035,6 +2187,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
+	}
+	if logUserId > 0 && createdSub != nil {
+		triggerClaudeSubscriptionActivationProbeAsync(logUserId, createdSub)
 	}
 	return nil
 }
@@ -2249,6 +2404,9 @@ func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) 
 	}
 	if isManualDelivery {
 		return "已创建人工发放订单，请在人工发放列表中完成发放", nil, nil
+	}
+	if createdSub != nil {
+		triggerClaudeSubscriptionActivationProbeAsync(userId, createdSub)
 	}
 	if strings.TrimSpace(plan.UpgradeGroup) != "" {
 		_ = UpdateUserGroupCache(userId, plan.UpgradeGroup)
@@ -2990,6 +3148,7 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 	var result SubscriptionOrder
 	var upgradeGroup string
 	var targetUserId int
+	var createdSub *UserSubscription
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
@@ -3087,6 +3246,7 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 				}
 				sub.SpecificChannelId = channel.Id
 				sub.SpecificChannelKeyIndex = keyIndex
+				createdSub = sub
 
 				aggregateToken, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, order.UserId)
 				if err != nil {
@@ -3137,6 +3297,9 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 	}
 	if upgradeGroup != "" && targetUserId > 0 {
 		_ = UpdateUserGroupCache(targetUserId, upgradeGroup)
+	}
+	if targetUserId > 0 && createdSub != nil {
+		triggerClaudeSubscriptionActivationProbeAsync(targetUserId, createdSub)
 	}
 	ApplySubscriptionOrderDeliveryFields(&result)
 	return &result, nil

@@ -198,6 +198,7 @@ const SubscriptionPricingTab = ({ onPlansChange, t }) => {
         initialMainTab={PLAN_LIST_TAB}
         uiVariant={PACKAGE_VARIANT}
         showUserSubscriptions={false}
+        mainPanelMode='plans'
         withCard={false}
       />
     </div>

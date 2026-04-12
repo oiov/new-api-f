@@ -61,6 +61,7 @@ import {
   getSubscriptionUsageSummary,
   isSubscriptionDiscountActive,
 } from '../../helpers/subscriptionFormat';
+import { primeGroupMetadata } from '../../helpers/group';
 import { getPricingSeo, getSubscriptionPlanSeo } from '../../helpers/seo';
 
 const { Text, Title } = Typography;
@@ -310,8 +311,9 @@ export default function SubscriptionPlanDetail() {
     const load = async () => {
       setLoading(true);
       try {
-        const [plansRes, topupRes, selfRes] = await Promise.allSettled([
+        const [plansRes, pricingRes, topupRes, selfRes] = await Promise.allSettled([
           API.get('/api/subscription/plans'),
+          API.get('/api/pricing', { skipErrorHandler: true }),
           API.get('/api/user/topup/info', { skipErrorHandler: true }),
           isLoggedIn
             ? API.get('/api/subscription/self', { skipErrorHandler: true })
@@ -322,6 +324,14 @@ export default function SubscriptionPlanDetail() {
           setPlans(plansRes.value.data.data || []);
         } else {
           setPlans([]);
+        }
+
+        if (pricingRes.status === 'fulfilled' && pricingRes.value.data?.success) {
+          primeGroupMetadata(
+            pricingRes.value.data?.usable_group_meta ||
+              pricingRes.value.data?.usable_group ||
+              {},
+          );
         }
 
         if (topupRes.status === 'fulfilled' && topupRes.value.data?.success) {
