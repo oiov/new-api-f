@@ -127,7 +127,7 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
 				return
 			}
-			if channel.Status != common.ChannelStatusEnabled {
+			if channel.Status != common.ChannelStatusEnabled || channel.ReachedUsageLimit() {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}

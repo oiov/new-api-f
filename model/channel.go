@@ -172,6 +172,9 @@ func (channel *Channel) GetSpecificKey(index int) (string, *types.NewAPIError) {
 		if index > 0 {
 			return "", types.NewError(errors.New("invalid key index"), types.ErrorCodeChannelNoAvailableKey)
 		}
+		if channel.IsRequestCountLimited() || channel.IsRequestQuotaLimited() {
+			return "", types.NewError(errors.New("channel usage limit reached"), types.ErrorCodeChannelNoAvailableKey)
+		}
 		return channel.Key, nil
 	}
 	if !channel.IsSpecificKeyAvailable(index) {
@@ -983,6 +986,54 @@ func updateChannelUsage(id int, quota int, count int) {
 		return
 	}
 	CacheAddChannelUsage(id, quota, count)
+}
+
+func ResetChannelRequestCountsBatch(lastID int, batchSize int) (nextLastID int, scanned int, reset int, err error) {
+	if batchSize <= 0 {
+		batchSize = 200
+	}
+
+	var channels []*Channel
+	query := DB.Select("id", "used_count", "channel_info").Order("id asc").Limit(batchSize)
+	if lastID > 0 {
+		query = query.Where("id > ?", lastID)
+	}
+	if err = query.Find(&channels).Error; err != nil {
+		return 0, 0, 0, err
+	}
+	if len(channels) == 0 {
+		return 0, 0, 0, nil
+	}
+
+	scanned = len(channels)
+	nextLastID = channels[len(channels)-1].Id
+	for _, channel := range channels {
+		if channel == nil {
+			continue
+		}
+		updates := make(map[string]interface{})
+		if channel.UsedCount != 0 {
+			updates["used_count"] = 0
+		}
+		if len(channel.ChannelInfo.MultiKeyUsedCount) > 0 {
+			channel.ChannelInfo.MultiKeyUsedCount = nil
+			updates["channel_info"] = channel.ChannelInfo
+		}
+		if len(updates) == 0 {
+			continue
+		}
+		if err = DB.Model(&Channel{}).Where("id = ?", channel.Id).Updates(updates).Error; err != nil {
+			return nextLastID, scanned, reset, err
+		}
+		if common.MemoryCacheEnabled {
+			if cached, cacheErr := CacheGetChannel(channel.Id); cacheErr == nil && cached != nil {
+				cached.UsedCount = 0
+				cached.ChannelInfo.MultiKeyUsedCount = nil
+			}
+		}
+		reset++
+	}
+	return nextLastID, scanned, reset, nil
 }
 
 func DeleteChannelByStatus(status int64) (int64, error) {
