@@ -16,6 +16,7 @@ type EcomAgentAccount struct {
 	Email                       string `json:"email" gorm:"size:255;not null;uniqueIndex"`
 	Password                    string `json:"password" gorm:"type:text;not null"`
 	BaseURL                     string `json:"base_url" gorm:"size:255;not null;default:''"`
+	Proxy                       string `json:"proxy" gorm:"type:text"`
 	SupabaseAuthURL             string `json:"supabase_auth_url" gorm:"size:255;not null;default:''"`
 	SupabaseAnonKey             string `json:"supabase_anon_key" gorm:"type:text;not null"`
 	ConfirmURL                  string `json:"confirm_url" gorm:"type:text"`
@@ -65,6 +66,7 @@ func (a *EcomAgentAccount) PrepareDefaults() {
 	a.RefreshToken = strings.TrimSpace(a.RefreshToken)
 	a.AccessToken = strings.TrimSpace(a.AccessToken)
 	a.BaseURL = strings.TrimRight(strings.TrimSpace(a.BaseURL), "/")
+	a.Proxy = strings.TrimSpace(a.Proxy)
 	a.SupabaseAuthURL = strings.TrimRight(strings.TrimSpace(a.SupabaseAuthURL), "/")
 	a.SupabaseAnonKey = strings.TrimSpace(a.SupabaseAnonKey)
 	a.ConfirmURL = strings.TrimSpace(a.ConfirmURL)

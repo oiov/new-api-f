@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import NewYearButton from './NewYearButton';
 import NotificationButton from './NotificationButton';
+import SiteNotificationButton from './SiteNotificationButton';
 import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
 import UserArea from './UserArea';
@@ -41,9 +42,21 @@ const ActionButtons = ({
   navigate,
   t,
 }) => {
+  const siteNotificationUnreadCount = Number(
+    userState?.user?.site_notification_unread_count || 0,
+  );
+
   return (
     <div className='flex items-center gap-2 md:gap-3'>
       <NewYearButton isNewYear={isNewYear} t={t} />
+
+      {userState?.user ? (
+        <SiteNotificationButton
+          unreadCount={siteNotificationUnreadCount}
+          onClick={() => navigate('/console/personal#site-notifications')}
+          t={t}
+        />
+      ) : null}
 
       <NotificationButton
         unreadCount={unreadCount}

@@ -164,9 +164,15 @@ func SyncEcomAgentAccountWithOptions(ctx context.Context, account *model.EcomAge
 		baseURL:         account.BaseURL,
 		supabaseAuthURL: account.SupabaseAuthURL,
 		supabaseAnonKey: account.SupabaseAnonKey,
-		httpClient:      cloneDefaultHTTPClient(),
 		fingerprint:     newRandomEcomAgentBrowserFingerprint(),
 	}
+	httpClient, err := cloneDefaultHTTPClientWithProxy(account.Proxy)
+	if err != nil {
+		account.Status = "invalid"
+		account.LastError = fmt.Sprintf("代理配置无效: %v", err)
+		return err
+	}
+	client.httpClient = httpClient
 	if account.SignupAt == 0 &&
 		account.AccountID == "" &&
 		strings.TrimSpace(account.AccessToken) == "" &&
@@ -329,6 +335,23 @@ func cloneDefaultHTTPClient() *http.Client {
 	clone := *base
 	clone.Timeout = ecomAgentRequestTimeout
 	return &clone
+}
+
+func cloneDefaultHTTPClientWithProxy(proxyURL string) (*http.Client, error) {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return cloneDefaultHTTPClient(), nil
+	}
+	base, err := GetHttpClientWithProxy(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	if base == nil {
+		return &http.Client{Timeout: ecomAgentRequestTimeout}, nil
+	}
+	clone := *base
+	clone.Timeout = ecomAgentRequestTimeout
+	return &clone, nil
 }
 
 func ensureEcomAgentAccessToken(ctx context.Context, client *ecomAgentClient, account *model.EcomAgentAccount) (string, string, string, int64, string, error) {

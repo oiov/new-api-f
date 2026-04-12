@@ -1262,6 +1262,38 @@ func buildSubscriptionDeliveryFieldsFromPayload(items []SubscriptionDeliveryPayl
 	return normalizeSubscriptionDeliveryFields(fields)
 }
 
+func buildAutoIssuedSubscriptionDeliveryFields() []SubscriptionDeliveryField {
+	return normalizeSubscriptionDeliveryFields([]SubscriptionDeliveryField{
+		{
+			Key:       "api_key",
+			Label:     "API Key",
+			Type:      "text",
+			Required:  true,
+			Masked:    false,
+			Copyable:  false,
+			SortOrder: 1,
+		},
+		{
+			Key:       "base_url",
+			Label:     "Base URL",
+			Type:      "text",
+			Required:  true,
+			Masked:    false,
+			Copyable:  false,
+			SortOrder: 2,
+		},
+		{
+			Key:       "usage_query_url",
+			Label:     "Usage URL",
+			Type:      "text",
+			Required:  true,
+			Masked:    false,
+			Copyable:  false,
+			SortOrder: 3,
+		},
+	})
+}
+
 func encodeSubscriptionDeliveryFields(fields []SubscriptionDeliveryField) (string, error) {
 	normalized := normalizeSubscriptionDeliveryFields(fields)
 	if len(normalized) == 0 {
@@ -3031,6 +3063,26 @@ func buildLatestUserSubscriptionIDMapBySourceOrderIDs(orderIDs []int, tx *gorm.D
 	return result, nil
 }
 
+func getLatestUserSubscriptionBySourceOrderIDTx(tx *gorm.DB, orderID int) (*UserSubscription, error) {
+	if orderID <= 0 {
+		return nil, errors.New("invalid orderID")
+	}
+	db := DB
+	if tx != nil {
+		db = tx
+	}
+	var sub UserSubscription
+	if err := db.Where("source_order_id = ?", orderID).
+		Order("id desc").
+		First(&sub).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &sub, nil
+}
+
 func buildSelfManualDeliverySummary(order *SubscriptionOrder) (*SubscriptionManualDeliverySummary, error) {
 	if order == nil {
 		return nil, nil
@@ -3267,6 +3319,19 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 				autoIssuedSchema = len(schema) > 0
 			}
 		}
+		snapshotPlan := order.SnapshotPlan()
+		currentPlan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
+		if err != nil {
+			return err
+		}
+		plan := mergeManualDeliveryEffectivePlan(snapshotPlan, currentPlan, order.PlanId)
+		if plan == nil {
+			return errors.New("套餐不存在，无法完成人工发放")
+		}
+		if len(schema) == 0 && isClaudeSeriesRequestCountManualDeliveryPlan(plan) {
+			schema = buildAutoIssuedSubscriptionDeliveryFields()
+			autoIssuedSchema = true
+		}
 		if len(schema) == 0 {
 			schema = buildSubscriptionDeliveryFieldsFromPayload(payload)
 		}
@@ -3297,57 +3362,52 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 			if baseURL == "" {
 				return errors.New("当前未配置站点地址(ServerAddress)，无法自动发放套餐")
 			}
-			snapshotPlan := order.SnapshotPlan()
-			currentPlan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
+			isClaudeRequestPlan := isClaudeSeriesRequestCountManualDeliveryPlan(plan)
+			sub, err := getLatestUserSubscriptionBySourceOrderIDTx(tx, order.Id)
 			if err != nil {
 				return err
 			}
-			plan := mergeManualDeliveryEffectivePlan(snapshotPlan, currentPlan, order.PlanId)
-			if plan == nil {
-				return errors.New("套餐不存在，无法完成人工发放")
-			}
-			isClaudeRequestPlan := isClaudeSeriesRequestCountManualDeliveryPlan(plan)
-			if !alreadyDelivered {
-				var (
-					channel  *Channel
-					keyIndex int
-				)
-				if isClaudeRequestPlan {
-					realChannelKey := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "api_key"))
-					if realChannelKey == "" {
-						return errors.New("请填写真实 Key 后再发放")
+			var (
+				channel  *Channel
+				keyIndex = -1
+			)
+			if isClaudeRequestPlan {
+				realChannelKey := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "api_key"))
+				if realChannelKey == "" {
+					realChannelKey = strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "api_key"))
+				}
+				if strings.HasPrefix(realChannelKey, "sk-") {
+					realChannelKey = ""
+				}
+				if realChannelKey == "" && (!alreadyDelivered || sub == nil) {
+					return errors.New("请填写真实 Key 后再发放")
+				}
+				if order.ReservedChannelId <= 0 || order.ReservedChannelKeyIndex < 0 {
+					channel, keyIndex, err = reserveManualDeliveryChannelSlotForOrderTx(tx, &order, plan)
+					if err != nil {
+						return err
 					}
-					if order.ReservedChannelId <= 0 || order.ReservedChannelKeyIndex < 0 {
-						channel, keyIndex, err = reserveManualDeliveryChannelSlotForOrderTx(tx, &order, plan)
-						if err != nil {
-							return err
-						}
-						order.ReservedChannelId = channel.Id
-						order.ReservedChannelKeyIndex = keyIndex
-					}
+					order.ReservedChannelId = channel.Id
+					order.ReservedChannelKeyIndex = keyIndex
+				}
+				if realChannelKey != "" {
 					channel, err = replaceReservedChannelKeyTx(tx, order.ReservedChannelId, order.ReservedChannelKeyIndex, realChannelKey)
 					if err != nil {
 						return err
 					}
-					keyIndex = order.ReservedChannelKeyIndex
 					refreshChannelCache = true
 				} else {
-					planTag := subscriptionPlanChannelPoolTag(order.PlanId)
-					if planTag == "" {
-						return errors.New("无效的套餐ID，无法分配渠道池")
-					}
-					channel, keyIndex, err = allocateSubscriptionPlanChannelFromPoolTx(tx, planTag)
+					channel, err = GetChannelById(order.ReservedChannelId, true)
 					if err != nil {
 						return err
 					}
-					if channel == nil || channel.Id <= 0 {
-						return errors.New("渠道池暂无可用 Key，请先补充渠道或释放占用")
-					}
 				}
+				keyIndex = order.ReservedChannelKeyIndex
+			}
+			if sub == nil {
 				targetUserId = order.UserId
 				upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
-
-				sub, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+				sub, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
 				if err != nil {
 					return err
 				}
@@ -3363,8 +3423,13 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 				if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 					return err
 				}
-
-				if err := tx.Model(sub).Updates(map[string]any{
+				createdSub = sub
+			}
+			if isClaudeRequestPlan {
+				if channel == nil || channel.Id <= 0 || keyIndex < 0 {
+					return errors.New("当前订单缺少可用的预留渠道槽位")
+				}
+				if err := tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]any{
 					"specific_channel_id":        channel.Id,
 					"specific_channel_key_index": keyIndex,
 					"updated_at":                 common.GetTimestamp(),
@@ -3373,28 +3438,24 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 				}
 				sub.SpecificChannelId = channel.Id
 				sub.SpecificChannelKeyIndex = keyIndex
-				createdSub = sub
-
-				aggregateToken, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, order.UserId)
-				if err != nil {
-					return err
-				}
-				if err := refreshSubscriptionAggregateAccessTokenTx(tx, aggregateToken); err != nil {
-					return err
-				}
-				if common.RedisEnabled {
-					tokenCopy := *aggregateToken
-					gopool.Go(func() {
-						_ = cacheSetToken(tokenCopy)
-					})
-				}
-				normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", "sk-"+aggregateToken.Key)
-			} else {
-				apiKey := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "api_key"))
-				if apiKey != "" {
-					normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", apiKey)
-				}
+			} else if err := provisionAggregateAccessForSubscriptionTx(tx, sub); err != nil {
+				return err
 			}
+
+			aggregateToken, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, order.UserId)
+			if err != nil {
+				return err
+			}
+			if err := refreshSubscriptionAggregateAccessTokenTx(tx, aggregateToken); err != nil {
+				return err
+			}
+			if common.RedisEnabled {
+				tokenCopy := *aggregateToken
+				gopool.Go(func() {
+					_ = cacheSetToken(tokenCopy)
+				})
+			}
+			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", "sk-"+aggregateToken.Key)
 
 			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "base_url", baseURL)
 			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "usage_query_url", usageQueryURL)

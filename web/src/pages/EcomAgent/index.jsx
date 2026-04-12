@@ -64,6 +64,7 @@ const defaultFormState = {
   access_token_expires_at: '',
   session_json: '',
   base_url: 'https://ecomagent.in',
+  proxy: '',
   supabase_auth_url: 'https://zwggawnojtjiaklycfhc.supabase.co/auth/v1',
   supabase_anon_key:
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3Z2dhd25vanRqaWFrbHljZmhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMzU3NDUsImV4cCI6MjA4NzYxMTc0NX0.-pQHomLNGWL7OvQpHL2_7T_NwI4wAzyNYMOknX_YJSE',
@@ -299,6 +300,7 @@ function buildFormFromAccountRecord(record) {
     access_token_expires_at: record?.access_token_expires_at || '',
     session_json: buildEditableSessionJSON(record),
     base_url: record?.base_url || defaultFormState.base_url,
+    proxy: record?.proxy || '',
     supabase_auth_url:
       record?.supabase_auth_url || defaultFormState.supabase_auth_url,
     supabase_anon_key:
@@ -510,11 +512,12 @@ function getRequestRemain(record) {
   return Math.max(0, requestLimit - getUsedRequests(record));
 }
 
-function getBatchFailureMessage(results, recordsById, t) {
-  const failures = results
+function getBatchFailureMessages(results, recordsById, t, renderLabel) {
+  return results
     .map((item, index) => {
       const id = item.id;
-      const label = recordsById.get(id)?.email || `#${id}`;
+      const rawLabel = recordsById.get(id)?.email || `#${id}`;
+      const label = typeof renderLabel === 'function' ? renderLabel(rawLabel) : rawLabel;
 
       if (item.status === 'fulfilled' && item.value?.data?.success) {
         return null;
@@ -532,9 +535,56 @@ function getBatchFailureMessage(results, recordsById, t) {
       );
     })
     .filter(Boolean);
+}
 
-  if (failures.length === 0) return '';
-  return failures.slice(0, 3).join('；');
+function renderBatchFailureDialog({
+  title,
+  messages,
+  t,
+  handleCopy,
+}) {
+  const content = messages.join('\n');
+  Modal.error({
+    title,
+    width: 760,
+    okText: t('知道了'),
+    cancelButtonProps: { style: { display: 'none' } },
+    content: (
+      <div>
+        <div
+          style={{
+            marginBottom: 12,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <Text type='secondary'>
+            {t('以下为完整失败详情，共 {{count}} 条。', { count: messages.length })}
+          </Text>
+          <Button
+            theme='solid'
+            type='primary'
+            size='small'
+            onClick={() => handleCopy(content, t('失败详情已复制'))}
+          >
+            {t('复制全部')}
+          </Button>
+        </div>
+        <TextArea
+          value={content}
+          readonly
+          autosize={false}
+          rows={12}
+          style={{
+            fontFamily:
+              'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace',
+          }}
+        />
+      </div>
+    ),
+  });
 }
 
 const EcomAgentPage = () => {
@@ -1102,6 +1152,7 @@ const EcomAgentPage = () => {
         refresh_token: form.refresh_token.trim(),
         session_json: form.session_json.trim(),
         base_url: form.base_url.trim(),
+        proxy: form.proxy.trim(),
         supabase_auth_url: form.supabase_auth_url.trim(),
         supabase_anon_key: form.supabase_anon_key.trim(),
         confirm_url: form.confirm_url.trim(),
@@ -1310,13 +1361,20 @@ const EcomAgentPage = () => {
         (item) => item.status === 'fulfilled' && item.value?.data?.success,
       ).length;
       const failed = results.length - success;
-      const failureMessage = getBatchFailureMessage(results, recordsById, t);
+      const failureMessages = getBatchFailureMessages(
+        results,
+        recordsById,
+        t,
+        renderEmail,
+      );
       if (failed > 0) {
-        showError(
-          [t('批量同步完成，成功 {{success}} 个，失败 {{failed}} 个。', { success, failed }), failureMessage]
-            .filter(Boolean)
-            .join(' '),
-        );
+        showError(t('批量同步完成，成功 {{success}} 个，失败 {{failed}} 个。', { success, failed }));
+        renderBatchFailureDialog({
+          title: t('批量同步失败详情'),
+          messages: failureMessages,
+          t,
+          handleCopy,
+        });
       } else {
         showSuccess(t('批量同步完成，成功 {{success}} 个，失败 {{failed}} 个。', { success, failed }));
       }
@@ -1345,16 +1403,23 @@ const EcomAgentPage = () => {
         (item) => item.status === 'fulfilled' && item.value?.data?.success,
       ).length;
       const failed = results.length - success;
-      const failureMessage = getBatchFailureMessage(results, recordsById, t);
+      const failureMessages = getBatchFailureMessages(
+        results,
+        recordsById,
+        t,
+        renderEmail,
+      );
       if (success > 0) {
         setSelectedRowKeys([]);
       }
       if (failed > 0) {
-        showError(
-          [t('批量删除完成，成功 {{success}} 个，失败 {{failed}} 个。', { success, failed }), failureMessage]
-            .filter(Boolean)
-            .join(' '),
-        );
+        showError(t('批量删除完成，成功 {{success}} 个，失败 {{failed}} 个。', { success, failed }));
+        renderBatchFailureDialog({
+          title: t('批量删除失败详情'),
+          messages: failureMessages,
+          t,
+          handleCopy,
+        });
       } else {
         showSuccess(t('批量删除完成，成功 {{success}} 个，失败 {{failed}} 个。', { success, failed }));
       }
@@ -1592,6 +1657,11 @@ const EcomAgentPage = () => {
         key: 'base_url',
         label: t('站点'),
         value: record.base_url || '-',
+      },
+      {
+        key: 'proxy',
+        label: t('代理'),
+        value: record.proxy || '-',
       },
       {
         key: 'assignment_status',
@@ -1944,6 +2014,16 @@ const EcomAgentPage = () => {
                     }
                     placeholder={t('EcomAgent Base URL')}
                   />
+                  <Input
+                    value={form.proxy}
+                    onChange={(value) =>
+                      setForm((prev) => ({ ...prev, proxy: value }))
+                    }
+                    placeholder={t('代理 URL，可选，支持 http(s):// 或 socks5://')}
+                  />
+                  <Text size='small' type='tertiary'>
+                    {t('配置后，该账号的注册、登录、刷新 token、拉取订阅和生成 API Key 都会通过此代理发出。')}
+                  </Text>
                   <Input
                     value={form.supabase_auth_url}
                     onChange={(value) =>

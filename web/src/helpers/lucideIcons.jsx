@@ -42,6 +42,7 @@ import {
   Package,
   BadgeDollarSign,
   BookOpen,
+  Mail,
 } from 'lucide-react';
 
 export function getLucideIcon(key, selected = false) {
@@ -82,6 +83,8 @@ export function getLucideIcon(key, selected = false) {
       return <ReceiptText {...commonProps} color={iconColor} />;
     case 'invite':
       return <Users {...commonProps} color={iconColor} />;
+    case 'siteNotifications':
+      return <Mail {...commonProps} color={iconColor} />;
     case 'channel':
       return <Layers {...commonProps} color={iconColor} />;
     case 'redemption':

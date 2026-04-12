@@ -58,6 +58,7 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
+  siteNotifications: '/console/personal#site-notifications',
 };
 
 const SiderBar = ({ onNavigate = () => { } }) => {
@@ -157,6 +158,11 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         text: t('个人设置'),
         itemKey: 'personal',
         to: '/personal',
+      },
+      {
+        text: t('站内信'),
+        itemKey: 'siteNotifications',
+        to: '/personal#site-notifications',
       },
     ];
 

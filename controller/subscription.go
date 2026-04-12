@@ -107,11 +107,21 @@ func notifyManualDeliveryOrderResult(order *model.SubscriptionOrder, approved bo
 	} else if order.RefundToQuota && order.RefundQuotaAmount > 0 {
 		values[3] = fmt.Sprintf("已补回 %d 额度到用户余额", order.RefundQuotaAmount)
 	}
-	_ = service.NotifyUser(
-		user.Id,
-		user.Email,
-		user.GetSetting(),
-		dto.NewNotify("subscription_manual_delivery", title, content, values),
+	for _, value := range values {
+		content = strings.Replace(content, dto.ContentValueParam, fmt.Sprintf("%v", value), 1)
+	}
+	_, _ = service.SendSiteNotificationToUser(
+		user,
+		0,
+		title,
+		content,
+		func() string {
+			if approved {
+				return "success"
+			}
+			return "warning"
+		}(),
+		true,
 	)
 }
 

@@ -48,6 +48,7 @@ type EcomAgentAccountRequest struct {
 	Email                       *string                   `json:"email"`
 	Password                    *string                   `json:"password"`
 	BaseURL                     *string                   `json:"base_url"`
+	Proxy                       *string                   `json:"proxy"`
 	SupabaseAuthURL             *string                   `json:"supabase_auth_url"`
 	SupabaseAnonKey             *string                   `json:"supabase_anon_key"`
 	ConfirmURL                  *string                   `json:"confirm_url"`
@@ -142,6 +143,7 @@ func CreateEcomAgentAccount(c *gin.Context) {
 		Email:            trimStringPointer(req.Email),
 		Password:         trimStringPointer(req.Password),
 		BaseURL:          trimStringPointer(req.BaseURL),
+		Proxy:            trimStringPointer(req.Proxy),
 		SupabaseAuthURL:  trimStringPointer(req.SupabaseAuthURL),
 		SupabaseAnonKey:  trimStringPointer(req.SupabaseAnonKey),
 		ConfirmURL:       trimStringPointer(req.ConfirmURL),
@@ -253,6 +255,9 @@ func UpdateEcomAgentAccount(c *gin.Context) {
 	}
 	if nextBaseURL := trimOptionalString(req.BaseURL); nextBaseURL != nil && *nextBaseURL != "" {
 		account.BaseURL = *nextBaseURL
+	}
+	if nextProxy := trimOptionalString(req.Proxy); nextProxy != nil {
+		account.Proxy = *nextProxy
 	}
 	if nextSupabaseAuthURL := trimOptionalString(req.SupabaseAuthURL); nextSupabaseAuthURL != nil && *nextSupabaseAuthURL != "" {
 		account.SupabaseAuthURL = *nextSupabaseAuthURL
@@ -461,6 +466,7 @@ type EcomAgentAccountResponse struct {
 	Id                          int    `json:"id"`
 	Email                       string `json:"email"`
 	BaseURL                     string `json:"base_url"`
+	Proxy                       string `json:"proxy"`
 	SupabaseAuthURL             string `json:"supabase_auth_url"`
 	SupabaseAnonKey             string `json:"supabase_anon_key"`
 	ConfirmURL                  string `json:"confirm_url"`
@@ -529,6 +535,7 @@ func buildEcomAgentAccountResponse(account *model.EcomAgentAccount) *EcomAgentAc
 		Id:                          account.Id,
 		Email:                       account.GetDisplayEmail(),
 		BaseURL:                     account.BaseURL,
+		Proxy:                       account.Proxy,
 		SupabaseAuthURL:             account.SupabaseAuthURL,
 		SupabaseAnonKey:             account.SupabaseAnonKey,
 		ConfirmURL:                  account.ConfirmURL,

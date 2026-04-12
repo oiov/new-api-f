@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useRef, useEffect, useState, useContext } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Button,
   Typography,
@@ -62,7 +63,9 @@ const NotificationSettings = ({
   handleNotificationSettingChange,
   saveNotificationSettings,
 }) => {
+  const location = useLocation();
   const formApiRef = useRef(null);
+  const cardRef = useRef(null);
   const [statusState] = useContext(StatusContext);
   const [userState] = useContext(UserContext);
   const isAdminOrRoot = (userState?.user?.role || 0) >= 10;
@@ -93,6 +96,7 @@ const NotificationSettings = ({
       enabled: true,
       topup: true,
       personal: true,
+      siteNotifications: true,
     },
     admin: {
       enabled: true,
@@ -177,7 +181,12 @@ const NotificationSettings = ({
         midjourney: true,
         task: true,
       },
-      personal: { enabled: true, topup: true, personal: true },
+      personal: {
+        enabled: true,
+        topup: true,
+        personal: true,
+        siteNotifications: true,
+      },
       admin: {
         enabled: true,
         channel: true,
@@ -274,6 +283,25 @@ const NotificationSettings = ({
     loadActiveSubscriptions();
   }, [t]);
 
+  useEffect(() => {
+    const syncFromHash = () => {
+      if (window.location.hash !== '#site-notifications') {
+        return;
+      }
+      setActiveTabKey('site-notifications');
+      requestAnimationFrame(() => {
+        cardRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    };
+
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, [location.key]);
+
   // 初始化表单值
   useEffect(() => {
     if (formApiRef.current && notificationSettings) {
@@ -338,6 +366,11 @@ const NotificationSettings = ({
       modules: [
         { key: 'topup', title: t('充值兑换'), description: t('在线充值与兑换码管理') },
         { key: 'invite', title: t('邀请拉新'), description: t('邀请链接与奖励管理') },
+        {
+          key: 'siteNotifications',
+          title: t('站内信'),
+          description: t('管理员消息与发放通知'),
+        },
         {
           key: 'personal',
           title: t('个人设置'),
@@ -413,7 +446,8 @@ const NotificationSettings = ({
   const quotaNotifyDisabled = !notificationSettings.quotaNotifyEnabled;
 
   return (
-    <Card
+    <div ref={cardRef} id='site-notifications-card'>
+      <Card
       className='!rounded-2xl shadow-sm border-0'
       footer={
         <div className='flex justify-end gap-3'>
@@ -468,7 +502,7 @@ const NotificationSettings = ({
         {() => (
           <Tabs
             type='card'
-            defaultActiveKey='notification'
+            activeKey={activeTabKey}
             onChange={(key) => setActiveTabKey(key)}
           >
             {/* 通知配置 Tab */}
@@ -1088,7 +1122,8 @@ const NotificationSettings = ({
           </Tabs>
         )}
       </Form>
-    </Card>
+      </Card>
+    </div>
   );
 };
 
