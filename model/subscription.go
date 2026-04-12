@@ -3373,12 +3373,6 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 			)
 			if isClaudeRequestPlan {
 				realChannelKey := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "api_key"))
-				if realChannelKey == "" {
-					realChannelKey = strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "api_key"))
-				}
-				if strings.HasPrefix(realChannelKey, "sk-") {
-					realChannelKey = ""
-				}
 				if realChannelKey == "" && (!alreadyDelivered || sub == nil) {
 					return errors.New("请填写真实 Key 后再发放")
 				}
