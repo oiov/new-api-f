@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ func withSubscriptionQueryTestDB(t *testing.T, run func()) {
 	LOG_DB = db
 	common.UsingSQLite = true
 
-	require.NoError(t, db.AutoMigrate(&User{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &SubscriptionPreConsumeRecord{}, &Token{}, &Log{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &Channel{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &SubscriptionPreConsumeRecord{}, &Token{}, &Log{}))
 
 	t.Cleanup(func() {
 		DB = oldDB
@@ -584,6 +585,597 @@ func TestAdminDeliverManualDeliveryOrder_UsesOrderSnapshotSchema(t *testing.T) {
 		require.Len(t, result.DeliveryPayload, 1)
 		require.Equal(t, "endpoint", result.DeliveryPayload[0].Key)
 		require.Equal(t, "https://example.com", result.DeliveryPayload[0].Value)
+	})
+}
+
+func TestCompleteSubscriptionOrder_ReservesPlaceholderSlotForClaudeManualDelivery(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		schemaJSON, err := encodeSubscriptionDeliveryFields([]SubscriptionDeliveryField{
+			{Key: "api_key", Label: "API Key", Type: "text", Copyable: true},
+			{Key: "base_url", Label: "Base URL", Type: "text", Copyable: true},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Copyable: true},
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, DB.Create(&User{
+			Id:       66,
+			Username: "claude_manual_user",
+			AffCode:  "claude_manual_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:                      1504,
+			Title:                   "Claude Manual Requests",
+			DurationUnit:            SubscriptionDurationMonth,
+			DurationValue:           1,
+			Enabled:                 true,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       2000,
+			DeliveryMode:            SubscriptionDeliveryModeManualDelivery,
+			DeliveryFieldSchemaJSON: schemaJSON,
+			AllowedModelsJSON:       `["claude-sonnet-4-6"]`,
+			UpgradeGroup:            "sub_plan_claude_manual",
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		tag := subscriptionPlanChannelPoolTag(plan.Id)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          8001,
+			Name:        "Claude Fixed Channel",
+			Status:      common.ChannelStatusEnabled,
+			Key:         "seed-key-1",
+			Group:       "sub_plan_claude_manual",
+			Tag:         &tag,
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 1,
+			},
+		}).Error)
+
+		order := &SubscriptionOrder{
+			Id:            9901,
+			UserId:        66,
+			PlanId:        plan.Id,
+			Money:         29.9,
+			TradeNo:       "claude-manual-order-1",
+			PaymentMethod: "epay",
+			CreateTime:    now,
+			Status:        common.TopUpStatusPending,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+
+		require.NoError(t, CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`))
+
+		var storedOrder SubscriptionOrder
+		require.NoError(t, DB.Where("id = ?", order.Id).First(&storedOrder).Error)
+		require.Equal(t, common.TopUpStatusSuccess, storedOrder.Status)
+		require.Equal(t, SubscriptionFulfillmentPending, storedOrder.FulfillmentStatus)
+		require.Equal(t, 8001, storedOrder.ReservedChannelId)
+		require.Equal(t, 1, storedOrder.ReservedChannelKeyIndex)
+
+		var storedChannel Channel
+		require.NoError(t, DB.Where("id = ?", 8001).First(&storedChannel).Error)
+		keys := storedChannel.GetKeys()
+		require.Len(t, keys, 2)
+		require.Equal(t, "seed-key-1", keys[0])
+		require.Contains(t, keys[1], "reserved:sub_order:9901:user:66:")
+	})
+}
+
+func TestAdminDeliverManualDeliveryOrder_ReplacesReservedPlaceholderWithRealKey(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		schemaJSON, err := encodeSubscriptionDeliveryFields([]SubscriptionDeliveryField{
+			{Key: "api_key", Label: "API Key", Type: "text", Copyable: true},
+			{Key: "base_url", Label: "Base URL", Type: "text", Copyable: true},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Copyable: true},
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, DB.Create(&User{
+			Id:       67,
+			Username: "claude_deliver_user",
+			AffCode:  "claude_deliver_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:                      1505,
+			Title:                   "Claude Deliver Requests",
+			DurationUnit:            SubscriptionDurationMonth,
+			DurationValue:           1,
+			Enabled:                 true,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       3000,
+			DeliveryMode:            SubscriptionDeliveryModeManualDelivery,
+			DeliveryFieldSchemaJSON: schemaJSON,
+			AllowedModelsJSON:       `["claude-sonnet-4-6"]`,
+			UpgradeGroup:            "sub_plan_claude_deliver",
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		tag := subscriptionPlanChannelPoolTag(plan.Id)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          8002,
+			Name:        "Claude Fixed Deliver Channel",
+			Status:      common.ChannelStatusEnabled,
+			Key:         "seed-key-1",
+			Group:       "sub_plan_claude_deliver",
+			Tag:         &tag,
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 1,
+			},
+		}).Error)
+
+		order := &SubscriptionOrder{
+			Id:            9902,
+			UserId:        67,
+			PlanId:        plan.Id,
+			Money:         39.9,
+			TradeNo:       "claude-manual-order-2",
+			PaymentMethod: "epay",
+			CreateTime:    now,
+			Status:        common.TopUpStatusPending,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+		require.NoError(t, CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`))
+
+		result, err := AdminDeliverManualDeliveryOrder(order.Id, 7, []SubscriptionDeliveryPayloadItem{
+			{Key: "api_key", Label: "API Key", Type: "text", Value: "real-upstream-key-123"},
+			{Key: "base_url", Label: "Base URL", Type: "text", Value: "https://console.example.com"},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Value: "https://usage.example.com"},
+		}, "完成发放")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, SubscriptionFulfillmentDelivered, result.FulfillmentStatus)
+		require.Len(t, result.DeliveryPayload, 3)
+		require.True(t, strings.HasPrefix(result.DeliveryPayload[0].Value, "sk-"))
+
+		var storedChannel Channel
+		require.NoError(t, DB.Where("id = ?", 8002).First(&storedChannel).Error)
+		keys := storedChannel.GetKeys()
+		require.Len(t, keys, 2)
+		require.Equal(t, "seed-key-1", keys[0])
+		require.Equal(t, "real-upstream-key-123", keys[1])
+
+		var sub UserSubscription
+		require.NoError(t, DB.Where("source_order_id = ?", order.Id).First(&sub).Error)
+		require.Equal(t, 8002, sub.SpecificChannelId)
+		require.Equal(t, 1, sub.SpecificChannelKeyIndex)
+	})
+}
+
+func TestAdminRejectManualDeliveryOrder_ReleasesReservedPlaceholderSlot(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		schemaJSON, err := encodeSubscriptionDeliveryFields([]SubscriptionDeliveryField{
+			{Key: "api_key", Label: "API Key", Type: "text", Copyable: true},
+			{Key: "base_url", Label: "Base URL", Type: "text", Copyable: true},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Copyable: true},
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, DB.Create(&User{
+			Id:       68,
+			Username: "claude_reject_user",
+			AffCode:  "claude_reject_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:                      1506,
+			Title:                   "Claude Reject Requests",
+			DurationUnit:            SubscriptionDurationMonth,
+			DurationValue:           1,
+			Enabled:                 true,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       1500,
+			DeliveryMode:            SubscriptionDeliveryModeManualDelivery,
+			DeliveryFieldSchemaJSON: schemaJSON,
+			AllowedModelsJSON:       `["claude-sonnet-4-6"]`,
+			UpgradeGroup:            "sub_plan_claude_reject",
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		tag := subscriptionPlanChannelPoolTag(plan.Id)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          8003,
+			Name:        "Claude Fixed Reject Channel",
+			Status:      common.ChannelStatusEnabled,
+			Key:         "seed-key-1",
+			Group:       "sub_plan_claude_reject",
+			Tag:         &tag,
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 1,
+			},
+		}).Error)
+
+		order := &SubscriptionOrder{
+			Id:            9903,
+			UserId:        68,
+			PlanId:        plan.Id,
+			Money:         49.9,
+			TradeNo:       "claude-manual-order-3",
+			PaymentMethod: "epay",
+			CreateTime:    now,
+			Status:        common.TopUpStatusPending,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+		require.NoError(t, CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`))
+
+		result, err := AdminRejectManualDeliveryOrder(order.Id, 7, "拒绝发放", false)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, SubscriptionFulfillmentRejected, result.FulfillmentStatus)
+		require.Equal(t, 0, result.ReservedChannelId)
+		require.Equal(t, -1, result.ReservedChannelKeyIndex)
+
+		var storedChannel Channel
+		require.NoError(t, DB.Where("id = ?", 8003).First(&storedChannel).Error)
+		keys := storedChannel.GetKeys()
+		require.Len(t, keys, 1)
+		require.Equal(t, "seed-key-1", keys[0])
+
+		var storedOrder SubscriptionOrder
+		require.NoError(t, DB.Where("id = ?", order.Id).First(&storedOrder).Error)
+		require.Equal(t, 0, storedOrder.ReservedChannelId)
+		require.Equal(t, -1, storedOrder.ReservedChannelKeyIndex)
+	})
+}
+
+func TestCompleteSubscriptionOrder_ReservesPlaceholderWithDisabledHistoricalChannel(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		schemaJSON, err := encodeSubscriptionDeliveryFields([]SubscriptionDeliveryField{
+			{Key: "api_key", Label: "API Key", Type: "text", Copyable: true},
+			{Key: "base_url", Label: "Base URL", Type: "text", Copyable: true},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Copyable: true},
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, DB.Create(&User{
+			Id:       69,
+			Username: "claude_disabled_channel_user",
+			AffCode:  "claude_disabled_channel_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:                      1507,
+			Title:                   "Claude Disabled Historical Channel Requests",
+			DurationUnit:            SubscriptionDurationMonth,
+			DurationValue:           1,
+			Enabled:                 true,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       2200,
+			DeliveryMode:            SubscriptionDeliveryModeManualDelivery,
+			DeliveryFieldSchemaJSON: schemaJSON,
+			AllowedModelsJSON:       `["claude-sonnet-4-6"]`,
+			UpgradeGroup:            "sub_plan_claude_disabled_history",
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		tag := subscriptionPlanChannelPoolTag(plan.Id)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          8004,
+			Name:        "Claude Disabled Historical Channel",
+			Status:      common.ChannelStatusManuallyDisabled,
+			Key:         "old-disabled-key",
+			Group:       "sub_plan_claude_disabled_history",
+			Tag:         &tag,
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now - 60,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 1,
+			},
+		}).Error)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          8005,
+			Name:        "Claude Active Fixed Channel",
+			Status:      common.ChannelStatusEnabled,
+			Key:         "seed-key-1",
+			Group:       "sub_plan_claude_disabled_history",
+			Tag:         &tag,
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 1,
+			},
+		}).Error)
+
+		order := &SubscriptionOrder{
+			Id:            9904,
+			UserId:        69,
+			PlanId:        plan.Id,
+			Money:         59.9,
+			TradeNo:       "claude-manual-order-4",
+			PaymentMethod: "epay",
+			CreateTime:    now,
+			Status:        common.TopUpStatusPending,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+
+		require.NoError(t, CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`))
+
+		var storedOrder SubscriptionOrder
+		require.NoError(t, DB.Where("id = ?", order.Id).First(&storedOrder).Error)
+		require.Equal(t, 8005, storedOrder.ReservedChannelId)
+		require.Equal(t, 1, storedOrder.ReservedChannelKeyIndex)
+
+		var activeChannel Channel
+		require.NoError(t, DB.Where("id = ?", 8005).First(&activeChannel).Error)
+		activeKeys := activeChannel.GetKeys()
+		require.Len(t, activeKeys, 2)
+		require.Equal(t, "seed-key-1", activeKeys[0])
+		require.Contains(t, activeKeys[1], "reserved:sub_order:9904:user:69:")
+
+		var disabledChannel Channel
+		require.NoError(t, DB.Where("id = ?", 8004).First(&disabledChannel).Error)
+		disabledKeys := disabledChannel.GetKeys()
+		require.Len(t, disabledKeys, 1)
+		require.Equal(t, "old-disabled-key", disabledKeys[0])
+	})
+}
+
+func TestAdminRejectManualDeliveryOrder_ShiftsLaterReservedOrderIndexes(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		schemaJSON, err := encodeSubscriptionDeliveryFields([]SubscriptionDeliveryField{
+			{Key: "api_key", Label: "API Key", Type: "text", Copyable: true},
+			{Key: "base_url", Label: "Base URL", Type: "text", Copyable: true},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Copyable: true},
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, DB.Create(&User{
+			Id:       70,
+			Username: "claude_shift_reserved_a",
+			AffCode:  "claude_shift_reserved_a",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+		require.NoError(t, DB.Create(&User{
+			Id:       71,
+			Username: "claude_shift_reserved_b",
+			AffCode:  "claude_shift_reserved_b",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:                      1508,
+			Title:                   "Claude Shift Reserved Requests",
+			DurationUnit:            SubscriptionDurationMonth,
+			DurationValue:           1,
+			Enabled:                 true,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       2600,
+			DeliveryMode:            SubscriptionDeliveryModeManualDelivery,
+			DeliveryFieldSchemaJSON: schemaJSON,
+			AllowedModelsJSON:       `["claude-sonnet-4-6"]`,
+			UpgradeGroup:            "sub_plan_claude_shift_reserved",
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		tag := subscriptionPlanChannelPoolTag(plan.Id)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          8006,
+			Name:        "Claude Shift Reserved Channel",
+			Status:      common.ChannelStatusEnabled,
+			Key:         "seed-key-1",
+			Group:       "sub_plan_claude_shift_reserved",
+			Tag:         &tag,
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 1,
+			},
+		}).Error)
+
+		order1 := &SubscriptionOrder{
+			Id:            9905,
+			UserId:        70,
+			PlanId:        plan.Id,
+			Money:         29.9,
+			TradeNo:       "claude-manual-order-5",
+			PaymentMethod: "epay",
+			CreateTime:    now,
+			Status:        common.TopUpStatusPending,
+		}
+		order1.ApplyPlanSnapshot(plan)
+		require.NoError(t, order1.Insert())
+		require.NoError(t, CompleteSubscriptionOrder(order1.TradeNo, `{"ok":true}`))
+
+		order2 := &SubscriptionOrder{
+			Id:            9906,
+			UserId:        71,
+			PlanId:        plan.Id,
+			Money:         39.9,
+			TradeNo:       "claude-manual-order-6",
+			PaymentMethod: "epay",
+			CreateTime:    now + 1,
+			Status:        common.TopUpStatusPending,
+		}
+		order2.ApplyPlanSnapshot(plan)
+		require.NoError(t, order2.Insert())
+		require.NoError(t, CompleteSubscriptionOrder(order2.TradeNo, `{"ok":true}`))
+
+		_, err = AdminRejectManualDeliveryOrder(order1.Id, 7, "拒绝第一个订单", false)
+		require.NoError(t, err)
+
+		var shiftedOrder SubscriptionOrder
+		require.NoError(t, DB.Where("id = ?", order2.Id).First(&shiftedOrder).Error)
+		require.Equal(t, 8006, shiftedOrder.ReservedChannelId)
+		require.Equal(t, 1, shiftedOrder.ReservedChannelKeyIndex)
+
+		result, err := AdminDeliverManualDeliveryOrder(order2.Id, 7, []SubscriptionDeliveryPayloadItem{
+			{Key: "api_key", Label: "API Key", Type: "text", Value: "real-upstream-key-shifted"},
+			{Key: "base_url", Label: "Base URL", Type: "text", Value: "https://console.example.com"},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Value: "https://usage.example.com"},
+		}, "发放第二个订单")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, SubscriptionFulfillmentDelivered, result.FulfillmentStatus)
+
+		var storedChannel Channel
+		require.NoError(t, DB.Where("id = ?", 8006).First(&storedChannel).Error)
+		keys := storedChannel.GetKeys()
+		require.Len(t, keys, 2)
+		require.Equal(t, "seed-key-1", keys[0])
+		require.Equal(t, "real-upstream-key-shifted", keys[1])
+	})
+}
+
+func TestAdminRejectManualDeliveryOrder_ShiftsDeliveredBindingsAfterRemovedPlaceholder(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		schemaJSON, err := encodeSubscriptionDeliveryFields([]SubscriptionDeliveryField{
+			{Key: "api_key", Label: "API Key", Type: "text", Copyable: true},
+			{Key: "base_url", Label: "Base URL", Type: "text", Copyable: true},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Copyable: true},
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, DB.Create(&User{
+			Id:       72,
+			Username: "claude_shift_delivered_a",
+			AffCode:  "claude_shift_delivered_a",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+		require.NoError(t, DB.Create(&User{
+			Id:       73,
+			Username: "claude_shift_delivered_b",
+			AffCode:  "claude_shift_delivered_b",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:                      1509,
+			Title:                   "Claude Shift Delivered Requests",
+			DurationUnit:            SubscriptionDurationMonth,
+			DurationValue:           1,
+			Enabled:                 true,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       2800,
+			DeliveryMode:            SubscriptionDeliveryModeManualDelivery,
+			DeliveryFieldSchemaJSON: schemaJSON,
+			AllowedModelsJSON:       `["claude-sonnet-4-6"]`,
+			UpgradeGroup:            "sub_plan_claude_shift_delivered",
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		tag := subscriptionPlanChannelPoolTag(plan.Id)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          8007,
+			Name:        "Claude Shift Delivered Channel",
+			Status:      common.ChannelStatusEnabled,
+			Key:         "seed-key-1",
+			Group:       "sub_plan_claude_shift_delivered",
+			Tag:         &tag,
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 1,
+			},
+		}).Error)
+
+		order1 := &SubscriptionOrder{
+			Id:            9907,
+			UserId:        72,
+			PlanId:        plan.Id,
+			Money:         29.9,
+			TradeNo:       "claude-manual-order-7",
+			PaymentMethod: "epay",
+			CreateTime:    now,
+			Status:        common.TopUpStatusPending,
+		}
+		order1.ApplyPlanSnapshot(plan)
+		require.NoError(t, order1.Insert())
+		require.NoError(t, CompleteSubscriptionOrder(order1.TradeNo, `{"ok":true}`))
+
+		order2 := &SubscriptionOrder{
+			Id:            9908,
+			UserId:        73,
+			PlanId:        plan.Id,
+			Money:         39.9,
+			TradeNo:       "claude-manual-order-8",
+			PaymentMethod: "epay",
+			CreateTime:    now + 1,
+			Status:        common.TopUpStatusPending,
+		}
+		order2.ApplyPlanSnapshot(plan)
+		require.NoError(t, order2.Insert())
+		require.NoError(t, CompleteSubscriptionOrder(order2.TradeNo, `{"ok":true}`))
+
+		_, err = AdminDeliverManualDeliveryOrder(order2.Id, 7, []SubscriptionDeliveryPayloadItem{
+			{Key: "api_key", Label: "API Key", Type: "text", Value: "real-upstream-key-delivered"},
+			{Key: "base_url", Label: "Base URL", Type: "text", Value: "https://console.example.com"},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Value: "https://usage.example.com"},
+		}, "先发放第二个订单")
+		require.NoError(t, err)
+
+		var deliveredSub UserSubscription
+		require.NoError(t, DB.Where("source_order_id = ?", order2.Id).First(&deliveredSub).Error)
+		require.Equal(t, 2, deliveredSub.SpecificChannelKeyIndex)
+
+		require.NoError(t, DB.Create(&Token{
+			Id:                      30001,
+			UserId:                  73,
+			Key:                     "sk-test-shift-delivered-0000000000000000000001",
+			Name:                    "shift-specific-token",
+			Status:                  common.TokenStatusEnabled,
+			Group:                   "sub_plan_claude_shift_delivered",
+			SpecificChannelId:       8007,
+			SpecificChannelKeyIndex: 2,
+			CreatedTime:             now,
+			ExpiredTime:             -1,
+		}).Error)
+
+		_, err = AdminRejectManualDeliveryOrder(order1.Id, 7, "拒绝第一个占位订单", false)
+		require.NoError(t, err)
+
+		var shiftedOrder SubscriptionOrder
+		require.NoError(t, DB.Where("id = ?", order2.Id).First(&shiftedOrder).Error)
+		require.Equal(t, 1, shiftedOrder.ReservedChannelKeyIndex)
+
+		var shiftedSub UserSubscription
+		require.NoError(t, DB.Where("id = ?", deliveredSub.Id).First(&shiftedSub).Error)
+		require.Equal(t, 1, shiftedSub.SpecificChannelKeyIndex)
+
+		var shiftedToken Token
+		require.NoError(t, DB.Where("id = ?", 30001).First(&shiftedToken).Error)
+		require.Equal(t, 1, shiftedToken.SpecificChannelKeyIndex)
+
+		var storedChannel Channel
+		require.NoError(t, DB.Where("id = ?", 8007).First(&storedChannel).Error)
+		keys := storedChannel.GetKeys()
+		require.Len(t, keys, 2)
+		require.Equal(t, "seed-key-1", keys[0])
+		require.Equal(t, "real-upstream-key-delivered", keys[1])
 	})
 }
 

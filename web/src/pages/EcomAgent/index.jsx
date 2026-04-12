@@ -14,7 +14,9 @@ import {
   Select,
   SideSheet,
   Space,
+  TabPane,
   Tag,
+  Tabs,
   TextArea,
   Tooltip,
   Typography,
@@ -25,6 +27,7 @@ import {
   IconEyeOpened,
   IconHistory,
   IconRefresh,
+  IconSend,
 } from '@douyinfe/semi-icons';
 import {
   IllustrationNoResult,
@@ -52,16 +55,143 @@ const defaultFormState = {
   supabase_anon_key:
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3Z2dhd25vanRqaWFrbHljZmhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMzU3NDUsImV4cCI6MjA4NzYxMTc0NX0.-pQHomLNGWL7OvQpHL2_7T_NwI4wAzyNYMOknX_YJSE',
   confirm_url: '',
+  assignment_status: 'unassigned',
+  assigned_plan: '',
+  assigned_subscription_order_id: '',
+  assigned_channel_id: '',
+  assigned_channel_key_index: '',
+  assigned_user_subscription_id: '',
+  assigned_at: '',
+  tags: '',
+  remark: '',
 };
 
-const PLAN_FILTER_OPTIONS = [
-  'Free Trial',
-  'Mini',
-  'Mini Plus',
-  'Mini Max',
-  'Premium',
-  'Premium+',
+const PLAN_LABEL_MAP = {
+  'free trial': 'Free Trial',
+  mini: 'Mini',
+  'mini plus': 'Mini Plus',
+  'mini max': 'Mini Max',
+  premium: 'Premium',
+  'premium+': 'Premium+',
+};
+
+const PLAN_FILTER_ORDER = [
+  'free trial',
+  'mini',
+  'mini plus',
+  'mini max',
+  'premium',
+  'premium+',
 ];
+
+const ASSIGNMENT_STATUS_OPTIONS = [
+  { value: '', labelKey: '全部分配状态' },
+  { value: 'unassigned', labelKey: '未分配' },
+  { value: 'assigned', labelKey: '已分配' },
+];
+
+const CHANNEL_BINDING_OPTIONS = [
+  { value: '', labelKey: '全部渠道关联' },
+  { value: 'linked', labelKey: '已关联渠道' },
+  { value: 'unlinked', labelKey: '未关联渠道' },
+];
+
+const ORDER_BINDING_OPTIONS = [
+  { value: '', labelKey: '全部订单关联' },
+  { value: 'linked', labelKey: '已关联订单' },
+  { value: 'unlinked', labelKey: '未关联订单' },
+];
+
+function normalizePlanValue(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function getPlanLabel(plan) {
+  const normalizedPlan = normalizePlanValue(plan);
+  return PLAN_LABEL_MAP[normalizedPlan] || String(plan || '').trim() || '-';
+}
+
+function normalizeAssignmentStatus(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
+function getAssignmentStatusLabel(status, t) {
+  if (normalizeAssignmentStatus(status) === 'assigned') {
+    return t('已分配');
+  }
+  return t('未分配');
+}
+
+function parseTags(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function hasAssignedChannel(record) {
+  return Number(record?.assigned_channel_id || 0) > 0;
+}
+
+function getAssignedChannelLabel(record, t) {
+  if (!hasAssignedChannel(record)) {
+    return t('未关联渠道');
+  }
+  const channelLabel = `${t('渠道')} #${record.assigned_channel_id}`;
+  if (Number(record?.assigned_channel_key_index) >= 0) {
+    return `${channelLabel} / Key #${record.assigned_channel_key_index}`;
+  }
+  return channelLabel;
+}
+
+function getAssignedOrderLabel(record, t) {
+  const orderId = Number(record?.assigned_subscription_order_id || 0);
+  if (orderId <= 0) {
+    return t('未关联订单');
+  }
+  return `${t('人工发放订单')} #${orderId}`;
+}
+
+function hasAssignedOrder(record) {
+  return Number(record?.assigned_subscription_order_id || 0) > 0;
+}
+
+function buildManualOrderOptionLabel(item, t) {
+  const order = item?.order || {};
+  const username = item?.username || '-';
+  const planTitle = order?.plan_title || item?.plan?.title || '-';
+  return `#${order?.id || '-'} · ${username} · ${planTitle}`;
+}
+
+function buildAssignmentFormFromRecord(record) {
+  return {
+    assignment_status:
+      normalizeAssignmentStatus(record?.assignment_status) || 'unassigned',
+    assigned_plan: record?.assigned_plan || '',
+    assigned_subscription_order_id:
+      record?.assigned_subscription_order_id > 0
+        ? String(record.assigned_subscription_order_id)
+        : '',
+    assigned_channel_id:
+      record?.assigned_channel_id > 0 ? String(record.assigned_channel_id) : '',
+    assigned_channel_key_index:
+      Number(record?.assigned_channel_key_index) >= 0
+        ? String(record.assigned_channel_key_index)
+        : '',
+    assigned_user_subscription_id:
+      record?.assigned_user_subscription_id > 0
+        ? String(record.assigned_user_subscription_id)
+        : '',
+    assigned_at: record?.assigned_at ? String(record.assigned_at) : '',
+    tags: record?.tags || '',
+    remark: record?.remark || '',
+  };
+}
 
 function inferLoginModeFromRecord(record) {
   if (
@@ -78,6 +208,33 @@ function inferLoginModeFromRecord(record) {
 function credentialLabel(saved, maskedValue, t) {
   if (!saved) return t('未保存');
   return maskedValue || t('已保存');
+}
+
+function maskMiddle(value, start = 3, end = 2) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (text.length <= start + end) {
+    return `${text.slice(0, 1)}***${text.slice(-1)}`;
+  }
+  return `${text.slice(0, start)}***${text.slice(-end)}`;
+}
+
+function maskEmail(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const [localPart, domain = ''] = text.split('@');
+  if (!domain) {
+    return maskMiddle(text, 2, 1);
+  }
+  const maskedLocal =
+    localPart.length <= 2
+      ? `${localPart.slice(0, 1)}***`
+      : `${localPart.slice(0, 2)}***${localPart.slice(-1)}`;
+  return `${maskedLocal}@fishxcode.com`;
+}
+
+function maskApiKey(value) {
+  return maskMiddle(value, 6, 4);
 }
 
 function formatTs(ts) {
@@ -156,9 +313,9 @@ function getPlanType(record, t) {
 
 function getAccountSummary(record, t) {
   const status = record.status || '-';
-  const plan = record.plan || '-';
+  const plan = getPlanLabel(record.plan);
   const remain = getRequestRemain(record);
-  return `${status} / ${plan} / ${t('剩余请求')}: ${remain}`;
+  return `${status} / ${plan} / ${t('剩余请求')}: ${remain} / ${getAssignmentStatusLabel(record.assignment_status, t)}`;
 }
 
 function usageSummary(record, t) {
@@ -166,7 +323,7 @@ function usageSummary(record, t) {
   const usedRequests = getUsedRequests(record);
   const usedTokens = getUsedTokens(record);
   return [
-    `${t('套餐')}: ${record.plan || '-'}`,
+    `${t('套餐')}: ${getPlanLabel(record.plan)}`,
     `${t('套餐类型')}: ${getPlanType(record, t)}`,
     `${t('请求额度')}: ${requestLimit || 0}`,
     `${t('Token额度')}: ${getTokenLimitLabel(record, t)}`,
@@ -212,22 +369,35 @@ const EcomAgentPage = () => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [accounts, setAccounts] = useState([]);
+  const [subscriptionPlans, setSubscriptionPlans] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [manualOrders, setManualOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncingId, setSyncingId] = useState(null);
+  const [deliveringId, setDeliveringId] = useState(null);
   const [batchSyncing, setBatchSyncing] = useState(false);
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [visible, setVisible] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detailRecord, setDetailRecord] = useState(null);
+  const [assignmentRecord, setAssignmentRecord] = useState(null);
+  const [assignmentForm, setAssignmentForm] = useState(
+    buildAssignmentFormFromRecord(null),
+  );
   const [historyRecord, setHistoryRecord] = useState(null);
   const [form, setForm] = useState(defaultFormState);
   const [loginMode, setLoginMode] = useState('password');
+  const [formTab, setFormTab] = useState('login');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [keyword, setKeyword] = useState('');
   const [planFilter, setPlanFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [assignmentStatusFilter, setAssignmentStatusFilter] = useState('');
+  const [channelBindingFilter, setChannelBindingFilter] = useState('');
+  const [orderBindingFilter, setOrderBindingFilter] = useState('');
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageSize = 10;
 
@@ -249,12 +419,46 @@ const EcomAgentPage = () => {
     setHistoryPage(1);
   };
 
+  const openDetail = (record) => {
+    setDetailRecord(record);
+  };
+
+  const openAssignment = (record) => {
+    setDetailRecord(null);
+    setAssignmentRecord(record);
+    setAssignmentForm(buildAssignmentFormFromRecord(record));
+  };
+
   const loadAccounts = async () => {
     setLoading(true);
     try {
       const res = await API.get('/api/ecomagent/accounts');
       if (res.data.success) {
-        setAccounts(res.data.data || []);
+        const nextAccounts = res.data.data || [];
+        setAccounts(nextAccounts);
+        if (detailRecord?.id) {
+          const nextDetail = nextAccounts.find(
+            (item) => item.id === detailRecord.id,
+          );
+          if (nextDetail) {
+            setDetailRecord(nextDetail);
+          } else {
+            setDetailRecord(null);
+          }
+        }
+        if (assignmentRecord?.id) {
+          const nextAssignment = nextAccounts.find(
+            (item) => item.id === assignmentRecord.id,
+          );
+          if (nextAssignment) {
+            setAssignmentRecord(nextAssignment);
+            setAssignmentForm(buildAssignmentFormFromRecord(nextAssignment));
+          } else {
+            setAssignmentRecord(null);
+            setAssignmentForm(buildAssignmentFormFromRecord(null));
+          }
+        }
+        return nextAccounts;
       } else {
         showError(res.data.message || t('加载失败'));
       }
@@ -263,17 +467,214 @@ const EcomAgentPage = () => {
     } finally {
       setLoading(false);
     }
+    return [];
+  };
+
+  const loadAssignmentMeta = async () => {
+    const [plansRes, channelsRes, manualOrdersRes] = await Promise.allSettled([
+      API.get('/api/subscription/plans', { skipErrorHandler: true }),
+      API.get('/api/channel/', {
+        params: { p: 1, page_size: 100, id_sort: true },
+        skipErrorHandler: true,
+      }),
+      API.get('/api/ecomagent/manual_orders', {
+        params: { p: 1, page_size: 200, fulfillment_status: 'pending_delivery' },
+        skipErrorHandler: true,
+      }),
+    ]);
+
+    if (plansRes.status === 'fulfilled' && plansRes.value.data?.success) {
+      const nextPlans = (plansRes.value.data.data || [])
+        .map((item) => item?.plan)
+        .filter((plan) => plan?.id);
+      setSubscriptionPlans(nextPlans);
+    } else {
+      setSubscriptionPlans([]);
+    }
+
+    if (channelsRes.status === 'fulfilled' && channelsRes.value.data?.success) {
+      setChannels(channelsRes.value.data?.data?.items || []);
+    } else {
+      setChannels([]);
+    }
+
+    if (
+      manualOrdersRes.status === 'fulfilled' &&
+      manualOrdersRes.value.data?.success
+    ) {
+      setManualOrders(
+        (manualOrdersRes.value.data?.data?.items || []).filter(
+          (item) => item?.order?.id,
+        ),
+      );
+    } else {
+      setManualOrders([]);
+    }
   };
 
   useEffect(() => {
     loadAccounts();
+    loadAssignmentMeta();
   }, []);
+
+  const assignPlanOptions = useMemo(() => {
+    const options = (subscriptionPlans || []).map((plan) => ({
+      label: `${plan.title || `#${plan.id}`} (#${plan.id})`,
+      value: plan.title || '',
+    }));
+    const currentPlan = assignmentForm.assigned_plan?.trim();
+    if (currentPlan && !options.some((item) => item.value === currentPlan)) {
+      options.unshift({ label: `${currentPlan} (${t('当前值')})`, value: currentPlan });
+    }
+    return options.filter((item) => item.value);
+  }, [assignmentForm.assigned_plan, subscriptionPlans, t]);
+
+  const channelOptions = useMemo(() => {
+    return (channels || []).map((channel) => {
+      const extra = [channel.name, channel.tag, channel.group].filter(Boolean).join(' / ');
+      return {
+        label: extra
+          ? `#${channel.id} · ${extra}`
+          : `#${channel.id}`,
+        value: String(channel.id),
+      };
+    });
+  }, [channels]);
+
+  const manualOrderOptions = useMemo(() => {
+    const options = (manualOrders || []).map((item) => ({
+      label: buildManualOrderOptionLabel(item, t),
+      value: String(item.order.id),
+      planTitle: item?.order?.plan_title || item?.plan?.title || '',
+    }));
+    const currentValue = String(
+      assignmentForm.assigned_subscription_order_id || '',
+    ).trim();
+    if (currentValue && !options.some((item) => item.value === currentValue)) {
+      options.unshift({
+        label: `#${currentValue} (${t('当前值')})`,
+        value: currentValue,
+        planTitle: assignmentForm.assigned_plan || '',
+      });
+    }
+    return options;
+  }, [
+    assignmentForm.assigned_plan,
+    assignmentForm.assigned_subscription_order_id,
+    manualOrders,
+    t,
+  ]);
+
+  const selectedAssignedChannel = useMemo(
+    () =>
+      channels.find(
+        (channel) =>
+          String(channel.id) === String(assignmentForm.assigned_channel_id),
+      ) || null,
+    [assignmentForm.assigned_channel_id, channels],
+  );
+
+  const assignedChannelKeyOptions = useMemo(() => {
+    if (!selectedAssignedChannel) return [];
+    const isMultiKey = Boolean(selectedAssignedChannel.channel_info?.is_multi_key);
+    const multiKeySize = Number(
+      selectedAssignedChannel.channel_info?.multi_key_size || 0,
+    );
+    const total = isMultiKey ? Math.max(multiKeySize, 0) : 1;
+    return Array.from({ length: total }, (_, index) => ({
+      label: `Key #${index}`,
+      value: String(index),
+    }));
+  }, [selectedAssignedChannel]);
+
+  useEffect(() => {
+    if (!selectedAssignedChannel) {
+      return;
+    }
+    if (
+      assignedChannelKeyOptions.length > 0 &&
+      assignmentForm.assigned_channel_key_index !== '' &&
+      !assignedChannelKeyOptions.some(
+        (item) => item.value === String(assignmentForm.assigned_channel_key_index),
+      )
+    ) {
+      setAssignmentForm((prev) => ({ ...prev, assigned_channel_key_index: '' }));
+    }
+  }, [
+    assignedChannelKeyOptions,
+    assignmentForm.assigned_channel_key_index,
+    selectedAssignedChannel,
+  ]);
+
+  const planFilterOptions = useMemo(() => {
+    const values = Array.from(
+      new Set(
+        accounts
+          .map((record) => normalizePlanValue(record.plan))
+          .filter(Boolean),
+      ),
+    );
+    values.sort((a, b) => {
+      const indexA = PLAN_FILTER_ORDER.indexOf(a);
+      const indexB = PLAN_FILTER_ORDER.indexOf(b);
+      if (indexA === -1 && indexB === -1) {
+        return a.localeCompare(b);
+      }
+      if (indexA === -1) {
+        return 1;
+      }
+      if (indexB === -1) {
+        return -1;
+      }
+      return indexA - indexB;
+    });
+    return values.map((value) => ({
+      label: getPlanLabel(value),
+      value,
+    }));
+  }, [accounts]);
+
+  const statusFilterOptions = useMemo(() => {
+    const values = Array.from(
+      new Set(
+        accounts
+          .map((record) => String(record.status || '').trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+    return values.map((value) => ({
+      label: value,
+      value,
+    }));
+  }, [accounts]);
 
   const filteredAccounts = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
     return accounts.filter((record) => {
-      const matchesPlan = !planFilter || String(record.plan || '').trim() === planFilter;
-      if (!matchesPlan) {
+      const matchesPlan =
+        !planFilter || normalizePlanValue(record.plan) === planFilter;
+      const matchesStatus = !statusFilter || String(record.status || '') === statusFilter;
+      const matchesAssignmentStatus =
+        !assignmentStatusFilter ||
+        normalizeAssignmentStatus(record.assignment_status) ===
+          assignmentStatusFilter;
+      const matchesChannelBinding =
+        !channelBindingFilter ||
+        (channelBindingFilter === 'linked'
+          ? hasAssignedChannel(record)
+          : !hasAssignedChannel(record));
+      const matchesOrderBinding =
+        !orderBindingFilter ||
+        (orderBindingFilter === 'linked'
+          ? hasAssignedOrder(record)
+          : !hasAssignedOrder(record));
+      if (
+        !matchesPlan ||
+        !matchesStatus ||
+        !matchesAssignmentStatus ||
+        !matchesChannelBinding ||
+        !matchesOrderBinding
+      ) {
         return false;
       }
       if (!normalizedKeyword) {
@@ -283,7 +684,20 @@ const EcomAgentPage = () => {
         record.email,
         record.account_id,
         record.status,
+        record.assignment_status,
+        getAssignmentStatusLabel(record.assignment_status, t),
         record.plan,
+        getPlanLabel(record.plan),
+        getPlanType(record, t),
+        record.assigned_plan,
+        String(record.assigned_subscription_order_id || ''),
+        record.tags,
+        record.remark,
+        String(record.assigned_channel_id || ''),
+        String(record.assigned_channel_key_index || ''),
+        String(record.assigned_user_subscription_id || ''),
+        getAssignedChannelLabel(record, t),
+        getAssignedOrderLabel(record, t),
         getSubscriptionData(record)?.apiKeyName,
       ]
         .filter(Boolean)
@@ -291,7 +705,34 @@ const EcomAgentPage = () => {
         .toLowerCase();
       return searchSource.includes(normalizedKeyword);
     });
-  }, [accounts, keyword, planFilter]);
+  }, [
+    accounts,
+    assignmentStatusFilter,
+    channelBindingFilter,
+    keyword,
+    orderBindingFilter,
+    planFilter,
+    statusFilter,
+    t,
+  ]);
+
+  const hasActiveFilters =
+    keyword.trim() ||
+    planFilter ||
+    statusFilter ||
+    assignmentStatusFilter ||
+    channelBindingFilter ||
+    orderBindingFilter;
+
+  const resetFilters = () => {
+    setKeyword('');
+    setPlanFilter('');
+    setStatusFilter('');
+    setAssignmentStatusFilter('');
+    setChannelBindingFilter('');
+    setOrderBindingFilter('');
+    setCurrentPage(1);
+  };
 
   useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(filteredAccounts.length / pageSize));
@@ -310,11 +751,13 @@ const EcomAgentPage = () => {
     setEditing(null);
     setForm({ ...defaultFormState });
     setLoginMode('password');
+    setFormTab('login');
     setVisible(true);
   };
 
   const openEdit = (record) => {
     setEditing(record);
+    setFormTab('login');
     setForm({
       email: record.email || '',
       password: '',
@@ -329,6 +772,26 @@ const EcomAgentPage = () => {
       supabase_anon_key:
         record.supabase_anon_key || defaultFormState.supabase_anon_key,
       confirm_url: record.confirm_url || '',
+      assignment_status:
+        normalizeAssignmentStatus(record.assignment_status) || 'unassigned',
+      assigned_plan: record.assigned_plan || '',
+      assigned_subscription_order_id:
+        record.assigned_subscription_order_id > 0
+          ? String(record.assigned_subscription_order_id)
+          : '',
+      assigned_channel_id:
+        record.assigned_channel_id > 0 ? String(record.assigned_channel_id) : '',
+      assigned_channel_key_index:
+        Number(record.assigned_channel_key_index) >= 0
+          ? String(record.assigned_channel_key_index)
+          : '',
+      assigned_user_subscription_id:
+        record.assigned_user_subscription_id > 0
+          ? String(record.assigned_user_subscription_id)
+          : '',
+      assigned_at: record.assigned_at ? String(record.assigned_at) : '',
+      tags: record.tags || '',
+      remark: record.remark || '',
     });
     setLoginMode(inferLoginModeFromRecord(record));
     setVisible(true);
@@ -364,10 +827,33 @@ const EcomAgentPage = () => {
         supabase_auth_url: form.supabase_auth_url.trim(),
         supabase_anon_key: form.supabase_anon_key.trim(),
         confirm_url: form.confirm_url.trim(),
+        assignment_status:
+          normalizeAssignmentStatus(form.assignment_status) || 'unassigned',
+        assigned_plan: form.assigned_plan.trim(),
+        tags: form.tags.trim(),
+        remark: form.remark.trim(),
       };
       if (form.access_token_expires_at !== '') {
         payload.access_token_expires_at = Number(form.access_token_expires_at) || 0;
       }
+      payload.assigned_channel_id =
+        form.assigned_channel_id !== ''
+          ? Number(form.assigned_channel_id) || 0
+          : '';
+      payload.assigned_subscription_order_id =
+        form.assigned_subscription_order_id !== ''
+          ? Number(form.assigned_subscription_order_id) || 0
+          : '';
+      payload.assigned_channel_key_index =
+        form.assigned_channel_key_index !== ''
+          ? Number(form.assigned_channel_key_index) || 0
+          : '';
+      payload.assigned_user_subscription_id =
+        form.assigned_user_subscription_id !== ''
+          ? Number(form.assigned_user_subscription_id) || 0
+          : '';
+      payload.assigned_at =
+        form.assigned_at !== '' ? Number(form.assigned_at) || 0 : '';
       if (!editing || form.password.trim()) {
         payload.password = form.password.trim();
       }
@@ -417,6 +903,90 @@ const EcomAgentPage = () => {
       }
     } catch (error) {
       showError(error?.message || t('删除失败'));
+    }
+  };
+
+  const handleSaveAssignment = async () => {
+    if (!assignmentRecord?.id) {
+      showError(t('请先保存当前账号'));
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        assignment_status:
+          normalizeAssignmentStatus(assignmentForm.assignment_status) ||
+          'unassigned',
+        assigned_plan: String(assignmentForm.assigned_plan || '').trim(),
+        assigned_subscription_order_id:
+          assignmentForm.assigned_subscription_order_id !== ''
+            ? Number(assignmentForm.assigned_subscription_order_id) || 0
+            : '',
+        assigned_channel_id:
+          assignmentForm.assigned_channel_id !== ''
+            ? Number(assignmentForm.assigned_channel_id) || 0
+            : '',
+        assigned_channel_key_index:
+          assignmentForm.assigned_channel_key_index !== ''
+            ? Number(assignmentForm.assigned_channel_key_index) || 0
+            : '',
+        assigned_user_subscription_id:
+          assignmentForm.assigned_user_subscription_id !== ''
+            ? Number(assignmentForm.assigned_user_subscription_id) || 0
+            : '',
+        assigned_at:
+          assignmentForm.assigned_at !== ''
+            ? Number(assignmentForm.assigned_at) || 0
+            : '',
+        tags: String(assignmentForm.tags || '').trim(),
+        remark: String(assignmentForm.remark || '').trim(),
+      };
+      const res = await API.put(
+        `/api/ecomagent/accounts/${assignmentRecord.id}`,
+        payload,
+      );
+      if (res.data?.success) {
+        showSuccess(t('更新成功'));
+        await Promise.all([loadAccounts(), loadAssignmentMeta()]);
+      } else {
+        showError(res.data?.message || t('保存失败'));
+      }
+    } catch (error) {
+      showError(error?.message || t('保存失败'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeliverLinkedOrder = async () => {
+    if (!assignmentRecord?.id) {
+      showError(t('请先保存当前账号'));
+      return;
+    }
+    const orderId = Number(assignmentForm.assigned_subscription_order_id || 0);
+    if (orderId <= 0) {
+      showError(t('请先关联人工发放订单'));
+      return;
+    }
+    setDeliveringId(assignmentRecord.id);
+    try {
+      const res = await API.post(
+        `/api/ecomagent/accounts/${assignmentRecord.id}/deliver_manual_order`,
+        {
+          order_id: orderId,
+          admin_remark: t('由 EcomAgent 账户发放'),
+        },
+      );
+      if (res.data?.success) {
+        showSuccess(t('发放成功并已回写关联信息'));
+        await Promise.all([loadAccounts(), loadAssignmentMeta()]);
+      } else {
+        showError(res.data?.message || t('发放失败'));
+      }
+    } catch (error) {
+      showError(error?.response?.data?.message || error?.message || t('发放失败'));
+    } finally {
+      setDeliveringId(null);
     }
   };
 
@@ -517,11 +1087,36 @@ const EcomAgentPage = () => {
               ellipsis={{ showTooltip: true }}
               style={{ maxWidth: isMobile ? 170 : 220 }}
             >
-              {record.email}
+              {maskEmail(record.email) || '-'}
             </Text>
             <Text size='small' type='tertiary' ellipsis={{ showTooltip: true }}>
               {getAccountSummary(record, t)}
             </Text>
+            <div className='flex items-center gap-1 flex-wrap'>
+              <Tag
+                color={
+                  normalizeAssignmentStatus(record.assignment_status) === 'assigned'
+                    ? 'green'
+                    : 'grey'
+                }
+                size='small'
+              >
+                {getAssignmentStatusLabel(record.assignment_status, t)}
+              </Tag>
+              <Tag color='blue' size='small'>
+                {getAssignedChannelLabel(record, t)}
+              </Tag>
+              <Tag color='cyan' size='small'>
+                {getAssignedOrderLabel(record, t)}
+              </Tag>
+              {parseTags(record.tags)
+                .slice(0, 2)
+                .map((tag) => (
+                  <Tag key={tag} size='small'>
+                    {tag}
+                  </Tag>
+                ))}
+            </div>
           </div>
         ),
       },
@@ -541,7 +1136,7 @@ const EcomAgentPage = () => {
                 ellipsis={{ showTooltip: true }}
                 style={{ maxWidth: isMobile ? 180 : 220 }}
               >
-                {record.api_key}
+                {maskApiKey(record.api_key)}
               </Text>
             ) : (
               <Text size='small' type='tertiary'>
@@ -552,39 +1147,12 @@ const EcomAgentPage = () => {
         ),
       },
       {
-        title: t('状态'),
-        dataIndex: 'status',
-        width: isMobile ? 120 : 150,
-        render: (value, record) => (
-          <Space wrap spacing={4}>
-            <Tag color={record.last_error ? 'red' : 'blue'}>{value || '-'}</Tag>
-            {record.last_error ? <Tag color='red'>{t('异常')}</Tag> : null}
-          </Space>
-        ),
-      },
-      {
-        title: t('套餐'),
-        dataIndex: 'plan',
-        width: isMobile ? 160 : 190,
-        render: (_, record) => (
-          <div className='flex flex-col gap-1 min-w-0'>
-            <Space wrap spacing={4}>
-              <Tag color='white'>{record.plan || '-'}</Tag>
-              <Tag color='indigo'>{getPlanType(record, t)}</Tag>
-            </Space>
-            <Text size='small' type='tertiary'>
-              {t('剩余请求')}: {getRequestRemain(record)}
-            </Text>
-          </div>
-        ),
-      },
-      {
         title: t('操作'),
         dataIndex: 'id',
-        width: isMobile ? 112 : 118,
+        width: isMobile ? 220 : 260,
         render: (_, record) => (
           <Space spacing={2} wrap={false}>
-            <Tooltip content={t('查看详情')}>
+            <Tooltip content={t('详情')}>
               <Button
                 size='small'
                 theme='borderless'
@@ -592,7 +1160,19 @@ const EcomAgentPage = () => {
                 icon={<IconEyeOpened />}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setDetailRecord(record);
+                  openDetail(record);
+                }}
+              />
+            </Tooltip>
+            <Tooltip content={t('分配/发放')}>
+              <Button
+                size='small'
+                theme='borderless'
+                type='primary'
+                icon={<IconSend />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openAssignment(record);
                 }}
               />
             </Tooltip>
@@ -665,6 +1245,25 @@ const EcomAgentPage = () => {
     [selectedRowKeys],
   );
 
+  const selectedFilteredCount = useMemo(
+    () =>
+      filteredAccounts.filter((record) => selectedRowKeys.includes(record.id))
+        .length,
+    [filteredAccounts, selectedRowKeys],
+  );
+
+  const allFilteredSelected =
+    filteredAccounts.length > 0 &&
+    selectedFilteredCount === filteredAccounts.length;
+
+  const handleToggleSelectAllFiltered = () => {
+    if (allFilteredSelected) {
+      setSelectedRowKeys([]);
+      return;
+    }
+    setSelectedRowKeys(filteredAccounts.map((record) => record.id));
+  };
+
   const expandedRowRender = (record) => {
     const subscription = getSubscriptionData(record);
     const modelBreakdown = getModelBreakdown(record);
@@ -672,7 +1271,7 @@ const EcomAgentPage = () => {
       {
         key: 'email',
         label: t('邮箱'),
-        value: record.email || '-',
+        value: maskEmail(record.email) || '-',
       },
       {
         key: 'account_id',
@@ -688,6 +1287,21 @@ const EcomAgentPage = () => {
         key: 'base_url',
         label: t('站点'),
         value: record.base_url || '-',
+      },
+      {
+        key: 'assignment_status',
+        label: t('分配状态'),
+        value: getAssignmentStatusLabel(record.assignment_status, t),
+      },
+      {
+        key: 'assigned_channel',
+        label: t('关联渠道'),
+        value: getAssignedChannelLabel(record, t),
+      },
+      {
+        key: 'assigned_order',
+        label: t('关联订单'),
+        value: getAssignedOrderLabel(record, t),
       },
     ];
     const planDescriptions = [
@@ -808,11 +1422,54 @@ const EcomAgentPage = () => {
             </div>
 
             <div>
+              <Text strong>{t('分配信息')}</Text>
+              <div className='mt-2'>
+                <Descriptions
+                  data={[
+                    {
+                      key: 'assigned_plan',
+                      label: t('套餐标记'),
+                      value: record.assigned_plan || '-',
+                    },
+                    {
+                      key: 'assigned_order',
+                      label: t('关联订单'),
+                      value: getAssignedOrderLabel(record, t),
+                    },
+                    {
+                      key: 'assigned_subscription',
+                      label: t('用户订阅 ID'),
+                      value: record.assigned_user_subscription_id || '-',
+                    },
+                    {
+                      key: 'assigned_at',
+                      label: t('分配时间'),
+                      value: formatTs(record.assigned_at),
+                    },
+                    {
+                      key: 'tags',
+                      label: t('标签'),
+                      value: record.tags || '-',
+                    },
+                    {
+                      key: 'remark',
+                      label: t('备注'),
+                      value: record.remark || '-',
+                    },
+                  ]}
+                  column={1}
+                  size='small'
+                  rowSize='small'
+                />
+              </div>
+            </div>
+
+            <div>
               <Text strong>{t('API Key')}</Text>
               <div className='mt-2 rounded-lg border border-[var(--semi-color-border)] px-3 py-2'>
                 <div className='flex items-center gap-2 flex-wrap'>
                   <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: isMobile ? 240 : 360 }}>
-                    {record.api_key || '-'}
+                    {record.api_key ? maskApiKey(record.api_key) : '-'}
                   </Text>
                   {record.api_key ? (
                     <Button
@@ -879,127 +1536,132 @@ const EcomAgentPage = () => {
           <Text type='tertiary'>
             {t('账号密码和登录态二选一；如果你已有登录后的 session JSON，可直接粘贴导入。')}
           </Text>
-          <div className='rounded-xl border border-[var(--semi-color-border)] p-3'>
-            <div className='flex flex-col gap-3'>
-              <div className='flex items-center justify-between gap-3 flex-wrap'>
-                <Text strong>{t('录入方式')}</Text>
-                <RadioGroup
-                  type='button'
-                  value={loginMode}
-                  onChange={(e) => setLoginMode(e.target.value)}
-                >
-                  <Radio value='password'>{t('密码注册/登录')}</Radio>
-                  <Radio value='token'>{t('Token 导入')}</Radio>
-                  <Radio value='session'>{t('Session JSON 导入')}</Radio>
-                </RadioGroup>
+          <Tabs activeKey={formTab} onChange={setFormTab} type='card'>
+            <TabPane tab={t('录入方式')} itemKey='login'>
+              <div className='mt-3 rounded-xl border border-[var(--semi-color-border)] p-3'>
+                <div className='flex flex-col gap-3'>
+                  <div className='flex items-center justify-between gap-3 flex-wrap'>
+                    <Text strong>{t('录入方式')}</Text>
+                    <RadioGroup
+                      type='button'
+                      value={loginMode}
+                      onChange={(e) => setLoginMode(e.target.value)}
+                    >
+                      <Radio value='password'>{t('密码注册/登录')}</Radio>
+                      <Radio value='token'>{t('Token 导入')}</Radio>
+                      <Radio value='session'>{t('Session JSON 导入')}</Radio>
+                    </RadioGroup>
+                  </div>
+
+                  {loginMode === 'password' ? (
+                    <div className='flex flex-col gap-3'>
+                      <Text size='small' type='tertiary'>
+                        {t('用于自动注册、密码登录和后续 refresh_token 续期。')}
+                      </Text>
+                      <Input
+                        value={form.email}
+                        onChange={(value) => setForm((prev) => ({ ...prev, email: value }))}
+                        placeholder={t('邮箱')}
+                      />
+                      <Input
+                        value={form.password}
+                        onChange={(value) =>
+                          setForm((prev) => ({ ...prev, password: value }))
+                        }
+                        placeholder={editing ? t('密码，留空表示不修改') : t('密码')}
+                      />
+                    </div>
+                  ) : null}
+
+                  {loginMode === 'token' ? (
+                    <div className='flex flex-col gap-3'>
+                      <Text size='small' type='tertiary'>
+                        {t('适合你已经拿到 accountId、access_token、refresh_token 的场景。')}
+                      </Text>
+                      <Input
+                        value={form.email}
+                        onChange={(value) => setForm((prev) => ({ ...prev, email: value }))}
+                        placeholder={t('邮箱，可选')}
+                      />
+                      <Input
+                        value={form.account_id}
+                        onChange={(value) =>
+                          setForm((prev) => ({ ...prev, account_id: value }))
+                        }
+                        placeholder={t('accountId，可选')}
+                      />
+                      <Input
+                        value={form.access_token}
+                        onChange={(value) =>
+                          setForm((prev) => ({ ...prev, access_token: value }))
+                        }
+                        placeholder={t('access_token，可选')}
+                      />
+                      <Input
+                        value={form.refresh_token}
+                        onChange={(value) =>
+                          setForm((prev) => ({ ...prev, refresh_token: value }))
+                        }
+                        placeholder={t('refresh_token，可选')}
+                      />
+                      <Input
+                        value={String(form.access_token_expires_at || '')}
+                        onChange={(value) =>
+                          setForm((prev) => ({ ...prev, access_token_expires_at: value }))
+                        }
+                        placeholder={t('access_token 过期时间，可选')}
+                      />
+                    </div>
+                  ) : null}
+
+                  {loginMode === 'session' ? (
+                    <div className='flex flex-col gap-3'>
+                      <Text size='small' type='tertiary'>
+                        {t('直接粘贴登录返回 JSON，会自动提取 email、accountId、access_token、refresh_token。')}
+                      </Text>
+                      <TextArea
+                        autosize={{ minRows: 6, maxRows: 10 }}
+                        value={form.session_json}
+                        onChange={(value) =>
+                          setForm((prev) => ({ ...prev, session_json: value }))
+                        }
+                        placeholder={t('会话 JSON，可直接粘贴登录返回')}
+                      />
+                    </div>
+                  ) : null}
+
+                  <Input
+                    value={form.confirm_url}
+                    onChange={(value) =>
+                      setForm((prev) => ({ ...prev, confirm_url: value }))
+                    }
+                    placeholder={t('邮件确认链接，可后续补录')}
+                  />
+                  <Input
+                    value={form.base_url}
+                    onChange={(value) =>
+                      setForm((prev) => ({ ...prev, base_url: value }))
+                    }
+                    placeholder={t('EcomAgent Base URL')}
+                  />
+                  <Input
+                    value={form.supabase_auth_url}
+                    onChange={(value) =>
+                      setForm((prev) => ({ ...prev, supabase_auth_url: value }))
+                    }
+                    placeholder={t('Supabase Auth URL')}
+                  />
+                  <Input
+                    value={form.supabase_anon_key}
+                    onChange={(value) =>
+                      setForm((prev) => ({ ...prev, supabase_anon_key: value }))
+                    }
+                    placeholder={t('Supabase Anon Key')}
+                  />
+                </div>
               </div>
-
-              {loginMode === 'password' ? (
-                <div className='flex flex-col gap-3'>
-                  <Text size='small' type='tertiary'>
-                    {t('用于自动注册、密码登录和后续 refresh_token 续期。')}
-                  </Text>
-                  <Input
-                    value={form.email}
-                    onChange={(value) => setForm((prev) => ({ ...prev, email: value }))}
-                    placeholder={t('邮箱')}
-                  />
-                  <Input
-                    value={form.password}
-                    onChange={(value) =>
-                      setForm((prev) => ({ ...prev, password: value }))
-                    }
-                    placeholder={editing ? t('密码，留空表示不修改') : t('密码')}
-                  />
-                </div>
-              ) : null}
-
-              {loginMode === 'token' ? (
-                <div className='flex flex-col gap-3'>
-                  <Text size='small' type='tertiary'>
-                    {t('适合你已经拿到 accountId、access_token、refresh_token 的场景。')}
-                  </Text>
-                  <Input
-                    value={form.email}
-                    onChange={(value) => setForm((prev) => ({ ...prev, email: value }))}
-                    placeholder={t('邮箱，可选')}
-                  />
-                  <Input
-                    value={form.account_id}
-                    onChange={(value) =>
-                      setForm((prev) => ({ ...prev, account_id: value }))
-                    }
-                    placeholder={t('accountId，可选')}
-                  />
-                  <Input
-                    value={form.access_token}
-                    onChange={(value) =>
-                      setForm((prev) => ({ ...prev, access_token: value }))
-                    }
-                    placeholder={t('access_token，可选')}
-                  />
-                  <Input
-                    value={form.refresh_token}
-                    onChange={(value) =>
-                      setForm((prev) => ({ ...prev, refresh_token: value }))
-                    }
-                    placeholder={t('refresh_token，可选')}
-                  />
-                  <Input
-                    value={String(form.access_token_expires_at || '')}
-                    onChange={(value) =>
-                      setForm((prev) => ({ ...prev, access_token_expires_at: value }))
-                    }
-                    placeholder={t('access_token 过期时间，可选')}
-                  />
-                </div>
-              ) : null}
-
-              {loginMode === 'session' ? (
-                <div className='flex flex-col gap-3'>
-                  <Text size='small' type='tertiary'>
-                    {t('直接粘贴登录返回 JSON，会自动提取 email、accountId、access_token、refresh_token。')}
-                  </Text>
-                  <TextArea
-                    autosize={{ minRows: 6, maxRows: 10 }}
-                    value={form.session_json}
-                    onChange={(value) =>
-                      setForm((prev) => ({ ...prev, session_json: value }))
-                    }
-                    placeholder={t('会话 JSON，可直接粘贴登录返回')}
-                  />
-                </div>
-              ) : null}
-            </div>
-          </div>
-          <Input
-            value={form.confirm_url}
-            onChange={(value) =>
-              setForm((prev) => ({ ...prev, confirm_url: value }))
-            }
-            placeholder={t('邮件确认链接，可后续补录')}
-          />
-          <Input
-            value={form.base_url}
-            onChange={(value) =>
-              setForm((prev) => ({ ...prev, base_url: value }))
-            }
-            placeholder={t('EcomAgent Base URL')}
-          />
-          <Input
-            value={form.supabase_auth_url}
-            onChange={(value) =>
-              setForm((prev) => ({ ...prev, supabase_auth_url: value }))
-            }
-            placeholder={t('Supabase Auth URL')}
-          />
-          <Input
-            value={form.supabase_anon_key}
-            onChange={(value) =>
-              setForm((prev) => ({ ...prev, supabase_anon_key: value }))
-            }
-            placeholder={t('Supabase Anon Key')}
-          />
+            </TabPane>
+          </Tabs>
         </div>
       </Modal>
 
@@ -1009,21 +1671,68 @@ const EcomAgentPage = () => {
         onCancel={() => setDetailRecord(null)}
         width={isMobile ? '100%' : 520}
         footer={
-          <div className='flex justify-end'>
+          <div className='flex justify-end gap-2 flex-wrap'>
+            {detailRecord ? (
+              <>
+                <Button
+                  loading={syncingId === detailRecord.id}
+                  onClick={() => handleSync(detailRecord)}
+                >
+                  {t('执行同步')}
+                </Button>
+                <Button onClick={() => openEdit(detailRecord)}>{t('编辑')}</Button>
+                <Tooltip content={t('分配/发放')}>
+                  <Button
+                    type='primary'
+                    icon={<IconSend />}
+                    onClick={() => openAssignment(detailRecord)}
+                  />
+                </Tooltip>
+              </>
+            ) : null}
             <Button onClick={() => setDetailRecord(null)}>{t('关闭')}</Button>
           </div>
         }
       >
         {detailRecord ? (
           <div className='flex flex-col gap-4'>
+            <div className='flex items-center justify-between gap-2 flex-wrap rounded-lg border border-[var(--semi-color-border)] p-3 bg-[var(--semi-color-fill-0)]'>
+              <div className='min-w-0'>
+                <Text strong>{maskEmail(detailRecord.email) || '-'}</Text>
+                <div className='mt-1'>
+                  <Text size='small' type='tertiary'>
+                    {getAssignedOrderLabel(detailRecord, t)} / {getAssignedChannelLabel(detailRecord, t)}
+                  </Text>
+                </div>
+              </div>
+              <Space spacing={8} wrap>
+                <Button
+                  size='small'
+                  icon={<IconEyeOpened />}
+                  onClick={() => openHistory(detailRecord)}
+                >
+                  {t('历史消耗')}
+                </Button>
+                <Button
+                  size='small'
+                  type='primary'
+                  theme='light'
+                  loading={syncingId === detailRecord.id}
+                  icon={<IconRefresh />}
+                  onClick={() => handleSync(detailRecord)}
+                >
+                  {t('执行同步')}
+                </Button>
+              </Space>
+            </div>
             <div className='grid grid-cols-1 gap-3'>
               <div>
                 <Text type='tertiary'>{t('邮箱')}</Text>
-                <div>{detailRecord.email || '-'}</div>
+                <div>{maskEmail(detailRecord.email) || '-'}</div>
               </div>
               <div>
                 <Text type='tertiary'>{t('登录标识')}</Text>
-                <div>{detailRecord.email || '-'} / {detailRecord.account_id || '-'}</div>
+                <div>{maskEmail(detailRecord.email) || '-'} / {detailRecord.account_id || '-'}</div>
               </div>
               <div>
                 <Text type='tertiary'>accountId</Text>
@@ -1032,6 +1741,14 @@ const EcomAgentPage = () => {
               <div>
                 <Text type='tertiary'>{t('状态')}</Text>
                 <div>{detailRecord.status || '-'}</div>
+              </div>
+              <div>
+                <Text type='tertiary'>{t('分配状态')}</Text>
+                <div>{getAssignmentStatusLabel(detailRecord.assignment_status, t)}</div>
+              </div>
+              <div>
+                <Text type='tertiary'>{t('关联渠道')}</Text>
+                <div>{getAssignedChannelLabel(detailRecord, t)}</div>
               </div>
               <div>
                 <Text type='tertiary'>{t('注册时间')}</Text>
@@ -1056,6 +1773,9 @@ const EcomAgentPage = () => {
                 </Text>
                 <Text size='small' type='tertiary'>
                   {t('Key 名称')}: {getSubscriptionData(detailRecord)?.apiKeyName || '-'}
+                </Text>
+                <Text size='small' type='tertiary'>
+                  {t('关联订单')}: {getAssignedOrderLabel(detailRecord, t)}
                 </Text>
               </div>
             </div>
@@ -1084,7 +1804,7 @@ const EcomAgentPage = () => {
                   <Text size='small'>API Key</Text>
                   {detailRecord.api_key ? (
                     <div className='flex items-center gap-2 flex-wrap'>
-                      <Text>{detailRecord.api_key}</Text>
+                      <Text>{maskApiKey(detailRecord.api_key)}</Text>
                       <Button
                         size='small'
                         type='primary'
@@ -1132,6 +1852,190 @@ const EcomAgentPage = () => {
                 <Text>{detailRecord.last_error || t('无错误')}</Text>
               </Collapse.Panel>
             </Collapse>
+          </div>
+        ) : null}
+      </SideSheet>
+
+      <SideSheet
+        title={t('分配/发放')}
+        visible={Boolean(assignmentRecord)}
+        onCancel={() => setAssignmentRecord(null)}
+        width={isMobile ? '100%' : 520}
+        footer={
+          <div className='flex justify-end gap-2 flex-wrap'>
+            <Button onClick={() => setAssignmentRecord(null)}>{t('关闭')}</Button>
+            <Button loading={saving} onClick={handleSaveAssignment}>
+              {t('保存分配')}
+            </Button>
+            <Button
+              type='primary'
+              theme='solid'
+              loading={deliveringId === assignmentRecord?.id}
+              disabled={!assignmentForm.assigned_subscription_order_id}
+              onClick={handleDeliverLinkedOrder}
+            >
+              {t('关联并发放')}
+            </Button>
+          </div>
+        }
+      >
+        {assignmentRecord ? (
+          <div className='flex flex-col gap-4'>
+            <div className='rounded-lg border border-[var(--semi-color-border)] p-3 bg-[var(--semi-color-fill-0)]'>
+              <Text strong>{maskEmail(assignmentRecord.email) || '-'}</Text>
+              <div className='mt-1'>
+                <Text size='small' type='tertiary'>
+                  accountId: {assignmentRecord.account_id || getSubscriptionData(assignmentRecord)?.accountId || '-'}
+                </Text>
+              </div>
+            </div>
+
+            <div className='rounded-lg border border-[var(--semi-color-border)] p-3'>
+              <Text strong>{t('分配信息')}</Text>
+              <div className='mt-3 flex flex-col gap-3'>
+                <Select
+                  value={assignmentForm.assignment_status}
+                  onChange={(value) =>
+                    setAssignmentForm((prev) => ({
+                      ...prev,
+                      assignment_status: value || 'unassigned',
+                    }))
+                  }
+                  optionList={ASSIGNMENT_STATUS_OPTIONS.filter((item) => item.value).map((item) => ({
+                    label: t(item.labelKey),
+                    value: item.value,
+                  }))}
+                  placeholder={t('分配状态')}
+                />
+                <Select
+                  value={assignmentForm.assigned_plan}
+                  onChange={(value) =>
+                    setAssignmentForm((prev) => ({
+                      ...prev,
+                      assigned_plan: value || '',
+                    }))
+                  }
+                  optionList={assignPlanOptions}
+                  placeholder={t('套餐标记')}
+                  filter
+                  showClear
+                />
+                <Select
+                  value={assignmentForm.assigned_subscription_order_id}
+                  onChange={(value) => {
+                    const nextValue = value || '';
+                    const selectedOrder = manualOrderOptions.find(
+                      (item) => item.value === nextValue,
+                    );
+                    setAssignmentForm((prev) => ({
+                      ...prev,
+                      assigned_subscription_order_id: nextValue,
+                      assigned_plan:
+                        selectedOrder?.planTitle || prev.assigned_plan,
+                    }));
+                  }}
+                  optionList={manualOrderOptions}
+                  placeholder={t('关联人工发放订单')}
+                  filter
+                  showClear
+                  emptyContent={t('暂无人工发放订单')}
+                />
+                <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+                  <Select
+                    value={assignmentForm.assigned_channel_id}
+                    onChange={(value) =>
+                      setAssignmentForm((prev) => ({
+                        ...prev,
+                        assigned_channel_id: value || '',
+                        assigned_channel_key_index: '',
+                      }))
+                    }
+                    optionList={channelOptions}
+                    placeholder={t('渠道 ID')}
+                    filter
+                    showClear
+                  />
+                  {assignedChannelKeyOptions.length > 0 ? (
+                    <Select
+                      value={assignmentForm.assigned_channel_key_index}
+                      onChange={(value) =>
+                        setAssignmentForm((prev) => ({
+                          ...prev,
+                          assigned_channel_key_index: value || '',
+                        }))
+                      }
+                      optionList={assignedChannelKeyOptions}
+                      placeholder={t('Key 序号')}
+                      showClear
+                    />
+                  ) : (
+                    <Input
+                      value={assignmentForm.assigned_channel_key_index}
+                      onChange={(value) =>
+                        setAssignmentForm((prev) => ({
+                          ...prev,
+                          assigned_channel_key_index: value,
+                        }))
+                      }
+                      placeholder={t('Key 序号')}
+                    />
+                  )}
+                  <Input
+                    value={assignmentForm.assigned_user_subscription_id}
+                    onChange={(value) =>
+                      setAssignmentForm((prev) => ({
+                        ...prev,
+                        assigned_user_subscription_id: value,
+                      }))
+                    }
+                    placeholder={t('用户订阅 ID')}
+                  />
+                  <Input
+                    value={assignmentForm.assigned_at}
+                    onChange={(value) =>
+                      setAssignmentForm((prev) => ({
+                        ...prev,
+                        assigned_at: value,
+                      }))
+                    }
+                    placeholder={t('分配时间戳')}
+                  />
+                </div>
+                {selectedAssignedChannel ? (
+                  <Text size='small' type='tertiary'>
+                    {t('已读取渠道配置')}:
+                    {' '}
+                    {selectedAssignedChannel.name || `#${selectedAssignedChannel.id}`}
+                    {' · '}
+                    {selectedAssignedChannel.channel_info?.is_multi_key
+                      ? t('多 Key {{count}} 个', {
+                          count: Number(
+                            selectedAssignedChannel.channel_info?.multi_key_size || 0,
+                          ),
+                        })
+                      : t('单 Key')}
+                  </Text>
+                ) : null}
+                <Text size='small' type='tertiary'>
+                  {t('关联订单后，可直接调用人工发放订单 API，用当前账号 API Key 完成发放并自动回写绑定信息。')}
+                </Text>
+                <Input
+                  value={assignmentForm.tags}
+                  onChange={(value) =>
+                    setAssignmentForm((prev) => ({ ...prev, tags: value }))
+                  }
+                  placeholder={t('输入标签或使用\",\"分隔多个标签')}
+                />
+                <TextArea
+                  autosize={{ minRows: 3, maxRows: 6 }}
+                  value={assignmentForm.remark}
+                  onChange={(value) =>
+                    setAssignmentForm((prev) => ({ ...prev, remark: value }))
+                  }
+                  placeholder={t('请输入备注（仅管理员可见）')}
+                />
+              </div>
+            </div>
           </div>
         ) : null}
       </SideSheet>
@@ -1215,7 +2119,7 @@ const EcomAgentPage = () => {
                       setKeyword(value);
                       setCurrentPage(1);
                     }}
-                    placeholder={t('搜索邮箱 / accountId / 状态 / 套餐')}
+                    placeholder={t('搜索邮箱 / accountId / 状态 / 套餐 / 标签 / 渠道 / 订单')}
                     style={{ width: isMobile ? '100%' : 280 }}
                   />
                   <Select
@@ -1226,21 +2130,81 @@ const EcomAgentPage = () => {
                     }}
                     optionList={[
                       { label: t('全部套餐'), value: '' },
-                      ...PLAN_FILTER_OPTIONS.map((item) => ({
-                        label: item,
-                        value: item,
-                      })),
+                      ...planFilterOptions,
                     ]}
                     style={{ width: isMobile ? '100%' : 180 }}
                   />
+                  <Select
+                    value={statusFilter}
+                    onChange={(value) => {
+                      setStatusFilter(value || '');
+                      setCurrentPage(1);
+                    }}
+                    optionList={[
+                      { label: t('全部账号状态'), value: '' },
+                      ...statusFilterOptions,
+                    ]}
+                    style={{ width: isMobile ? '100%' : 180 }}
+                  />
+                  <Select
+                    value={assignmentStatusFilter}
+                    onChange={(value) => {
+                      setAssignmentStatusFilter(value || '');
+                      setCurrentPage(1);
+                    }}
+                    optionList={ASSIGNMENT_STATUS_OPTIONS.map((item) => ({
+                      label: t(item.labelKey),
+                      value: item.value,
+                    }))}
+                    style={{ width: isMobile ? '100%' : 180 }}
+                  />
+                  <Select
+                    value={channelBindingFilter}
+                    onChange={(value) => {
+                      setChannelBindingFilter(value || '');
+                      setCurrentPage(1);
+                    }}
+                    optionList={CHANNEL_BINDING_OPTIONS.map((item) => ({
+                      label: t(item.labelKey),
+                      value: item.value,
+                    }))}
+                    style={{ width: isMobile ? '100%' : 180 }}
+                  />
+                  <Select
+                    value={orderBindingFilter}
+                    onChange={(value) => {
+                      setOrderBindingFilter(value || '');
+                      setCurrentPage(1);
+                    }}
+                    optionList={ORDER_BINDING_OPTIONS.map((item) => ({
+                      label: t(item.labelKey),
+                      value: item.value,
+                    }))}
+                    style={{ width: isMobile ? '100%' : 180 }}
+                  />
+                  {hasActiveFilters ? (
+                    <Button type='tertiary' onClick={resetFilters}>
+                      {t('重置筛选')}
+                    </Button>
+                  ) : null}
+                  {filteredAccounts.length > 0 ? (
+                    <Button
+                      type='tertiary'
+                      disabled={batchSyncing || batchDeleting}
+                      onClick={handleToggleSelectAllFiltered}
+                    >
+                      {allFilteredSelected ? t('取消全选') : t('全选')} (
+                      {filteredAccounts.length})
+                    </Button>
+                  ) : null}
                   {selectedRowKeys.length > 0 ? (
                     <>
                       <Popconfirm
-                        title={t('批量同步')}
+                        title={t('刷新同步额度')}
                         content={t('确定要同步选中的 {{count}} 项吗？', {
                           count: selectedRowKeys.length,
                         })}
-                        okText={t('批量同步')}
+                        okText={t('刷新同步额度')}
                         cancelText={t('取消')}
                         onConfirm={handleBatchSync}
                       >
@@ -1248,7 +2212,7 @@ const EcomAgentPage = () => {
                           loading={batchSyncing}
                           disabled={batchDeleting}
                         >
-                          {t('批量同步')} ({selectedRowKeys.length})
+                          {t('刷新同步额度')} ({selectedRowKeys.length})
                         </Button>
                       </Popconfirm>
                       <Popconfirm
@@ -1310,7 +2274,7 @@ const EcomAgentPage = () => {
             rowExpandable={() => true}
             hidePagination={true}
             size='middle'
-            scroll={isMobile ? { x: 760 } : { x: 960 }}
+            scroll={isMobile ? { x: 760 } : undefined}
             empty={
               <Empty
                 image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}

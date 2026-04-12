@@ -68,10 +68,10 @@ type RedemptionHistoryItem struct {
 }
 
 type RedemptionHistoryFilters struct {
-	Keyword         string
-	RedemptionType  string
-	StartTimestamp  int64
-	EndTimestamp    int64
+	Keyword        string
+	RedemptionType string
+	StartTimestamp int64
+	EndTimestamp   int64
 }
 
 func NormalizeRedemptionType(redemptionType string) string {
@@ -236,6 +236,7 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 	}
 	redemption := &Redemption{}
 	result = &RedeemResult{}
+	var refreshChannelCache bool
 
 	keyCol := "`key`"
 	if common.UsingPostgreSQL {
@@ -286,6 +287,12 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 				if err := tx.Create(order).Error; err != nil {
 					return err
 				}
+				if isClaudeSeriesRequestCountManualDeliveryPlan(plan) {
+					if _, _, err := reserveManualDeliveryChannelSlotForOrderTx(tx, order, plan); err != nil {
+						return err
+					}
+					refreshChannelCache = true
+				}
 				result.SubscriptionOrderId = order.Id
 				result.FulfillmentStatus = order.FulfillmentStatus
 			} else {
@@ -315,6 +322,9 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 		}
 		common.SysError("redemption failed: " + err.Error())
 		return nil, ErrRedeemFailed
+	}
+	if refreshChannelCache {
+		InitChannelCache()
 	}
 	switch result.RedemptionType {
 	case RedemptionTypeSubscription:

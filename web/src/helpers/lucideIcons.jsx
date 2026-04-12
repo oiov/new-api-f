@@ -39,6 +39,9 @@ import {
   ContactRound,
   BadgePercent,
   Boxes,
+  Package,
+  BadgeDollarSign,
+  BookOpen,
 } from 'lucide-react';
 
 export function getLucideIcon(key, selected = false) {
@@ -64,6 +67,8 @@ export function getLucideIcon(key, selected = false) {
       return <Key {...commonProps} color={iconColor} />;
     case 'ecomagent':
       return <Boxes {...commonProps} color={iconColor} />;
+    case 'package':
+      return <Package {...commonProps} color={iconColor} />;
     case 'log':
       return <BarChart3 {...commonProps} color={iconColor} />;
     case 'midjourney':
@@ -96,6 +101,10 @@ export function getLucideIcon(key, selected = false) {
       return <Activity {...commonProps} color={iconColor} />;
     case 'contact':
       return <ContactRound {...commonProps} color={iconColor} />;
+    case 'pricing':
+      return <BadgeDollarSign {...commonProps} color={iconColor} />;
+    case 'docs':
+      return <BookOpen {...commonProps} color={iconColor} />;
     case 'setting':
       return <Settings {...commonProps} color={iconColor} />;
     default:

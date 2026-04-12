@@ -260,6 +260,32 @@ function inferSubscriptionPlanSeries(plan) {
   return 'other';
 }
 
+function getSubscriptionSeriesMeta(plan, t) {
+  const series = inferSubscriptionPlanSeries(plan);
+  if (series === 'claude') {
+    return {
+      key: 'claude',
+      label: t('Claude 系列'),
+      color: 'violet',
+      showDailyPrice: true,
+    };
+  }
+  if (series === 'codex') {
+    return {
+      key: 'codex',
+      label: t('Codex 系列'),
+      color: 'cyan',
+      showDailyPrice: true,
+    };
+  }
+  return {
+    key: series,
+    label: '',
+    color: 'grey',
+    showDailyPrice: false,
+  };
+}
+
 function renderScopedValueTag({
   key,
   value,
@@ -1006,6 +1032,25 @@ const SubscriptionPlansCard = ({
     return sortedPlans.slice(start, start + planPageSize);
   }, [sortedPlans, planPage, planPageSize]);
 
+  const recommendedEmptyStatePlans = useMemo(() => {
+    const planItems = sortedPlans || [];
+    const claudePlans = planItems.filter(
+      (item) => getSubscriptionSeriesMeta(item?.plan || {}, t).key === 'claude',
+    );
+    const codexPlans = planItems.filter(
+      (item) => getSubscriptionSeriesMeta(item?.plan || {}, t).key === 'codex',
+    );
+
+    const picked = [...claudePlans.slice(0, 3), ...codexPlans.slice(0, 3)];
+    if (picked.length >= 6) {
+      return picked;
+    }
+
+    const existingIds = new Set(picked.map((item) => item?.plan?.id).filter(Boolean));
+    const fallback = planItems.filter((item) => !existingIds.has(item?.plan?.id));
+    return [...picked, ...fallback].slice(0, 6);
+  }, [sortedPlans, t]);
+
   const overviewItems = [
     {
       label: t('生效中的订阅'),
@@ -1245,10 +1290,12 @@ const SubscriptionPlansCard = ({
 
   const shouldShowConversionCampaign = useMemo(() => {
     if (!conversionPreview) return false;
-    return (
-      (conversionPreview?.items || []).length > 0 ||
-      !!conversionPreview?.latest_request
-    );
+    const enabled = Boolean(conversionPreview?.campaign?.enabled);
+    const deadline = Number(conversionPreview?.campaign?.deadline || 0);
+    const now = Number(conversionPreview?.now || 0);
+    if (!enabled) return false;
+    if (deadline > 0 && now >= deadline) return false;
+    return (conversionPreview?.items || []).length > 0 || !!conversionPreview?.latest_request;
   }, [conversionPreview]);
 
   const latestConversionRequest = conversionPreview?.latest_request || null;
@@ -1689,6 +1736,7 @@ const SubscriptionPlansCard = ({
           const limit = Number(plan?.max_purchase_per_user || 0);
           const reached = limit > 0 && count >= limit;
           const saleSummary = getSubscriptionSaleSummary(plan);
+          const seriesMeta = getSubscriptionSeriesMeta(plan, t);
           const isPopular =
             planSort === 'recommended' &&
             sortedPlans.length > 1 &&
@@ -1711,6 +1759,11 @@ const SubscriptionPlansCard = ({
               <div className='min-w-0'>
                 <div className='flex flex-wrap items-center gap-2'>
                   <Text strong>{plan?.title || t('订阅套餐')}</Text>
+                  {seriesMeta.label ? (
+                    <Tag color={seriesMeta.color} shape='circle' size='small'>
+                      {seriesMeta.label}
+                    </Tag>
+                  ) : null}
                   {isPopular && (
                     <Tag color='blue' shape='circle' size='small'>
                       <Sparkles size={10} className='mr-1' />
@@ -1752,7 +1805,7 @@ const SubscriptionPlansCard = ({
         width: 140,
         render: (text, record) => {
           const plan = record?.plan || {};
-          const isClaudePlan = inferSubscriptionPlanSeries(plan) === 'claude';
+          const seriesMeta = getSubscriptionSeriesMeta(plan, t);
           const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
           const { symbol, effectivePrice, originalPrice } =
             getSubscriptionPriceDisplay(plan);
@@ -1763,7 +1816,7 @@ const SubscriptionPlansCard = ({
           return (
             <div className='inline-flex flex-col items-start'>
               <div className='text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent'>
-                {isClaudePlan && dailyPriceDisplay ? (
+                {seriesMeta.showDailyPrice && dailyPriceDisplay ? (
                   <>
                     {symbol}
                     {dailyPriceDisplay.displayDailyPrice}
@@ -1775,7 +1828,7 @@ const SubscriptionPlansCard = ({
                   </>
                 )}
               </div>
-              {isClaudePlan && dailyPriceDisplay ? (
+              {seriesMeta.showDailyPrice && dailyPriceDisplay ? (
                 <Text type='secondary' size='small'>
                   {t('约每天成本')}
                 </Text>
@@ -1789,7 +1842,7 @@ const SubscriptionPlansCard = ({
                 </Text>
               ) : null}
               <Text type='tertiary' size='small'>
-                {isClaudePlan && dailyPriceDisplay
+                {seriesMeta.showDailyPrice && dailyPriceDisplay
                   ? t('合计 {{price}} / {{duration}}', {
                       price: `${symbol}${displayPrice}`,
                       duration: formatSubscriptionSellingDuration(plan, t),
@@ -1964,7 +2017,7 @@ const SubscriptionPlansCard = ({
 
   const renderPackagePlanCard = (record, index) => {
     const plan = record?.plan || {};
-    const isClaudePlan = inferSubscriptionPlanSeries(plan) === 'claude';
+    const seriesMeta = getSubscriptionSeriesMeta(plan, t);
     const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
     const count = getPlanPurchaseCount(plan?.id);
     const limit = Number(plan?.max_purchase_per_user || 0);
@@ -2012,9 +2065,9 @@ const SubscriptionPlansCard = ({
                   <Text strong className='subscription-plan-selling-card__title text-base'>
                     {plan?.title || t('订阅套餐')}
                   </Text>
-                  {isClaudePlan && (
-                    <Tag color='violet' shape='circle' size='small'>
-                      {t('Claude 系列')}
+                  {seriesMeta.label && (
+                    <Tag color={seriesMeta.color} shape='circle' size='small'>
+                      {seriesMeta.label}
                     </Tag>
                   )}
                   {saleSummary.soldOut && (
@@ -2035,7 +2088,7 @@ const SubscriptionPlansCard = ({
                 >
                   {plan?.subtitle || t('以套餐配置为准')}
                 </Text>
-                {isClaudePlan ? (
+                {seriesMeta.showDailyPrice ? (
                   <Text
                     type='secondary'
                     size='small'
@@ -2058,7 +2111,7 @@ const SubscriptionPlansCard = ({
             <div className='subscription-plan-selling-card__price-row mt-5 flex items-end justify-between gap-3'>
               <div className='min-w-0 flex-1'>
                 <div className='subscription-plan-selling-card__price'>
-                  {isClaudePlan && dailyPriceDisplay ? (
+                  {seriesMeta.showDailyPrice && dailyPriceDisplay ? (
                     <>
                       {symbol}
                       {dailyPriceDisplay.displayDailyPrice}
@@ -2071,12 +2124,12 @@ const SubscriptionPlansCard = ({
                   )}
                   <span className='subscription-plan-selling-card__duration'>
                     /{' '}
-                    {isClaudePlan && dailyPriceDisplay
+                    {seriesMeta.showDailyPrice && dailyPriceDisplay
                       ? t('天')
                       : formatSubscriptionSellingDuration(plan, t)}
                   </span>
                 </div>
-                {isClaudePlan && dailyPriceDisplay ? (
+                {seriesMeta.showDailyPrice && dailyPriceDisplay ? (
                   <Text type='secondary' size='small' className='block'>
                     {t('合计 {{price}} / {{duration}}', {
                       price: `${symbol}${displayPrice}`,
@@ -2211,6 +2264,133 @@ const SubscriptionPlansCard = ({
           </div>
         </div>
       </Card>
+    );
+  };
+
+  const renderSubscriptionEmptyState = ({
+    title,
+    description,
+    showPurchaseGuide = false,
+  }) => {
+    if (!showPurchaseGuide) {
+      return (
+        <div className='py-8'>
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            title={title}
+            description={description}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className='rounded-2xl border border-blue-100 bg-[linear-gradient(180deg,rgba(239,246,255,0.9)_0%,rgba(255,255,255,1)_40%)] p-6 shadow-sm'>
+        <div className='mx-auto flex max-w-4xl flex-col gap-6'>
+          <div className='text-center'>
+            <div className='inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600'>
+              <Sparkles size={14} />
+              {t('先选一个适合你的套餐')}
+            </div>
+            <div className='mt-4 text-3xl font-semibold text-semi-color-text-0'>
+              {title}
+            </div>
+            <Text type='tertiary' size='small' className='mt-3 block text-base'>
+              {description}
+            </Text>
+          </div>
+
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3'>
+            {recommendedEmptyStatePlans.map((record, index) => {
+              const plan = record?.plan || {};
+              const seriesMeta = getSubscriptionSeriesMeta(plan, t);
+              const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
+              const { symbol, effectivePrice } = getSubscriptionPriceDisplay(plan);
+              const displayPrice = Number(effectivePrice || 0).toFixed(
+                Number.isInteger(effectivePrice) ? 0 : 2,
+              );
+              return (
+                <div
+                  key={plan?.id || index}
+                  className='rounded-2xl border border-[var(--semi-color-border)] bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)]'
+                >
+                  <div className='flex items-start justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <div className='flex flex-wrap items-center gap-2'>
+                        <Text strong>{plan?.title || t('订阅套餐')}</Text>
+                        {seriesMeta.label ? (
+                          <Tag color={seriesMeta.color} shape='circle' size='small'>
+                            {seriesMeta.label}
+                          </Tag>
+                        ) : null}
+                      </div>
+                      <Text
+                        type='tertiary'
+                        size='small'
+                        className='mt-2 block leading-6'
+                      >
+                        {plan?.subtitle || getPlanBenefitDescription(plan, t)}
+                      </Text>
+                    </div>
+                    <div className='rounded-xl bg-blue-50 p-2 text-blue-600'>
+                      <Package size={16} />
+                    </div>
+                  </div>
+                  <div className='mt-4'>
+                    <div className='text-3xl font-semibold text-semi-color-text-0'>
+                      {seriesMeta.showDailyPrice && dailyPriceDisplay
+                        ? `${symbol}${dailyPriceDisplay.displayDailyPrice}`
+                        : `${symbol}${displayPrice}`}
+                      <span className='ml-1 text-base font-medium text-semi-color-text-2'>
+                        /{' '}
+                        {seriesMeta.showDailyPrice && dailyPriceDisplay
+                          ? t('天')
+                          : formatSubscriptionSellingDuration(plan, t)}
+                      </span>
+                    </div>
+                    <Text type='tertiary' size='small' className='mt-1 block'>
+                      {seriesMeta.showDailyPrice && dailyPriceDisplay
+                        ? t('合计 {{price}} / {{duration}}', {
+                            price: `${symbol}${displayPrice}`,
+                            duration: formatSubscriptionSellingDuration(plan, t),
+                          })
+                        : getPlanBenefitDescription(plan, t)}
+                    </Text>
+                  </div>
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    block
+                    className='mt-4'
+                    onClick={() => openBuy(record)}
+                  >
+                    {t('立即购买这个套餐')}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className='flex flex-col items-center justify-center gap-3 sm:flex-row'>
+            <Button
+              theme='solid'
+              type='primary'
+              size='large'
+              onClick={() => navigate('/pricing?currency=CNY&plan_series=all')}
+            >
+              {t('查看全部套餐')}
+            </Button>
+            <Button
+              theme='outline'
+              type='tertiary'
+              size='large'
+              onClick={() => setActiveMainTab('plan_list')}
+            >
+              {t('切换到套餐列表')}
+            </Button>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -2793,35 +2973,35 @@ const SubscriptionPlansCard = ({
                           ))}
                         </Collapse>
                       ) : (
-                        <div className='py-8'>
-                          <Empty
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            title={
-                              subscriptionView === 'history'
-                                ? t('暂无历史订阅')
-                                : t('暂无生效订阅')
-                            }
-                            description={
-                              subscriptionKeyword ||
-                                subscriptionPlanFilter !== 'all' ||
-                                subscriptionResourceFilter !== 'all' ||
-                                subscriptionResetFilter !== 'all'
-                                ? t('当前组合筛选下没有匹配结果')
-                                : t('切换筛选或购买新套餐后会显示在这里')
-                            }
-                          />
-                        </div>
+                        renderSubscriptionEmptyState({
+                          title:
+                            subscriptionView === 'history'
+                              ? t('暂无历史订阅')
+                              : t('暂无生效订阅'),
+                          description:
+                            subscriptionKeyword ||
+                            subscriptionPlanFilter !== 'all' ||
+                            subscriptionResourceFilter !== 'all' ||
+                            subscriptionResetFilter !== 'all'
+                              ? t('当前组合筛选下没有匹配结果')
+                              : t('调整筛选条件后，或购买套餐后，会显示在这里。'),
+                          showPurchaseGuide:
+                            !subscriptionKeyword &&
+                            subscriptionPlanFilter === 'all' &&
+                            subscriptionResourceFilter === 'all' &&
+                            subscriptionResetFilter === 'all' &&
+                            subscriptionView !== 'history' &&
+                            recommendedEmptyStatePlans.length > 0,
+                        })
                       )
                     ) : (
-                      <div className='py-8'>
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          title={t('暂无订阅记录')}
-                          description={t(
-                            '你还没有购买套餐，可前往“套餐列表”选择适合的方案',
-                          )}
-                        />
-                      </div>
+                      renderSubscriptionEmptyState({
+                        title: t('暂无订阅记录'),
+                        description: t(
+                          '现在开通套餐后，请求会优先走订阅权益，成本和体验都会更稳定。',
+                        ),
+                        showPurchaseGuide: recommendedEmptyStatePlans.length > 0,
+                      })
                     )}
                   </div>
                 </TabPane>

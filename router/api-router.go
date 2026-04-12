@@ -302,9 +302,11 @@ func SetApiRouter(router *gin.Engine) {
 		ecomAgentRoute.Use(middleware.RootAuth())
 		{
 			ecomAgentRoute.GET("/accounts", controller.GetEcomAgentAccounts)
+			ecomAgentRoute.GET("/manual_orders", controller.GetEcomAgentManualDeliveryOrders)
 			ecomAgentRoute.POST("/accounts", controller.CreateEcomAgentAccount)
 			ecomAgentRoute.PUT("/accounts/:id", controller.UpdateEcomAgentAccount)
 			ecomAgentRoute.POST("/accounts/:id/sync", controller.SyncEcomAgentAccount)
+			ecomAgentRoute.POST("/accounts/:id/deliver_manual_order", controller.DeliverEcomAgentManualDeliveryOrder)
 			ecomAgentRoute.DELETE("/accounts/:id", controller.DeleteEcomAgentAccount)
 		}
 		tokenRoute := apiRouter.Group("/token")

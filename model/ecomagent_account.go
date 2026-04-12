@@ -12,41 +12,50 @@ import (
 const ecomAgentPlaceholderEmailDomain = "placeholder.ecomagent.local"
 
 type EcomAgentAccount struct {
-	Id                        int    `json:"id"`
-	Email                     string `json:"email" gorm:"size:255;not null;uniqueIndex"`
-	Password                  string `json:"password" gorm:"type:text;not null"`
-	BaseURL                   string `json:"base_url" gorm:"size:255;not null;default:''"`
-	SupabaseAuthURL           string `json:"supabase_auth_url" gorm:"size:255;not null;default:''"`
-	SupabaseAnonKey           string `json:"supabase_anon_key" gorm:"type:text;not null"`
-	ConfirmURL                string `json:"confirm_url" gorm:"type:text"`
-	AccountID                 string `json:"account_id" gorm:"size:128;index"`
-	RefreshToken              string `json:"refresh_token" gorm:"type:text"`
-	AccessToken               string `json:"access_token" gorm:"type:text"`
-	AccessTokenExpiresAt      int64  `json:"access_token_expires_at" gorm:"bigint;default:0"`
-	APIKey                    string `json:"api_key" gorm:"type:text"`
-	APIKeyCreatedAt           int64  `json:"api_key_created_at" gorm:"bigint;default:0"`
-	APIKeyExpiresAt           int64  `json:"api_key_expires_at" gorm:"bigint;default:0"`
-	Plan                      string `json:"plan" gorm:"size:128;default:''"`
-	RequestLimit              int64  `json:"request_limit" gorm:"bigint;default:0"`
-	TokenLimit                int64  `json:"token_limit" gorm:"bigint;default:0"`
-	UsageRequests             int64  `json:"usage_requests" gorm:"bigint;default:0"`
-	UsageTokens               int64  `json:"usage_tokens" gorm:"bigint;default:0"`
-	UsageUpdatedAt            int64  `json:"usage_updated_at" gorm:"bigint;default:0"`
-	RequiresEmailConfirmation bool   `json:"requires_email_confirmation" gorm:"default:false"`
-	SignupAt                  int64  `json:"signup_at" gorm:"bigint;default:0"`
-	ConfirmedAt               int64  `json:"confirmed_at" gorm:"bigint;default:0"`
-	ConfirmationStatusCode    int    `json:"confirmation_status_code" gorm:"default:0"`
-	ConfirmationFinalURL      string `json:"confirmation_final_url" gorm:"type:text"`
-	LoginAt                   int64  `json:"login_at" gorm:"bigint;default:0"`
-	LastSyncAt                int64  `json:"last_sync_at" gorm:"bigint;default:0"`
-	Status                    string `json:"status" gorm:"size:64;index;default:'initialized'"`
-	LastError                 string `json:"last_error" gorm:"type:text"`
-	SignupRaw                 string `json:"signup_raw" gorm:"type:text"`
-	KeyRaw                    string `json:"key_raw" gorm:"type:text"`
-	SubscriptionRaw           string `json:"subscription_raw" gorm:"type:text"`
-	UsageRaw                  string `json:"usage_raw" gorm:"type:text"`
-	CreatedTime               int64  `json:"created_time" gorm:"bigint"`
-	UpdatedTime               int64  `json:"updated_time" gorm:"bigint"`
+	Id                          int    `json:"id"`
+	Email                       string `json:"email" gorm:"size:255;not null;uniqueIndex"`
+	Password                    string `json:"password" gorm:"type:text;not null"`
+	BaseURL                     string `json:"base_url" gorm:"size:255;not null;default:''"`
+	SupabaseAuthURL             string `json:"supabase_auth_url" gorm:"size:255;not null;default:''"`
+	SupabaseAnonKey             string `json:"supabase_anon_key" gorm:"type:text;not null"`
+	ConfirmURL                  string `json:"confirm_url" gorm:"type:text"`
+	AccountID                   string `json:"account_id" gorm:"size:128;index"`
+	RefreshToken                string `json:"refresh_token" gorm:"type:text"`
+	AccessToken                 string `json:"access_token" gorm:"type:text"`
+	AccessTokenExpiresAt        int64  `json:"access_token_expires_at" gorm:"bigint;default:0"`
+	APIKey                      string `json:"api_key" gorm:"type:text"`
+	APIKeyCreatedAt             int64  `json:"api_key_created_at" gorm:"bigint;default:0"`
+	APIKeyExpiresAt             int64  `json:"api_key_expires_at" gorm:"bigint;default:0"`
+	Plan                        string `json:"plan" gorm:"size:128;default:''"`
+	RequestLimit                int64  `json:"request_limit" gorm:"bigint;default:0"`
+	TokenLimit                  int64  `json:"token_limit" gorm:"bigint;default:0"`
+	UsageRequests               int64  `json:"usage_requests" gorm:"bigint;default:0"`
+	UsageTokens                 int64  `json:"usage_tokens" gorm:"bigint;default:0"`
+	UsageUpdatedAt              int64  `json:"usage_updated_at" gorm:"bigint;default:0"`
+	RequiresEmailConfirmation   bool   `json:"requires_email_confirmation" gorm:"default:false"`
+	SignupAt                    int64  `json:"signup_at" gorm:"bigint;default:0"`
+	ConfirmedAt                 int64  `json:"confirmed_at" gorm:"bigint;default:0"`
+	ConfirmationStatusCode      int    `json:"confirmation_status_code" gorm:"default:0"`
+	ConfirmationFinalURL        string `json:"confirmation_final_url" gorm:"type:text"`
+	AssignmentStatus            string `json:"assignment_status" gorm:"size:64;index;default:'unassigned'"`
+	AssignedPlan                string `json:"assigned_plan" gorm:"size:128;default:''"`
+	AssignedSubscriptionOrderID int    `json:"assigned_subscription_order_id" gorm:"default:0"`
+	AssignedChannelID           int    `json:"assigned_channel_id" gorm:"default:0"`
+	AssignedChannelKeyIndex     int    `json:"assigned_channel_key_index" gorm:"default:-1"`
+	AssignedUserSubscriptionID  int    `json:"assigned_user_subscription_id" gorm:"default:0"`
+	AssignedAt                  int64  `json:"assigned_at" gorm:"bigint;default:0"`
+	Tags                        string `json:"tags" gorm:"type:text"`
+	Remark                      string `json:"remark" gorm:"type:text"`
+	LoginAt                     int64  `json:"login_at" gorm:"bigint;default:0"`
+	LastSyncAt                  int64  `json:"last_sync_at" gorm:"bigint;default:0"`
+	Status                      string `json:"status" gorm:"size:64;index;default:'initialized'"`
+	LastError                   string `json:"last_error" gorm:"type:text"`
+	SignupRaw                   string `json:"signup_raw" gorm:"type:text"`
+	KeyRaw                      string `json:"key_raw" gorm:"type:text"`
+	SubscriptionRaw             string `json:"subscription_raw" gorm:"type:text"`
+	UsageRaw                    string `json:"usage_raw" gorm:"type:text"`
+	CreatedTime                 int64  `json:"created_time" gorm:"bigint"`
+	UpdatedTime                 int64  `json:"updated_time" gorm:"bigint"`
 }
 
 func (a *EcomAgentAccount) PrepareDefaults() {
@@ -59,8 +68,21 @@ func (a *EcomAgentAccount) PrepareDefaults() {
 	a.SupabaseAuthURL = strings.TrimRight(strings.TrimSpace(a.SupabaseAuthURL), "/")
 	a.SupabaseAnonKey = strings.TrimSpace(a.SupabaseAnonKey)
 	a.ConfirmURL = strings.TrimSpace(a.ConfirmURL)
+	a.AssignmentStatus = strings.TrimSpace(strings.ToLower(a.AssignmentStatus))
+	a.AssignedPlan = strings.TrimSpace(a.AssignedPlan)
+	a.Tags = strings.TrimSpace(a.Tags)
+	a.Remark = strings.TrimSpace(a.Remark)
 	if a.Status == "" {
 		a.Status = "initialized"
+	}
+	if a.AssignmentStatus == "" {
+		a.AssignmentStatus = "unassigned"
+	}
+	if a.AssignedChannelKeyIndex < -1 {
+		a.AssignedChannelKeyIndex = -1
+	}
+	if a.AssignedSubscriptionOrderID < 0 {
+		a.AssignedSubscriptionOrderID = 0
 	}
 }
 
@@ -160,7 +182,13 @@ func (a *EcomAgentAccount) Insert() error {
 	now := common.GetTimestamp()
 	a.CreatedTime = now
 	a.UpdatedTime = now
-	return DB.Create(a).Error
+	originalAssignedChannelKeyIndex := a.AssignedChannelKeyIndex
+	if err := DB.Create(a).Error; err != nil {
+		return err
+	}
+	return DB.Model(&EcomAgentAccount{}).
+		Where("id = ?", a.Id).
+		Update("assigned_channel_key_index", originalAssignedChannelKeyIndex).Error
 }
 
 func (a *EcomAgentAccount) Update() error {

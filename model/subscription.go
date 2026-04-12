@@ -410,14 +410,16 @@ type SubscriptionOrder struct {
 	CreateTime    int64  `json:"create_time"`
 	CompleteTime  int64  `json:"complete_time"`
 
-	ProviderPayload     string `json:"provider_payload" gorm:"type:text"`
-	FulfillmentStatus   string `json:"fulfillment_status" gorm:"type:varchar(32);not null;default:'not_required';index"`
-	DeliveryPayloadJSON string `json:"-" gorm:"type:text;default:'';column:delivery_payload_json"`
-	DeliveryAdminRemark string `json:"delivery_admin_remark" gorm:"type:text;default:''"`
-	DeliveredBy         int    `json:"delivered_by" gorm:"type:int;not null;default:0"`
-	DeliveredAt         int64  `json:"delivered_at" gorm:"type:bigint;not null;default:0"`
-	RefundToQuota       bool   `json:"refund_to_quota" gorm:"not null;default:false"`
-	RefundQuotaAmount   int64  `json:"refund_quota_amount" gorm:"type:bigint;not null;default:0"`
+	ProviderPayload         string `json:"provider_payload" gorm:"type:text"`
+	FulfillmentStatus       string `json:"fulfillment_status" gorm:"type:varchar(32);not null;default:'not_required';index"`
+	DeliveryPayloadJSON     string `json:"-" gorm:"type:text;default:'';column:delivery_payload_json"`
+	DeliveryAdminRemark     string `json:"delivery_admin_remark" gorm:"type:text;default:''"`
+	DeliveredBy             int    `json:"delivered_by" gorm:"type:int;not null;default:0"`
+	DeliveredAt             int64  `json:"delivered_at" gorm:"type:bigint;not null;default:0"`
+	RefundToQuota           bool   `json:"refund_to_quota" gorm:"not null;default:false"`
+	RefundQuotaAmount       int64  `json:"refund_quota_amount" gorm:"type:bigint;not null;default:0"`
+	ReservedChannelId       int    `json:"reserved_channel_id" gorm:"type:int;not null;default:0"`
+	ReservedChannelKeyIndex int    `json:"reserved_channel_key_index" gorm:"type:int;not null;default:-1"`
 
 	PlanDeliveryFieldSchema []SubscriptionDeliveryField       `json:"plan_delivery_field_schema,omitempty" gorm:"-"`
 	DeliveryPayload         []SubscriptionDeliveryPayloadItem `json:"delivery_payload,omitempty" gorm:"-"`
@@ -435,6 +437,9 @@ func (o *SubscriptionOrder) Insert() error {
 func (o *SubscriptionOrder) Update() error {
 	o.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(o.PlanDeliveryMode)
 	o.FulfillmentStatus = normalizeSubscriptionFulfillmentStatus(o.FulfillmentStatus)
+	if o.ReservedChannelKeyIndex < -1 {
+		o.ReservedChannelKeyIndex = -1
+	}
 	return DB.Save(o).Error
 }
 
@@ -2102,6 +2107,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	var logPaymentMethod string
 	var upgradeGroup string
 	var createdSub *UserSubscription
+	var refreshChannelCache bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
@@ -2136,6 +2142,12 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 			order.ProviderPayload = providerPayload
 		}
 		if order.PlanDeliveryMode == SubscriptionDeliveryModeManualDelivery {
+			if isClaudeSeriesRequestCountManualDeliveryPlan(plan) {
+				if _, _, err := reserveManualDeliveryChannelSlotForOrderTx(tx, &order, plan); err != nil {
+					return err
+				}
+				refreshChannelCache = true
+			}
 			if err := tx.Save(&order).Error; err != nil {
 				return err
 			}
@@ -2190,6 +2202,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	}
 	if logUserId > 0 && createdSub != nil {
 		triggerClaudeSubscriptionActivationProbeAsync(logUserId, createdSub)
+	}
+	if refreshChannelCache {
+		InitChannelCache()
 	}
 	return nil
 }
@@ -2365,6 +2380,7 @@ func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) 
 		return "", nil, err
 	}
 	var createdSub *UserSubscription
+	var refreshChannelCache bool
 	isManualDelivery := normalizeSubscriptionDeliveryMode(plan.DeliveryMode) == SubscriptionDeliveryModeManualDelivery
 	source := strings.TrimSpace(sourceNote)
 	if source == "" {
@@ -2388,7 +2404,16 @@ func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) 
 				CompleteTime:  now,
 			}
 			order.ApplyPlanSnapshot(plan)
-			return tx.Create(order).Error
+			if err := tx.Create(order).Error; err != nil {
+				return err
+			}
+			if isClaudeSeriesRequestCountManualDeliveryPlan(plan) {
+				if _, _, err := reserveManualDeliveryChannelSlotForOrderTx(tx, order, plan); err != nil {
+					return err
+				}
+				refreshChannelCache = true
+			}
+			return nil
 		}
 		sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, source)
 		if err == nil {
@@ -2403,6 +2428,9 @@ func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) 
 		return "", nil, err
 	}
 	if isManualDelivery {
+		if refreshChannelCache {
+			InitChannelCache()
+		}
 		return "已创建人工发放订单，请在人工发放列表中完成发放", nil, nil
 	}
 	if createdSub != nil {
@@ -3149,6 +3177,7 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 	var upgradeGroup string
 	var targetUserId int
 	var createdSub *UserSubscription
+	var refreshChannelCache bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
@@ -3195,27 +3224,52 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 			if baseURL == "" {
 				return errors.New("当前未配置站点地址(ServerAddress)，无法自动发放套餐")
 			}
+			snapshotPlan := order.SnapshotPlan()
+			currentPlan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
+			if err != nil {
+				return err
+			}
+			plan := mergeManualDeliveryEffectivePlan(snapshotPlan, currentPlan, order.PlanId)
+			if plan == nil {
+				return errors.New("套餐不存在，无法完成人工发放")
+			}
+			isClaudeRequestPlan := isClaudeSeriesRequestCountManualDeliveryPlan(plan)
 			if !alreadyDelivered {
-				planTag := subscriptionPlanChannelPoolTag(order.PlanId)
-				if planTag == "" {
-					return errors.New("无效的套餐ID，无法分配渠道池")
-				}
-				channel, keyIndex, err := allocateSubscriptionPlanChannelFromPoolTx(tx, planTag)
-				if err != nil {
-					return err
-				}
-				if channel == nil || channel.Id <= 0 {
-					return errors.New("渠道池暂无可用 Key，请先补充渠道或释放占用")
-				}
-
-				snapshotPlan := order.SnapshotPlan()
-				currentPlan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
-				if err != nil {
-					return err
-				}
-				plan := mergeManualDeliveryEffectivePlan(snapshotPlan, currentPlan, order.PlanId)
-				if plan == nil {
-					return errors.New("套餐不存在，无法完成人工发放")
+				var (
+					channel  *Channel
+					keyIndex int
+				)
+				if isClaudeRequestPlan {
+					realChannelKey := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "api_key"))
+					if realChannelKey == "" {
+						return errors.New("请填写真实 Key 后再发放")
+					}
+					if order.ReservedChannelId <= 0 || order.ReservedChannelKeyIndex < 0 {
+						channel, keyIndex, err = reserveManualDeliveryChannelSlotForOrderTx(tx, &order, plan)
+						if err != nil {
+							return err
+						}
+						order.ReservedChannelId = channel.Id
+						order.ReservedChannelKeyIndex = keyIndex
+					}
+					channel, err = replaceReservedChannelKeyTx(tx, order.ReservedChannelId, order.ReservedChannelKeyIndex, realChannelKey)
+					if err != nil {
+						return err
+					}
+					keyIndex = order.ReservedChannelKeyIndex
+					refreshChannelCache = true
+				} else {
+					planTag := subscriptionPlanChannelPoolTag(order.PlanId)
+					if planTag == "" {
+						return errors.New("无效的套餐ID，无法分配渠道池")
+					}
+					channel, keyIndex, err = allocateSubscriptionPlanChannelFromPoolTx(tx, planTag)
+					if err != nil {
+						return err
+					}
+					if channel == nil || channel.Id <= 0 {
+						return errors.New("渠道池暂无可用 Key，请先补充渠道或释放占用")
+					}
 				}
 				targetUserId = order.UserId
 				upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
@@ -3301,6 +3355,9 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 	if targetUserId > 0 && createdSub != nil {
 		triggerClaudeSubscriptionActivationProbeAsync(targetUserId, createdSub)
 	}
+	if refreshChannelCache {
+		InitChannelCache()
+	}
 	ApplySubscriptionOrderDeliveryFields(&result)
 	return &result, nil
 }
@@ -3310,6 +3367,272 @@ func subscriptionPlanChannelPoolTag(planId int) string {
 		return ""
 	}
 	return fmt.Sprintf("subscription_plan:%d", planId)
+}
+
+func isClaudeSeriesRequestCountManualDeliveryPlan(plan *SubscriptionPlan) bool {
+	if plan == nil {
+		return false
+	}
+	if NormalizeSubscriptionResourceType(plan.ResourceType) != SubscriptionResourceRequestCount {
+		return false
+	}
+	if normalizeSubscriptionDeliveryMode(plan.DeliveryMode) != SubscriptionDeliveryModeManualDelivery {
+		return false
+	}
+	title := strings.ToLower(strings.TrimSpace(plan.Title))
+	if strings.Contains(title, "claude") {
+		return true
+	}
+	for _, modelName := range decodeSubscriptionStringList(plan.AllowedModelsJSON) {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "claude") {
+			return true
+		}
+	}
+	return false
+}
+
+func buildReservedPlaceholderKey(orderId int, userId int) string {
+	return fmt.Sprintf("reserved:sub_order:%d:user:%d:%d", orderId, userId, common.GetTimestamp())
+}
+
+func reindexChannelIntMapAfterKeyRemoval(source map[int]int, removedIndex int) map[int]int {
+	if len(source) == 0 {
+		return nil
+	}
+	target := make(map[int]int, len(source))
+	for idx, value := range source {
+		switch {
+		case idx < removedIndex:
+			target[idx] = value
+		case idx > removedIndex:
+			target[idx-1] = value
+		}
+	}
+	if len(target) == 0 {
+		return nil
+	}
+	return target
+}
+
+func reindexChannelInt64MapAfterKeyRemoval(source map[int]int64, removedIndex int) map[int]int64 {
+	if len(source) == 0 {
+		return nil
+	}
+	target := make(map[int]int64, len(source))
+	for idx, value := range source {
+		switch {
+		case idx < removedIndex:
+			target[idx] = value
+		case idx > removedIndex:
+			target[idx-1] = value
+		}
+	}
+	if len(target) == 0 {
+		return nil
+	}
+	return target
+}
+
+func reindexChannelStringMapAfterKeyRemoval(source map[int]string, removedIndex int) map[int]string {
+	if len(source) == 0 {
+		return nil
+	}
+	target := make(map[int]string, len(source))
+	for idx, value := range source {
+		switch {
+		case idx < removedIndex:
+			target[idx] = value
+		case idx > removedIndex:
+			target[idx-1] = value
+		}
+	}
+	if len(target) == 0 {
+		return nil
+	}
+	return target
+}
+
+func shiftBoundChannelKeyIndexesAfterRemovalTx(tx *gorm.DB, channelId int, removedIndex int, currentOrderId int) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if channelId <= 0 || removedIndex < 0 {
+		return errors.New("invalid channel binding removal context")
+	}
+
+	orderQuery := tx.Model(&SubscriptionOrder{}).
+		Where("reserved_channel_id = ? AND reserved_channel_key_index > ?", channelId, removedIndex)
+	if currentOrderId > 0 {
+		orderQuery = orderQuery.Where("id <> ?", currentOrderId)
+	}
+	if err := orderQuery.Update("reserved_channel_key_index", gorm.Expr("reserved_channel_key_index - 1")).Error; err != nil {
+		return err
+	}
+
+	if err := tx.Model(&UserSubscription{}).
+		Where("specific_channel_id = ? AND specific_channel_key_index > ?", channelId, removedIndex).
+		Update("specific_channel_key_index", gorm.Expr("specific_channel_key_index - 1")).Error; err != nil {
+		return err
+	}
+
+	if err := tx.Model(&Token{}).
+		Where("specific_channel_id = ? AND specific_channel_key_index > ? AND deleted_at IS NULL", channelId, removedIndex).
+		Update("specific_channel_key_index", gorm.Expr("specific_channel_key_index - 1")).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func releaseReservedChannelSlotTx(tx *gorm.DB, order *SubscriptionOrder) (bool, error) {
+	if tx == nil {
+		return false, errors.New("tx is nil")
+	}
+	if order == nil {
+		return false, errors.New("order is nil")
+	}
+	if order.ReservedChannelId <= 0 || order.ReservedChannelKeyIndex < 0 {
+		return false, nil
+	}
+
+	var channel Channel
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", order.ReservedChannelId).First(&channel).Error; err != nil {
+		return false, err
+	}
+
+	keys := channel.GetKeys()
+	if order.ReservedChannelKeyIndex >= len(keys) {
+		return false, errors.New("预留 Key 槽位不存在")
+	}
+
+	keyIndex := order.ReservedChannelKeyIndex
+	if err := shiftBoundChannelKeyIndexesAfterRemovalTx(tx, channel.Id, keyIndex, order.Id); err != nil {
+		return false, err
+	}
+	keys = append(keys[:keyIndex], keys[keyIndex+1:]...)
+	channel.Key = strings.Join(keys, "\n")
+	channel.ChannelInfo.MultiKeySize = len(keys)
+	channel.ChannelInfo.MultiKeyStatusList = reindexChannelIntMapAfterKeyRemoval(channel.ChannelInfo.MultiKeyStatusList, keyIndex)
+	channel.ChannelInfo.MultiKeyDisabledReason = reindexChannelStringMapAfterKeyRemoval(channel.ChannelInfo.MultiKeyDisabledReason, keyIndex)
+	channel.ChannelInfo.MultiKeyDisabledTime = reindexChannelInt64MapAfterKeyRemoval(channel.ChannelInfo.MultiKeyDisabledTime, keyIndex)
+	channel.ChannelInfo.MultiKeyUsedCount = reindexChannelInt64MapAfterKeyRemoval(channel.ChannelInfo.MultiKeyUsedCount, keyIndex)
+	channel.ChannelInfo.MultiKeyMaxRequestCount = reindexChannelInt64MapAfterKeyRemoval(channel.ChannelInfo.MultiKeyMaxRequestCount, keyIndex)
+
+	if err := tx.Model(&Channel{}).
+		Where("id = ?", channel.Id).
+		Updates(map[string]any{
+			"key":          channel.Key,
+			"channel_info": channel.ChannelInfo,
+		}).Error; err != nil {
+		return false, err
+	}
+
+	order.ReservedChannelId = 0
+	order.ReservedChannelKeyIndex = -1
+	if err := tx.Model(&SubscriptionOrder{}).
+		Where("id = ?", order.Id).
+		Updates(map[string]any{
+			"reserved_channel_id":        0,
+			"reserved_channel_key_index": -1,
+		}).Error; err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func reserveManualDeliveryChannelSlotForOrderTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) (*Channel, int, error) {
+	if tx == nil {
+		return nil, -1, errors.New("tx is nil")
+	}
+	if order == nil || order.Id <= 0 || order.UserId <= 0 || plan == nil || plan.Id <= 0 {
+		return nil, -1, errors.New("invalid order or plan")
+	}
+	if order.ReservedChannelId > 0 && order.ReservedChannelKeyIndex >= 0 {
+		var channel Channel
+		if err := tx.Where("id = ?", order.ReservedChannelId).First(&channel).Error; err != nil {
+			return nil, -1, err
+		}
+		return &channel, order.ReservedChannelKeyIndex, nil
+	}
+	tag := subscriptionPlanChannelPoolTag(plan.Id)
+	if tag == "" {
+		return nil, -1, errors.New("渠道标签为空，无法预留发放槽位")
+	}
+	var channels []Channel
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("tag = ? AND status = ?", tag, common.ChannelStatusEnabled).
+		Order("id asc").
+		Find(&channels).Error; err != nil {
+		return nil, -1, err
+	}
+	if len(channels) == 0 {
+		return nil, -1, errors.New("未找到可用于发放的固定渠道")
+	}
+	if len(channels) > 1 {
+		return nil, -1, errors.New("检测到多个固定渠道，请只保留一个渠道用于按次发放")
+	}
+	channel := &channels[0]
+	if !channel.ChannelInfo.IsMultiKey {
+		return nil, -1, errors.New("固定发放渠道必须开启多 Key 模式")
+	}
+	keys := channel.GetKeys()
+	keys = append(keys, buildReservedPlaceholderKey(order.Id, order.UserId))
+	channel.Key = strings.Join(keys, "\n")
+	channel.ChannelInfo.MultiKeySize = len(keys)
+	if err := tx.Model(&Channel{}).
+		Where("id = ?", channel.Id).
+		Updates(map[string]any{
+			"key":          channel.Key,
+			"channel_info": channel.ChannelInfo,
+		}).Error; err != nil {
+		return nil, -1, err
+	}
+	keyIndex := len(keys) - 1
+	order.ReservedChannelId = channel.Id
+	order.ReservedChannelKeyIndex = keyIndex
+	if err := tx.Model(&SubscriptionOrder{}).
+		Where("id = ?", order.Id).
+		Updates(map[string]any{
+			"reserved_channel_id":        channel.Id,
+			"reserved_channel_key_index": keyIndex,
+		}).Error; err != nil {
+		return nil, -1, err
+	}
+	return channel, keyIndex, nil
+}
+
+func replaceReservedChannelKeyTx(tx *gorm.DB, channelId int, keyIndex int, realKey string) (*Channel, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if channelId <= 0 || keyIndex < 0 {
+		return nil, errors.New("invalid reserved channel binding")
+	}
+	realKey = strings.TrimSpace(realKey)
+	if realKey == "" {
+		return nil, errors.New("真实 Key 不能为空")
+	}
+	var channel Channel
+	if err := tx.Where("id = ?", channelId).First(&channel).Error; err != nil {
+		return nil, err
+	}
+	keys := channel.GetKeys()
+	if keyIndex >= len(keys) {
+		return nil, errors.New("预留 Key 槽位不存在")
+	}
+	keys[keyIndex] = realKey
+	channel.Key = strings.Join(keys, "\n")
+	channel.ChannelInfo.MultiKeySize = len(keys)
+	if err := tx.Model(&Channel{}).
+		Where("id = ?", channelId).
+		Updates(map[string]any{
+			"key":          channel.Key,
+			"channel_info": channel.ChannelInfo,
+			"status":       common.ChannelStatusEnabled,
+		}).Error; err != nil {
+		return nil, err
+	}
+	channel.Status = common.ChannelStatusEnabled
+	return &channel, nil
 }
 
 func subscriptionDeliverySchemaHasKey(schema []SubscriptionDeliveryField, key string) bool {
@@ -3819,6 +4142,7 @@ func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string
 	var refundQuota int64
 	var logContent string
 	var logType = LogTypeManage
+	var refreshChannelCache bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
@@ -3832,6 +4156,13 @@ func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string
 		}
 		if normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus) == SubscriptionFulfillmentDelivered {
 			return errors.New("该订单已发放，不能拒绝")
+		}
+		releasedReservedSlot, err := releaseReservedChannelSlotTx(tx, &order)
+		if err != nil {
+			return err
+		}
+		if releasedReservedSlot {
+			refreshChannelCache = true
 		}
 		now := common.GetTimestamp()
 		logUserId = order.UserId
@@ -3877,6 +4208,9 @@ func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string
 	})
 	if err != nil {
 		return nil, err
+	}
+	if refreshChannelCache {
+		InitChannelCache()
 	}
 	if logUserId > 0 && logContent != "" {
 		RecordLog(logUserId, logType, logContent)
