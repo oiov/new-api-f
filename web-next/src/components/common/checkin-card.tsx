@@ -9,6 +9,8 @@ import {
   History,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
+  ArrowUpRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -168,6 +170,9 @@ export function CheckinCard() {
 
   const stats = data?.stats;
   const checkedToday = stats?.checked_in_today ?? false;
+  const openPricingPage = () => {
+    window.open('https://fishxcode.com/pricing?currency=CNY', '_blank');
+  };
 
   // Calendar computation for history sheet
   const [hy, hm] = historyMonth.split('-').map(Number);
@@ -389,6 +394,33 @@ export function CheckinCard() {
                   <Gift className="size-3.5" />
                 )}
                 {checkedToday ? t('今日已签到') : t('立即签到')}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-2xl border border-amber-200/70 bg-[linear-gradient(135deg,rgba(251,191,36,0.12),rgba(255,255,255,0.96))] px-3 py-3 shadow-sm dark:border-amber-400/20 dark:bg-[linear-gradient(135deg,rgba(251,191,36,0.12),rgba(17,24,39,0.95))]">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                    <Sparkles className="size-3" />
+                    {t('低价 Claude Codex 套餐')}
+                  </span>
+                  <span className="text-[11px] font-medium text-rose-500">
+                    {t('限时优惠')}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm text-foreground/90">
+                  {t('限时优惠进行中，想先体验可以先看天卡和轻量套餐。')}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={openPricingPage}
+                className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                {t('去看看套餐')}
+                <ArrowUpRight className="size-3.5" />
               </Button>
             </div>
           </div>

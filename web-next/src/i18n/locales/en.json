@@ -4219,5 +4219,8 @@
   "输出 Token": "Completion Tokens",
   "总消耗": "Total Cost",
   "Token 明细": "Token Breakdown",
-  "模型排行": "Model Ranking"
+  "模型排行": "Model Ranking",
+  "低价 Claude Codex 套餐": "Low-cost Claude & Codex Plans",
+  "限时优惠进行中，想先体验可以先看天卡和轻量套餐。": "A limited-time offer is live. If you want to try first, start with the day pass or lighter plans.",
+  "去看看套餐": "See Plans"
 }

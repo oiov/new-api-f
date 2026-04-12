@@ -4575,7 +4575,10 @@
     "已复制！": "Đã sao chép!",
     "可购套餐": "Gói có thể mua",
     "该分类暂无数据": "Không có mô hình trong danh mục này",
-    "购买套餐后可在「我的订阅」页面查看权益进度与消耗记录。": "Sau khi mua, xem tiến độ quyền lợi trong Đăng ký của tôi."
+    "购买套餐后可在「我的订阅」页面查看权益进度与消耗记录。": "Sau khi mua, xem tiến độ quyền lợi trong Đăng ký của tôi.",
+    "低价 Claude Codex 套餐": "Gói Claude và Codex giá tốt",
+    "限时优惠进行中，想先体验可以先看天卡和轻量套餐。": "Ưu đãi có thời hạn đang diễn ra. Nếu muốn trải nghiệm trước, hãy xem gói ngày và các gói nhẹ.",
+    "去看看套餐": "Xem gói ngay"
   },
   "日均请求": "Y/c TB ngày",
   "总 Token": "Tổng Token",

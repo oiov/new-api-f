@@ -4,12 +4,15 @@ import (
 	"errors"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"gorm.io/gorm"
 )
+
+var checkinLocation = loadCheckinLocation()
 
 // Checkin 签到记录
 type Checkin struct {
@@ -61,6 +64,38 @@ type AdminCheckinStats struct {
 	TodayCheckins int64 `json:"today_checkins"`
 }
 
+type CheckinAvailability struct {
+	AvailableNow     bool   `json:"available_now"`
+	Reason           string `json:"reason"`
+	TodayCheckins    int64  `json:"today_checkins"`
+	DailyUserLimit   int    `json:"daily_user_limit"`
+	RemainingSlots   int64  `json:"remaining_slots"`
+	OpenWeekdays     []int  `json:"open_weekdays"`
+	OpenStartSeconds int    `json:"open_start_seconds"`
+	OpenEndSeconds   int    `json:"open_end_seconds"`
+}
+
+var checkinMutex sync.Mutex
+
+func loadCheckinLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return time.FixedZone("UTC+8", 8*3600)
+	}
+	return loc
+}
+
+func checkinNow() time.Time {
+	if checkinLocation == nil {
+		return time.Now()
+	}
+	return time.Now().In(checkinLocation)
+}
+
+func GetCheckinNow() time.Time {
+	return checkinNow()
+}
+
 func (Checkin) TableName() string {
 	return "checkins"
 }
@@ -77,12 +112,71 @@ func GetUserCheckinRecords(userId int, startDate, endDate string) ([]Checkin, er
 
 // HasCheckedInToday 检查用户今天是否已签到
 func HasCheckedInToday(userId int) (bool, error) {
-	today := time.Now().Format("2006-01-02")
+	today := checkinNow().Format("2006-01-02")
 	var count int64
 	err := DB.Model(&Checkin{}).
 		Where("user_id = ? AND checkin_date = ?", userId, today).
 		Count(&count).Error
 	return count > 0, err
+}
+
+func GetTodayCheckinCount() (int64, error) {
+	today := checkinNow().Format("2006-01-02")
+	var count int64
+	err := DB.Model(&Checkin{}).
+		Where("checkin_date = ?", today).
+		Count(&count).Error
+	return count, err
+}
+
+func GetCheckinAvailability(now time.Time) (*CheckinAvailability, error) {
+	todayCheckins, err := GetTodayCheckinCount()
+	if err != nil {
+		return nil, err
+	}
+	limit := operation_setting.GetCheckinDailyUserLimit()
+	availability := &CheckinAvailability{
+		AvailableNow:     true,
+		Reason:           "ok",
+		TodayCheckins:    todayCheckins,
+		DailyUserLimit:   limit,
+		RemainingSlots:   -1,
+		OpenWeekdays:     operation_setting.GetCheckinOpenWeekdays(),
+		OpenStartSeconds: operation_setting.GetCheckinOpenStartSeconds(),
+		OpenEndSeconds:   operation_setting.GetCheckinOpenEndSeconds(),
+	}
+	if limit > 0 {
+		availability.RemainingSlots = int64(limit) - todayCheckins
+		if availability.RemainingSlots < 0 {
+			availability.RemainingSlots = 0
+		}
+	}
+	if !operation_setting.IsCheckinWeekdayAllowed(now) {
+		availability.AvailableNow = false
+		availability.Reason = "weekday_closed"
+		return availability, nil
+	}
+	if !operation_setting.IsCheckinTimeAllowed(now) {
+		availability.AvailableNow = false
+		availability.Reason = "time_closed"
+		return availability, nil
+	}
+	if limit > 0 && todayCheckins >= int64(limit) {
+		availability.AvailableNow = false
+		availability.Reason = "daily_limit_reached"
+	}
+	return availability, nil
+}
+
+func buildCheckinUnavailableError(availability *CheckinAvailability) error {
+	switch availability.Reason {
+	case "weekday_closed", "time_closed":
+		return errors.New("签到当前仅在指定开放时段内可用")
+	case "daily_limit_reached":
+		return errors.New("今日签到名额已满")
+	default:
+		return errors.New("当前暂不可签到")
+	}
 }
 
 // UserCheckin 执行用户签到
@@ -92,6 +186,18 @@ func UserCheckin(userId int) (*Checkin, error) {
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {
 		return nil, errors.New("签到功能未启用")
+	}
+
+	checkinMutex.Lock()
+	defer checkinMutex.Unlock()
+
+	now := checkinNow()
+	availability, err := GetCheckinAvailability(now)
+	if err != nil {
+		return nil, err
+	}
+	if !availability.AvailableNow {
+		return nil, buildCheckinUnavailableError(availability)
 	}
 
 	// 检查今天是否已签到
@@ -109,12 +215,12 @@ func UserCheckin(userId int) (*Checkin, error) {
 		quotaAwarded = setting.MinQuota + rand.Intn(setting.MaxQuota-setting.MinQuota+1)
 	}
 
-	today := time.Now().Format("2006-01-02")
+	today := now.Format("2006-01-02")
 	checkin := &Checkin{
 		UserId:       userId,
 		CheckinDate:  today,
 		QuotaAwarded: quotaAwarded,
-		CreatedAt:    time.Now().Unix(),
+		CreatedAt:    now.Unix(),
 	}
 
 	// 根据数据库类型选择不同的策略
@@ -290,7 +396,7 @@ func GetCheckinLeaderboard(page int, pageSize int, limit int) (*CheckinLeaderboa
 		return nil, err
 	}
 
-	today := time.Now().Format("2006-01-02")
+	today := checkinNow().Format("2006-01-02")
 	todayQuery := baseQuery.Session(&gorm.Session{}).
 		Where("checkins.checkin_date = ?", today)
 

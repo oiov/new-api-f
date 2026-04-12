@@ -34,13 +34,30 @@ func GetCheckinStatus(c *gin.Context) {
 		return
 	}
 
+	availability, err := model.GetCheckinAvailability(model.GetCheckinNow())
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"enabled":   setting.Enabled,
-			"min_quota": setting.MinQuota,
-			"max_quota": setting.MaxQuota,
-			"stats":     stats,
+			"enabled":             setting.Enabled,
+			"min_quota":           setting.MinQuota,
+			"max_quota":           setting.MaxQuota,
+			"stats":               stats,
+			"available_now":       availability.AvailableNow,
+			"availability_reason": availability.Reason,
+			"today_checkins":      availability.TodayCheckins,
+			"daily_user_limit":    availability.DailyUserLimit,
+			"remaining_slots":     availability.RemainingSlots,
+			"open_weekdays":       availability.OpenWeekdays,
+			"open_start_seconds":  availability.OpenStartSeconds,
+			"open_end_seconds":    availability.OpenEndSeconds,
 		},
 	})
 }

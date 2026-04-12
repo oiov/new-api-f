@@ -36,6 +36,9 @@ func validateSubscriptionPlanPurchaseAvailability(userId int, plan *model.Subscr
 	if plan == nil {
 		return fmt.Errorf("套餐不存在")
 	}
+	if !plan.Enabled {
+		return fmt.Errorf("套餐已下架")
+	}
 	if plan.IsSoldOut() {
 		return fmt.Errorf("该套餐已售罄")
 	}

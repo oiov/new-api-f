@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Badge,
@@ -414,8 +414,63 @@ const SubscriptionPlansCard = ({
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
   const [planViewMode, setPlanViewMode] = useState(initialPlanViewMode);
+  const planPurchaseCountMap = useMemo(() => {
+    const map = new Map();
+    (allSubscriptions || []).forEach((sub) => {
+      const planId = sub?.subscription?.plan_id;
+      if (!planId) return;
+      map.set(planId, (map.get(planId) || 0) + 1);
+    });
+    (manualDeliveryOrders || []).forEach((item) => {
+      if (item?.order?.fulfillment_status === 'rejected') return;
+      const planId = item?.order?.plan_id;
+      if (!planId) return;
+      map.set(planId, (map.get(planId) || 0) + 1);
+    });
+    return map;
+  }, [allSubscriptions, manualDeliveryOrders]);
+  const getPlanPurchaseCount = (planId) =>
+    planPurchaseCountMap.get(planId) || 0;
+
+  const getPlanPurchaseAvailability = useCallback((plan) => {
+    const limit = Number(plan?.max_purchase_per_user || 0);
+    const count = getPlanPurchaseCount(plan?.id);
+    const reached = limit > 0 && count >= limit;
+    const saleSummary = getSubscriptionSaleSummary(plan);
+    const disabled = !plan?.enabled || reached || saleSummary.soldOut;
+    const reason = !plan?.enabled
+      ? t('该套餐已下架')
+      : reached
+        ? `${t('已达到购买上限')} (${count}/${limit})`
+        : saleSummary.soldOut
+          ? t('该套餐已售罄')
+          : '';
+    const buttonText = !plan?.enabled
+      ? t('已下架')
+      : saleSummary.soldOut
+        ? t('已售罄')
+        : reached
+          ? t('已达上限')
+          : t('立即订阅');
+
+    return {
+      count,
+      limit,
+      reached,
+      saleSummary,
+      disabled,
+      reason,
+      buttonText,
+    };
+  }, [getPlanPurchaseCount, t]);
 
   const openBuy = (p) => {
+    const plan = p?.plan || {};
+    const availability = getPlanPurchaseAvailability(plan);
+    if (availability.disabled) {
+      showError(availability.reason || t('当前暂不可购买'));
+      return;
+    }
     setSelectedPlan(p);
     setSelectedEpayMethod(epayMethods?.[0]?.type || '');
     setOpen(true);
@@ -542,6 +597,11 @@ const SubscriptionPlansCard = ({
       showError(t('该套餐未配置 Stripe'));
       return;
     }
+    const availability = getPlanPurchaseAvailability(selectedPlan?.plan || {});
+    if (availability.disabled) {
+      showError(availability.reason || t('当前暂不可购买'));
+      return;
+    }
     setPaying(true);
     try {
       const res = await API.post('/api/subscription/stripe/pay', {
@@ -570,6 +630,11 @@ const SubscriptionPlansCard = ({
       showError(t('该套餐未配置 Creem'));
       return;
     }
+    const availability = getPlanPurchaseAvailability(selectedPlan?.plan || {});
+    if (availability.disabled) {
+      showError(availability.reason || t('当前暂不可购买'));
+      return;
+    }
     setPaying(true);
     try {
       const res = await API.post('/api/subscription/creem/pay', {
@@ -596,6 +661,11 @@ const SubscriptionPlansCard = ({
   const payEpay = async () => {
     if (!selectedEpayMethod) {
       showError(t('请选择支付方式'));
+      return;
+    }
+    const availability = getPlanPurchaseAvailability(selectedPlan?.plan || {});
+    if (availability.disabled) {
+      showError(availability.reason || t('当前暂不可购买'));
       return;
     }
     setPaying(true);
@@ -673,22 +743,6 @@ const SubscriptionPlansCard = ({
   const subscriptionPreferenceLabel =
     billingPreference === 'subscription_only' ? t('仅用订阅') : t('优先订阅');
 
-  const planPurchaseCountMap = useMemo(() => {
-    const map = new Map();
-    (allSubscriptions || []).forEach((sub) => {
-      const planId = sub?.subscription?.plan_id;
-      if (!planId) return;
-      map.set(planId, (map.get(planId) || 0) + 1);
-    });
-    (manualDeliveryOrders || []).forEach((item) => {
-      if (item?.order?.fulfillment_status === 'rejected') return;
-      const planId = item?.order?.plan_id;
-      if (!planId) return;
-      map.set(planId, (map.get(planId) || 0) + 1);
-    });
-    return map;
-  }, [allSubscriptions, manualDeliveryOrders]);
-
   const planTitleMap = useMemo(() => {
     const map = new Map();
     (plans || []).forEach((p) => {
@@ -708,9 +762,6 @@ const SubscriptionPlansCard = ({
     });
     return map;
   }, [plans]);
-
-  const getPlanPurchaseCount = (planId) =>
-    planPurchaseCountMap.get(planId) || 0;
 
   const normalizedSubscriptions = useMemo(() => {
     return (allSubscriptions || [])
@@ -1033,7 +1084,9 @@ const SubscriptionPlansCard = ({
   }, [sortedPlans, planPage, planPageSize]);
 
   const recommendedEmptyStatePlans = useMemo(() => {
-    const planItems = sortedPlans || [];
+    const planItems = (sortedPlans || []).filter(
+      (item) => !getPlanPurchaseAvailability(item?.plan || {}).disabled,
+    );
     const claudePlans = planItems.filter(
       (item) => getSubscriptionSeriesMeta(item?.plan || {}, t).key === 'claude',
     );
@@ -1049,7 +1102,7 @@ const SubscriptionPlansCard = ({
     const existingIds = new Set(picked.map((item) => item?.plan?.id).filter(Boolean));
     const fallback = planItems.filter((item) => !existingIds.has(item?.plan?.id));
     return [...picked, ...fallback].slice(0, 6);
-  }, [sortedPlans, t]);
+  }, [getPlanPurchaseAvailability, sortedPlans, t]);
 
   const overviewItems = [
     {
@@ -1965,23 +2018,16 @@ const SubscriptionPlansCard = ({
         width: 140,
         render: (text, record) => {
           const plan = record?.plan || {};
-          const limit = Number(plan?.max_purchase_per_user || 0);
-          const count = getPlanPurchaseCount(plan?.id);
-          const reached = limit > 0 && count >= limit;
-          const saleSummary = getSubscriptionSaleSummary(plan);
-          const soldOut = saleSummary.soldOut;
-          const disabled = reached || soldOut;
-          const tip = reached
-            ? t('已达到购买上限') + ` (${count}/${limit})`
-            : soldOut
-              ? t('该套餐已售罄')
-              : '';
+          const availability = getPlanPurchaseAvailability(plan);
+          const soldOut = availability.saleSummary.soldOut;
+          const disabled = availability.disabled;
+          const tip = availability.reason;
 
           if (disabled) {
             return (
               <Tooltip content={tip} position='top'>
                 <Button theme='outline' type='primary' disabled>
-                  {soldOut ? t('已售罄') : t('已达上限')}
+                  {availability.buttonText}
                 </Button>
               </Tooltip>
             );
@@ -2012,17 +2058,17 @@ const SubscriptionPlansCard = ({
         },
       },
     ],
-    [t, getPlanPurchaseCount, planSort, sortedPlans],
+    [getPlanPurchaseAvailability, t, getPlanPurchaseCount, planSort, sortedPlans],
   );
 
   const renderPackagePlanCard = (record, index) => {
     const plan = record?.plan || {};
     const seriesMeta = getSubscriptionSeriesMeta(plan, t);
     const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
-    const count = getPlanPurchaseCount(plan?.id);
-    const limit = Number(plan?.max_purchase_per_user || 0);
-    const reached = limit > 0 && count >= limit;
-    const saleSummary = getSubscriptionSaleSummary(plan);
+    const availability = getPlanPurchaseAvailability(plan);
+    const limit = availability.limit;
+    const reached = availability.reached;
+    const saleSummary = availability.saleSummary;
     const restrictionSummary = getSubscriptionRestrictionSummary(plan);
     const metricItems = getSubscriptionPlanMetricItems(plan, t);
     const { symbol, effectivePrice, originalPrice } =
@@ -2031,12 +2077,8 @@ const SubscriptionPlansCard = ({
       Number.isInteger(effectivePrice) ? 0 : 2,
     );
     const activeDiscount = isSubscriptionDiscountActive(plan);
-    const disabled = reached || saleSummary.soldOut;
-    const tip = reached
-      ? `${t('已达到购买上限')} (${count}/${limit})`
-      : saleSummary.soldOut
-        ? t('该套餐已售罄')
-        : '';
+    const disabled = availability.disabled;
+    const tip = availability.reason;
     const uniqueGroups = Array.from(
       new Set(
         restrictionSummary.groups.filter(
@@ -2245,7 +2287,7 @@ const SubscriptionPlansCard = ({
               {disabled ? (
                 <Tooltip content={tip} position='top'>
                   <Button theme='solid' type='primary' disabled block>
-                    {saleSummary.soldOut ? t('已售罄') : t('已达上限')}
+                    {availability.buttonText}
                   </Button>
                 </Tooltip>
               ) : (
@@ -2306,6 +2348,7 @@ const SubscriptionPlansCard = ({
               const seriesMeta = getSubscriptionSeriesMeta(plan, t);
               const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
               const { symbol, effectivePrice } = getSubscriptionPriceDisplay(plan);
+              const availability = getPlanPurchaseAvailability(plan);
               const displayPrice = Number(effectivePrice || 0).toFixed(
                 Number.isInteger(effectivePrice) ? 0 : 2,
               );
@@ -2362,9 +2405,12 @@ const SubscriptionPlansCard = ({
                     type='primary'
                     block
                     className='mt-4'
+                    disabled={availability.disabled}
                     onClick={() => openBuy(record)}
                   >
-                    {t('立即购买这个套餐')}
+                    {availability.disabled
+                      ? availability.buttonText
+                      : t('立即购买这个套餐')}
                   </Button>
                 </div>
               );
