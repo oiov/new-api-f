@@ -588,6 +588,59 @@ func TestAdminDeliverManualDeliveryOrder_UsesOrderSnapshotSchema(t *testing.T) {
 	})
 }
 
+func TestAdminDeliverManualDeliveryOrder_BuildsSchemaFromPayloadWhenSnapshotMissing(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       34,
+			Username: "manual_payload_schema_user",
+			AffCode:  "manual_payload_schema_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:            505,
+			Title:         "manual-payload-schema-plan",
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   1000,
+			DeliveryMode:  SubscriptionDeliveryModeManualDelivery,
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		order := &SubscriptionOrder{
+			Id:            904,
+			UserId:        34,
+			PlanId:        505,
+			Money:         19.9,
+			TradeNo:       "manual-schema-order-2",
+			PaymentMethod: "epay",
+			CreateTime:    now,
+			CompleteTime:  now,
+			Status:        common.TopUpStatusSuccess,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+
+		payload := []SubscriptionDeliveryPayloadItem{
+			{Key: "api_key", Label: "API Key", Type: "text", Value: "sk-test-123", Copyable: true},
+			{Key: "base_url", Label: "Base URL", Type: "text", Value: "https://example.com"},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Value: "https://usage.example.com"},
+		}
+		result, err := AdminDeliverManualDeliveryOrder(order.Id, 7, payload, "")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, SubscriptionFulfillmentDelivered, result.FulfillmentStatus)
+		require.Len(t, result.DeliveryPayload, 3)
+		require.Equal(t, "api_key", result.DeliveryPayload[0].Key)
+		require.Equal(t, "sk-test-123", result.DeliveryPayload[0].Value)
+	})
+}
+
 func TestCompleteSubscriptionOrder_ReservesPlaceholderSlotForClaudeManualDelivery(t *testing.T) {
 	withSubscriptionQueryTestDB(t, func() {
 		now := common.GetTimestamp()
@@ -753,6 +806,64 @@ func TestAdminDeliverManualDeliveryOrder_ReplacesReservedPlaceholderWithRealKey(
 		require.NoError(t, DB.Where("source_order_id = ?", order.Id).First(&sub).Error)
 		require.Equal(t, 8002, sub.SpecificChannelId)
 		require.Equal(t, 1, sub.SpecificChannelKeyIndex)
+	})
+}
+
+func TestGetAggregateSubscriptionRouteForPreferredSubscription(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       88,
+			Username: "preferred_sub_route_user",
+			AffCode:  "preferred_sub_route_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&Channel{
+			Id:          8801,
+			Name:        "Preferred Route Channel",
+			Status:      common.ChannelStatusEnabled,
+			Key:         "seed-key-preferred-1\nseed-key-preferred-2",
+			Group:       "sub_plan_claude_lite",
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 2,
+			},
+		}).Error)
+
+		sub := &UserSubscription{
+			Id:                      8801,
+			UserId:                  88,
+			PlanId:                  19,
+			Source:                  "order",
+			Status:                  "active",
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       15000,
+			RequestCountUsed:        0,
+			RequestCountPeriodTotal: 15000,
+			RequestCountPeriodUsed:  0,
+			AllowedModelsJSON:       `["claude-sonnet-4-6"]`,
+			UpgradeGroup:            "sub_plan_claude_lite",
+			SpecificChannelId:       8801,
+			SpecificChannelKeyIndex: 1,
+			StartTime:               now - 60,
+			EndTime:                 now + 86400,
+			CreatedAt:               now - 60,
+			UpdatedAt:               now - 60,
+		}
+		require.NoError(t, DB.Create(sub).Error)
+
+		decision, err := GetAggregateSubscriptionRouteForPreferredSubscription(88, 8801, "claude-sonnet-4-6")
+		require.NoError(t, err)
+		require.NotNil(t, decision)
+		require.Equal(t, 8801, decision.UserSubscriptionId)
+		require.Equal(t, 8801, decision.SpecificChannelId)
+		require.Equal(t, 1, decision.SpecificChannelKeyIndex)
+		require.Equal(t, "sub_plan_claude_lite", decision.RouteGroup)
 	})
 }
 

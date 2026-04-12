@@ -114,12 +114,12 @@ type SubscriptionManualDeliverySummary struct {
 }
 
 type AdminSubscriptionManualDeliverySummary struct {
-	Order       *SubscriptionOrder              `json:"order"`
-	Plan        *SubscriptionPlan               `json:"plan,omitempty"`
-	Username    string                          `json:"username"`
-	UserGroup   string                          `json:"user_group"`
-	UserSubscriptionId int                      `json:"user_subscription_id"`
-	RefundOrder *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+	Order              *SubscriptionOrder              `json:"order"`
+	Plan               *SubscriptionPlan               `json:"plan,omitempty"`
+	Username           string                          `json:"username"`
+	UserGroup          string                          `json:"user_group"`
+	UserSubscriptionId int                             `json:"user_subscription_id"`
+	RefundOrder        *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
 }
 
 const (
@@ -894,6 +894,7 @@ func runClaudeSubscriptionActivationProbe(userId int, sub *UserSubscription) err
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("x-api-key", "sk-"+token.Key)
+	req.Header.Set("X-NewAPI-Preferred-Subscription-Id", strconv.Itoa(sub.Id))
 
 	client := &http.Client{Timeout: 45 * time.Second}
 	resp, err := client.Do(req)
@@ -1239,6 +1240,26 @@ func normalizeSubscriptionDeliveryPayload(items []SubscriptionDeliveryPayloadIte
 		return nil
 	}
 	return result
+}
+
+func buildSubscriptionDeliveryFieldsFromPayload(items []SubscriptionDeliveryPayloadItem) []SubscriptionDeliveryField {
+	normalized := normalizeSubscriptionDeliveryPayload(items)
+	if len(normalized) == 0 {
+		return nil
+	}
+	fields := make([]SubscriptionDeliveryField, 0, len(normalized))
+	for index, item := range normalized {
+		fields = append(fields, SubscriptionDeliveryField{
+			Key:       item.Key,
+			Label:     item.Label,
+			Type:      normalizeDeliveryFieldType(item.Type),
+			Required:  true,
+			Masked:    item.Masked,
+			Copyable:  item.Copyable,
+			SortOrder: index + 1,
+		})
+	}
+	return normalizeSubscriptionDeliveryFields(fields)
 }
 
 func encodeSubscriptionDeliveryFields(fields []SubscriptionDeliveryField) (string, error) {
@@ -3238,11 +3259,16 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 		}
 		alreadyDelivered := normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus) == SubscriptionFulfillmentDelivered
 		schema := decodeSubscriptionDeliveryFields(order.PlanDeliveryFieldSchemaJSON)
+		autoIssuedSchema := len(schema) > 0
 		if len(schema) == 0 {
 			plan := order.SnapshotPlan()
 			if plan != nil {
 				schema = decodeSubscriptionDeliveryFields(plan.DeliveryFieldSchemaJSON)
+				autoIssuedSchema = len(schema) > 0
 			}
+		}
+		if len(schema) == 0 {
+			schema = buildSubscriptionDeliveryFieldsFromPayload(payload)
 		}
 		normalizedPayload, err := validateManualDeliveryPayload(schema, payload)
 		if err != nil {
@@ -3253,7 +3279,7 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 
 		// Only the standard Claude manual-delivery template should trigger
 		// automatic channel-pool allocation and token issuance.
-		if isAutoIssuedSubscriptionDeliverySchema(schema) {
+		if autoIssuedSchema && isAutoIssuedSubscriptionDeliverySchema(schema) {
 			baseURL := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "base_url"))
 			if baseURL == "" {
 				baseURL = strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "base_url"))
@@ -5196,6 +5222,88 @@ type SubscriptionRouteDecision struct {
 	SpecificChannelId       int
 	SpecificChannelKeyIndex int
 	ExhaustedMessage        string
+}
+
+func GetAggregateSubscriptionRouteForPreferredSubscription(userId int, preferredSubID int, modelName string) (*SubscriptionRouteDecision, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	if preferredSubID <= 0 {
+		return nil, errors.New("invalid preferred subscription id")
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return nil, errors.New("modelName is empty")
+	}
+	now := GetDBTimestamp()
+	var result *SubscriptionRouteDecision
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		query := tx
+		if !common.UsingSQLite {
+			query = query.Set("gorm:query_option", "FOR UPDATE")
+		}
+		var sub UserSubscription
+		if err := query.
+			Where("id = ? AND user_id = ? AND status = ? AND end_time > ?", preferredSubID, userId, "active", now).
+			First(&sub).Error; err != nil {
+			return err
+		}
+		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+			return errors.New("preferred subscription is not request_count")
+		}
+		resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
+		if !doesUserSubscriptionMatchAllowedModel(&sub, modelName) {
+			return fmt.Errorf("preferred subscription model mismatch: subscription=%d model=%s", sub.Id, modelName)
+		}
+		if !doesUserSubscriptionMatchAllowedVendor(&sub, resolvedVendorID) {
+			return fmt.Errorf("preferred subscription vendor mismatch: subscription=%d vendor=%d", sub.Id, resolvedVendorID)
+		}
+		routeGroup := getUserSubscriptionRouteGroup(&sub)
+		if routeGroup == "" {
+			return fmt.Errorf("preferred subscription route group is empty: subscription=%d", sub.Id)
+		}
+		if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, nil, now); err != nil {
+			return err
+		}
+		if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+			return err
+		}
+		if err := provisionAggregateAccessForSubscriptionTx(tx, &sub); err != nil {
+			return err
+		}
+		if sub.SpecificChannelId <= 0 {
+			return fmt.Errorf("preferred subscription channel binding missing: subscription=%d", sub.Id)
+		}
+		eligible, _, requiredCount, _ := isUserSubscriptionEligibleForPreConsume(&sub, 1)
+		if !eligible || requiredCount <= 0 {
+			result = &SubscriptionRouteDecision{
+				ExhaustedMessage: buildSubscriptionQuotaInsufficientMessage(&sub, 1),
+			}
+			return nil
+		}
+		var channel Channel
+		if err := tx.Where("id = ?", sub.SpecificChannelId).First(&channel).Error; err != nil {
+			return err
+		}
+		if channel.Status != common.ChannelStatusEnabled {
+			return errors.New("preferred subscription channel is disabled")
+		}
+		if sub.SpecificChannelKeyIndex >= 0 && !channel.IsSpecificKeyAvailable(sub.SpecificChannelKeyIndex) {
+			return errors.New("preferred subscription channel key is unavailable")
+		}
+		result = &SubscriptionRouteDecision{
+			UserSubscriptionId:      sub.Id,
+			PlanId:                  sub.PlanId,
+			RouteGroup:              routeGroup,
+			SpecificChannelId:       sub.SpecificChannelId,
+			SpecificChannelKeyIndex: sub.SpecificChannelKeyIndex,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func GetPreferredSubscriptionRouteForAggregateToken(userId int, modelName string) (*SubscriptionRouteDecision, error) {

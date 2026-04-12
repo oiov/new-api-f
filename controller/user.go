@@ -434,37 +434,39 @@ func GetSelf(c *gin.Context) {
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
 	configuredGroup, effectiveGroup := resolveUserResponseGroups(user.Id, user.Group, user.Quota)
+	unreadSiteNotificationCount, _ := model.CountUnreadSiteNotifications(user.Id)
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
-		"id":                user.Id,
-		"username":          user.Username,
-		"display_name":      user.DisplayName,
-		"role":              user.Role,
-		"status":            user.Status,
-		"email":             user.Email,
-		"google_id":         user.GoogleId,
-		"github_id":         user.GitHubId,
-		"discord_id":        user.DiscordId,
-		"oidc_id":           user.OidcId,
-		"wechat_id":         user.WeChatId,
-		"telegram_id":       user.TelegramId,
-		"group":             user.Group,
-		"configured_group":  configuredGroup,
-		"effective_group":   effectiveGroup,
-		"quota":             user.Quota,
-		"used_quota":        user.UsedQuota,
-		"request_count":     user.RequestCount,
-		"aff_code":          user.AffCode,
-		"aff_count":         user.AffCount,
-		"aff_quota":         user.AffQuota,
-		"aff_history_quota": user.AffHistoryQuota,
-		"inviter_id":        user.InviterId,
-		"linux_do_id":       user.LinuxDOId,
-		"setting":           user.Setting,
-		"stripe_customer":   user.StripeCustomer,
-		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
-		"permissions":       permissions,                // 新增权限字段
+		"id":                             user.Id,
+		"username":                       user.Username,
+		"display_name":                   user.DisplayName,
+		"role":                           user.Role,
+		"status":                         user.Status,
+		"email":                          user.Email,
+		"google_id":                      user.GoogleId,
+		"github_id":                      user.GitHubId,
+		"discord_id":                     user.DiscordId,
+		"oidc_id":                        user.OidcId,
+		"wechat_id":                      user.WeChatId,
+		"telegram_id":                    user.TelegramId,
+		"group":                          user.Group,
+		"configured_group":               configuredGroup,
+		"effective_group":                effectiveGroup,
+		"quota":                          user.Quota,
+		"used_quota":                     user.UsedQuota,
+		"request_count":                  user.RequestCount,
+		"aff_code":                       user.AffCode,
+		"aff_count":                      user.AffCount,
+		"aff_quota":                      user.AffQuota,
+		"aff_history_quota":              user.AffHistoryQuota,
+		"inviter_id":                     user.InviterId,
+		"linux_do_id":                    user.LinuxDOId,
+		"setting":                        user.Setting,
+		"stripe_customer":                user.StripeCustomer,
+		"sidebar_modules":                userSetting.SidebarModules, // 正确提取sidebar_modules字段
+		"permissions":                    permissions,                // 新增权限字段
+		"site_notification_unread_count": unreadSiteNotificationCount,
 	}
 
 	c.JSON(http.StatusOK, gin.H{

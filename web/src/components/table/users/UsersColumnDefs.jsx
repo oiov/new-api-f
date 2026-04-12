@@ -264,6 +264,7 @@ const renderOperations = (
     showUserHistoryModal,
     resetAffCount,
     setAffCount,
+    sendSiteNotification,
     t,
   },
 ) => {
@@ -309,6 +310,11 @@ const renderOperations = (
       node: 'item',
       name: t('订阅管理'),
       onClick: () => showUserSubscriptionsModal(record),
+    },
+    {
+      node: 'item',
+      name: t('发送站内信'),
+      onClick: () => sendSiteNotification(record),
     },
     {
       node: 'item',
@@ -397,6 +403,7 @@ export const getUsersColumns = ({
   showUserHistoryModal,
   resetAffCount,
   setAffCount,
+  sendSiteNotification,
 }) => {
   return [
     {
@@ -477,6 +484,7 @@ export const getUsersColumns = ({
           showUserHistoryModal,
           resetAffCount,
           setAffCount,
+          sendSiteNotification,
           t,
         }),
     },

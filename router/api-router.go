@@ -121,6 +121,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/invoice", controller.CreateInvoice)
 				selfRoute.GET("/invoice/:id/topups", controller.GetInvoiceTopUps)
 				selfRoute.POST("/invoice/:id/send", controller.SendInvoiceEmailByUser)
+				selfRoute.GET("/notifications", controller.ListSelfSiteNotifications)
+				selfRoute.GET("/notifications/unread_count", controller.GetSelfSiteNotificationUnreadCount)
+				selfRoute.POST("/notifications/:id/read", controller.MarkSelfSiteNotificationRead)
+				selfRoute.POST("/notifications/read_all", controller.MarkAllSelfSiteNotificationsRead)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -140,6 +144,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.PUT("/", controller.UpdateUser)
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
+				adminRoute.POST("/notifications/send", controller.AdminSendSiteNotification)
 
 				// Admin 2FA routes
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)

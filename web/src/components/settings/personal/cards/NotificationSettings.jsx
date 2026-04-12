@@ -31,6 +31,7 @@ import {
   Switch,
   Row,
   Col,
+  Badge,
 } from '@douyinfe/semi-ui';
 import { IconMail, IconKey, IconBell, IconLink } from '@douyinfe/semi-icons';
 import { ShieldCheck, Bell, DollarSign, Settings } from 'lucide-react';
@@ -53,6 +54,7 @@ import {
   mergeAdminConfig,
   useSidebar,
 } from '../../../../hooks/common/useSidebar';
+import SiteNotificationsTab from './SiteNotificationsTab';
 
 const NotificationSettings = ({
   t,
@@ -64,6 +66,9 @@ const NotificationSettings = ({
   const [statusState] = useContext(StatusContext);
   const [userState] = useContext(UserContext);
   const isAdminOrRoot = (userState?.user?.role || 0) >= 10;
+  const unreadSiteNotificationCount = Number(
+    userState?.user?.site_notification_unread_count || 0,
+  );
 
   // 左侧边栏设置相关状态
   const [sidebarLoading, setSidebarLoading] = useState(false);
@@ -869,6 +874,22 @@ const NotificationSettings = ({
                   </>
                 )}
               </div>
+            </TabPane>
+
+            {/* 价格设置 Tab */}
+            <TabPane
+              tab={
+                <div className='flex items-center gap-2'>
+                  <Bell size={16} />
+                  <span>{t('站内信')}</span>
+                  {unreadSiteNotificationCount > 0 ? (
+                    <Badge count={unreadSiteNotificationCount} overflowCount={99} />
+                  ) : null}
+                </div>
+              }
+              itemKey='site-notifications'
+            >
+              <SiteNotificationsTab t={t} />
             </TabPane>
 
             {/* 价格设置 Tab */}

@@ -74,7 +74,17 @@ func applyAggregateSubscriptionRoute(c *gin.Context, modelName string) *types.Ne
 	if _, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
 		return nil
 	}
-	decision, err := model.GetPreferredSubscriptionRouteForAggregateToken(c.GetInt("id"), modelName)
+	userId := c.GetInt("id")
+	preferredSubscriptionID, _ := strconv.Atoi(strings.TrimSpace(c.GetHeader("X-NewAPI-Preferred-Subscription-Id")))
+	var (
+		decision *model.SubscriptionRouteDecision
+		err      error
+	)
+	if preferredSubscriptionID > 0 {
+		decision, err = model.GetAggregateSubscriptionRouteForPreferredSubscription(userId, preferredSubscriptionID, modelName)
+	} else {
+		decision, err = model.GetPreferredSubscriptionRouteForAggregateToken(userId, modelName)
+	}
 	if err != nil {
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeModelNotFound, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 	}

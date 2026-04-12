@@ -1729,11 +1729,6 @@ const SubscriptionPlansCard = ({
             <div>
               {t('处理时间')}：{formatDateTime(order?.delivered_at)}
             </div>
-            {order?.delivery_admin_remark ? (
-              <div>
-                {t('管理员备注')}：{order.delivery_admin_remark}
-              </div>
-            ) : null}
           </div>
         </div>
 
