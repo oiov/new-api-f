@@ -267,6 +267,7 @@ func SetApiRouter(router *gin.Engine) {
 		paymentNotifyRoute := apiRouter.Group("/payment_notify")
 		paymentNotifyRoute.Use(middleware.RootAuth())
 		{
+			paymentNotifyRoute.PUT("/", controller.UpdatePaymentSuccessNotifySetting)
 			paymentNotifyRoute.POST("/test", controller.TestPaymentSuccessNotify)
 		}
 		channelRoute := apiRouter.Group("/channel")

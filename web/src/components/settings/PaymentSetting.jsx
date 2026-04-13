@@ -49,10 +49,13 @@ const PaymentSetting = () => {
     StripeUnitPrice: 8.0,
     StripeMinTopUp: 1,
     StripePromotionCodesEnabled: false,
-    'payment_notify_setting.Enabled': false,
+    'payment_notify_setting.TopUpEnabled': false,
+    'payment_notify_setting.SubscriptionEnabled': false,
     'payment_notify_setting.ServerChanEnabled': true,
     'payment_notify_setting.ServerChanUID': '',
+    'payment_notify_setting.ServerChanSendKey': '',
     'payment_notify_setting.PushPlusEnabled': false,
+    'payment_notify_setting.PushPlusToken': '',
   });
 
   let [loading, setLoading] = useState(false);

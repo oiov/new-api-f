@@ -134,6 +134,35 @@ func RecordLog(userId int, logType int, content string) {
 	}
 }
 
+type RecordAdminSubscriptionDeliveryLogParams struct {
+	UserId    int
+	LogType   int
+	Content   string
+	ModelName string
+	CreatedAt int64
+	Other     map[string]interface{}
+}
+
+func RecordAdminSubscriptionDeliveryLog(params RecordAdminSubscriptionDeliveryLogParams) {
+	username, _ := GetUsernameById(params.UserId, false)
+	createdAt := params.CreatedAt
+	if createdAt <= 0 {
+		createdAt = common.GetTimestamp()
+	}
+	log := &Log{
+		UserId:    params.UserId,
+		Username:  username,
+		CreatedAt: createdAt,
+		Type:      params.LogType,
+		Content:   params.Content,
+		ModelName: params.ModelName,
+		Other:     common.MapToJsonStr(params.Other),
+	}
+	if err := LOG_DB.Create(log).Error; err != nil {
+		common.SysLog("failed to record admin subscription delivery log: " + err.Error())
+	}
+}
+
 func GetChannelSuccessRequestCountMapSince(channelIds []int, since int64) (map[int]int64, error) {
 	result := make(map[int]int64, len(channelIds))
 	if len(channelIds) == 0 {

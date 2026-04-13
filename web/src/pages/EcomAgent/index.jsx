@@ -122,6 +122,16 @@ const API_KEY_STATUS_OPTIONS = [
   { value: 'missing', labelKey: '无 API Key' },
 ];
 
+const DEFAULT_LIST_FILTERS = {
+  keyword: '',
+  planFilter: '',
+  statusFilter: 'ready',
+  assignmentStatusFilter: 'unassigned',
+  channelBindingFilter: 'unlinked',
+  orderBindingFilter: 'unlinked',
+  apiKeyFilter: 'present',
+};
+
 function normalizePlanValue(value) {
   return String(value || '')
     .trim()
@@ -629,13 +639,23 @@ const EcomAgentPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
-  const [keyword, setKeyword] = useState('');
-  const [planFilter, setPlanFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [assignmentStatusFilter, setAssignmentStatusFilter] = useState('');
-  const [channelBindingFilter, setChannelBindingFilter] = useState('');
-  const [orderBindingFilter, setOrderBindingFilter] = useState('');
-  const [apiKeyFilter, setApiKeyFilter] = useState('');
+  const [keyword, setKeyword] = useState(DEFAULT_LIST_FILTERS.keyword);
+  const [planFilter, setPlanFilter] = useState(DEFAULT_LIST_FILTERS.planFilter);
+  const [statusFilter, setStatusFilter] = useState(
+    DEFAULT_LIST_FILTERS.statusFilter,
+  );
+  const [assignmentStatusFilter, setAssignmentStatusFilter] = useState(
+    DEFAULT_LIST_FILTERS.assignmentStatusFilter,
+  );
+  const [channelBindingFilter, setChannelBindingFilter] = useState(
+    DEFAULT_LIST_FILTERS.channelBindingFilter,
+  );
+  const [orderBindingFilter, setOrderBindingFilter] = useState(
+    DEFAULT_LIST_FILTERS.orderBindingFilter,
+  );
+  const [apiKeyFilter, setApiKeyFilter] = useState(
+    DEFAULT_LIST_FILTERS.apiKeyFilter,
+  );
   const [maskMode, setMaskMode] = useState(true);
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageSize = 10;
@@ -1084,22 +1104,22 @@ const EcomAgentPage = () => {
   ]);
 
   const hasActiveFilters =
-    keyword.trim() ||
-    planFilter ||
-    statusFilter ||
-    assignmentStatusFilter ||
-    channelBindingFilter ||
-    orderBindingFilter ||
-    apiKeyFilter;
+    keyword.trim() !== DEFAULT_LIST_FILTERS.keyword ||
+    planFilter !== DEFAULT_LIST_FILTERS.planFilter ||
+    statusFilter !== DEFAULT_LIST_FILTERS.statusFilter ||
+    assignmentStatusFilter !== DEFAULT_LIST_FILTERS.assignmentStatusFilter ||
+    channelBindingFilter !== DEFAULT_LIST_FILTERS.channelBindingFilter ||
+    orderBindingFilter !== DEFAULT_LIST_FILTERS.orderBindingFilter ||
+    apiKeyFilter !== DEFAULT_LIST_FILTERS.apiKeyFilter;
 
   const resetFilters = () => {
-    setKeyword('');
-    setPlanFilter('');
-    setStatusFilter('');
-    setAssignmentStatusFilter('');
-    setChannelBindingFilter('');
-    setOrderBindingFilter('');
-    setApiKeyFilter('');
+    setKeyword(DEFAULT_LIST_FILTERS.keyword);
+    setPlanFilter(DEFAULT_LIST_FILTERS.planFilter);
+    setStatusFilter(DEFAULT_LIST_FILTERS.statusFilter);
+    setAssignmentStatusFilter(DEFAULT_LIST_FILTERS.assignmentStatusFilter);
+    setChannelBindingFilter(DEFAULT_LIST_FILTERS.channelBindingFilter);
+    setOrderBindingFilter(DEFAULT_LIST_FILTERS.orderBindingFilter);
+    setApiKeyFilter(DEFAULT_LIST_FILTERS.apiKeyFilter);
     setCurrentPage(1);
   };
 
@@ -2406,6 +2426,7 @@ const EcomAgentPage = () => {
                     );
                     setAssignmentForm((prev) => ({
                       ...prev,
+                      assignment_status: nextValue ? 'assigned' : 'unassigned',
                       assigned_subscription_order_id: nextValue,
                       assigned_plan:
                         selectedOrder?.order?.plan_title ||

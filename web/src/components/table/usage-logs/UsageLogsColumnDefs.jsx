@@ -238,6 +238,30 @@ function renderBillingTag(record, t) {
   return null;
 }
 
+function getManualDeliveryLogMeta(record) {
+  const other = getLogOther(record?.other);
+  if (other?.scene === 'subscription_manual_delivery') {
+    return {
+      action: String(other.action || '').trim(),
+      refundToQuota: Boolean(other.refund_to_quota),
+    };
+  }
+  if (typeof record?.content === 'string') {
+    if (record.content.includes('管理员发放人工套餐订单')) {
+      return { action: 'deliver', refundToQuota: false };
+    }
+    if (record.content.includes('管理员拒绝人工发放套餐订单')) {
+      return {
+        action: 'reject',
+        refundToQuota:
+          !record.content.includes('未返还余额额度') &&
+          record.content.includes('返还余额额度'),
+      };
+    }
+  }
+  return null;
+}
+
 function renderModelName(record, copyText, t) {
   let other = getLogOther(record.other);
   let modelMapped =
@@ -406,6 +430,23 @@ function renderCompactDetailSummary(summarySegments) {
 
 function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
   const other = getLogOther(record.other);
+  const manualDeliveryLog = getManualDeliveryLogMeta(record);
+
+  if (manualDeliveryLog != null) {
+    return {
+      segments: [
+        {
+          text:
+            manualDeliveryLog.action === 'deliver'
+              ? t('人工发放成功')
+              : manualDeliveryLog.refundToQuota
+                ? t('拒绝发放退款')
+                : t('拒绝发放未退款'),
+          tone: 'primary',
+        },
+      ],
+    };
+  }
 
   if (record.type === 6) {
     return {
@@ -539,6 +580,10 @@ export const getLogsColumns = ({
       title: t('渠道'),
       dataIndex: 'channel',
       render: (text, record, index) => {
+        const manualDeliveryLog = getManualDeliveryLogMeta(record);
+        if (manualDeliveryLog != null) {
+          return <></>;
+        }
         let isMultiKey = false;
         let multiKeyIndex = -1;
         let content = t('渠道') + `：${record.channel}`;

@@ -1,22 +1,111 @@
 package controller
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/payment_notify_setting"
 	"github.com/gin-gonic/gin"
 )
 
+type PaymentNotifySaveRequest struct {
+	TopUpEnabled         bool   `json:"top_up_enabled"`
+	SubscriptionEnabled  bool   `json:"subscription_enabled"`
+	ServerChanEnabled    bool   `json:"server_chan_enabled"`
+	ServerChanUID        string `json:"server_chan_uid"`
+	ServerChanSendKey    string `json:"server_chan_send_key"`
+	ClearServerChanSendKey bool `json:"clear_server_chan_send_key"`
+	PushPlusEnabled      bool   `json:"push_plus_enabled"`
+	PushPlusToken        string `json:"push_plus_token"`
+	ClearPushPlusToken   bool   `json:"clear_push_plus_token"`
+}
+
 type PaymentNotifyTestRequest struct {
-	Enabled           *bool  `json:"enabled"`
-	ServerChanEnabled *bool  `json:"server_chan_enabled"`
-	ServerChanUID     string `json:"server_chan_uid"`
-	ServerChanSendKey string `json:"server_chan_send_key"`
-	PushPlusEnabled   *bool  `json:"push_plus_enabled"`
-	PushPlusToken     string `json:"push_plus_token"`
+	TopUpEnabled          bool   `json:"top_up_enabled"`
+	SubscriptionEnabled   bool   `json:"subscription_enabled"`
+	ServerChanEnabled     bool   `json:"server_chan_enabled"`
+	ServerChanUID         string `json:"server_chan_uid"`
+	ServerChanSendKey     string `json:"server_chan_send_key"`
+	ClearServerChanSendKey bool  `json:"clear_server_chan_send_key"`
+	PushPlusEnabled       bool   `json:"push_plus_enabled"`
+	PushPlusToken         string `json:"push_plus_token"`
+	ClearPushPlusToken    bool   `json:"clear_push_plus_token"`
+}
+
+func buildPaymentNotifySettingFromRequest(req PaymentNotifySaveRequest, current *payment_notify_setting.PaymentNotifySetting) payment_notify_setting.PaymentNotifySetting {
+	if current == nil {
+		current = &payment_notify_setting.PaymentNotifySetting{}
+	}
+	cfg := *current
+	cfg.TopUpEnabled = req.TopUpEnabled
+	cfg.SubscriptionEnabled = req.SubscriptionEnabled
+	cfg.ServerChanEnabled = req.ServerChanEnabled
+	cfg.PushPlusEnabled = req.PushPlusEnabled
+	cfg.ServerChanUID = strings.TrimSpace(req.ServerChanUID)
+	if req.ClearServerChanSendKey {
+		cfg.ServerChanSendKey = ""
+	} else if sendKey := strings.TrimSpace(req.ServerChanSendKey); sendKey != "" {
+		cfg.ServerChanSendKey = sendKey
+	}
+	if req.ClearPushPlusToken {
+		cfg.PushPlusToken = ""
+	} else if token := strings.TrimSpace(req.PushPlusToken); token != "" {
+		cfg.PushPlusToken = token
+	}
+	return cfg
+}
+
+func validatePaymentNotifySetting(cfg *payment_notify_setting.PaymentNotifySetting) error {
+	if cfg == nil {
+		return nil
+	}
+	if !cfg.TopUpEnabled && !cfg.SubscriptionEnabled {
+		return fmt.Errorf("请至少启用一种支付成功通知")
+	}
+	if !cfg.ServerChanEnabled && !cfg.PushPlusEnabled {
+		return fmt.Errorf("请至少启用一个推送通道")
+	}
+	return nil
+}
+
+func buildPaymentNotifyOptionValues(cfg payment_notify_setting.PaymentNotifySetting) map[string]string {
+	return map[string]string{
+		"payment_notify_setting.TopUpEnabled":        common.Interface2String(cfg.TopUpEnabled),
+		"payment_notify_setting.SubscriptionEnabled": common.Interface2String(cfg.SubscriptionEnabled),
+		"payment_notify_setting.ServerChanEnabled":   common.Interface2String(cfg.ServerChanEnabled),
+		"payment_notify_setting.ServerChanUID":       cfg.ServerChanUID,
+		"payment_notify_setting.ServerChanSendKey":   cfg.ServerChanSendKey,
+		"payment_notify_setting.PushPlusEnabled":     common.Interface2String(cfg.PushPlusEnabled),
+		"payment_notify_setting.PushPlusToken":       cfg.PushPlusToken,
+	}
+}
+
+func UpdatePaymentSuccessNotifySetting(c *gin.Context) {
+	var req PaymentNotifySaveRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorMsg(c, "无效的参数")
+		return
+	}
+
+	current := payment_notify_setting.GetPaymentNotifySetting()
+	cfg := buildPaymentNotifySettingFromRequest(req, current)
+	if err := validatePaymentNotifySetting(&cfg); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+
+	if err := model.BatchUpdateOptions(buildPaymentNotifyOptionValues(cfg)); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{
+		"message": "支付成功推送设置已更新",
+	})
 }
 
 func TestPaymentSuccessNotify(c *gin.Context) {
@@ -32,32 +121,9 @@ func TestPaymentSuccessNotify(c *gin.Context) {
 		return
 	}
 
-	cfg := *current
-	if req.Enabled != nil {
-		cfg.Enabled = *req.Enabled
-	}
-	if req.ServerChanEnabled != nil {
-		cfg.ServerChanEnabled = *req.ServerChanEnabled
-	}
-	if req.PushPlusEnabled != nil {
-		cfg.PushPlusEnabled = *req.PushPlusEnabled
-	}
-	if uid := strings.TrimSpace(req.ServerChanUID); uid != "" {
-		cfg.ServerChanUID = uid
-	}
-	if sendKey := strings.TrimSpace(req.ServerChanSendKey); sendKey != "" {
-		cfg.ServerChanSendKey = sendKey
-	}
-	if token := strings.TrimSpace(req.PushPlusToken); token != "" {
-		cfg.PushPlusToken = token
-	}
-
-	if !cfg.Enabled {
-		common.ApiErrorMsg(c, "请先启用充值成功推送")
-		return
-	}
-	if !cfg.ServerChanEnabled && !cfg.PushPlusEnabled {
-		common.ApiErrorMsg(c, "请至少启用一个推送通道")
+	cfg := buildPaymentNotifySettingFromRequest(PaymentNotifySaveRequest(req), current)
+	if err := validatePaymentNotifySetting(&cfg); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 

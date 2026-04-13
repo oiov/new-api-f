@@ -2250,10 +2250,10 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	if upgradeGroup != "" && logUserId > 0 {
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
 	}
-	if logUserId > 0 {
-		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
-		RecordLog(logUserId, LogTypeTopup, msg)
-	}
+		if logUserId > 0 {
+			msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
+			RecordLog(logUserId, LogTypeTopup, msg)
+		}
 	if logUserId > 0 && createdSub != nil {
 		triggerClaudeSubscriptionActivationProbeAsync(logUserId, createdSub)
 	}
@@ -3327,6 +3327,9 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 	var targetUserId int
 	var createdSub *UserSubscription
 	var refreshChannelCache bool
+	var deliveryLogPlanTitle string
+	var deliveryLogTradeNo string
+	var deliveryLogAt int64
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
@@ -3498,11 +3501,14 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 		if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", orderId).Updates(updates).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
-			return err
-		}
-		return nil
-	})
+			if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
+				return err
+			}
+			deliveryLogPlanTitle = strings.TrimSpace(result.PlanTitle)
+			deliveryLogTradeNo = strings.TrimSpace(result.TradeNo)
+			deliveryLogAt = result.DeliveredAt
+			return nil
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -3514,6 +3520,23 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 	}
 	if refreshChannelCache {
 		InitChannelCache()
+	}
+	if targetUserId > 0 {
+		RecordAdminSubscriptionDeliveryLog(RecordAdminSubscriptionDeliveryLogParams{
+			UserId:    targetUserId,
+			LogType:   LogTypeManage,
+			Content:   fmt.Sprintf("管理员发放人工套餐订单，套餐：%s，订单号：%s", fallbackSubscriptionLogText(deliveryLogPlanTitle), fallbackSubscriptionLogText(deliveryLogTradeNo)),
+			ModelName: deliveryLogPlanTitle,
+			CreatedAt: deliveryLogAt,
+			Other: map[string]interface{}{
+				"scene":           "subscription_manual_delivery",
+				"action":          "deliver",
+				"trade_no":        deliveryLogTradeNo,
+				"plan_title":      deliveryLogPlanTitle,
+				"order_id":        result.Id,
+				"refund_to_quota": false,
+			},
+		})
 	}
 	ApplySubscriptionOrderDeliveryFields(&result)
 	return &result, nil
@@ -4306,6 +4329,10 @@ func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string
 	var logContent string
 	var logType = LogTypeManage
 	var refreshChannelCache bool
+	var rejectLogPlanTitle string
+	var rejectLogTradeNo string
+	var rejectLogAt int64
+	var rejectLogRefundToQuota bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
@@ -4356,11 +4383,15 @@ func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string
 		if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", orderId).Updates(updates).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
-			return err
-		}
-		if refundQuota > 0 {
-			logType = LogTypeRefund
+			if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
+				return err
+			}
+			rejectLogPlanTitle = strings.TrimSpace(result.PlanTitle)
+			rejectLogTradeNo = strings.TrimSpace(result.TradeNo)
+			rejectLogAt = result.DeliveredAt
+			rejectLogRefundToQuota = result.RefundToQuota && result.RefundQuotaAmount > 0
+			if refundQuota > 0 {
+				logType = LogTypeRefund
 			logContent = fmt.Sprintf("管理员拒绝人工发放套餐订单，已返还余额额度: %d", refundQuota)
 		} else if result.RefundToQuota && result.RefundQuotaAmount > 0 {
 			logContent = fmt.Sprintf("管理员更新人工发放套餐订单拒绝原因；该订单已返还余额额度: %d", result.RefundQuotaAmount)
@@ -4376,10 +4407,32 @@ func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string
 		InitChannelCache()
 	}
 	if logUserId > 0 && logContent != "" {
-		RecordLog(logUserId, logType, logContent)
+		RecordAdminSubscriptionDeliveryLog(RecordAdminSubscriptionDeliveryLogParams{
+			UserId:    logUserId,
+			LogType:   logType,
+			Content:   logContent,
+			ModelName: rejectLogPlanTitle,
+			CreatedAt: rejectLogAt,
+			Other: map[string]interface{}{
+				"scene":           "subscription_manual_delivery",
+				"action":          "reject",
+				"trade_no":        rejectLogTradeNo,
+				"plan_title":      rejectLogPlanTitle,
+				"order_id":        result.Id,
+				"refund_to_quota": rejectLogRefundToQuota,
+			},
+		})
 	}
 	ApplySubscriptionOrderDeliveryFields(&result)
 	return &result, nil
+}
+
+func fallbackSubscriptionLogText(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "-"
+	}
+	return trimmed
 }
 
 func normalizeSubscriptionMigrationFilter(filter SubscriptionMigrationFilter) SubscriptionMigrationFilter {

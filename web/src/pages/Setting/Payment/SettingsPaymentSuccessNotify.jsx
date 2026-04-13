@@ -31,7 +31,8 @@ export default function SettingsPaymentSuccessNotify(props) {
   const [clearServerChanSendKey, setClearServerChanSendKey] = useState(false);
   const [clearPushPlusToken, setClearPushPlusToken] = useState(false);
   const [inputs, setInputs] = useState({
-    'payment_notify_setting.Enabled': false,
+    'payment_notify_setting.TopUpEnabled': false,
+    'payment_notify_setting.SubscriptionEnabled': false,
     'payment_notify_setting.ServerChanEnabled': true,
     'payment_notify_setting.ServerChanUID': '',
     'payment_notify_setting.ServerChanSendKey': '',
@@ -43,8 +44,11 @@ export default function SettingsPaymentSuccessNotify(props) {
   useEffect(() => {
     if (!props.options || !formApiRef.current) return;
     const currentInputs = {
-      'payment_notify_setting.Enabled': toBoolean(
-        props.options['payment_notify_setting.Enabled'],
+      'payment_notify_setting.TopUpEnabled': toBoolean(
+        props.options['payment_notify_setting.TopUpEnabled'],
+      ),
+      'payment_notify_setting.SubscriptionEnabled': toBoolean(
+        props.options['payment_notify_setting.SubscriptionEnabled'],
       ),
       'payment_notify_setting.ServerChanEnabled': toBoolean(
         props.options['payment_notify_setting.ServerChanEnabled'] ?? true,
@@ -67,6 +71,29 @@ export default function SettingsPaymentSuccessNotify(props) {
     setInputs(values);
   };
 
+  const renderSecretStatus = (maskedValue, pendingValue, clearFlag) => {
+    let content = t('当前数据库未保存');
+    if (maskedValue) {
+      content = `${t('当前已保存')}：${maskedValue}`;
+    }
+    if (clearFlag) {
+      content = t('保存后将清空已保存的值');
+    } else if (pendingValue) {
+      content = t('已填写新值，保存后生效');
+    }
+
+    return (
+      <Text type='tertiary' style={{ display: 'block', marginTop: 4 }}>
+        {content}
+      </Text>
+    );
+  };
+
+  const maskedServerChanSendKey =
+    props.options?.['payment_notify_setting.ServerChanSendKey'] || '';
+  const maskedPushPlusToken =
+    props.options?.['payment_notify_setting.PushPlusToken'] || '';
+
   const submitPaymentNotifySetting = async () => {
     if (
       clearServerChanSendKey &&
@@ -79,59 +106,24 @@ export default function SettingsPaymentSuccessNotify(props) {
     }
     setLoading(true);
     try {
-      const options = [
-        {
-          key: 'payment_notify_setting.Enabled',
-          value: inputs['payment_notify_setting.Enabled'] ? 'true' : 'false',
-        },
-        {
-          key: 'payment_notify_setting.ServerChanEnabled',
-          value: inputs['payment_notify_setting.ServerChanEnabled'] ? 'true' : 'false',
-        },
-        {
-          key: 'payment_notify_setting.ServerChanUID',
-          value: inputs['payment_notify_setting.ServerChanUID'] || '',
-        },
-        {
-          key: 'payment_notify_setting.PushPlusEnabled',
-          value: inputs['payment_notify_setting.PushPlusEnabled'] ? 'true' : 'false',
-        },
-      ];
-
-      if (clearServerChanSendKey) {
-        options.push({
-          key: 'payment_notify_setting.ServerChanSendKey',
-          value: '',
-        });
-      } else if (inputs['payment_notify_setting.ServerChanSendKey']) {
-        options.push({
-          key: 'payment_notify_setting.ServerChanSendKey',
-          value: inputs['payment_notify_setting.ServerChanSendKey'],
-        });
-      }
-      if (clearPushPlusToken) {
-        options.push({
-          key: 'payment_notify_setting.PushPlusToken',
-          value: '',
-        });
-      } else if (inputs['payment_notify_setting.PushPlusToken']) {
-        options.push({
-          key: 'payment_notify_setting.PushPlusToken',
-          value: inputs['payment_notify_setting.PushPlusToken'],
-        });
-      }
-
-      const results = await Promise.all(
-        options.map((opt) =>
-          API.put('/api/option/', {
-            key: opt.key,
-            value: opt.value,
-          }),
-        ),
-      );
-      const errorResults = results.filter((res) => !res.data.success);
-      if (errorResults.length > 0) {
-        errorResults.forEach((res) => showError(res.data.message));
+      const res = await API.put('/api/payment_notify/', {
+        top_up_enabled: inputs['payment_notify_setting.TopUpEnabled'],
+        subscription_enabled:
+          inputs['payment_notify_setting.SubscriptionEnabled'],
+        server_chan_enabled: inputs['payment_notify_setting.ServerChanEnabled'],
+        server_chan_uid: inputs['payment_notify_setting.ServerChanUID'] || '',
+        server_chan_send_key: clearServerChanSendKey
+          ? ''
+          : inputs['payment_notify_setting.ServerChanSendKey'] || '',
+        clear_server_chan_send_key: clearServerChanSendKey,
+        push_plus_enabled: inputs['payment_notify_setting.PushPlusEnabled'],
+        push_plus_token: clearPushPlusToken
+          ? ''
+          : inputs['payment_notify_setting.PushPlusToken'] || '',
+        clear_push_plus_token: clearPushPlusToken,
+      });
+      if (!res?.data?.success) {
+        showError(res?.data?.message || t('更新失败'));
         return;
       }
       showSuccess(t('更新成功'));
@@ -151,17 +143,21 @@ export default function SettingsPaymentSuccessNotify(props) {
       const res = await API.post(
         '/api/payment_notify/test',
         {
-          enabled: inputs['payment_notify_setting.Enabled'],
+          top_up_enabled: inputs['payment_notify_setting.TopUpEnabled'],
+          subscription_enabled:
+            inputs['payment_notify_setting.SubscriptionEnabled'],
           server_chan_enabled: inputs['payment_notify_setting.ServerChanEnabled'],
           server_chan_uid: inputs['payment_notify_setting.ServerChanUID'] || '',
           server_chan_send_key:
             clearServerChanSendKey
               ? ''
               : inputs['payment_notify_setting.ServerChanSendKey'] || '',
+          clear_server_chan_send_key: clearServerChanSendKey,
           push_plus_enabled: inputs['payment_notify_setting.PushPlusEnabled'],
           push_plus_token: clearPushPlusToken
             ? ''
             : inputs['payment_notify_setting.PushPlusToken'] || '',
+          clear_push_plus_token: clearPushPlusToken,
         },
         {
           skipErrorHandler: true,
@@ -186,21 +182,29 @@ export default function SettingsPaymentSuccessNotify(props) {
         onValueChange={handleFormChange}
         getFormApi={(api) => (formApiRef.current = api)}
       >
-        <Form.Section text={t('充值成功推送')}>
+        <Form.Section text={t('支付成功推送')}>
           <Text>
-            {t('仅在充值成功后发送通知，不包含套餐购买。敏感信息保存后不会回显到前端。')}
+            {t('可分别控制充值成功和套餐购买成功通知。敏感信息保存后不会回显到前端。')}
           </Text>
           <Banner
             type='info'
             description={t(
-              '建议至少启用一个通道。若总开关关闭，则不会发送任何充值成功推送。',
+              '建议至少启用一个通知类型和一个推送通道，否则不会发送支付成功通知。',
             )}
           />
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.Switch
-                field='payment_notify_setting.Enabled'
-                label={t('启用充值成功推送')}
+                field='payment_notify_setting.TopUpEnabled'
+                label={t('启用充值成功通知')}
+                checkedText={t('开关开')}
+                uncheckedText={t('开关关')}
+              />
+            </Col>
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field='payment_notify_setting.SubscriptionEnabled'
+                label={t('启用套餐购买成功通知')}
                 checkedText={t('开关开')}
                 uncheckedText={t('开关关')}
               />
@@ -240,6 +244,11 @@ export default function SettingsPaymentSuccessNotify(props) {
                 placeholder={t('保存后不回显')}
                 type='password'
               />
+              {renderSecretStatus(
+                maskedServerChanSendKey,
+                inputs['payment_notify_setting.ServerChanSendKey'],
+                clearServerChanSendKey,
+              )}
               <Form.Switch
                 field='clear_server_chan_send_key'
                 checked={clearServerChanSendKey}
@@ -256,6 +265,11 @@ export default function SettingsPaymentSuccessNotify(props) {
                 placeholder={t('保存后不回显')}
                 type='password'
               />
+              {renderSecretStatus(
+                maskedPushPlusToken,
+                inputs['payment_notify_setting.PushPlusToken'],
+                clearPushPlusToken,
+              )}
               <Form.Switch
                 field='clear_push_plus_token'
                 checked={clearPushPlusToken}
@@ -268,7 +282,7 @@ export default function SettingsPaymentSuccessNotify(props) {
           </Row>
           <div style={{ display: 'flex', gap: 12 }}>
             <Button onClick={submitPaymentNotifySetting}>
-              {t('更新充值成功推送设置')}
+              {t('更新支付成功推送设置')}
             </Button>
             <Button
               theme='solid'

@@ -43,7 +43,7 @@ func NotifyPaymentSuccess(notification PaymentSuccessNotification) error {
 }
 
 func NotifyPaymentSuccessWithSetting(cfg *payment_notify_setting.PaymentNotifySetting, notification PaymentSuccessNotification) error {
-	if cfg == nil || !cfg.Enabled {
+	if cfg == nil || !shouldNotifyByCategory(cfg, notification.Category) {
 		return nil
 	}
 	if strings.TrimSpace(notification.TradeNo) == "" {
@@ -65,6 +65,18 @@ func NotifyPaymentSuccessWithSetting(cfg *payment_notify_setting.PaymentNotifySe
 		return errors.New(strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+func shouldNotifyByCategory(cfg *payment_notify_setting.PaymentNotifySetting, category string) bool {
+	if cfg == nil {
+		return false
+	}
+	switch strings.TrimSpace(category) {
+	case "套餐购买":
+		return cfg.SubscriptionEnabled
+	default:
+		return cfg.TopUpEnabled
+	}
 }
 
 func postJSONWithNotifyTransport(targetURL string, payload []byte) (*http.Response, error) {

@@ -67,6 +67,13 @@ func GetOptions(c *gin.Context) {
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
 		value := common.Interface2String(v)
+		if maskedValue, ok := getMaskedOptionValue(k, value); ok {
+			options = append(options, &model.Option{
+				Key:   k,
+				Value: maskedValue,
+			})
+			continue
+		}
 		if strings.HasSuffix(k, "Token") ||
 			strings.HasSuffix(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||
@@ -96,6 +103,27 @@ func GetOptions(c *gin.Context) {
 		"data":    options,
 	})
 	return
+}
+
+func getMaskedOptionValue(key, value string) (string, bool) {
+	switch key {
+	case "payment_notify_setting.ServerChanSendKey", "payment_notify_setting.PushPlusToken":
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return "", true
+		}
+		return maskSensitiveOptionValue(trimmed), true
+	default:
+		return "", false
+	}
+}
+
+func maskSensitiveOptionValue(value string) string {
+	runes := []rune(value)
+	if len(runes) <= 8 {
+		return "********"
+	}
+	return string(runes[:4]) + "****" + string(runes[len(runes)-4:])
 }
 
 type OptionUpdateRequest struct {

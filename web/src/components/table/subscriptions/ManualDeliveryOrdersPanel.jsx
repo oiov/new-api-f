@@ -373,12 +373,12 @@ const ManualDeliveryOrdersPanel = ({ t }) => {
               setRejectRefundToQuota(Boolean(event?.target?.checked));
             }}
           >
-            {t('将付款补给用户额度')}
+            {t('将付款返还到用户账户钱包余额')}
           </Checkbox>
           {Boolean(rejectRecord?.order?.refund_to_quota) &&
           Number(rejectRecord?.order?.refund_quota_amount || 0) > 0 ? (
             <Text type='tertiary' size='small'>
-              {t('该订单已补回 {{amount}} 额度，重复拒绝不会再次补回。', {
+              {t('该订单已返还 {{amount}} 额度到用户账户钱包余额，重复拒绝不会再次返还。', {
                 amount: Number(rejectRecord?.order?.refund_quota_amount || 0),
               })}
             </Text>

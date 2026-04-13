@@ -95,17 +95,17 @@ func notifyManualDeliveryOrderResult(order *model.SubscriptionOrder, approved bo
 		strings.TrimSpace(order.PlanTitle),
 		strings.TrimSpace(order.TradeNo),
 		strings.TrimSpace(order.DeliveryAdminRemark),
-		"未补回余额额度",
+		"未返还到账户钱包余额",
 	}
 	if approved {
 		values = values[:2]
 	} else if strings.TrimSpace(order.DeliveryAdminRemark) == "" {
 		values[2] = "管理员暂未填写额外说明。"
 		if order.RefundToQuota && order.RefundQuotaAmount > 0 {
-			values[3] = fmt.Sprintf("已补回 %d 额度到用户余额", order.RefundQuotaAmount)
+			values[3] = fmt.Sprintf("已返还 %d 额度到你的账户钱包余额", order.RefundQuotaAmount)
 		}
 	} else if order.RefundToQuota && order.RefundQuotaAmount > 0 {
-		values[3] = fmt.Sprintf("已补回 %d 额度到用户余额", order.RefundQuotaAmount)
+		values[3] = fmt.Sprintf("已返还 %d 额度到你的账户钱包余额", order.RefundQuotaAmount)
 	}
 	for _, value := range values {
 		content = strings.Replace(content, dto.ContentValueParam, fmt.Sprintf("%v", value), 1)
