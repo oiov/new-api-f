@@ -115,6 +115,9 @@ func main() {
 	// Channel request count reset task (daily at 08:00 Asia/Shanghai)
 	service.StartChannelRequestCountResetTask()
 
+	// Check-in auto job task
+	service.StartCheckinAutoJobTask()
+
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)

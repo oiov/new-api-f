@@ -213,6 +213,10 @@ func SetApiRouter(router *gin.Engine) {
 		checkinAdminRoute.Use(middleware.RootAuth())
 		{
 			checkinAdminRoute.GET("/records", controller.GetAdminCheckinRecords)
+			checkinAdminRoute.GET("/auto_jobs", controller.GetCheckinAutoJobs)
+			checkinAdminRoute.GET("/auto_jobs/:id", controller.GetCheckinAutoJob)
+			checkinAdminRoute.POST("/auto_jobs", controller.CreateCheckinAutoJob)
+			checkinAdminRoute.POST("/auto_jobs/:id/cancel", controller.CancelCheckinAutoJob)
 		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
@@ -259,6 +263,11 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
+		}
+		paymentNotifyRoute := apiRouter.Group("/payment_notify")
+		paymentNotifyRoute.Use(middleware.RootAuth())
+		{
+			paymentNotifyRoute.POST("/test", controller.TestPaymentSuccessNotify)
 		}
 		channelRoute := apiRouter.Group("/channel")
 		channelRoute.Use(middleware.AdminAuth())

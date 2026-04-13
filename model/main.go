@@ -275,6 +275,8 @@ func migrateDB() error {
 		&TwoFA{},
 		&TwoFABackupCode{},
 		&Checkin{},
+		&CheckinAutoJob{},
+		&CheckinAutoJobItem{},
 		&InviteRewardGrant{},
 		&SubscriptionOrder{},
 		&UserSubscription{},

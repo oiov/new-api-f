@@ -86,6 +86,13 @@ type CheckinAvailability struct {
 	OpenEndSeconds   int    `json:"open_end_seconds"`
 }
 
+type UserCheckinOptions struct {
+	Now                  *time.Time
+	BypassTimeWindow     bool
+	BypassDailyUserLimit bool
+	Source               string
+}
+
 var checkinMutex sync.Mutex
 
 func loadCheckinLocation() *time.Location {
@@ -124,24 +131,36 @@ func GetUserCheckinRecords(userId int, startDate, endDate string) ([]Checkin, er
 // HasCheckedInToday 检查用户今天是否已签到
 func HasCheckedInToday(userId int) (bool, error) {
 	today := checkinNow().Format("2006-01-02")
+	return HasCheckedInOnDate(userId, today)
+}
+
+func HasCheckedInOnDate(userId int, checkinDate string) (bool, error) {
 	var count int64
 	err := DB.Model(&Checkin{}).
-		Where("user_id = ? AND checkin_date = ?", userId, today).
+		Where("user_id = ? AND checkin_date = ?", userId, checkinDate).
 		Count(&count).Error
 	return count > 0, err
 }
 
 func GetTodayCheckinCount() (int64, error) {
 	today := checkinNow().Format("2006-01-02")
+	return GetCheckinCountByDate(today)
+}
+
+func GetCheckinCountByDate(checkinDate string) (int64, error) {
 	var count int64
 	err := DB.Model(&Checkin{}).
-		Where("checkin_date = ?", today).
+		Where("checkin_date = ?", checkinDate).
 		Count(&count).Error
 	return count, err
 }
 
 func GetCheckinAvailability(now time.Time) (*CheckinAvailability, error) {
-	todayCheckins, err := GetTodayCheckinCount()
+	return GetCheckinAvailabilityWithOptions(now, UserCheckinOptions{})
+}
+
+func GetCheckinAvailabilityWithOptions(now time.Time, opts UserCheckinOptions) (*CheckinAvailability, error) {
+	todayCheckins, err := GetCheckinCountByDate(now.Format("2006-01-02"))
 	if err != nil {
 		return nil, err
 	}
@@ -162,17 +181,17 @@ func GetCheckinAvailability(now time.Time) (*CheckinAvailability, error) {
 			availability.RemainingSlots = 0
 		}
 	}
-	if !operation_setting.IsCheckinWeekdayAllowed(now) {
+	if !opts.BypassTimeWindow && !operation_setting.IsCheckinWeekdayAllowed(now) {
 		availability.AvailableNow = false
 		availability.Reason = "weekday_closed"
 		return availability, nil
 	}
-	if !operation_setting.IsCheckinTimeAllowed(now) {
+	if !opts.BypassTimeWindow && !operation_setting.IsCheckinTimeAllowed(now) {
 		availability.AvailableNow = false
 		availability.Reason = "time_closed"
 		return availability, nil
 	}
-	if limit > 0 && todayCheckins >= int64(limit) {
+	if !opts.BypassDailyUserLimit && limit > 0 && todayCheckins >= int64(limit) {
 		availability.AvailableNow = false
 		availability.Reason = "daily_limit_reached"
 	}
@@ -235,16 +254,30 @@ func buildCheckinUnavailableError(availability *CheckinAvailability) error {
 // MySQL 和 PostgreSQL 使用事务保证原子性
 // SQLite 不支持嵌套事务，使用顺序操作 + 手动回滚
 func UserCheckin(userId int) (*Checkin, error) {
+	return UserCheckinWithOptions(userId, UserCheckinOptions{})
+}
+
+// UserCheckinWithOptions 执行用户签到并允许后台任务按需绕过时间窗口/名额限制
+func UserCheckinWithOptions(userId int, opts UserCheckinOptions) (*Checkin, error) {
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {
 		return nil, errors.New("签到功能未启用")
+	}
+	if _, err := GetUserById(userId, false); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("用户不存在")
+		}
+		return nil, err
 	}
 
 	checkinMutex.Lock()
 	defer checkinMutex.Unlock()
 
 	now := checkinNow()
-	availability, err := GetCheckinAvailability(now)
+	if opts.Now != nil {
+		now = opts.Now.In(checkinLocation)
+	}
+	availability, err := GetCheckinAvailabilityWithOptions(now, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +286,8 @@ func UserCheckin(userId int) (*Checkin, error) {
 	}
 
 	// 检查今天是否已签到
-	hasChecked, err := HasCheckedInToday(userId)
+	today := now.Format("2006-01-02")
+	hasChecked, err := HasCheckedInOnDate(userId, today)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +301,6 @@ func UserCheckin(userId int) (*Checkin, error) {
 		quotaAwarded = setting.MinQuota + rand.Intn(setting.MaxQuota-setting.MinQuota+1)
 	}
 
-	today := now.Format("2006-01-02")
 	checkin := &Checkin{
 		UserId:       userId,
 		CheckinDate:  today,
@@ -295,9 +328,13 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 		}
 
 		// 步骤2: 在事务中增加用户额度
-		if err := tx.Model(&User{}).Where("id = ?", userId).
-			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
+		result := tx.Model(&User{}).Where("id = ?", userId).
+			Update("quota", gorm.Expr("quota + ?", quotaAwarded))
+		if result.Error != nil {
 			return errors.New("签到失败：更新额度出错")
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("签到失败：用户不存在")
 		}
 
 		return nil
@@ -463,10 +500,10 @@ func GetCheckinLeaderboard(page int, pageSize int, limit int) (*CheckinLeaderboa
 	}
 
 	type checkinTodayRecordRow struct {
-		DisplayName  string
-		Username     string
-		QuotaAwarded int
-		CreatedAt    int64
+		DisplayName   string
+		Username      string
+		QuotaAwarded  int
+		CreatedAt     int64
 		TotalCheckins int64
 		TotalQuota    int64
 	}
@@ -495,10 +532,10 @@ func GetCheckinLeaderboard(page int, pageSize int, limit int) (*CheckinLeaderboa
 			checkedInAt = time.Unix(row.CreatedAt, 0).In(checkinLocation).Format("15:04:05")
 		}
 		pageData.TodayRecords = append(pageData.TodayRecords, CheckinTodayRecord{
-			DisplayName:  maskCheckinLeaderboardName(name),
-			QuotaAwarded: row.QuotaAwarded,
-			CreatedAt:    row.CreatedAt,
-			CheckedInAt:  checkedInAt,
+			DisplayName:   maskCheckinLeaderboardName(name),
+			QuotaAwarded:  row.QuotaAwarded,
+			CreatedAt:     row.CreatedAt,
+			CheckedInAt:   checkedInAt,
 			TotalCheckins: row.TotalCheckins,
 			TotalQuota:    row.TotalQuota,
 		})

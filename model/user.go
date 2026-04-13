@@ -356,7 +356,7 @@ func SearchUsers(keyword string, group string, startIdx int, num int, sortBy str
 	}()
 
 	// 构建基础查询
-	query := tx.Unscoped().Model(&User{})
+	query := tx.Model(&User{})
 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"

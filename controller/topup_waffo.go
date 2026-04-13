@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -357,10 +358,23 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 	LockOrder(merchantOrderId)
 	defer UnlockOrder(merchantOrderId)
 
-	if err := model.RechargeWaffo(merchantOrderId); err != nil {
+	completed, err := model.RechargeWaffo(merchantOrderId)
+	if err != nil {
 		log.Printf("Waffo 充值处理失败: %v, 订单: %s", err, merchantOrderId)
 		sendWaffoWebhookResponse(c, wh, false, err.Error())
 		return
+	}
+	if completed {
+		if topUp := model.GetTopUpByTradeNo(merchantOrderId); topUp != nil {
+			service.NotifyPaymentSuccessAsync(service.PaymentSuccessNotification{
+				Category:      "充值",
+				TradeNo:       topUp.TradeNo,
+				UserID:        topUp.UserId,
+				PaymentMethod: topUp.PaymentMethod,
+				Money:         topUp.Money,
+				Quota:         logger.FormatQuota(int(topUp.Amount) * int(common.QuotaPerUnit)),
+			})
+		}
 	}
 
 	log.Printf("Waffo 充值成功 - 订单: %s", merchantOrderId)

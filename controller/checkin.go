@@ -14,6 +14,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type CreateCheckinAutoJobRequest struct {
+	Name                string `json:"name"`
+	Enabled             *bool  `json:"enabled"`
+	TargetDate          string `json:"target_date"`
+	WindowStartSeconds  int    `json:"window_start_seconds"`
+	WindowEndSeconds    int    `json:"window_end_seconds"`
+	RandomWindowSeconds int    `json:"random_window_seconds"`
+	UserIDs             []int  `json:"user_ids"`
+}
+
 // GetCheckinStatus 获取用户签到状态和历史记录
 func GetCheckinStatus(c *gin.Context) {
 	setting := operation_setting.GetCheckinSetting()
@@ -121,6 +131,68 @@ func GetAdminCheckinRecords(c *gin.Context) {
 			"stats": stats,
 		},
 	})
+}
+
+func CreateCheckinAutoJob(c *gin.Context) {
+	req := CreateCheckinAutoJobRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	result, err := model.CreateCheckinAutoJob(&model.CheckinAutoJobCreateRequest{
+		Name:                strings.TrimSpace(req.Name),
+		Enabled:             req.Enabled,
+		TargetDate:          strings.TrimSpace(req.TargetDate),
+		WindowStartSeconds:  req.WindowStartSeconds,
+		WindowEndSeconds:    req.WindowEndSeconds,
+		RandomWindowSeconds: req.RandomWindowSeconds,
+		UserIDs:             req.UserIDs,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func GetCheckinAutoJobs(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(common.ItemsPerPage)))
+	targetDate := strings.TrimSpace(c.Query("target_date"))
+	status := strings.TrimSpace(c.Query("status"))
+	result, err := model.ListCheckinAutoJobs(page, pageSize, targetDate, status)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func GetCheckinAutoJob(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	result, err := model.GetCheckinAutoJobDetail(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func CancelCheckinAutoJob(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.CancelCheckinAutoJob(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"id": id, "status": model.CheckinAutoJobStatusCancelled})
 }
 
 // DoCheckin 执行用户签到
