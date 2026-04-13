@@ -150,6 +150,9 @@ func InitOptionMap() {
 	common.OptionMap["GroupRatio"] = ratio_setting.GroupRatio2JSONString()
 	common.OptionMap["GroupGroupRatio"] = ratio_setting.GroupGroupRatio2JSONString()
 	common.OptionMap["UserUsableGroups"] = setting.UserUsableGroups2JSONString()
+	common.OptionMap["EnableGroupBillingFilter"] = strconv.FormatBool(setting.EnableGroupBillingFilter)
+	common.OptionMap["SubscriptionGroups"] = setting.SubscriptionGroups2JSONString()
+	common.OptionMap["QuotaGroups"] = setting.QuotaGroups2JSONString()
 	common.OptionMap["CompletionRatio"] = ratio_setting.CompletionRatio2JSONString()
 	common.OptionMap["ImageRatio"] = ratio_setting.ImageRatio2JSONString()
 	common.OptionMap["AudioRatio"] = ratio_setting.AudioRatio2JSONString()
@@ -158,6 +161,7 @@ func InitOptionMap() {
 	//common.OptionMap["ChatLink"] = common.ChatLink
 	//common.OptionMap["ChatLink2"] = common.ChatLink2
 	common.OptionMap["QuotaPerUnit"] = strconv.FormatFloat(common.QuotaPerUnit, 'f', -1, 64)
+	common.OptionMap["SelfServiceSubscriptionConversionCampaign"] = ""
 	common.OptionMap["RetryTimes"] = strconv.Itoa(common.RetryTimes)
 	common.OptionMap["DataExportInterval"] = strconv.Itoa(common.DataExportInterval)
 	common.OptionMap["DataExportDefaultTime"] = common.DataExportDefaultTime
@@ -170,6 +174,7 @@ func InitOptionMap() {
 	common.OptionMap["CheckSensitiveEnabled"] = strconv.FormatBool(setting.CheckSensitiveEnabled)
 	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(operation_setting.DemoSiteEnabled)
 	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(operation_setting.SelfUseModeEnabled)
+	common.OptionMap["UpstreamModelNameAlignedToRequestEnabled"] = strconv.FormatBool(operation_setting.UpstreamModelNameAlignedToRequestEnabled)
 	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(setting.ModelRequestRateLimitEnabled)
 	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnPromptEnabled)
 	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(setting.StopOnSensitiveEnabled)
@@ -179,6 +184,13 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
+	common.OptionMap["StorageBackend"] = common.StorageBackend
+	common.OptionMap["StorageR2Endpoint"] = common.StorageR2Endpoint
+	common.OptionMap["StorageR2Bucket"] = common.StorageR2Bucket
+	common.OptionMap["StorageR2Region"] = common.StorageR2Region
+	common.OptionMap["StorageR2AccessKey"] = common.StorageR2AccessKey
+	common.OptionMap["StorageR2SecretKey"] = common.StorageR2SecretKey
+	common.OptionMap["StorageR2PublicURL"] = common.StorageR2PublicURL
 
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
@@ -363,6 +375,8 @@ func updateOptionMap(key string, value string) (err error) {
 			operation_setting.DemoSiteEnabled = boolValue
 		case "SelfUseModeEnabled":
 			operation_setting.SelfUseModeEnabled = boolValue
+		case "UpstreamModelNameAlignedToRequestEnabled":
+			operation_setting.UpstreamModelNameAlignedToRequestEnabled = boolValue
 		case "CheckSensitiveOnPromptEnabled":
 			setting.CheckSensitiveOnPromptEnabled = boolValue
 		case "ModelRequestRateLimitEnabled":
@@ -495,6 +509,20 @@ func updateOptionMap(key string, value string) (err error) {
 		common.WeChatServerToken = value
 	case "WeChatAccountQRCodeImageURL":
 		common.WeChatAccountQRCodeImageURL = value
+	case "StorageBackend":
+		common.StorageBackend = value
+	case "StorageR2Endpoint":
+		common.StorageR2Endpoint = value
+	case "StorageR2Bucket":
+		common.StorageR2Bucket = value
+	case "StorageR2Region":
+		common.StorageR2Region = value
+	case "StorageR2AccessKey":
+		common.StorageR2AccessKey = value
+	case "StorageR2SecretKey":
+		common.StorageR2SecretKey = value
+	case "StorageR2PublicURL":
+		common.StorageR2PublicURL = value
 	case "TelegramBotToken":
 		common.TelegramBotToken = value
 	case "TelegramBotName":
@@ -549,6 +577,12 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateGroupGroupRatioByJSONString(value)
 	case "UserUsableGroups":
 		err = setting.UpdateUserUsableGroupsByJSONString(value)
+	case "EnableGroupBillingFilter":
+		setting.EnableGroupBillingFilter = value == "true"
+	case "SubscriptionGroups":
+		err = setting.UpdateSubscriptionGroupsByJSONString(value)
+	case "QuotaGroups":
+		err = setting.UpdateQuotaGroupsByJSONString(value)
 	case "CompletionRatio":
 		err = ratio_setting.UpdateCompletionRatioByJSONString(value)
 	case "ModelPrice":

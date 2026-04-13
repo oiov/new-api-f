@@ -269,8 +269,8 @@ export default function SettingsPerformance(props) {
                   label={t('启用磁盘缓存')}
                   extraText={t('将大请求体临时存储到磁盘')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={handleFieldChange(
                     'performance_setting.disk_cache_enabled',
                   )}
@@ -343,8 +343,8 @@ export default function SettingsPerformance(props) {
                   label={t('启用性能监控')}
                   extraText={t('超过阈值时拒绝新请求')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={handleFieldChange(
                     'performance_setting.monitor_enabled',
                   )}

@@ -27,15 +27,18 @@ import {
   Typography,
   Space,
   Tooltip,
+  Popover,
   Popconfirm,
   Empty,
   Spin,
   Select,
+  InputNumber,
   Row,
   Col,
   Badge,
   Progress,
   Card,
+  Banner,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
@@ -43,6 +46,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import {
   API,
+  renderQuota,
   showError,
   showSuccess,
   timestamp2string,
@@ -55,6 +59,8 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
   const [loading, setLoading] = useState(false);
   const [keyStatusList, setKeyStatusList] = useState([]);
   const [operationLoading, setOperationLoading] = useState({});
+  const [limitDrafts, setLimitDrafts] = useState({});
+  const [unassignedUsage, setUnassignedUsage] = useState(null);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -97,10 +103,19 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       if (res.data.success) {
         const data = res.data.data;
         setKeyStatusList(data.keys || []);
+        setLimitDrafts(
+          Object.fromEntries(
+            (data.keys || []).map((item) => [
+              item.index,
+              Number(item.max_request_count || 0),
+            ]),
+          ),
+        );
         setTotal(data.total || 0);
         setCurrentPage(data.page || 1);
         setPageSize(data.page_size || 10);
         setTotalPages(data.total_pages || 0);
+        setUnassignedUsage(data.unassigned_usage || null);
 
         // Update statistics (these are always the overall statistics)
         setEnabledCount(data.enabled_count || 0);
@@ -273,6 +288,70 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
     }
   };
 
+  const handleSaveKeyLimit = async (keyIndex) => {
+    const operationId = `limit_${keyIndex}`;
+    setOperationLoading((prev) => ({ ...prev, [operationId]: true }));
+
+    try {
+      const res = await API.post('/api/channel/multi_key/manage', {
+        channel_id: channel.id,
+        action: 'set_key_request_limit',
+        key_index: keyIndex,
+        max_request_count: Math.max(0, Number(limitDrafts[keyIndex] || 0)),
+      });
+
+      if (res.data.success) {
+        showSuccess(t('密钥次数上限已保存'));
+        await loadKeyStatus(currentPage, pageSize, statusFilter);
+        onRefresh && onRefresh();
+      } else {
+        showError(res.data.message);
+      }
+    } catch (error) {
+      showError(t('保存密钥次数上限失败'));
+    } finally {
+      setOperationLoading((prev) => ({ ...prev, [operationId]: false }));
+    }
+  };
+
+  const handleSyncEcomAccount = async (accountId, options = {}) => {
+    if (!accountId) {
+      return;
+    }
+    const operationId = `ecom_sync_${accountId}`;
+    setOperationLoading((prev) => ({ ...prev, [operationId]: true }));
+
+    try {
+      const res = await API.post(
+        `/api/ecomagent/accounts/${accountId}/sync${
+          options.forceGenerateKey ? '?force_generate_key=true' : ''
+        }`,
+      );
+
+      if (res.data?.success) {
+        showSuccess(
+          res.data?.message ||
+            (options.forceGenerateKey ? t('API Key 创建完成') : t('同步完成')),
+        );
+      } else {
+        showError(
+          res.data?.message ||
+            (options.forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
+        );
+      }
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          (options.forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
+      );
+    } finally {
+      await loadKeyStatus(currentPage, pageSize, statusFilter);
+      onRefresh && onRefresh();
+      setOperationLoading((prev) => ({ ...prev, [operationId]: false }));
+    }
+  };
+
   // Handle page change
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -312,6 +391,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       setManualDisabledCount(0);
       setAutoDisabledCount(0);
       setStatusFilter(null); // Reset filter
+      setUnassignedUsage(null);
     }
   }, [visible]);
 
@@ -355,6 +435,233 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
     }
   };
 
+  const renderGroupTags = (groups = []) => {
+    if (!Array.isArray(groups) || groups.length === 0) {
+      return <Text type='quaternary'>-</Text>;
+    }
+    const content = (
+      <div className='flex flex-wrap gap-1 max-w-xs'>
+        {groups.map((group) => (
+          <Tag key={group} size='small' color='blue' shape='circle'>
+            {group}
+          </Tag>
+        ))}
+      </div>
+    );
+    return (
+      <Tooltip content={content} position='top'>
+        <div className='flex flex-wrap gap-1 max-w-[220px]'>
+          {groups.slice(0, 2).map((group) => (
+            <Tag key={group} size='small' color='blue' shape='circle'>
+              {group}
+            </Tag>
+          ))}
+          {groups.length > 2 && (
+            <Tag size='small' color='grey' shape='circle'>
+              +{groups.length - 2}
+            </Tag>
+          )}
+        </div>
+      </Tooltip>
+    );
+  };
+
+  const renderUsageGroups = (groups = []) => {
+    if (!Array.isArray(groups) || groups.length === 0) {
+      return <Text type='quaternary'>-</Text>;
+    }
+    const tooltipContent = (
+      <div className='flex flex-col gap-2 min-w-[220px]'>
+        {groups.map((item) => (
+          <div
+            key={item.group}
+            className='flex items-center justify-between gap-3'
+          >
+            <Tag size='small' color='cyan' shape='circle'>
+              {item.group}
+            </Tag>
+            <div className='text-right'>
+              <div>{t('{{count}} 次', { count: Number(item.success_count || 0).toLocaleString() })}</div>
+              <div className='text-xs text-gray-500'>
+                {renderQuota(Number(item.used_quota || 0))}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+    const topGroup = groups[0];
+    return (
+      <Tooltip content={tooltipContent} position='left'>
+        <div className='flex items-center gap-1 flex-wrap max-w-[220px]'>
+          <Tag size='small' color='cyan' shape='circle'>
+            {topGroup.group}
+          </Tag>
+          <Text size='small' type='secondary'>
+            {t('{{count}} 次', {
+              count: Number(topGroup.success_count || 0).toLocaleString(),
+            })}
+          </Text>
+          {groups.length > 1 && (
+            <Tag size='small' color='grey' shape='circle'>
+              +{groups.length - 1}
+            </Tag>
+          )}
+        </div>
+      </Tooltip>
+    );
+  };
+
+  const renderBindingUsers = (users = []) => {
+    if (!Array.isArray(users) || users.length === 0) {
+      return <Text type='quaternary'>-</Text>;
+    }
+    const content = (
+      <div className='flex flex-col gap-2 min-w-[320px] max-w-[420px]'>
+        {users.map((item) => (
+          <div
+            key={`${item.token_id}-${item.user_id}`}
+            className='rounded-lg border px-3 py-2'
+            style={{ borderColor: 'var(--semi-color-border)' }}
+          >
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex items-center gap-2 flex-wrap'>
+                <Tag size='small' color='blue' shape='circle'>
+                  UID {item.user_id}
+                </Tag>
+                <Text strong>{item.username || t('未命名用户')}</Text>
+              </div>
+              <Tag
+                size='small'
+                color={Number(item.status) === 1 ? 'green' : 'grey'}
+                shape='circle'
+              >
+                {Number(item.status) === 1 ? t('已启用') : t('已停用')}
+              </Tag>
+            </div>
+            <div className='mt-2 flex flex-wrap gap-2'>
+              <Tag size='small' color='white' shape='circle'>
+                Token #{item.token_id}
+              </Tag>
+              <Tag size='small' color='cyan' shape='circle'>
+                {item.token_group || t('未设置分组')}
+              </Tag>
+            </div>
+            <Text size='small' type='secondary' className='mt-2 block'>
+              {item.token_name || '-'}
+            </Text>
+            <Text size='small' type='tertiary' className='mt-1 block'>
+              {item.expired_time > 0
+                ? t('到期时间：{{time}}', {
+                    time: timestamp2string(item.expired_time),
+                  })
+                : t('到期时间：永不过期')}
+            </Text>
+          </div>
+        ))}
+      </div>
+    );
+    const firstUser = users[0];
+    return (
+      <Popover
+        trigger='click'
+        position='leftTop'
+        content={content}
+        style={{ maxWidth: 440 }}
+      >
+        <Button size='small' theme='borderless' type='tertiary'>
+          {users.length === 1
+            ? firstUser.username || `UID ${firstUser.user_id}`
+            : t('查看 {{count}} 个绑定用户', { count: users.length })}
+        </Button>
+      </Popover>
+    );
+  };
+
+  const renderEcomAccounts = (accounts = []) => {
+    if (!Array.isArray(accounts) || accounts.length === 0) {
+      return <Text type='quaternary'>-</Text>;
+    }
+    const content = (
+      <div className='flex flex-col gap-2 min-w-[340px] max-w-[460px]'>
+        {accounts.map((item) => (
+          <div
+            key={`ecom-${item.account_id}`}
+            className='rounded-lg border px-3 py-2'
+            style={{ borderColor: 'var(--semi-color-border)' }}
+          >
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex items-center gap-2 flex-wrap'>
+                <Tag size='small' color='orange' shape='circle'>
+                  Ecom #{item.account_id}
+                </Tag>
+                <Text strong>{item.email || t('未绑定邮箱')}</Text>
+              </div>
+              <Tag
+                size='small'
+                color={item.status === 'ready' ? 'green' : 'grey'}
+                shape='circle'
+              >
+                {item.status || t('未知状态')}
+              </Tag>
+            </div>
+            <div className='mt-2 flex flex-wrap gap-2'>
+              {item.user_id > 0 && (
+                <Tag size='small' color='blue' shape='circle'>
+                  UID {item.user_id} {item.username || ''}
+                </Tag>
+              )}
+              {item.subscription_id > 0 && (
+                <Tag size='small' color='cyan' shape='circle'>
+                  Sub #{item.subscription_id}
+                </Tag>
+              )}
+              {item.order_id > 0 && (
+                <Tag size='small' color='white' shape='circle'>
+                  Order #{item.order_id}
+                </Tag>
+              )}
+            </div>
+            <Text size='small' type='secondary' className='mt-2 block'>
+              {t('套餐')}: {item.plan || '-'} / {t('总请求')}: {Number(item.request_limit || 0).toLocaleString()} / {t('已用成功次数')}: {Number(item.usage_requests || 0).toLocaleString()}
+            </Text>
+            {item.assigned_at > 0 && (
+              <Text size='small' type='tertiary' className='mt-1 block'>
+                {t('分配时间：{{time}}', {
+                  time: timestamp2string(item.assigned_at),
+                })}
+              </Text>
+            )}
+            <div className='mt-2 flex items-center gap-2'>
+              <Button
+                size='small'
+                theme='light'
+                loading={!!operationLoading[`ecom_sync_${item.account_id}`]}
+                onClick={() => handleSyncEcomAccount(item.account_id)}
+              >
+                {t('同步')}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+    return (
+      <Popover
+        trigger='click'
+        position='leftTop'
+        content={content}
+        style={{ maxWidth: 480 }}
+      >
+        <Button size='small' theme='borderless' type='tertiary'>
+          {accounts.length === 1
+            ? t('查看绑定账户')
+            : t('查看 {{count}} 个绑定账户', { count: accounts.length })}
+        </Button>
+      </Popover>
+    );
+  };
+
   // Table columns definition
   const columns = [
     {
@@ -375,6 +682,91 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       title: t('状态'),
       dataIndex: 'status',
       render: (status) => renderStatusTag(status),
+    },
+    {
+      title: t('已用成功次数'),
+      dataIndex: 'used_count',
+      render: (value) => <Text>{Number(value || 0).toLocaleString()}</Text>,
+    },
+    {
+      title: t('已用额度'),
+      dataIndex: 'used_quota',
+      render: (value) => <Text>{renderQuota(Number(value || 0))}</Text>,
+    },
+    {
+      title: t('绑定详情'),
+      dataIndex: 'binding_users',
+      width: 360,
+      render: (users, record) => (
+        <div className='flex flex-col gap-2'>
+          <Space spacing={6}>
+            <Tag color='white' shape='circle' type='ghost'>
+              {t('{{count}} 个绑定', {
+                count: Number(record.binding_count || 0).toLocaleString(),
+              })}
+            </Tag>
+            {renderBindingUsers(users)}
+          </Space>
+          {Array.isArray(record.ecom_accounts) && record.ecom_accounts.length > 0 && (
+            <Space spacing={6}>
+              <Tag color='orange' shape='circle' type='ghost'>
+                {t('{{count}} 个 EcomAgent', {
+                  count: Number(record.ecom_accounts.length).toLocaleString(),
+                })}
+              </Tag>
+              {renderEcomAccounts(record.ecom_accounts)}
+            </Space>
+          )}
+          <div>{renderGroupTags(record.binding_groups)}</div>
+        </div>
+      ),
+    },
+    {
+      title: t('分组消耗'),
+      dataIndex: 'usage_groups',
+      width: 240,
+      render: (groups) => renderUsageGroups(groups),
+    },
+    {
+      title: t('最近使用'),
+      dataIndex: 'last_used_at',
+      render: (value) =>
+        value ? (
+          <Tooltip content={timestamp2string(value)}>
+            <Text style={{ fontSize: '12px' }}>{timestamp2string(value)}</Text>
+          </Tooltip>
+        ) : (
+          <Text type='quaternary'>-</Text>
+        ),
+    },
+    {
+      title: t('成功次数上限'),
+      dataIndex: 'max_request_count',
+      width: 220,
+      render: (value, record) => (
+        <Space>
+          <InputNumber
+            min={0}
+            value={Number(limitDrafts[record.index] ?? value ?? 0)}
+            style={{ width: 96 }}
+            onNumberChange={(nextValue) =>
+              setLimitDrafts((prev) => ({
+                ...prev,
+                [record.index]: Number(nextValue ?? 0),
+              }))
+            }
+          />
+          <Button
+            size='small'
+            type='primary'
+            theme='light'
+            loading={operationLoading[`limit_${record.index}`]}
+            onClick={() => handleSaveKeyLimit(record.index)}
+          >
+            {t('保存')}
+          </Button>
+        </Space>
+      ),
     },
     {
       title: t('禁用原因'),
@@ -476,7 +868,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       }
       visible={visible}
       onCancel={onCancel}
-      width={900}
+      width={1120}
       footer={null}
     >
       <div className='flex flex-col mb-5'>
@@ -593,6 +985,36 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
             </Col>
           </Row>
         </div>
+
+        {unassignedUsage &&
+          (Number(unassignedUsage.success_count || 0) > 0 ||
+            Number(unassignedUsage.used_quota || 0) > 0) && (
+            <Banner
+              type='warning'
+              className='!rounded-xl mb-3'
+              closeIcon={null}
+              title={t('存在历史未绑定流量')}
+              description={
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Text>
+                    {t(
+                      '这些请求发生在渠道还没有固定到具体 key 索引时，所以不会归到下面的 #0、#1 明细里。',
+                    )}
+                  </Text>
+                  <Tag color='orange' shape='circle'>
+                    {t('{{count}} 次', {
+                      count: Number(
+                        unassignedUsage.success_count || 0,
+                      ).toLocaleString(),
+                    })}
+                  </Tag>
+                  <Tag color='white' shape='circle'>
+                    {renderQuota(Number(unassignedUsage.used_quota || 0))}
+                  </Tag>
+                </div>
+              }
+            />
+          )}
 
         {/* Table */}
         <div className='flex-1 flex flex-col min-h-0'>

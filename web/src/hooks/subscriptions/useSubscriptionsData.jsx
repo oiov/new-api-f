@@ -17,11 +17,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { API, showError, showSuccess } from '../../helpers';
+import { API, buildGroupOptions, showError, showSuccess } from '../../helpers';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { ITEMS_PER_PAGE } from '../../constants';
+import {
+  getSubscriptionResourceType,
+  getSubscriptionSaleSummary,
+} from '../../helpers/subscriptionFormat';
+
+const PLAN_FILTER_INIT_VALUES = {
+  keyword: '',
+  enabled: 'enabled',
+  resource_type: '',
+  quota_reset_period: '',
+  upgrade_group: '',
+  sale_status: '',
+};
 
 export const useSubscriptionsData = () => {
   const { t } = useTranslation();
@@ -38,15 +51,19 @@ export const useSubscriptionsData = () => {
   // Pagination (client-side for now)
   const [activePage, setActivePage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [planFiltersFormApi, setPlanFiltersFormApi] = useState(null);
+  const [planFilters, setPlanFilters] = useState(PLAN_FILTER_INIT_VALUES);
 
   // Admin user subscriptions
   const [userSubscriptions, setUserSubscriptions] = useState([]);
-  const [userSubscriptionsLoading, setUserSubscriptionsLoading] = useState(true);
+  const [userSubscriptionsLoading, setUserSubscriptionsLoading] =
+    useState(true);
   const [userSubscriptionsPage, setUserSubscriptionsPage] = useState(1);
   const [userSubscriptionsPageSize, setUserSubscriptionsPageSize] =
     useState(ITEMS_PER_PAGE);
   const [userSubscriptionsTotal, setUserSubscriptionsTotal] = useState(0);
-  const [userSubscriptionsFormApi, setUserSubscriptionsFormApi] = useState(null);
+  const [userSubscriptionsFormApi, setUserSubscriptionsFormApi] =
+    useState(null);
 
   // Drawer states
   const [showEdit, setShowEdit] = useState(false);
@@ -79,12 +96,7 @@ export const useSubscriptionsData = () => {
     try {
       const res = await API.get('/api/group/');
       if (res?.data?.success) {
-        setGroupOptions(
-          (res.data.data || []).map((group) => ({
-            label: group,
-            value: group,
-          })),
-        );
+        setGroupOptions(buildGroupOptions(res.data.data || []));
       }
     } catch (e) {
       showError(e?.message || t('请求失败'));
@@ -106,14 +118,29 @@ export const useSubscriptionsData = () => {
       end_timestamp = values.dateRange[1] || '';
     }
     return {
+      subscription_id: values.subscription_id || '',
       username: values.username || '',
       group: values.group || '',
+      upgrade_group: values.upgrade_group || '',
       status: values.status || '',
       plan_id: values.plan_id || '',
       source: values.source || '',
+      resource_type: values.resource_type || '',
       time_field: values.time_field || 'created_at',
       start_timestamp,
       end_timestamp,
+    };
+  };
+
+  const getPlanFilterValues = () => {
+    const values = planFiltersFormApi ? planFiltersFormApi.getValues() : {};
+    return {
+      keyword: values.keyword || '',
+      enabled: values.enabled || PLAN_FILTER_INIT_VALUES.enabled,
+      resource_type: values.resource_type || '',
+      quota_reset_period: values.quota_reset_period || '',
+      upgrade_group: values.upgrade_group || '',
+      sale_status: values.sale_status || '',
     };
   };
 
@@ -126,13 +153,16 @@ export const useSubscriptionsData = () => {
     setUserSubscriptionsLoading(true);
     try {
       const searchParams = new URLSearchParams({
+        subscription_id: nextFilters.subscription_id || '',
         p: String(page),
         page_size: String(size),
         username: nextFilters.username || '',
         group: nextFilters.group || '',
+        upgrade_group: nextFilters.upgrade_group || '',
         status: nextFilters.status || '',
         plan_id: nextFilters.plan_id || '',
         source: nextFilters.source || '',
+        resource_type: nextFilters.resource_type || '',
         time_field: nextFilters.time_field || 'created_at',
         start_timestamp: nextFilters.start_timestamp
           ? String(Date.parse(nextFilters.start_timestamp) / 1000)
@@ -172,6 +202,19 @@ export const useSubscriptionsData = () => {
 
   const handlePageSizeChange = (size) => {
     setPageSize(size);
+    setActivePage(1);
+  };
+
+  const searchPlans = () => {
+    setPlanFilters(getPlanFilterValues());
+    setActivePage(1);
+  };
+
+  const resetPlanFilters = () => {
+    if (planFiltersFormApi) {
+      planFiltersFormApi.reset();
+    }
+    setPlanFilters(PLAN_FILTER_INIT_VALUES);
     setActivePage(1);
   };
 
@@ -315,8 +358,78 @@ export const useSubscriptionsData = () => {
     }
   }, [enableBatchMode]);
 
-  const planCount = allPlans.length;
-  const plans = allPlans.slice(
+  const filteredPlans = useMemo(() => {
+    return (allPlans || []).filter((item) => {
+      const plan = item?.plan || {};
+      const saleSummary = getSubscriptionSaleSummary(plan);
+      const keyword = planFilters.keyword.trim().toLowerCase();
+
+      if (keyword) {
+        const searchText = [
+          String(plan.id || ''),
+          plan.title || '',
+          plan.subtitle || '',
+          plan.upgrade_group || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        if (!searchText.includes(keyword)) {
+          return false;
+        }
+      }
+
+      if (planFilters.enabled === 'enabled' && !plan.enabled) {
+        return false;
+      }
+      if (planFilters.enabled === 'disabled' && plan.enabled) {
+        return false;
+      }
+
+      if (
+        planFilters.resource_type &&
+        getSubscriptionResourceType(plan) !== planFilters.resource_type
+      ) {
+        return false;
+      }
+
+      if (
+        planFilters.quota_reset_period &&
+        (plan.quota_reset_period || 'never') !== planFilters.quota_reset_period
+      ) {
+        return false;
+      }
+
+      if (
+        planFilters.upgrade_group &&
+        (plan.upgrade_group || '') !== planFilters.upgrade_group
+      ) {
+        return false;
+      }
+
+      if (planFilters.sale_status === 'sold_out' && !saleSummary.soldOut) {
+        return false;
+      }
+      if (planFilters.sale_status === 'unlimited' && !saleSummary.unlimited) {
+        return false;
+      }
+      if (
+        planFilters.sale_status === 'available' &&
+        (saleSummary.unlimited || saleSummary.soldOut)
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [allPlans, planFilters]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredPlans.length / pageSize));
+    setActivePage((page) => Math.min(page || 1, totalPages));
+  }, [filteredPlans.length, pageSize]);
+
+  const planCount = filteredPlans.length;
+  const plans = filteredPlans.slice(
     Math.max(0, (activePage - 1) * pageSize),
     Math.max(0, (activePage - 1) * pageSize) + pageSize,
   );
@@ -336,6 +449,7 @@ export const useSubscriptionsData = () => {
     allPlans,
     planTitleMap,
     planOptions,
+    planFiltersFormInitValues: PLAN_FILTER_INIT_VALUES,
     groupOptions,
     userSubscriptions,
     userSubscriptionsLoading,
@@ -343,11 +457,14 @@ export const useSubscriptionsData = () => {
     userSubscriptionsPageSize,
     userSubscriptionsTotal,
     userSubscriptionsFormInitValues: {
+      subscription_id: '',
       username: '',
       group: '',
+      upgrade_group: '',
       status: '',
       plan_id: '',
       source: '',
+      resource_type: '',
       time_field: 'created_at',
       dateRange: [],
     },
@@ -375,12 +492,15 @@ export const useSubscriptionsData = () => {
     handlePageSizeChange,
     handleUserSubscriptionsPageChange,
     handleUserSubscriptionsPageSizeChange,
+    setPlanFiltersFormApi,
     setUserSubscriptionsFormApi,
 
     // Actions
     loadPlans,
     loadUserSubscriptions,
+    searchPlans,
     searchUserSubscriptions,
+    resetPlanFilters,
     setPlanEnabled,
     batchSetPlansEnabled,
     refresh,

@@ -275,13 +275,19 @@ func migrateDB() error {
 		&TwoFA{},
 		&TwoFABackupCode{},
 		&Checkin{},
+		&CheckinAutoJob{},
+		&CheckinAutoJobItem{},
 		&InviteRewardGrant{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
+		&SubscriptionConversionRequest{},
 		&SubscriptionPreConsumeRecord{},
 		&AntiDistributionLog{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
+		&Invoice{},
+		&EcomAgentAccount{},
+		&SiteNotification{},
 	)
 	if err != nil {
 		return err
@@ -294,6 +300,12 @@ func migrateDB() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := migrateLegacyPeriodicRequestCountPlans(); err != nil {
+		return err
+	}
+	if err := migrateSubscriptionManualDeliveryDefaults(); err != nil {
+		return err
 	}
 	if updated, err := RefreshActiveSubscriptionResetWindows(500); err != nil {
 		return err
@@ -333,10 +345,13 @@ func migrateDBFast() error {
 		{&InviteRewardGrant{}, "InviteRewardGrant"},
 		{&SubscriptionOrder{}, "SubscriptionOrder"},
 		{&UserSubscription{}, "UserSubscription"},
+		{&SubscriptionConversionRequest{}, "SubscriptionConversionRequest"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
 		{&AntiDistributionLog{}, "AntiDistributionLog"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
+		{&Invoice{}, "Invoice"},
+		{&SiteNotification{}, "SiteNotification"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
@@ -369,6 +384,12 @@ func migrateDBFast() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := migrateLegacyPeriodicRequestCountPlans(); err != nil {
+		return err
+	}
+	if err := migrateSubscriptionManualDeliveryDefaults(); err != nil {
+		return err
 	}
 	if updated, err := RefreshActiveSubscriptionResetWindows(500); err != nil {
 		return err
@@ -423,8 +444,16 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`resource_type`" + ` varchar(32) NOT NULL DEFAULT 'quota',
 ` + "`request_count_total`" + ` bigint NOT NULL DEFAULT 0,
+` + "`request_count_period_total`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
+` + "`quota_reset_use_fixed_clock`" + ` numeric NOT NULL DEFAULT 0,
+` + "`quota_reset_fixed_seconds`" + ` bigint NOT NULL DEFAULT 0,
+` + "`allowed_groups_json`" + ` text DEFAULT '',
+` + "`allowed_models_json`" + ` text DEFAULT '',
+` + "`allowed_vendor_ids_json`" + ` text DEFAULT '',
+` + "`delivery_mode`" + ` varchar(32) NOT NULL DEFAULT 'auto_activate',
+` + "`delivery_field_schema_json`" + ` text DEFAULT '',
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
@@ -462,8 +491,16 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
 		{Name: "resource_type", DDL: "`resource_type` varchar(32) NOT NULL DEFAULT 'quota'"},
 		{Name: "request_count_total", DDL: "`request_count_total` bigint NOT NULL DEFAULT 0"},
+		{Name: "request_count_period_total", DDL: "`request_count_period_total` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
+		{Name: "quota_reset_use_fixed_clock", DDL: "`quota_reset_use_fixed_clock` numeric NOT NULL DEFAULT 0"},
+		{Name: "quota_reset_fixed_seconds", DDL: "`quota_reset_fixed_seconds` bigint NOT NULL DEFAULT 0"},
+		{Name: "allowed_groups_json", DDL: "`allowed_groups_json` text DEFAULT ''"},
+		{Name: "allowed_models_json", DDL: "`allowed_models_json` text DEFAULT ''"},
+		{Name: "allowed_vendor_ids_json", DDL: "`allowed_vendor_ids_json` text DEFAULT ''"},
+		{Name: "delivery_mode", DDL: "`delivery_mode` varchar(32) NOT NULL DEFAULT 'auto_activate'"},
+		{Name: "delivery_field_schema_json", DDL: "`delivery_field_schema_json` text DEFAULT ''"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
 	}
@@ -589,6 +626,106 @@ func migrateSubscriptionPlanPriceAmount() {
 			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
 		}
 	}
+}
+
+func migrateLegacyPeriodicRequestCountPlans() error {
+	if DB == nil {
+		return nil
+	}
+	if !DB.Migrator().HasTable(&SubscriptionPlan{}) || !DB.Migrator().HasTable(&SubscriptionOrder{}) || !DB.Migrator().HasTable(&UserSubscription{}) {
+		return nil
+	}
+	if !DB.Migrator().HasColumn(&SubscriptionPlan{}, "request_count_period_total") ||
+		!DB.Migrator().HasColumn(&SubscriptionOrder{}, "plan_request_count_period_total") ||
+		!DB.Migrator().HasColumn(&UserSubscription{}, "request_count_period_total") ||
+		!DB.Migrator().HasColumn(&UserSubscription{}, "request_count_period_used") {
+		return nil
+	}
+
+	type migrationItem struct {
+		name string
+		sql  string
+	}
+	items := []migrationItem{
+		{
+			name: "subscription_plans",
+			sql: `UPDATE subscription_plans
+SET request_count_period_total = request_count_total,
+    request_count_total = 0
+WHERE resource_type = 'request_count'
+  AND COALESCE(quota_reset_period, 'never') <> 'never'
+  AND COALESCE(request_count_period_total, 0) = 0
+  AND COALESCE(request_count_total, 0) > 0`,
+		},
+		{
+			name: "subscription_orders",
+			sql: `UPDATE subscription_orders
+SET plan_request_count_period_total = plan_request_count_total,
+    plan_request_count_total = 0
+WHERE COALESCE(plan_resource_type, 'quota') = 'request_count'
+  AND COALESCE(plan_quota_reset_period, 'never') <> 'never'
+  AND COALESCE(plan_request_count_period_total, 0) = 0
+  AND COALESCE(plan_request_count_total, 0) > 0`,
+		},
+		{
+			name: "user_subscriptions",
+			sql: `UPDATE user_subscriptions
+SET request_count_period_total = request_count_total,
+    request_count_period_used = request_count_used,
+    request_count_total = 0,
+    request_count_used = 0
+WHERE resource_type = 'request_count'
+  AND COALESCE(reset_period, 'never') <> 'never'
+  AND COALESCE(request_count_period_total, 0) = 0
+  AND (COALESCE(request_count_total, 0) > 0 OR COALESCE(request_count_used, 0) > 0)`,
+		},
+	}
+
+	for _, item := range items {
+		res := DB.Exec(item.sql)
+		if res.Error != nil {
+			return fmt.Errorf("failed to migrate %s request-count limits: %w", item.name, res.Error)
+		}
+		if res.RowsAffected > 0 {
+			common.SysLog(fmt.Sprintf("migrated legacy periodic request-count rows for %s: %d", item.name, res.RowsAffected))
+		}
+	}
+	return nil
+}
+
+func migrateSubscriptionManualDeliveryDefaults() error {
+	if DB == nil {
+		return nil
+	}
+	if DB.Migrator().HasTable(&SubscriptionPlan{}) {
+		if DB.Migrator().HasColumn(&SubscriptionPlan{}, "delivery_mode") {
+			if err := DB.Exec(
+				"UPDATE subscription_plans SET delivery_mode = ? WHERE COALESCE(TRIM(delivery_mode), '') = ''",
+				SubscriptionDeliveryModeAutoActivate,
+			).Error; err != nil {
+				return err
+			}
+		}
+	}
+	if DB.Migrator().HasTable(&SubscriptionOrder{}) {
+		if DB.Migrator().HasColumn(&SubscriptionOrder{}, "plan_delivery_mode") {
+			if err := DB.Exec(
+				"UPDATE subscription_orders SET plan_delivery_mode = ? WHERE COALESCE(TRIM(plan_delivery_mode), '') = ''",
+				SubscriptionDeliveryModeAutoActivate,
+			).Error; err != nil {
+				return err
+			}
+		}
+		if DB.Migrator().HasColumn(&SubscriptionOrder{}, "fulfillment_status") {
+			if err := DB.Exec(
+				"UPDATE subscription_orders SET fulfillment_status = ? WHERE COALESCE(TRIM(fulfillment_status), '') = ''",
+				SubscriptionFulfillmentNotRequired,
+			).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func closeDB(db *gorm.DB) error {

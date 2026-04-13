@@ -908,6 +908,39 @@ func UpdateChannel(c *gin.Context) {
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
 
+	// 允许在编辑已有单密钥渠道时升级为多密钥渠道。
+	// 前端会在这种场景下传入 multi_key_mode，此时默认按追加模式保留原有密钥，
+	// 并将上方输入的新密钥追加到现有列表末尾。
+	upgradeToMultiKey := !originChannel.ChannelInfo.IsMultiKey &&
+		channel.MultiKeyMode != nil &&
+		*channel.MultiKeyMode != ""
+	if upgradeToMultiKey {
+		channel.ChannelInfo.IsMultiKey = true
+		channel.ChannelInfo.MultiKeyMode = constant.MultiKeyMode(*channel.MultiKeyMode)
+		if channel.KeyMode == nil || *channel.KeyMode == "" {
+			defaultKeyMode := "append"
+			channel.KeyMode = &defaultKeyMode
+		}
+	}
+
+	if originChannel.ChannelInfo.IsMultiKey && strings.TrimSpace(channel.Key) != "" {
+		allowAppendOnly := channel.KeyMode != nil && *channel.KeyMode == "append"
+		if !allowAppendOnly {
+			bindingCountMap, err := model.GetActiveSpecificChannelKeyBindingCountMap(originChannel.Id)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			if len(bindingCountMap) > 0 {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "该多密钥渠道已有用户令牌绑定，当前只允许追加密钥，不允许直接替换密钥列表",
+				})
+				return
+			}
+		}
+	}
+
 	// If the request explicitly specifies a new MultiKeyMode, apply it on top of the original info.
 	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {
 		channel.ChannelInfo.MultiKeyMode = constant.MultiKeyMode(*channel.MultiKeyMode)
@@ -991,6 +1024,22 @@ func UpdateChannel(c *gin.Context) {
 			}
 		case "replace":
 			// 覆盖模式：直接使用新密钥（默认行为，不需要特殊处理）
+		}
+	}
+	if upgradeToMultiKey {
+		keyCount := 0
+		for _, key := range channel.GetKeys() {
+			if strings.TrimSpace(key) == "" {
+				continue
+			}
+			keyCount++
+		}
+		if keyCount < 2 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "升级为多密钥渠道时，至少需要两个有效密钥",
+			})
+			return
 		}
 	}
 	err = channel.Update()
@@ -1250,21 +1299,23 @@ func CopyChannel(c *gin.Context) {
 
 // MultiKeyManageRequest represents the request for multi-key management operations
 type MultiKeyManageRequest struct {
-	ChannelId int    `json:"channel_id"`
-	Action    string `json:"action"`              // "disable_key", "enable_key", "delete_key", "delete_disabled_keys", "get_key_status"
-	KeyIndex  *int   `json:"key_index,omitempty"` // for disable_key, enable_key, and delete_key actions
-	Page      int    `json:"page,omitempty"`      // for get_key_status pagination
-	PageSize  int    `json:"page_size,omitempty"` // for get_key_status pagination
-	Status    *int   `json:"status,omitempty"`    // for get_key_status filtering: 1=enabled, 2=manual_disabled, 3=auto_disabled, nil=all
+	ChannelId       int    `json:"channel_id"`
+	Action          string `json:"action"`              // "disable_key", "enable_key", "delete_key", "delete_disabled_keys", "get_key_status"
+	KeyIndex        *int   `json:"key_index,omitempty"` // for disable_key, enable_key, and delete_key actions
+	MaxRequestCount *int64 `json:"max_request_count,omitempty"`
+	Page            int    `json:"page,omitempty"`      // for get_key_status pagination
+	PageSize        int    `json:"page_size,omitempty"` // for get_key_status pagination
+	Status          *int   `json:"status,omitempty"`    // for get_key_status filtering: 1=enabled, 2=manual_disabled, 3=auto_disabled, nil=all
 }
 
 // MultiKeyStatusResponse represents the response for key status query
 type MultiKeyStatusResponse struct {
-	Keys       []KeyStatus `json:"keys"`
-	Total      int         `json:"total"`
-	Page       int         `json:"page"`
-	PageSize   int         `json:"page_size"`
-	TotalPages int         `json:"total_pages"`
+	Keys            []KeyStatus                       `json:"keys"`
+	Total           int                               `json:"total"`
+	Page            int                               `json:"page"`
+	PageSize        int                               `json:"page_size"`
+	TotalPages      int                               `json:"total_pages"`
+	UnassignedUsage *model.ChannelMultiKeyUsageDetail `json:"unassigned_usage,omitempty"`
 	// Statistics
 	EnabledCount        int `json:"enabled_count"`
 	ManualDisabledCount int `json:"manual_disabled_count"`
@@ -1272,11 +1323,20 @@ type MultiKeyStatusResponse struct {
 }
 
 type KeyStatus struct {
-	Index        int    `json:"index"`
-	Status       int    `json:"status"` // 1: enabled, 2: disabled
-	DisabledTime int64  `json:"disabled_time,omitempty"`
-	Reason       string `json:"reason,omitempty"`
-	KeyPreview   string `json:"key_preview"` // first 10 chars of key for identification
+	Index           int                                         `json:"index"`
+	Status          int                                         `json:"status"` // 1: enabled, 2: disabled
+	DisabledTime    int64                                       `json:"disabled_time,omitempty"`
+	Reason          string                                      `json:"reason,omitempty"`
+	KeyPreview      string                                      `json:"key_preview"` // first 10 chars of key for identification
+	UsedCount       int64                                       `json:"used_count"`
+	UsedQuota       int64                                       `json:"used_quota"`
+	MaxRequestCount int64                                       `json:"max_request_count"`
+	BindingCount    int64                                       `json:"binding_count"`
+	BindingGroups   []string                                    `json:"binding_groups,omitempty"`
+	BindingUsers    []model.ActiveSpecificChannelKeyBindingUser `json:"binding_users,omitempty"`
+	EcomAccounts    []model.EcomAgentChannelKeyBindingDetail    `json:"ecom_accounts,omitempty"`
+	LastUsedAt      int64                                       `json:"last_used_at,omitempty"`
+	UsageGroups     []model.ChannelMultiKeyGroupUsage           `json:"usage_groups,omitempty"`
 }
 
 // ManageMultiKeys handles multi-key management operations
@@ -1365,11 +1425,13 @@ func ManageMultiKeys(c *gin.Context) {
 			}
 
 			allKeyStatusList = append(allKeyStatusList, KeyStatus{
-				Index:        i,
-				Status:       status,
-				DisabledTime: disabledTime,
-				Reason:       reason,
-				KeyPreview:   keyPreview,
+				Index:           i,
+				Status:          status,
+				DisabledTime:    disabledTime,
+				Reason:          reason,
+				KeyPreview:      keyPreview,
+				UsedCount:       channel.GetMultiKeyUsedCount(i),
+				MaxRequestCount: channel.GetMultiKeyMaxRequestCount(i),
 			})
 		}
 
@@ -1408,6 +1470,58 @@ func ManageMultiKeys(c *gin.Context) {
 			pageKeyStatusList = filteredKeyStatusList[start:end]
 		}
 
+		bindingDetailMap, err := model.GetActiveSpecificChannelKeyBindingDetailMap(channel.Id)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "获取多密钥绑定信息失败",
+			})
+			return
+		}
+		usageDetailMap, err := model.GetChannelMultiKeyUsageDetailMap(channel.Id)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "获取多密钥消耗信息失败",
+			})
+			return
+		}
+		ecomBindingMap, err := model.GetEcomAgentChannelKeyBindingMap(channel.Id)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "获取 EcomAgent 绑定信息失败",
+			})
+			return
+		}
+		var unassignedUsage *model.ChannelMultiKeyUsageDetail
+		if usageDetail, ok := usageDetailMap[-1]; ok && (usageDetail.SuccessCount > 0 || usageDetail.UsedQuota > 0) {
+			detailCopy := usageDetail
+			unassignedUsage = &detailCopy
+			delete(usageDetailMap, -1)
+		}
+		for i := range pageKeyStatusList {
+			if bindingDetail, ok := bindingDetailMap[pageKeyStatusList[i].Index]; ok {
+				pageKeyStatusList[i].BindingCount = bindingDetail.BindingCount
+				pageKeyStatusList[i].BindingGroups = bindingDetail.BindingGroups
+				pageKeyStatusList[i].BindingUsers = bindingDetail.BindingUsers
+			}
+			if ecomAccounts, ok := ecomBindingMap[pageKeyStatusList[i].Index]; ok {
+				pageKeyStatusList[i].EcomAccounts = ecomAccounts
+			}
+			if usageDetail, ok := usageDetailMap[pageKeyStatusList[i].Index]; ok {
+				if usageDetail.SuccessCount > 0 {
+					pageKeyStatusList[i].UsedCount = usageDetail.SuccessCount
+				}
+				pageKeyStatusList[i].UsedQuota = usageDetail.UsedQuota
+				pageKeyStatusList[i].LastUsedAt = usageDetail.LastUsedAt
+				pageKeyStatusList[i].UsageGroups = usageDetail.Groups
+			}
+			if pageKeyStatusList[i].UsedQuota == 0 {
+				pageKeyStatusList[i].UsedQuota = channel.GetMultiKeyUsedQuota(pageKeyStatusList[i].Index)
+			}
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",
@@ -1417,6 +1531,7 @@ func ManageMultiKeys(c *gin.Context) {
 				Page:                page,
 				PageSize:            pageSize,
 				TotalPages:          totalPages,
+				UnassignedUsage:     unassignedUsage,
 				EnabledCount:        enabledCount,        // Overall statistics
 				ManualDisabledCount: manualDisabledCount, // Overall statistics
 				AutoDisabledCount:   autoDisabledCount,   // Overall statistics
@@ -1533,6 +1648,50 @@ func ManageMultiKeys(c *gin.Context) {
 		})
 		return
 
+	case "set_key_request_limit":
+		if request.KeyIndex == nil || request.MaxRequestCount == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "缺少密钥索引或次数上限",
+			})
+			return
+		}
+
+		keyIndex := *request.KeyIndex
+		if keyIndex < 0 || keyIndex >= channel.ChannelInfo.MultiKeySize {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "密钥索引超出范围",
+			})
+			return
+		}
+		if *request.MaxRequestCount < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "次数上限不能为负数",
+			})
+			return
+		}
+		if channel.ChannelInfo.MultiKeyMaxRequestCount == nil {
+			channel.ChannelInfo.MultiKeyMaxRequestCount = make(map[int]int64)
+		}
+		if *request.MaxRequestCount == 0 {
+			delete(channel.ChannelInfo.MultiKeyMaxRequestCount, keyIndex)
+		} else {
+			channel.ChannelInfo.MultiKeyMaxRequestCount[keyIndex] = *request.MaxRequestCount
+		}
+		err = channel.Update()
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		model.InitChannelCache()
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "密钥次数上限已更新",
+		})
+		return
+
 	case "disable_all_keys":
 		// 禁用所有启用的密钥
 		if channel.ChannelInfo.MultiKeyStatusList == nil {
@@ -1598,11 +1757,26 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
+		bindingCountMap, err := model.GetActiveSpecificChannelKeyBindingCountMap(channel.Id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if bindingCountMap[keyIndex] > 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "该密钥已绑定到用户令牌，不能删除",
+			})
+			return
+		}
+
 		keys := channel.GetKeys()
 		var remainingKeys []string
 		var newStatusList = make(map[int]int)
 		var newDisabledTime = make(map[int]int64)
 		var newDisabledReason = make(map[int]string)
+		var newUsedCount = make(map[int]int64)
+		var newMaxRequestCount = make(map[int]int64)
 
 		newIndex := 0
 		for i, key := range keys {
@@ -1629,6 +1803,16 @@ func ManageMultiKeys(c *gin.Context) {
 					newDisabledReason[newIndex] = r
 				}
 			}
+			if channel.ChannelInfo.MultiKeyUsedCount != nil {
+				if used, exists := channel.ChannelInfo.MultiKeyUsedCount[i]; exists {
+					newUsedCount[newIndex] = used
+				}
+			}
+			if channel.ChannelInfo.MultiKeyMaxRequestCount != nil {
+				if limit, exists := channel.ChannelInfo.MultiKeyMaxRequestCount[i]; exists {
+					newMaxRequestCount[newIndex] = limit
+				}
+			}
 			newIndex++
 		}
 
@@ -1646,6 +1830,8 @@ func ManageMultiKeys(c *gin.Context) {
 		channel.ChannelInfo.MultiKeyStatusList = newStatusList
 		channel.ChannelInfo.MultiKeyDisabledTime = newDisabledTime
 		channel.ChannelInfo.MultiKeyDisabledReason = newDisabledReason
+		channel.ChannelInfo.MultiKeyUsedCount = newUsedCount
+		channel.ChannelInfo.MultiKeyMaxRequestCount = newMaxRequestCount
 
 		err = channel.Update()
 		if err != nil {
@@ -1661,12 +1847,21 @@ func ManageMultiKeys(c *gin.Context) {
 		return
 
 	case "delete_disabled_keys":
+		bindingCountMap, err := model.GetActiveSpecificChannelKeyBindingCountMap(channel.Id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+
 		keys := channel.GetKeys()
 		var remainingKeys []string
 		var deletedCount int
+		var skippedBoundCount int
 		var newStatusList = make(map[int]int)
 		var newDisabledTime = make(map[int]int64)
 		var newDisabledReason = make(map[int]string)
+		var newUsedCount = make(map[int]int64)
+		var newMaxRequestCount = make(map[int]int64)
 
 		newIndex := 0
 		for i, key := range keys {
@@ -1679,6 +1874,33 @@ func ManageMultiKeys(c *gin.Context) {
 
 			// 只删除自动禁用（status == 3）的密钥，保留启用（status == 1）和手动禁用（status == 2）的密钥
 			if status == 3 {
+				if bindingCountMap[i] > 0 {
+					skippedBoundCount++
+					remainingKeys = append(remainingKeys, key)
+					newStatusList[newIndex] = status
+					if channel.ChannelInfo.MultiKeyDisabledTime != nil {
+						if t, exists := channel.ChannelInfo.MultiKeyDisabledTime[i]; exists {
+							newDisabledTime[newIndex] = t
+						}
+					}
+					if channel.ChannelInfo.MultiKeyDisabledReason != nil {
+						if r, exists := channel.ChannelInfo.MultiKeyDisabledReason[i]; exists {
+							newDisabledReason[newIndex] = r
+						}
+					}
+					if channel.ChannelInfo.MultiKeyUsedCount != nil {
+						if used, exists := channel.ChannelInfo.MultiKeyUsedCount[i]; exists {
+							newUsedCount[newIndex] = used
+						}
+					}
+					if channel.ChannelInfo.MultiKeyMaxRequestCount != nil {
+						if limit, exists := channel.ChannelInfo.MultiKeyMaxRequestCount[i]; exists {
+							newMaxRequestCount[newIndex] = limit
+						}
+					}
+					newIndex++
+					continue
+				}
 				deletedCount++
 			} else {
 				remainingKeys = append(remainingKeys, key)
@@ -1696,14 +1918,28 @@ func ManageMultiKeys(c *gin.Context) {
 						}
 					}
 				}
+				if channel.ChannelInfo.MultiKeyUsedCount != nil {
+					if used, exists := channel.ChannelInfo.MultiKeyUsedCount[i]; exists {
+						newUsedCount[newIndex] = used
+					}
+				}
+				if channel.ChannelInfo.MultiKeyMaxRequestCount != nil {
+					if limit, exists := channel.ChannelInfo.MultiKeyMaxRequestCount[i]; exists {
+						newMaxRequestCount[newIndex] = limit
+					}
+				}
 				newIndex++
 			}
 		}
 
 		if deletedCount == 0 {
+			message := "没有需要删除的自动禁用密钥"
+			if skippedBoundCount > 0 {
+				message = fmt.Sprintf("存在 %d 个已绑定到用户令牌的自动禁用密钥，未执行删除", skippedBoundCount)
+			}
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "没有需要删除的自动禁用密钥",
+				"message": message,
 			})
 			return
 		}
@@ -1714,6 +1950,8 @@ func ManageMultiKeys(c *gin.Context) {
 		channel.ChannelInfo.MultiKeyStatusList = newStatusList
 		channel.ChannelInfo.MultiKeyDisabledTime = newDisabledTime
 		channel.ChannelInfo.MultiKeyDisabledReason = newDisabledReason
+		channel.ChannelInfo.MultiKeyUsedCount = newUsedCount
+		channel.ChannelInfo.MultiKeyMaxRequestCount = newMaxRequestCount
 
 		err = channel.Update()
 		if err != nil {
@@ -1722,9 +1960,13 @@ func ManageMultiKeys(c *gin.Context) {
 		}
 
 		model.InitChannelCache()
+		message := fmt.Sprintf("已删除 %d 个自动禁用的密钥", deletedCount)
+		if skippedBoundCount > 0 {
+			message = fmt.Sprintf("%s，跳过 %d 个已绑定到用户令牌的密钥", message, skippedBoundCount)
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
-			"message": fmt.Sprintf("已删除 %d 个自动禁用的密钥", deletedCount),
+			"message": message,
 			"data":    deletedCount,
 		})
 		return

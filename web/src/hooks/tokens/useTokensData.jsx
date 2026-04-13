@@ -31,11 +31,32 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { fetchTokenKey as fetchTokenKeyById } from '../../helpers/token';
 
+const SUBSCRIPTION_ACCESS_TOKEN_NAME = 'Subscription Access';
+
+const isProtectedSubscriptionAccessToken = (token) => {
+  if (!token) {
+    return false;
+  }
+  if (Number(token.specific_channel_id || 0) > 0) {
+    return false;
+  }
+  if ((token.name || '').trim() !== SUBSCRIPTION_ACCESS_TOKEN_NAME) {
+    return false;
+  }
+  const expiredTime = Number(token.expired_time ?? -1);
+  const now = Math.floor(Date.now() / 1000);
+  return expiredTime === -1 || expiredTime > now;
+};
+
 export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const { t } = useTranslation();
   const emptyFilters = {
     searchKeyword: '',
     searchToken: '',
+    status: '',
+    group: '',
+    expiredState: '',
+    unlimitedState: '',
   };
 
   // Basic state
@@ -74,6 +95,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     return {
       searchKeyword: formValues.searchKeyword || '',
       searchToken: formValues.searchToken || '',
+      status: formValues.status || '',
+      group: formValues.group || '',
+      expiredState: formValues.expiredState || '',
+      unlimitedState: formValues.unlimitedState || '',
     };
   };
 
@@ -207,11 +232,11 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Open link function for chat integrations
   const onOpenLink = async (type, url, record) => {
-    const fullKey = await fetchTokenKey(record);
     if (url && url.startsWith('ccswitch')) {
-      openCCSwitchModal(fullKey);
+      openCCSwitchModal(record);
       return;
     }
+    const fullKey = await fetchTokenKey(record);
     if (url && url.startsWith('fluent')) {
       openFluentNotification(fullKey);
       return;
@@ -296,8 +321,19 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     const {
       searchKeyword = '',
       searchToken = '',
+      status = '',
+      group = '',
+      expiredState = '',
+      unlimitedState = '',
     } = filters || getFormValues();
-    if (searchKeyword === '' && searchToken === '') {
+    if (
+      searchKeyword === '' &&
+      searchToken === '' &&
+      status === '' &&
+      group === '' &&
+      expiredState === '' &&
+      unlimitedState === ''
+    ) {
       setSearchMode(false);
       setAppliedFilters(emptyFilters);
       await loadTokens(1, normalizedSize);
@@ -305,7 +341,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     }
     setSearching(true);
     const res = await API.get(
-      `/api/token/search?keyword=${encodeURIComponent(searchKeyword)}&token=${encodeURIComponent(searchToken)}&p=${normalizedPage}&size=${normalizedSize}`,
+      `/api/token/search?keyword=${encodeURIComponent(searchKeyword)}&token=${encodeURIComponent(searchToken)}&status=${encodeURIComponent(status)}&group=${encodeURIComponent(group)}&expired_state=${encodeURIComponent(expiredState)}&unlimited_state=${encodeURIComponent(unlimitedState)}&p=${normalizedPage}&size=${normalizedSize}`,
     );
     const { success, message, data } = res.data;
     if (success) {
@@ -313,6 +349,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       setAppliedFilters({
         searchKeyword,
         searchToken,
+        status,
+        group,
+        expiredState,
+        unlimitedState,
       });
       syncPageData(data);
     } else {
@@ -356,10 +396,15 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Row selection handlers
   const rowSelection = {
+    getCheckboxProps: (record) => ({
+      disabled: isProtectedSubscriptionAccessToken(record),
+    }),
     onSelect: (record, selected) => {},
     onSelectAll: (selected, selectedRows) => {},
     onChange: (selectedRowKeys, selectedRows) => {
-      setSelectedKeys(selectedRows);
+      setSelectedKeys(
+        selectedRows.filter((token) => !isProtectedSubscriptionAccessToken(token)),
+      );
     },
   };
 
@@ -405,23 +450,37 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Batch delete tokens
   const batchDeleteTokens = async () => {
-    if (selectedKeys.length === 0) {
+    const deletableTokens = selectedKeys.filter(
+      (token) => !isProtectedSubscriptionAccessToken(token),
+    );
+    if (deletableTokens.length === 0) {
       showError(t('请先选择要删除的令牌！'));
       return;
     }
     await deleteTokensByIds(
-      selectedKeys.map((token) => token.id),
-      t('已删除 {{count}} 个令牌！', { count: selectedKeys.length }),
+      deletableTokens.map((token) => token.id),
+      t('已删除 {{count}} 个令牌！', { count: deletableTokens.length }),
     );
   };
 
   const batchDeleteInvalidTokens = async () => {
-    const { searchKeyword, searchToken } = appliedFilters;
+    const {
+      searchKeyword,
+      searchToken,
+      status,
+      group,
+      expiredState,
+      unlimitedState,
+    } = appliedFilters;
     setLoading(true);
     try {
       const res = await API.post('/api/token/batch/invalid', {
         keyword: searchKeyword,
         token: searchToken,
+        status,
+        group,
+        expired_state: expiredState,
+        unlimited_state: unlimitedState,
       });
       if (res?.data?.success) {
         const count = res.data.data || 0;

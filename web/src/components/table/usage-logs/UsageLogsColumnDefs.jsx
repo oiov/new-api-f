@@ -229,7 +229,7 @@ function renderBillingTag(record, t) {
         ) : null}
         {subscriptionId > 0 ? (
           <Tag color='cyan' shape='circle'>
-            {t('订阅实例')}：#{subscriptionId}
+            {t('订阅实例')}：{t('编号')} {subscriptionId}
           </Tag>
         ) : null}
       </Space>
@@ -238,16 +238,42 @@ function renderBillingTag(record, t) {
   return null;
 }
 
+function getManualDeliveryLogMeta(record) {
+  const other = getLogOther(record?.other);
+  if (other?.scene === 'subscription_manual_delivery') {
+    return {
+      action: String(other.action || '').trim(),
+      refundToQuota: Boolean(other.refund_to_quota),
+    };
+  }
+  if (typeof record?.content === 'string') {
+    if (record.content.includes('管理员发放人工套餐订单')) {
+      return { action: 'deliver', refundToQuota: false };
+    }
+    if (record.content.includes('管理员拒绝人工发放套餐订单')) {
+      return {
+        action: 'reject',
+        refundToQuota:
+          !record.content.includes('未返还余额额度') &&
+          record.content.includes('返还余额额度'),
+      };
+    }
+  }
+  return null;
+}
+
 function renderModelName(record, copyText, t) {
   let other = getLogOther(record.other);
+  const requestModelName = String(record?.model_name || '').trim();
+  const upstreamModelName = String(other?.upstream_model_name || '').trim();
   let modelMapped =
     other?.is_model_mapped &&
-    other?.upstream_model_name &&
-    other?.upstream_model_name !== '';
+    upstreamModelName !== '' &&
+    upstreamModelName !== requestModelName;
   if (!modelMapped) {
-    return renderModelTag(record.model_name, {
+    return renderModelTag(requestModelName, {
       onClick: (event) => {
-        copyText(event, record.model_name).then((r) => {});
+        copyText(event, requestModelName).then((r) => {});
       },
     });
   } else {
@@ -262,9 +288,9 @@ function renderModelName(record, copyText, t) {
                     <Typography.Text strong style={{ marginRight: 8 }}>
                       {t('请求并计费模型')}:
                     </Typography.Text>
-                    {renderModelTag(record.model_name, {
+                    {renderModelTag(requestModelName, {
                       onClick: (event) => {
-                        copyText(event, record.model_name).then((r) => {});
+                        copyText(event, requestModelName).then((r) => {});
                       },
                     })}
                   </div>
@@ -272,11 +298,9 @@ function renderModelName(record, copyText, t) {
                     <Typography.Text strong style={{ marginRight: 8 }}>
                       {t('实际模型')}:
                     </Typography.Text>
-                    {renderModelTag(other.upstream_model_name, {
+                    {renderModelTag(upstreamModelName, {
                       onClick: (event) => {
-                        copyText(event, other.upstream_model_name).then(
-                          (r) => {},
-                        );
+                        copyText(event, upstreamModelName).then((r) => {});
                       },
                     })}
                   </div>
@@ -286,7 +310,7 @@ function renderModelName(record, copyText, t) {
           >
             {renderModelTag(record.model_name, {
               onClick: (event) => {
-                copyText(event, record.model_name).then((r) => {});
+                copyText(event, requestModelName).then((r) => {});
               },
               suffixIcon: (
                 <Route
@@ -356,6 +380,17 @@ function getUsageLogGroupSummary(groupRatio, userGroupRatio, t) {
   return `${useUserGroupRatio ? t('专属倍率') : t('分组')} ${formatRatio(ratio)}x`;
 }
 
+function getLogGroupName(record) {
+  const directGroup = String(record?.group || '').trim();
+  if (directGroup) {
+    return directGroup;
+  }
+
+  const other = getLogOther(record?.other);
+  const fallbackGroup = String(other?.group || '').trim();
+  return fallbackGroup;
+}
+
 function renderCompactDetailSummary(summarySegments) {
   const segments = Array.isArray(summarySegments)
     ? summarySegments.filter((segment) => segment?.text)
@@ -395,6 +430,23 @@ function renderCompactDetailSummary(summarySegments) {
 
 function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
   const other = getLogOther(record.other);
+  const manualDeliveryLog = getManualDeliveryLogMeta(record);
+
+  if (manualDeliveryLog != null) {
+    return {
+      segments: [
+        {
+          text:
+            manualDeliveryLog.action === 'deliver'
+              ? t('人工发放成功')
+              : manualDeliveryLog.refundToQuota
+                ? t('拒绝发放退款')
+                : t('拒绝发放未退款'),
+          tone: 'primary',
+        },
+      ],
+    };
+  }
 
   if (record.type === 6) {
     return {
@@ -479,6 +531,9 @@ export const getLogsColumns = ({
   t,
   COLUMN_KEYS,
   copyText,
+  applyLogFilter,
+  jumpToChannelDetail,
+  jumpToUserDetail,
   showUserInfoFunc,
   openChannelAffinityUsageCacheModal,
   isAdminUser,
@@ -489,12 +544,46 @@ export const getLogsColumns = ({
       key: COLUMN_KEYS.TIME,
       title: t('时间'),
       dataIndex: 'timestamp2string',
+      render: (text, record) => {
+        const requestId = record?.request_id || '';
+
+        return (
+          <div
+            style={{
+              display: 'inline-flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 2,
+            }}
+          >
+            <span>{text}</span>
+            {requestId ? (
+              <Typography.Text
+                link
+                size='small'
+                ellipsis={{ showTooltip: true }}
+                style={{ maxWidth: 180 }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  applyLogFilter?.({ request_id: requestId });
+                }}
+              >
+                {requestId}
+              </Typography.Text>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       key: COLUMN_KEYS.CHANNEL,
       title: t('渠道'),
       dataIndex: 'channel',
       render: (text, record, index) => {
+        const manualDeliveryLog = getManualDeliveryLogMeta(record);
+        if (manualDeliveryLog != null) {
+          return <></>;
+        }
         let isMultiKey = false;
         let multiKeyIndex = -1;
         let content = t('渠道') + `：${record.channel}`;
@@ -531,6 +620,11 @@ export const getLogsColumns = ({
                   <Tag
                     color={colors[parseInt(text) % colors.length]}
                     shape='circle'
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      jumpToChannelDetail?.(text);
+                    }}
+                    style={{ cursor: 'pointer' }}
                   >
                     {text}
                   </Tag>
@@ -602,7 +696,18 @@ export const getLogsColumns = ({
             >
               {typeof text === 'string' && text.slice(0, 1)}
             </Avatar>
-            {text}
+            <Typography.Text
+              link
+              onClick={(event) => {
+                event.stopPropagation();
+                jumpToUserDetail?.({
+                  userId: record.user_id,
+                  username: text,
+                });
+              }}
+            >
+              {text}
+            </Typography.Text>
           </div>
         ) : (
           <></>
@@ -614,11 +719,12 @@ export const getLogsColumns = ({
       title: t('令牌'),
       dataIndex: 'token_name',
       render: (text, record, index) => {
+        const groupName = getLogGroupName(record);
         return record.type === 0 ||
           record.type === 2 ||
           record.type === 5 ||
           record.type === 6 ? (
-          <div>
+          <Space vertical align='start' spacing={4}>
             <Tag
               color='grey'
               shape='circle'
@@ -629,7 +735,10 @@ export const getLogsColumns = ({
               {' '}
               {t(text)}{' '}
             </Tag>
-          </div>
+            {groupName ? (
+              <div>{renderGroup(groupName)}</div>
+            ) : null}
+          </Space>
         ) : (
           <></>
         );
@@ -640,33 +749,14 @@ export const getLogsColumns = ({
       title: t('分组'),
       dataIndex: 'group',
       render: (text, record, index) => {
+        const groupName = getLogGroupName(record);
         if (
           record.type === 0 ||
           record.type === 2 ||
           record.type === 5 ||
           record.type === 6
         ) {
-          if (record.group) {
-            return <>{renderGroup(record.group)}</>;
-          } else {
-            let other = null;
-            try {
-              other = JSON.parse(record.other);
-            } catch (e) {
-              console.error(
-                `Failed to parse record.other: "${record.other}".`,
-                e,
-              );
-            }
-            if (other === null) {
-              return <></>;
-            }
-            if (other.group !== undefined) {
-              return <>{renderGroup(other.group)}</>;
-            } else {
-              return <></>;
-            }
-          }
+          return groupName ? <>{renderGroup(groupName)}</> : <></>;
         } else {
           return <></>;
         }

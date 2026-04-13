@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { Button, Card, ImagePreview, Typography } from '@douyinfe/semi-ui';
 import {
   ArrowUpRight,
@@ -33,61 +33,90 @@ import { useTranslation } from 'react-i18next';
 import SeoMeta from '../../components/common/seo/SeoMeta';
 import { getContactSeo } from '../../helpers/seo';
 import { copy, showError, showSuccess } from '../../helpers/utils';
+import { StatusContext } from '../../context/Status';
+import { normalizeLanguage } from '../../i18n/language';
 import './index.css';
 
 const { Title, Text } = Typography;
-
-const CONTACT_CARDS = [
-  // {
-  //   key: 'qq-group',
-  //   titleKey: 'QQ群',
-  //   subtitleKey: '适合问题交流、功能反馈与新版本讨论',
-  //   imageSrc: '/qq_group.jpg',
-  //   imageAltKey: 'QQ群二维码',
-  //   value: '373865837',
-  //   extraKey: '点击链接加入群聊 {{groupId}}【{{name}}】',
-  //   actionLabelKey: '加入QQ群',
-  //   actionHref: 'https://qm.qq.com/q/Ce2PaYrbmo',
-  //   copyValue: '373865837',
-  //   icon: Users,
-  //   accentClassName: 'contact-card-accent-blue',
-  //   toneKey: '热门社区',
-  // },
+const WECHAT_ID = 'oiovdev';
+const WECHAT_QR_IMAGE = `/oiovdev.jpg`;
+const DEFAULT_CONTACT_CARDS = [
+  {
+    key: 'qq-support-group',
+    title: 'QQ售后群',
+    subtitle:
+      '用于订单、发放、补单与售后问题处理，进群请提供订单号，群备注改为站内 ID',
+    imageSrc: '/qq_group.jpg',
+    imageAlt: 'QQ售后群二维码',
+    value: 'nbility 售后群',
+    actionHref: 'https://qm.qq.com/q/XTxYUh2vOC',
+    actionLabel: '加入售后群',
+    tone: '售后支持',
+  },
+  {
+    key: 'qq-group',
+    title: 'QQ群',
+    subtitle: '用于问题答疑解决，适合群内交流与经验分享',
+    imageSrc: '/qq_group.jpg',
+    imageAlt: 'QQ群二维码',
+    value: '373865837',
+    actionHref: 'https://qm.qq.com/q/XTxYUh2vOC',
+    actionLabel: '加入QQ群',
+    copyValue: '373865837',
+    tone: '热门社区',
+  },
   {
     key: 'wechat-account',
-    titleKey: '微信号',
-    subtitleKey: '适合商务沟通、合作咨询与一对一联系',
-    imageSrc: '/oiovdev.png',
-    imageAltKey: '微信号二维码',
-    value: 'oiovdev',
-    copyValue: 'oiovdev',
-    icon: MessageCircleMore,
-    accentClassName: 'contact-card-accent-emerald',
-    toneKey: '一对一沟通',
+    title: '微信号',
+    subtitle: '用于发票开具相关沟通，也可一对一联系',
+    imageSrc: WECHAT_QR_IMAGE,
+    imageAlt: '微信号二维码',
+    value: WECHAT_ID,
+    copyValue: WECHAT_ID,
+    tone: '一对一沟通',
   },
   {
     key: 'wechat-group',
-    titleKey: '微信群',
-    subtitleKey: '用于问题答疑解决，适合接收群内公告与通知',
+    title: '微信群',
+    subtitle: '用于问题答疑解决，适合接收群内公告与通知',
     imageSrc: '/wechat_group.png',
-    imageAltKey: '微信群二维码',
+    imageAlt: '微信群二维码',
+    tone: '活动通知',
+  },
+  {
+    key: 'qq-service',
+    title: 'QQ客服',
+    subtitle: '用于技术服务支持，处理账号、接入与售后问题',
+    imageSrc: '/qq.png',
+    imageAlt: 'QQ客服二维码',
+    value: '3224266014',
+    copyValue: '3224266014',
+    tone: '官方支持',
+  },
+];
+
+const CARD_DECORATIONS = {
+  'qq-support-group': {
+    icon: Headphones,
+    accentClassName: 'contact-card-accent-rose',
+  },
+  'qq-group': {
+    icon: Users,
+    accentClassName: 'contact-card-accent-blue',
+  },
+  'wechat-account': {
+    icon: MessageCircleMore,
+    accentClassName: 'contact-card-accent-emerald',
+  },
+  'wechat-group': {
     icon: QrCode,
     accentClassName: 'contact-card-accent-amber',
-    toneKey: '活动通知',
   },
-  // {
-  //   key: 'qq-service',
-  //   titleKey: 'QQ客服',
-  //   subtitleKey: '适合处理账号问题、充值协助与售后支持',
-  //   imageSrc: '/qq.png',
-  //   imageAltKey: 'QQ客服二维码',
-  //   value: '3224266014',
-  //   copyValue: '3224266014',
-  //   icon: Headphones,
-  //   accentClassName: 'contact-card-accent-rose',
-  //   toneKey: '官方支持',
-  // },
-];
+  'qq-service': {
+    icon: Headphones,
+    accentClassName: 'contact-card-accent-rose',
+  },
+};
 
 const HERO_FEATURES = [
   {
@@ -116,14 +145,173 @@ const SUPPORT_NOTES = [
   '群聊主要用于交流与公告，同类问题请尽量集中在同一渠道沟通',
 ];
 
+const LOCALIZABLE_CARD_FIELDS = ['title', 'subtitle', 'tone', 'actionLabel'];
+
+const getLocaleCandidates = (language) => {
+  const candidates = [];
+  const pushCandidate = (value) => {
+    if (!value || candidates.includes(value)) {
+      return;
+    }
+    candidates.push(value);
+  };
+
+  const raw =
+    typeof language === 'string' ? language.trim().replace(/_/g, '-') : '';
+  const normalized = normalizeLanguage(language);
+
+  pushCandidate(raw);
+  pushCandidate(normalized);
+
+  return candidates;
+};
+
+const getLocaleBaseCandidates = (language) => {
+  const candidates = [];
+  const pushCandidate = (value) => {
+    if (!value || candidates.includes(value)) {
+      return;
+    }
+    candidates.push(value);
+  };
+
+  const raw =
+    typeof language === 'string' ? language.trim().replace(/_/g, '-') : '';
+  const normalized = normalizeLanguage(language);
+
+  pushCandidate(raw.split('-')[0]);
+  pushCandidate(normalized?.split('-')?.[0]);
+
+  return candidates;
+};
+
+const normalizeLocaleKey = (locale) => {
+  if (typeof locale !== 'string') {
+    return '';
+  }
+
+  const trimmedLocale = locale.trim().replace(/_/g, '-');
+  if (!trimmedLocale) {
+    return '';
+  }
+
+  const [languageCode, ...regionParts] = trimmedLocale.split('-');
+  const normalizedLanguageCode = languageCode.toLowerCase();
+
+  if (regionParts.length === 0) {
+    return normalizedLanguageCode;
+  }
+
+  return `${normalizedLanguageCode}-${regionParts.join('-').toUpperCase()}`;
+};
+
+const findLocalizedCardByExactLocale = (i18nMap, language) => {
+  for (const locale of getLocaleCandidates(language)) {
+    const normalizedLocale = normalizeLocaleKey(locale);
+
+    for (const [key, value] of Object.entries(i18nMap || {})) {
+      if (!value || typeof value !== 'object') {
+        continue;
+      }
+
+      if (normalizeLocaleKey(key) === normalizedLocale) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+};
+
+const findLocalizedCardByLanguageBase = (i18nMap, language) => {
+  for (const localeBase of getLocaleBaseCandidates(language)) {
+    const matchedEntry = Object.entries(i18nMap).find(([key, value]) => {
+      if (typeof key !== 'string' || !value || typeof value !== 'object') {
+        return false;
+      }
+
+      const normalizedKey = key.trim().replace(/_/g, '-');
+      return normalizedKey.split('-')[0] === localeBase;
+    });
+
+    if (matchedEntry) {
+      return matchedEntry[1];
+    }
+  }
+
+  return null;
+};
+
+const resolveCardTranslations = (card, language) => {
+  if (!card?.i18n || typeof card.i18n !== 'object') {
+    return {};
+  }
+
+  const localizedCard =
+    findLocalizedCardByExactLocale(card.i18n, language) ||
+    findLocalizedCardByLanguageBase(card.i18n, language);
+
+  if (!localizedCard || typeof localizedCard !== 'object') {
+    return {};
+  }
+
+  return LOCALIZABLE_CARD_FIELDS.reduce((result, field) => {
+    if (
+      typeof localizedCard[field] === 'string' &&
+      localizedCard[field].trim() !== ''
+    ) {
+      result[field] = localizedCard[field].trim();
+    }
+    return result;
+  }, {});
+};
+
 const Contact = () => {
   const { t, i18n } = useTranslation();
+  const [statusState] = useContext(StatusContext);
   const [previewImage, setPreviewImage] = useState('');
   const [loadFailedMap, setLoadFailedMap] = useState({});
   const seo = getContactSeo(i18n.language);
 
-  const cards = useMemo(() => CONTACT_CARDS, []);
+  const cards = useMemo(() => {
+    const configuredCards = statusState?.status?.contact_channels;
+    const baseCards =
+      Array.isArray(configuredCards) && configuredCards.length > 0
+        ? configuredCards
+        : DEFAULT_CONTACT_CARDS;
+
+    return baseCards.map((card, index) => {
+      const cardKey =
+        typeof card?.key === 'string' && card.key.trim() !== ''
+          ? card.key.trim()
+          : `contact-${index + 1}`;
+      const localizedCard = resolveCardTranslations(card, i18n.language);
+      const decoration = CARD_DECORATIONS[cardKey] ||
+        Object.values(CARD_DECORATIONS)[index] || {
+          icon: QrCode,
+          accentClassName: 'contact-card-accent-blue',
+        };
+
+      return {
+        ...card,
+        ...localizedCard,
+        key: cardKey,
+        imageAlt:
+          card.imageAlt ||
+          `${localizedCard.title || card.title || t('联系我们')}二维码`,
+        icon: decoration.icon,
+        accentClassName: decoration.accentClassName,
+      };
+    });
+  }, [i18n.language, statusState?.status?.contact_channels, t]);
   const heroFeatures = useMemo(() => HERO_FEATURES, []);
+  const quickPrimaryCard = cards.find((item) => item.actionHref) || cards[0];
+  const quickSecondaryCard =
+    cards.find(
+      (item) => item.copyValue && item.key !== quickPrimaryCard?.key,
+    ) ||
+    cards.find((item) => item.copyValue) ||
+    cards[1];
 
   const handleCopy = async (value) => {
     if (!value) {
@@ -161,11 +349,14 @@ const Contact = () => {
                 type='primary'
                 size='large'
                 className='contact-hero__primary-btn'
-                onClick={() =>
-                  window.open('https://qm.qq.com/q/3Lv0vNEAuW', '_blank')
-                }
+                disabled={!quickPrimaryCard?.actionHref}
+                onClick={() => {
+                  if (quickPrimaryCard?.actionHref) {
+                    window.open(quickPrimaryCard.actionHref, '_blank');
+                  }
+                }}
               >
-                {t('加入QQ群')}
+                {quickPrimaryCard?.actionLabel || t('加入QQ群')}
               </Button>
               <Button
                 theme='light'
@@ -173,9 +364,12 @@ const Contact = () => {
                 size='large'
                 icon={<CopyIcon size={16} />}
                 className='contact-hero__secondary-btn'
-                onClick={() => handleCopy('oiovdev')}
+                disabled={!quickSecondaryCard?.copyValue}
+                onClick={() => handleCopy(quickSecondaryCard?.copyValue)}
               >
-                {t('复制微信号')}
+                {quickSecondaryCard?.title
+                  ? `${t('复制')} ${quickSecondaryCard.title}`
+                  : t('复制微信号')}
               </Button>
             </div>
 
@@ -211,37 +405,51 @@ const Contact = () => {
               <button
                 type='button'
                 className='contact-quick-card'
-                onClick={() =>
-                  window.open('https://qm.qq.com/q/3Lv0vNEAuW', '_blank')
-                }
+                onClick={() => {
+                  if (quickPrimaryCard?.actionHref) {
+                    window.open(quickPrimaryCard.actionHref, '_blank');
+                  }
+                }}
               >
                 <div className='contact-quick-card__meta'>
-                  <span className='contact-quick-card__badge'>{t('社区')}</span>
+                  <span className='contact-quick-card__badge'>
+                    {quickPrimaryCard?.tone || t('社区')}
+                  </span>
                   <ArrowUpRight size={18} />
                 </div>
-                <div className='contact-quick-card__title'>{t('加入QQ群')}</div>
-                <div className='contact-quick-card__desc'>
-                  {t('用于问题答疑解决，适合群内交流与经验分享')}
+                <div className='contact-quick-card__title'>
+                  {quickPrimaryCard?.actionLabel || t('加入QQ群')}
                 </div>
-                <div className='contact-quick-card__value'>634323049</div>
+                <div className='contact-quick-card__desc'>
+                  {quickPrimaryCard?.subtitle ||
+                    t('用于问题答疑解决，适合群内交流与经验分享')}
+                </div>
+                <div className='contact-quick-card__value'>
+                  {quickPrimaryCard?.value || '-'}
+                </div>
               </button>
 
               <button
                 type='button'
                 className='contact-quick-card'
-                onClick={() => handleCopy('oiovdev')}
+                onClick={() => handleCopy(quickSecondaryCard?.copyValue)}
               >
                 <div className='contact-quick-card__meta'>
-                  <span className='contact-quick-card__badge'>{t('私聊')}</span>
+                  <span className='contact-quick-card__badge'>
+                    {quickSecondaryCard?.tone || t('私聊')}
+                  </span>
                   <CopyIcon size={18} />
                 </div>
                 <div className='contact-quick-card__title'>
-                  {t('添加微信号')}
+                  {quickSecondaryCard?.title || t('添加微信号')}
                 </div>
                 <div className='contact-quick-card__desc'>
-                  {t('用于发票开具相关沟通，也可一对一联系')}
+                  {quickSecondaryCard?.subtitle ||
+                    t('用于发票开具相关沟通，也可一对一联系')}
                 </div>
-                <div className='contact-quick-card__value'>oiovdev</div>
+                <div className='contact-quick-card__value'>
+                  {quickSecondaryCard?.value || '-'}
+                </div>
               </button>
             </div>
           </div>
@@ -265,13 +473,13 @@ const Contact = () => {
                     </div>
                     <div className='contact-channel-card__copy'>
                       <div className='contact-channel-card__tone'>
-                        {t(card.toneKey)}
+                        {card.tone || ''}
                       </div>
                       <div className='contact-channel-card__title'>
-                        {t(card.titleKey)}
+                        {card.title}
                       </div>
                       <div className='contact-channel-card__subtitle'>
-                        {t(card.subtitleKey)}
+                        {card.subtitle || ''}
                       </div>
                     </div>
                     {card.copyValue && (
@@ -303,7 +511,7 @@ const Contact = () => {
 
                       <div className='contact-channel-card__badges'>
                         <span className='contact-channel-card__badge'>
-                          {t(card.titleKey)}
+                          {card.title}
                         </span>
                         <span className='contact-channel-card__badge'>
                           {card.copyValue ? t('可复制') : t('扫码加入')}
@@ -327,11 +535,11 @@ const Contact = () => {
                             type='button'
                             className='contact-channel-card__preview-btn'
                             onClick={() => setPreviewImage(card.imageSrc)}
-                            aria-label={t(card.imageAltKey)}
+                            aria-label={card.imageAlt}
                           >
                             <img
                               src={card.imageSrc}
-                              alt={t(card.imageAltKey)}
+                              alt={card.imageAlt}
                               className='contact-channel-card__image'
                               onError={() => {
                                 setLoadFailedMap((prev) => ({
@@ -357,7 +565,7 @@ const Contact = () => {
                         icon={<ArrowUpRight size={15} />}
                         onClick={() => window.open(card.actionHref, '_blank')}
                       >
-                        {t(card.actionLabelKey)}
+                        {card.actionLabel || t('打开')}
                       </Button>
                     ) : (
                       <Button

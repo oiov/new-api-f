@@ -82,20 +82,20 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
 		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
 		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
-		"enable_waffo_topup": enableWaffo,
+		"enable_waffo_topup":  enableWaffo,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
 			}
 			return nil
 		}(),
-		"creem_products": setting.CreemProducts,
-		"pay_methods":         payMethods,
-		"min_topup":           operation_setting.MinTopUp,
-		"stripe_min_topup":    setting.StripeMinTopUp,
-		"waffo_min_topup":     setting.WaffoMinTopUp,
-		"amount_options":      operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":            operation_setting.GetPaymentSetting().AmountDiscount,
+		"creem_products":   setting.CreemProducts,
+		"pay_methods":      payMethods,
+		"min_topup":        operation_setting.MinTopUp,
+		"stripe_min_topup": setting.StripeMinTopUp,
+		"waffo_min_topup":  setting.WaffoMinTopUp,
+		"amount_options":   operation_setting.GetPaymentSetting().AmountOptions,
+		"discount":         operation_setting.GetPaymentSetting().AmountDiscount,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -335,30 +335,28 @@ func EpayNotify(c *gin.Context) {
 		log.Println(verifyInfo)
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo)
-		if topUp == nil {
-			log.Printf("易支付回调未找到订单: %v", verifyInfo)
+		completed, err := model.RechargeEpay(verifyInfo.ServiceTradeNo)
+		if err != nil {
+			log.Printf("易支付回调处理失败: %v, order=%s", err, verifyInfo.ServiceTradeNo)
 			return
 		}
-		if topUp.Status == "pending" {
-			topUp.Status = "success"
-			err := topUp.Update()
-			if err != nil {
-				log.Printf("易支付回调更新订单失败: %v", topUp)
-				return
+		if completed {
+			if topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo); topUp != nil {
+				service.NotifyPaymentSuccessAsync(service.PaymentSuccessNotification{
+					Category:      "充值",
+					TradeNo:       topUp.TradeNo,
+					UserID:        topUp.UserId,
+					PaymentMethod: topUp.PaymentMethod,
+					Money:         topUp.Money,
+					Quota:         logger.LogQuota(int(topUp.Amount) * int(common.QuotaPerUnit)),
+				})
+				model.NotifyTopUpSuccessToUserAsync(
+					topUp.UserId,
+					topUp.PaymentMethod,
+					topUp.Money,
+					logger.LogQuota(int(topUp.Amount)*int(common.QuotaPerUnit)),
+				)
 			}
-			//user, _ := model.GetUserById(topUp.UserId, false)
-			//user.Quota += topUp.Amount * 500000
-			dAmount := decimal.NewFromInt(int64(topUp.Amount))
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
-			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true)
-			if err != nil {
-				log.Printf("易支付回调更新用户失败: %v", topUp)
-				return
-			}
-			log.Printf("易支付回调更新用户成功 %v", topUp)
-			model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
 		}
 	} else {
 		log.Printf("易支付异常回调: %v", verifyInfo)
@@ -395,17 +393,18 @@ func GetUserTopUps(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
+	paymentMethod := c.Query("payment_method")
+	status := c.Query("status")
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 
-	var (
-		topups []*model.TopUp
-		total  int64
-		err    error
-	)
-	if keyword != "" {
-		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo)
-	} else {
-		topups, total, err = model.GetUserTopUps(userId, pageInfo)
-	}
+	topups, total, err := model.GetUserTopUpsWithFilters(userId, pageInfo, model.TopUpUserFilters{
+		Keyword:        keyword,
+		PaymentMethod:  paymentMethod,
+		Status:         status,
+		StartTimestamp: startTimestamp,
+		EndTimestamp:   endTimestamp,
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -428,6 +427,7 @@ func GetAllTopUps(c *gin.Context) {
 	topups, total, err := model.GetAllTopUpsWithFilters(pageInfo, model.TopUpAdminFilters{
 		UserID:         userId,
 		Keyword:        keyword,
+		PaymentMethod:  c.Query("payment_method"),
 		Status:         status,
 		StartTimestamp: startTimestamp,
 		EndTimestamp:   endTimestamp,
@@ -464,4 +464,3 @@ func AdminCompleteTopUp(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
-

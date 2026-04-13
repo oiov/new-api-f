@@ -119,6 +119,8 @@ const UserArea = ({
           <Button
             theme='borderless'
             type='tertiary'
+            aria-label={t('账户菜单')}
+            title={t('账户菜单')}
             className='flex items-center gap-1.5 !p-1 !rounded-full hover:!bg-semi-color-fill-1 dark:hover:!bg-gray-700 !bg-semi-color-fill-0 dark:!bg-semi-color-fill-1 dark:hover:!bg-semi-color-fill-2'
           >
             <Avatar
@@ -174,6 +176,7 @@ const UserArea = ({
           <Button
             theme='borderless'
             type='tertiary'
+            aria-label={t('登录')}
             className={loginButtonClasses}
           >
             <span className={loginButtonTextSpanClass}>{t('登录')}</span>
@@ -185,6 +188,7 @@ const UserArea = ({
               <Button
                 theme='solid'
                 type='primary'
+                aria-label={t('注册')}
                 className={registerButtonClasses}
               >
                 <span className={registerButtonTextSpanClass}>{t('注册')}</span>

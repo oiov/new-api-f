@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -19,7 +21,8 @@ type SubscriptionPlanDTO struct {
 }
 
 type BillingPreferenceRequest struct {
-	BillingPreference string `json:"billing_preference"`
+	BillingPreference      string `json:"billing_preference"`
+	PreferredSubscriptionId int   `json:"preferred_subscription_id"`
 }
 
 func applySubscriptionPlanDisplayFields(plan *model.SubscriptionPlan, now int64) {
@@ -34,18 +37,136 @@ func validateSubscriptionPlanPurchaseAvailability(userId int, plan *model.Subscr
 	if plan == nil {
 		return fmt.Errorf("套餐不存在")
 	}
+	if !plan.Enabled {
+		return fmt.Errorf("套餐已下架")
+	}
 	if plan.IsSoldOut() {
 		return fmt.Errorf("该套餐已售罄")
 	}
 	if userId <= 0 || plan.MaxPurchasePerUser <= 0 {
 		return nil
 	}
-	count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
+	count, err := model.CountUserPlanPurchases(userId, plan.Id)
 	if err != nil {
 		return err
 	}
 	if count >= int64(plan.MaxPurchasePerUser) {
 		return fmt.Errorf("已达到该套餐购买上限")
+	}
+	return nil
+}
+
+func normalizeSubscriptionPlanDeliveryFields(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	plan.DeliveryMode = strings.TrimSpace(plan.DeliveryMode)
+	if plan.DeliveryMode == "" {
+		plan.DeliveryMode = model.SubscriptionDeliveryModeAutoActivate
+	}
+	switch plan.DeliveryMode {
+	case model.SubscriptionDeliveryModeAutoActivate:
+		plan.DeliveryFieldSchema = nil
+	case model.SubscriptionDeliveryModeManualDelivery:
+		if len(plan.DeliveryFieldSchema) == 0 {
+			return fmt.Errorf("人工发放套餐至少需要配置一个交付字段")
+		}
+	default:
+		return fmt.Errorf("无效的交付方式")
+	}
+	return nil
+}
+
+func notifyManualDeliveryOrderResult(order *model.SubscriptionOrder, approved bool) {
+	if order == nil || order.UserId <= 0 {
+		return
+	}
+	user, err := model.GetUserById(order.UserId, true)
+	if err != nil || user == nil {
+		return
+	}
+	title := fmt.Sprintf("套餐订单处理结果：%s", strings.TrimSpace(order.PlanTitle))
+	var content string
+	if approved {
+		content = "你购买的套餐订单已发放完成。<br/>套餐：<strong>{{value}}</strong><br/>订单号：<strong>{{value}}</strong><br/>你现在可以前往订阅页面查看交付内容。"
+	} else {
+		content = "你购买的套餐订单未通过发放审核。<br/>套餐：<strong>{{value}}</strong><br/>订单号：<strong>{{value}}</strong><br/>处理说明：{{value}}<br/>额度处理：<strong>{{value}}</strong>"
+	}
+	values := []interface{}{
+		strings.TrimSpace(order.PlanTitle),
+		strings.TrimSpace(order.TradeNo),
+		strings.TrimSpace(order.DeliveryAdminRemark),
+		"未返还到账户钱包余额",
+	}
+	if approved {
+		values = values[:2]
+	} else if strings.TrimSpace(order.DeliveryAdminRemark) == "" {
+		values[2] = "管理员暂未填写额外说明。"
+		if order.RefundToQuota && order.RefundQuotaAmount > 0 {
+			values[3] = fmt.Sprintf("已返还 %d 额度到你的账户钱包余额", order.RefundQuotaAmount)
+		}
+	} else if order.RefundToQuota && order.RefundQuotaAmount > 0 {
+		values[3] = fmt.Sprintf("已返还 %d 额度到你的账户钱包余额", order.RefundQuotaAmount)
+	}
+	for _, value := range values {
+		content = strings.Replace(content, dto.ContentValueParam, fmt.Sprintf("%v", value), 1)
+	}
+	_, _ = service.SendSiteNotificationToUser(
+		user,
+		0,
+		title,
+		content,
+		func() string {
+			if approved {
+				return "success"
+			}
+			return "warning"
+		}(),
+		true,
+	)
+}
+
+func shouldSyncActiveSubscriptionsForPlanUpdate(currentPlan, nextPlan *model.SubscriptionPlan) bool {
+	if currentPlan == nil || nextPlan == nil {
+		return true
+	}
+	return model.NormalizeSubscriptionResourceType(currentPlan.ResourceType) !=
+		model.NormalizeSubscriptionResourceType(nextPlan.ResourceType) ||
+		currentPlan.RequestCountTotal != nextPlan.RequestCountTotal ||
+		currentPlan.RequestCountPeriodTotal != nextPlan.RequestCountPeriodTotal ||
+		model.NormalizeResetPeriod(currentPlan.QuotaResetPeriod) !=
+			model.NormalizeResetPeriod(nextPlan.QuotaResetPeriod) ||
+		currentPlan.QuotaResetCustomSeconds != nextPlan.QuotaResetCustomSeconds ||
+		currentPlan.QuotaResetUseFixedClock != nextPlan.QuotaResetUseFixedClock ||
+		currentPlan.QuotaResetFixedSeconds != nextPlan.QuotaResetFixedSeconds
+}
+
+func normalizeSubscriptionPlanResetFields(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	plan.QuotaResetPeriod = model.NormalizeResetPeriod(plan.QuotaResetPeriod)
+	if plan.QuotaResetPeriod == model.SubscriptionResetNever {
+		plan.QuotaResetCustomSeconds = 0
+		plan.QuotaResetUseFixedClock = false
+		plan.QuotaResetFixedSeconds = 0
+		return nil
+	}
+	if plan.QuotaResetPeriod != model.SubscriptionResetCustom {
+		plan.QuotaResetCustomSeconds = 0
+		if plan.QuotaResetUseFixedClock {
+			if plan.QuotaResetFixedSeconds < 0 || plan.QuotaResetFixedSeconds >= 24*3600 {
+				return fmt.Errorf("固定重置时刻必须在 00:00:00 到 23:59:59 之间")
+			}
+		} else {
+			plan.QuotaResetFixedSeconds = 0
+		}
+		return nil
+	}
+	plan.QuotaResetUseFixedClock = false
+	plan.QuotaResetFixedSeconds = 0
+	if plan.QuotaResetCustomSeconds < 60 {
+		return fmt.Errorf("自定义重置周期需大于等于60秒")
 	}
 	return nil
 }
@@ -59,11 +180,16 @@ func GetSubscriptionPlans(c *gin.Context) {
 		return
 	}
 	now := common.GetTimestamp()
+	planPointers := make([]*model.SubscriptionPlan, 0, len(plans))
+	for i := range plans {
+		applySubscriptionPlanDisplayFields(&plans[i], now)
+		planPointers = append(planPointers, &plans[i])
+	}
+	model.ApplySubscriptionPlanRestrictionFields(planPointers)
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
-	for _, p := range plans {
-		applySubscriptionPlanDisplayFields(&p, now)
+	for i := range plans {
 		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+			Plan: plans[i],
 		})
 	}
 	common.ApiSuccess(c, result)
@@ -73,6 +199,15 @@ func GetSubscriptionSelf(c *gin.Context) {
 	userId := c.GetInt("id")
 	settingMap, _ := model.GetUserSetting(userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
+	preferredSubscriptionId := settingMap.PreferredSubscriptionId
+	if err := model.ReconcileActiveUserSubscriptionsByUser(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if _, err := model.EnsureSubscriptionAggregateAccessTokenForUser(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	// Get all subscriptions (including expired)
 	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
@@ -85,12 +220,200 @@ func GetSubscriptionSelf(c *gin.Context) {
 	if err != nil {
 		activeSubscriptions = []model.SubscriptionSummary{}
 	}
+	manualDeliveryOrders, err := model.GetUserManualDeliveryOrders(userId)
+	if err != nil {
+		manualDeliveryOrders = []model.SubscriptionManualDeliverySummary{}
+	}
 
 	common.ApiSuccess(c, gin.H{
-		"billing_preference": pref,
-		"subscriptions":      activeSubscriptions, // all active subscriptions
-		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"billing_preference":       pref,
+		"preferred_subscription_id": preferredSubscriptionId,
+		"subscriptions":            activeSubscriptions, // all active subscriptions
+		"all_subscriptions":        allSubscriptions,    // all subscriptions including expired
+		"manual_delivery_orders":   manualDeliveryOrders,
 	})
+}
+
+func GetSelfServiceSubscriptionConversion(c *gin.Context) {
+	userId := c.GetInt("id")
+	preview, err := model.PreviewSelfServiceSubscriptionConversion(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, preview)
+}
+
+type CreateSubscriptionConversionRequest struct {
+	RequestRemark string `json:"request_remark"`
+}
+
+func CreateSelfServiceSubscriptionConversionRequest(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req CreateSubscriptionConversionRequest
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.CreateSubscriptionConversionRequest(userId, req.RequestRemark)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+type AdminApproveSubscriptionConversionPayload struct {
+	ApprovedRatio float64 `json:"approved_ratio"`
+	ApprovedQuota int     `json:"approved_quota"`
+	AdminRemark   string  `json:"admin_remark"`
+}
+
+type AdminRejectSubscriptionConversionPayload struct {
+	AdminRemark string `json:"admin_remark"`
+}
+
+type AdminManualDeliveryOrderListItem struct {
+	Order       *model.SubscriptionOrder              `json:"order"`
+	Plan        *model.SubscriptionPlan               `json:"plan,omitempty"`
+	Username    string                                `json:"username"`
+	UserGroup   string                                `json:"user_group"`
+	RefundOrder *model.SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+}
+
+type AdminDeliverManualOrderPayload struct {
+	DeliveryPayload []model.SubscriptionDeliveryPayloadItem `json:"delivery_payload"`
+	AdminRemark     string                                  `json:"admin_remark"`
+}
+
+type AdminRejectManualOrderPayload struct {
+	AdminRemark   string `json:"admin_remark"`
+	RefundToQuota bool   `json:"refund_to_quota"`
+}
+
+func AdminListSubscriptionConversionRequests(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	items, total, err := model.GetSubscriptionConversionRequestsByAdmin(pageInfo, model.SubscriptionConversionAdminFilters{
+		Keyword: c.Query("keyword"),
+		Status:  c.Query("status"),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func AdminApproveSubscriptionConversionRequest(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的申请ID")
+		return
+	}
+	var req AdminApproveSubscriptionConversionPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.ApproveSubscriptionConversionRequest(id, req.ApprovedRatio, req.ApprovedQuota, req.AdminRemark)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminRejectSubscriptionConversionRequest(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的申请ID")
+		return
+	}
+	var req AdminRejectSubscriptionConversionPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.RejectSubscriptionConversionRequest(id, req.AdminRemark)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminListManualDeliveryOrders(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	items, total, err := model.GetAdminManualDeliveryOrders(
+		pageInfo,
+		c.Query("keyword"),
+		c.Query("fulfillment_status"),
+		c.Query("refund_status"),
+		c.Query("time_field"),
+		startTimestamp,
+		endTimestamp,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func AdminDeliverManualDeliveryOrder(c *gin.Context) {
+	orderId, _ := strconv.Atoi(c.Param("id"))
+	if orderId <= 0 {
+		common.ApiErrorMsg(c, "无效的订单ID")
+		return
+	}
+	var req AdminDeliverManualOrderPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.AdminDeliverManualDeliveryOrder(
+		orderId,
+		c.GetInt("id"),
+		req.DeliveryPayload,
+		req.AdminRemark,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	go notifyManualDeliveryOrderResult(result, true)
+	common.ApiSuccess(c, result)
+}
+
+func AdminRejectManualDeliveryOrder(c *gin.Context) {
+	orderId, _ := strconv.Atoi(c.Param("id"))
+	if orderId <= 0 {
+		common.ApiErrorMsg(c, "无效的订单ID")
+		return
+	}
+	var req AdminRejectManualOrderPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.AdminRejectManualDeliveryOrder(
+		orderId,
+		c.GetInt("id"),
+		req.AdminRemark,
+		req.RefundToQuota,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	go notifyManualDeliveryOrderResult(result, false)
+	common.ApiSuccess(c, result)
 }
 
 func GetSubscriptionSelfConsumeLogs(c *gin.Context) {
@@ -152,12 +475,70 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	}
 	current := user.GetSetting()
 	current.BillingPreference = pref
+	if req.PreferredSubscriptionId < 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if req.PreferredSubscriptionId > 0 {
+		sub, err := model.GetUserSubscriptionById(req.PreferredSubscriptionId)
+		if err != nil || sub == nil || sub.UserId != userId {
+			common.ApiErrorMsg(c, "无效的优先订阅")
+			return
+		}
+		if sub.Status != "active" || !sub.AggregateEnabled {
+			common.ApiErrorMsg(c, "该订阅当前不可设为优先消耗")
+			return
+		}
+	}
+	current.PreferredSubscriptionId = req.PreferredSubscriptionId
 	user.SetSetting(current)
 	if err := user.Update(false); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"billing_preference": pref})
+	common.ApiSuccess(c, gin.H{
+		"billing_preference":        pref,
+		"preferred_subscription_id": current.PreferredSubscriptionId,
+	})
+}
+
+func OperateSelfUserSubscription(c *gin.Context) {
+	userId := c.GetInt("id")
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	sub, err := model.GetUserSubscriptionById(subId)
+	if err != nil || sub == nil || sub.UserId != userId {
+		common.ApiErrorMsg(c, "订阅不存在")
+		return
+	}
+	var req AdminUserSubscriptionActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	req.Action = model.NormalizeAdminSubscriptionAction(req.Action)
+	switch req.Action {
+	case model.AdminSubscriptionActionEnableAccess,
+		model.AdminSubscriptionActionDisableAccess,
+		model.AdminSubscriptionActionSetPreferred,
+		model.AdminSubscriptionActionClearPreferred:
+	default:
+		common.ApiErrorMsg(c, "无效的操作")
+		return
+	}
+	msg, err := model.AdminOperateUserSubscription(subId, req.Action, req.Value)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if msg != "" {
+		common.ApiSuccess(c, gin.H{"message": msg})
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 // ---- Admin APIs ----
@@ -169,11 +550,16 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 		return
 	}
 	now := common.GetTimestamp()
+	planPointers := make([]*model.SubscriptionPlan, 0, len(plans))
+	for i := range plans {
+		applySubscriptionPlanDisplayFields(&plans[i], now)
+		planPointers = append(planPointers, &plans[i])
+	}
+	model.ApplySubscriptionPlanRestrictionFields(planPointers)
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
-	for _, p := range plans {
-		applySubscriptionPlanDisplayFields(&p, now)
+	for i := range plans {
 		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+			Plan: plans[i],
 		})
 	}
 	common.ApiSuccess(c, result)
@@ -220,14 +606,24 @@ func normalizeSubscriptionPlanLimitFields(plan *model.SubscriptionPlan) error {
 		return nil
 	}
 	plan.ResourceType = model.NormalizeSubscriptionResourceType(plan.ResourceType)
+	plan.QuotaResetPeriod = model.NormalizeResetPeriod(plan.QuotaResetPeriod)
 	if plan.TotalAmount < 0 {
 		return fmt.Errorf("总额度不能为负数")
 	}
 	if plan.RequestCountTotal < 0 {
-		return fmt.Errorf("次数不能为负数")
+		return fmt.Errorf("总次数不能为负数")
 	}
-	if plan.TotalAmount <= 0 && plan.RequestCountTotal <= 0 {
-		return fmt.Errorf("总额度和次数不能同时为0")
+	if plan.RequestCountPeriodTotal < 0 {
+		return fmt.Errorf("周期次数不能为负数")
+	}
+	if plan.ResourceType == model.SubscriptionResourceRequestCount && plan.QuotaResetPeriod == model.SubscriptionResetNever && plan.RequestCountPeriodTotal > 0 {
+		return fmt.Errorf("设置周期次数上限时必须配置重置周期")
+	}
+	if plan.TotalAmount <= 0 && plan.RequestCountTotal <= 0 && plan.RequestCountPeriodTotal <= 0 {
+		return fmt.Errorf("总额度、总次数和周期次数不能同时为0")
+	}
+	if plan.ResourceType == model.SubscriptionResourceRequestCount && plan.QuotaResetPeriod == model.SubscriptionResetNever {
+		plan.RequestCountPeriodTotal = 0
 	}
 	if plan.SaleLimitCount < 0 {
 		return fmt.Errorf("可购买总数不能为负数")
@@ -237,6 +633,33 @@ func normalizeSubscriptionPlanLimitFields(plan *model.SubscriptionPlan) error {
 	}
 	if plan.SaleLimitCount > 0 && plan.SoldCount > plan.SaleLimitCount {
 		return fmt.Errorf("已售数量不能大于可购买总数")
+	}
+	if err := model.PrepareSubscriptionPlanRestrictionFields(plan); err != nil {
+		return fmt.Errorf("套餐限制序列化失败")
+	}
+	return nil
+}
+
+func validateSubscriptionPlanRestrictionFields(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	groupRatios := ratio_setting.GetGroupRatioCopy()
+	for _, group := range plan.AllowedGroups {
+		if _, ok := groupRatios[group]; !ok {
+			return fmt.Errorf("可用分组不存在：%s", group)
+		}
+	}
+	if len(plan.AllowedVendorIDs) > 0 {
+		var count int64
+		if err := model.DB.Model(&model.Vendor{}).
+			Where("id IN ?", plan.AllowedVendorIDs).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count != int64(len(plan.AllowedVendorIDs)) {
+			return fmt.Errorf("存在无效的可用供应商配置")
+		}
 	}
 	return nil
 }
@@ -260,7 +683,6 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		req.Plan.Currency = "USD"
 	}
 	req.Plan.Currency = "USD"
-	req.Plan.SoldCount = 0
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -282,9 +704,16 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
-		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
+	if err := normalizeSubscriptionPlanDeliveryFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	if err := validateSubscriptionPlanRestrictionFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	if err := normalizeSubscriptionPlanResetFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	err := model.DB.Create(&req.Plan).Error
@@ -294,6 +723,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	}
 	model.InvalidateSubscriptionPlanCache(req.Plan.Id)
 	applySubscriptionPlanDisplayFields(&req.Plan, common.GetTimestamp())
+	model.ApplySubscriptionPlanRestrictionFields([]*model.SubscriptionPlan{&req.Plan})
 	common.ApiSuccess(c, req.Plan)
 }
 
@@ -321,7 +751,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		req.Plan.Currency = "USD"
 	}
 	req.Plan.Currency = "USD"
-	req.Plan.SoldCount = 0
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -343,43 +772,77 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
-		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
+	if err := normalizeSubscriptionPlanDeliveryFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	if err := validateSubscriptionPlanRestrictionFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	if err := normalizeSubscriptionPlanResetFields(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	currentPlan, err := model.GetSubscriptionPlanById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	needSyncActiveSubscriptions := shouldSyncActiveSubscriptionsForPlanUpdate(currentPlan, &req.Plan)
 
-	err := model.DB.Transaction(func(tx *gorm.DB) error {
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		var actualIssuedCount int64
+		if err := tx.Model(&model.UserSubscription{}).
+			Where("plan_id = ?", id).
+			Count(&actualIssuedCount).Error; err != nil {
+			return err
+		}
+		if req.Plan.SoldCount < actualIssuedCount {
+			return fmt.Errorf("已售数量不能小于实际已发放数量 %d", actualIssuedCount)
+		}
+
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
-			"title":                      req.Plan.Title,
-			"subtitle":                   req.Plan.Subtitle,
-			"price_amount":               req.Plan.PriceAmount,
-			"discount_price_amount":      req.Plan.DiscountPriceAmount,
-			"discount_deadline":          req.Plan.DiscountDeadline,
-			"currency":                   req.Plan.Currency,
-			"duration_unit":              req.Plan.DurationUnit,
-			"duration_value":             req.Plan.DurationValue,
-			"custom_seconds":             req.Plan.CustomSeconds,
-			"enabled":                    req.Plan.Enabled,
-			"sort_order":                 req.Plan.SortOrder,
-			"stripe_price_id":            req.Plan.StripePriceId,
-			"creem_product_id":           req.Plan.CreemProductId,
-			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
-			"sale_limit_count":           req.Plan.SaleLimitCount,
-			"total_amount":               req.Plan.TotalAmount,
-			"resource_type":              req.Plan.ResourceType,
-			"request_count_total":        req.Plan.RequestCountTotal,
-			"upgrade_group":              req.Plan.UpgradeGroup,
-			"quota_reset_period":         req.Plan.QuotaResetPeriod,
-			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
-			"updated_at":                 common.GetTimestamp(),
+			"title":                       req.Plan.Title,
+			"subtitle":                    req.Plan.Subtitle,
+			"price_amount":                req.Plan.PriceAmount,
+			"discount_price_amount":       req.Plan.DiscountPriceAmount,
+			"discount_deadline":           req.Plan.DiscountDeadline,
+			"currency":                    req.Plan.Currency,
+			"duration_unit":               req.Plan.DurationUnit,
+			"duration_value":              req.Plan.DurationValue,
+			"custom_seconds":              req.Plan.CustomSeconds,
+			"enabled":                     req.Plan.Enabled,
+			"sort_order":                  req.Plan.SortOrder,
+			"stripe_price_id":             req.Plan.StripePriceId,
+			"creem_product_id":            req.Plan.CreemProductId,
+			"max_purchase_per_user":       req.Plan.MaxPurchasePerUser,
+			"sale_limit_count":            req.Plan.SaleLimitCount,
+			"sold_count":                  req.Plan.SoldCount,
+			"total_amount":                req.Plan.TotalAmount,
+			"resource_type":               req.Plan.ResourceType,
+			"request_count_total":         req.Plan.RequestCountTotal,
+			"request_count_period_total":  req.Plan.RequestCountPeriodTotal,
+			"upgrade_group":               req.Plan.UpgradeGroup,
+			"quota_reset_period":          req.Plan.QuotaResetPeriod,
+			"quota_reset_custom_seconds":  req.Plan.QuotaResetCustomSeconds,
+			"quota_reset_use_fixed_clock": req.Plan.QuotaResetUseFixedClock,
+			"quota_reset_fixed_seconds":   req.Plan.QuotaResetFixedSeconds,
+			"allowed_groups_json":         req.Plan.AllowedGroupsJSON,
+			"allowed_models_json":         req.Plan.AllowedModelsJSON,
+			"allowed_vendor_ids_json":     req.Plan.AllowedVendorIDsJSON,
+			"delivery_mode":               req.Plan.DeliveryMode,
+			"delivery_field_schema_json":  req.Plan.DeliveryFieldSchemaJSON,
+			"updated_at":                  common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err
 		}
-		if err := model.SyncActiveSubscriptionsForPlanTx(tx, id); err != nil {
-			return err
+		if needSyncActiveSubscriptions {
+			if err := model.SyncActiveSubscriptionsForPlanTx(tx, id); err != nil {
+				return fmt.Errorf("同步活跃订阅快照失败: %w", err)
+			}
 		}
 		return nil
 	})
@@ -445,6 +908,14 @@ func AdminListUserSubscriptions(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的用户ID")
 		return
 	}
+	if err := model.ReconcileActiveUserSubscriptionsByUser(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if _, err := model.EnsureSubscriptionAggregateAccessTokenForUser(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
 	status := c.Query("status")
@@ -458,26 +929,39 @@ func AdminListUserSubscriptions(c *gin.Context) {
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(subs)
-	common.ApiSuccess(c, pageInfo)
+	settingMap, _ := model.GetUserSetting(userId, false)
+	common.ApiSuccess(c, gin.H{
+		"page":                      pageInfo.Page,
+		"page_size":                 pageInfo.PageSize,
+		"total":                     pageInfo.Total,
+		"items":                     pageInfo.Items,
+		"preferred_subscription_id": settingMap.PreferredSubscriptionId,
+	})
 }
 
 func AdminListAllUserSubscriptions(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
+	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
 	username := c.Query("username")
 	group := c.Query("group")
+	upgradeGroup := c.Query("upgrade_group")
 	status := c.Query("status")
 	planId, _ := strconv.Atoi(c.Query("plan_id"))
 	source := c.Query("source")
+	resourceType := c.Query("resource_type")
 	timeField := c.Query("time_field")
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	items, total, err := model.GetAdminUserSubscriptions(
 		pageInfo,
+		subscriptionId,
 		username,
 		group,
+		upgradeGroup,
 		status,
 		planId,
 		source,
+		resourceType,
 		timeField,
 		startTimestamp,
 		endTimestamp,
@@ -537,6 +1021,11 @@ type AdminSubscriptionMigrationRequest struct {
 type AdminUserSubscriptionActionRequest struct {
 	Action string `json:"action"`
 	Value  int64  `json:"value"`
+}
+
+type AdminTransferUserSubscriptionRequest struct {
+	TargetUserId int  `json:"target_user_id"`
+	Reactivate   bool `json:"reactivate"`
 }
 
 // AdminCreateUserSubscription creates a new user subscription from a plan (no payment).
@@ -649,6 +1138,32 @@ func AdminInvalidateUserSubscription(c *gin.Context) {
 		return
 	}
 	msg, err := model.AdminInvalidateUserSubscription(subId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if msg != "" {
+		common.ApiSuccess(c, gin.H{"message": msg})
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminTransferUserSubscription(c *gin.Context) {
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req AdminTransferUserSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TargetUserId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	msg, err := model.AdminTransferUserSubscription(subId, model.AdminTransferUserSubscriptionOptions{
+		TargetUserId: req.TargetUserId,
+		Reactivate:   req.Reactivate,
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -1,5 +1,16 @@
-# https://www.robotstxt.org/robotstxt.html
+# Nbility public site crawler rules / 公网站点爬虫规则
 User-agent: *
 Allow: /
-Disallow:
+Disallow: /console/
+Disallow: /api/
+Disallow: /oauth/
+Disallow: /login
+Disallow: /reset
+Disallow: /user/reset
+Disallow: /setup
+Disallow: /chat2link
+Disallow: /forbidden
+
+Host: https://nbility.dev
 Sitemap: https://nbility.dev/sitemap.xml
+# RSS Feed / 订阅源: https://nbility.dev/rss.xml

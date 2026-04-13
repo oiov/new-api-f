@@ -27,15 +27,14 @@ import {
   Popover,
   Divider,
   Badge,
-  Tooltip,
 } from '@douyinfe/semi-ui';
-import { renderQuota } from '../../../helpers';
+import { renderGroupTextWithDescription, renderQuota } from '../../../helpers';
 import { convertUSDToCurrency } from '../../../helpers/render';
 import {
   formatSubscriptionResourceLabel,
-  getSubscriptionResourceType,
+  formatSubscriptionResetHint,
+  formatSubscriptionResetPeriod,
   getSubscriptionSaleSummary,
-  getSubscriptionUsageSummary,
   getSubscriptionEffectivePrice,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
@@ -53,11 +52,25 @@ function hasAmountLimit(plan) {
 function renderPlanLimits(plan, t) {
   const items = [];
   if (hasRequestCountLimit(plan)) {
-    items.push(`${t('总次数')} ${Number(plan?.request_count_total || 0)}`);
+    items.push(
+      `${formatSubscriptionResourceLabel(
+        {
+          resource_type: 'request_count',
+          quota_reset_period: plan?.quota_reset_period,
+        },
+        t,
+      )} ${Number(plan?.request_count_total || 0)}`,
+    );
   }
   if (hasAmountLimit(plan)) {
     items.push(
-      `${t('总额度')} ${renderQuota(Number(plan?.total_amount || 0))}`,
+      `${formatSubscriptionResourceLabel(
+        {
+          resource_type: 'quota',
+          quota_reset_period: plan?.quota_reset_period,
+        },
+        t,
+      )} ${renderQuota(Number(plan?.total_amount || 0))}`,
     );
   }
   if (items.length === 0) {
@@ -74,6 +87,60 @@ function renderPlanSales(plan, t) {
   return `${t('已售')} ${saleSummary.soldCount} / ${t('剩余')} ${saleSummary.remainingSaleCount}`;
 }
 
+function renderSalesCount(text, record, t) {
+  const saleSummary = getSubscriptionSaleSummary(record?.plan);
+  return (
+    <div>
+      <Text strong>{saleSummary.soldCount}</Text>
+      <Text type='tertiary' size='small' style={{ display: 'block' }}>
+        {saleSummary.unlimited
+          ? t('不限量')
+          : `${t('总量')} ${saleSummary.saleLimitCount}`}
+      </Text>
+    </div>
+  );
+}
+
+function renderSalesDetail(text, record, t) {
+  const saleSummary = getSubscriptionSaleSummary(record?.plan);
+  const content = (
+    <div style={{ width: 220 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: 8 }}>
+        <Text type='tertiary'>{t('已售数量')}</Text>
+        <Text strong>{saleSummary.soldCount}</Text>
+        <Text type='tertiary'>{t('销售上限')}</Text>
+        <Text>
+          {saleSummary.unlimited ? t('不限') : saleSummary.saleLimitCount}
+        </Text>
+        <Text type='tertiary'>{t('剩余可售')}</Text>
+        <Text>
+          {saleSummary.unlimited ? t('不限') : saleSummary.remainingSaleCount}
+        </Text>
+        <Text type='tertiary'>{t('销售状态')}</Text>
+        <Text>
+          {saleSummary.unlimited
+            ? t('不限量')
+            : saleSummary.soldOut
+              ? t('已售罄')
+              : t('可售')}
+        </Text>
+      </div>
+    </div>
+  );
+
+  return (
+    <Popover content={content} position='top' showArrow>
+      <Tag color={saleSummary.soldOut ? 'red' : 'blue'} shape='circle'>
+        {saleSummary.unlimited
+          ? t('不限量')
+          : saleSummary.soldOut
+            ? t('已售罄')
+            : t('查看详情')}
+      </Tag>
+    </Popover>
+  );
+}
+
 function formatDuration(plan, t) {
   if (!plan) return '';
   const u = plan.duration_unit || 'month';
@@ -88,21 +155,6 @@ function formatDuration(plan, t) {
     hour: t('小时'),
   };
   return `${plan.duration_value || 0}${unitMap[u] || u}`;
-}
-
-function formatResetPeriod(plan, t) {
-  const period = plan?.quota_reset_period || 'never';
-  if (period === 'daily') return t('每天');
-  if (period === 'weekly') return t('每周');
-  if (period === 'monthly') return t('每月');
-  if (period === 'custom') {
-    const seconds = Number(plan?.quota_reset_custom_seconds || 0);
-    if (seconds >= 86400) return `${Math.floor(seconds / 86400)} ${t('天')}`;
-    if (seconds >= 3600) return `${Math.floor(seconds / 3600)} ${t('小时')}`;
-    if (seconds >= 60) return `${Math.floor(seconds / 60)} ${t('分钟')}`;
-    return `${seconds} ${t('秒')}`;
-  }
-  return t('不重置');
 }
 
 const renderPlanTitle = (text, record, t) => {
@@ -125,15 +177,25 @@ const renderPlanTitle = (text, record, t) => {
         {isSubscriptionDiscountActive(plan) ? (
           <>
             <Text type='tertiary'>{t('原价')}</Text>
-            <Text delete>{convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}</Text>
+            <Text delete>
+              {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+            </Text>
             <Text type='tertiary'>{t('优惠截止')}</Text>
-            <Text>{new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()}</Text>
+            <Text>
+              {new Date(
+                Number(plan?.discount_deadline || 0) * 1000,
+              ).toLocaleString()}
+            </Text>
           </>
         ) : null}
         <Text type='tertiary'>{t('套餐权益')}</Text>
         <Text>{renderPlanLimits(plan, t)}</Text>
         <Text type='tertiary'>{t('升级分组')}</Text>
-        <Text>{plan?.upgrade_group ? plan.upgrade_group : t('不升级')}</Text>
+        {plan?.upgrade_group ? (
+          renderGroupTextWithDescription(plan.upgrade_group)
+        ) : (
+          <Text>{t('不升级')}</Text>
+        )}
         <Text type='tertiary'>{t('购买上限')}</Text>
         <Text>
           {plan?.max_purchase_per_user > 0
@@ -145,7 +207,7 @@ const renderPlanTitle = (text, record, t) => {
         <Text type='tertiary'>{t('有效期')}</Text>
         <Text>{formatDuration(plan, t)}</Text>
         <Text type='tertiary'>{t('重置')}</Text>
-        <Text>{formatResetPeriod(plan, t)}</Text>
+        <Text>{formatSubscriptionResetHint(plan, t)}</Text>
       </div>
     </div>
   );
@@ -242,9 +304,13 @@ const renderTotalAmount = (text, record, t) => {
 const renderUpgradeGroup = (text, record, t) => {
   const group = record?.plan?.upgrade_group || '';
   return (
-    <Text type={group ? 'secondary' : 'tertiary'}>
-      {group ? group : t('不升级')}
-    </Text>
+    <span>
+      {group ? (
+        renderGroupTextWithDescription(group)
+      ) : (
+        <Text type='tertiary'>{t('不升级')}</Text>
+      )}
+    </span>
   );
 };
 
@@ -253,7 +319,7 @@ const renderResetPeriod = (text, record, t) => {
   const isNever = period === 'never';
   return (
     <Text type={isNever ? 'tertiary' : 'secondary'}>
-      {formatResetPeriod(record?.plan, t)}
+      {formatSubscriptionResetPeriod(record?.plan, t)}
     </Text>
   );
 };
@@ -267,12 +333,12 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
     <Space spacing={4}>
       {hasStripe && (
         <Tag color='violet' shape='circle'>
-          Stripe
+          {t('Stripe')}
         </Tag>
       )}
       {hasCreem && (
         <Tag color='cyan' shape='circle'>
-          Creem
+          {t('Creem')}
         </Tag>
       )}
       {hasEpay && (
@@ -286,8 +352,25 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
 
 const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
   const isEnabled = record?.plan?.enabled;
+  const soldCount = Number(record?.plan?.sold_count || 0);
+  const canSafeRemove = soldCount === 0;
 
   const handleToggle = () => {
+    if (canSafeRemove && isEnabled) {
+      Modal.confirm({
+        title: t('确认安全删除'),
+        content: t(
+          '安全删除后，该套餐将从默认列表和用户端隐藏，但数据库记录与历史订单会保留，可通过“仅看禁用”重新查看并恢复。',
+        ),
+        centered: true,
+        okButtonProps: {
+          type: 'danger',
+        },
+        onOk: () => setPlanEnabled(record, false),
+      });
+      return;
+    }
+
     if (isEnabled) {
       Modal.confirm({
         title: t('确认禁用'),
@@ -317,7 +400,7 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
       </Button>
       {isEnabled ? (
         <Button theme='light' type='danger' size='small' onClick={handleToggle}>
-          {t('禁用')}
+          {canSafeRemove ? t('安全删除') : t('禁用')}
         </Button>
       ) : (
         <Button
@@ -326,7 +409,7 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
           size='small'
           onClick={handleToggle}
         >
-          {t('启用')}
+          {canSafeRemove ? t('恢复展示') : t('启用')}
         </Button>
       )}
     </Space>
@@ -341,7 +424,7 @@ export const getSubscriptionsColumns = ({
 }) => {
   return [
     {
-      title: 'ID',
+      title: t('ID'),
       dataIndex: ['plan', 'id'],
       width: 60,
       render: (text) => <Text type='tertiary'>#{text}</Text>,
@@ -364,7 +447,12 @@ export const getSubscriptionsColumns = ({
           <div>
             {renderPrice(effective)}
             {activeDiscount ? (
-              <Text type='tertiary' size='small' delete style={{ display: 'block' }}>
+              <Text
+                type='tertiary'
+                size='small'
+                delete
+                style={{ display: 'block' }}
+              >
                 {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
               </Text>
             ) : null}
@@ -381,6 +469,16 @@ export const getSubscriptionsColumns = ({
       title: t('库存'),
       width: 120,
       render: (text, record) => renderInventory(text, record, t),
+    },
+    {
+      title: t('销量'),
+      width: 100,
+      render: (text, record) => renderSalesCount(text, record, t),
+    },
+    {
+      title: t('销售详情'),
+      width: 110,
+      render: (text, record) => renderSalesDetail(text, record, t),
     },
     {
       title: t('优先级'),

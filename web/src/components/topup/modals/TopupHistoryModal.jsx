@@ -64,6 +64,20 @@ const PAYMENT_METHOD_MAP = {
   wxpay: '微信',
 };
 
+const TOPUP_STATUS_OPTIONS = ['', 'success', 'pending', 'failed', 'expired'];
+const TOPUP_PAYMENT_OPTIONS = ['', 'alipay', 'wxpay', 'stripe', 'creem', 'waffo'];
+const REDEMPTION_TYPE_OPTIONS = ['', 'quota', 'subscription'];
+
+const toUnixTimestamp = (datetimeValue, isEnd = false) => {
+  if (!datetimeValue) return 0;
+  const normalizedValue =
+    isEnd && !datetimeValue.includes(':59')
+      ? `${datetimeValue}:59`
+      : datetimeValue;
+  const ts = Math.floor(new Date(normalizedValue).getTime() / 1000);
+  return Number.isNaN(ts) ? 0 : ts;
+};
+
 const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState([]);
@@ -72,6 +86,10 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('');
+  const [redemptionTypeFilter, setRedemptionTypeFilter] = useState('');
+  const [startAt, setStartAt] = useState('');
+  const [endAt, setEndAt] = useState('');
   const [activeTab, setActiveTab] = useState(HISTORY_TAB_TOPUP);
   const isMobile = useIsMobile();
   const userIsAdmin = useMemo(() => isAdmin(), []);
@@ -83,6 +101,10 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     currentTab = activeTab,
     currentKeyword = keyword,
     currentStatus = statusFilter,
+    currentPaymentMethod = paymentMethodFilter,
+    currentRedemptionType = redemptionTypeFilter,
+    currentStartAt = startAt,
+    currentEndAt = endAt,
   ) => {
     setLoading(true);
     try {
@@ -101,6 +123,20 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       }
       if (currentStatus && currentTab === HISTORY_TAB_TOPUP) {
         qs += `&status=${encodeURIComponent(currentStatus)}`;
+      }
+      if (currentPaymentMethod && currentTab === HISTORY_TAB_TOPUP) {
+        qs += `&payment_method=${encodeURIComponent(currentPaymentMethod)}`;
+      }
+      if (currentRedemptionType && currentTab === HISTORY_TAB_REDEMPTION) {
+        qs += `&redemption_type=${encodeURIComponent(currentRedemptionType)}`;
+      }
+      const startTimestamp = toUnixTimestamp(currentStartAt);
+      const endTimestamp = toUnixTimestamp(currentEndAt, true);
+      if (startTimestamp > 0) {
+        qs += `&start_timestamp=${startTimestamp}`;
+      }
+      if (endTimestamp > 0) {
+        qs += `&end_timestamp=${endTimestamp}`;
       }
 
       let res;
@@ -144,8 +180,29 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     if (!visible) {
       return;
     }
-    loadHistory(page, pageSize, activeTab, keyword, statusFilter);
-  }, [visible, page, pageSize, keyword, activeTab, statusFilter]);
+    loadHistory(
+      page,
+      pageSize,
+      activeTab,
+      keyword,
+      statusFilter,
+      paymentMethodFilter,
+      redemptionTypeFilter,
+      startAt,
+      endAt,
+    );
+  }, [
+    visible,
+    page,
+    pageSize,
+    keyword,
+    activeTab,
+    statusFilter,
+    paymentMethodFilter,
+    redemptionTypeFilter,
+    startAt,
+    endAt,
+  ]);
 
   const handlePageChange = (currentPage) => {
     setPage(currentPage);
@@ -162,7 +219,27 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   };
 
   const handleStatusFilterChange = (value) => {
-    setStatusFilter(value);
+    setStatusFilter(value || '');
+    setPage(1);
+  };
+
+  const handlePaymentMethodChange = (value) => {
+    setPaymentMethodFilter(value || '');
+    setPage(1);
+  };
+
+  const handleRedemptionTypeChange = (value) => {
+    setRedemptionTypeFilter(value || '');
+    setPage(1);
+  };
+
+  const handleStartAtChange = (value) => {
+    setStartAt(value);
+    setPage(1);
+  };
+
+  const handleEndAtChange = (value) => {
+    setEndAt(value);
     setPage(1);
   };
 
@@ -171,8 +248,22 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     setPage(1);
     setKeyword('');
     setStatusFilter('');
+    setPaymentMethodFilter('');
+    setRedemptionTypeFilter('');
+    setStartAt('');
+    setEndAt('');
     setRecords([]);
     setTotal(0);
+  };
+
+  const handleResetFilters = () => {
+    setKeyword('');
+    setStatusFilter('');
+    setPaymentMethodFilter('');
+    setRedemptionTypeFilter('');
+    setStartAt('');
+    setEndAt('');
+    setPage(1);
   };
 
   const handleUserClick = (userId) => {
@@ -189,7 +280,17 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       const { success, message } = res.data;
       if (success) {
         Toast.success({ content: t('补单成功') });
-        await loadHistory(page, pageSize, HISTORY_TAB_TOPUP, keyword, statusFilter);
+        await loadHistory(
+          page,
+          pageSize,
+          HISTORY_TAB_TOPUP,
+          keyword,
+          statusFilter,
+          paymentMethodFilter,
+          redemptionTypeFilter,
+          startAt,
+          endAt,
+        );
       } else {
         Toast.error({ content: message || t('补单失败') });
       }
@@ -268,7 +369,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
               onClick={() => handleUserClick(record.user_id)}
               style={{ cursor: 'pointer' }}
             >
-              UID: {record.user_id || '--'}
+              {t('用户 ID')}: {record.user_id || '--'}
             </Text>
           </div>
         ),
@@ -441,7 +542,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
               onClick={() => handleUserClick(record.used_user_id)}
               style={{ cursor: 'pointer' }}
             >
-              UID: {record.used_user_id || '--'}
+              {t('用户 ID')}: {record.used_user_id || '--'}
             </Text>
           </div>
         ),
@@ -453,7 +554,9 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   const searchPlaceholder =
     activeTab === HISTORY_TAB_TOPUP
-      ? t('订单号')
+      ? userIsAdmin
+        ? t('订单号 / 用户名 / 用户 ID')
+        : t('订单号')
       : userIsAdmin
         ? t('兑换码ID / 套餐ID / 用户名')
         : t('兑换码ID / 套餐ID / 兑换项');
@@ -495,29 +598,81 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
           <TabPane tab={t('兑换记录')} itemKey={HISTORY_TAB_REDEMPTION} />
         </Tabs>
 
-        <Space style={{ width: '100%', marginTop: 16 }} spacing='loose'>
+        <Space style={{ width: '100%', marginTop: 16 }} spacing='loose' wrap>
           <Input
             prefix={<IconSearch />}
             placeholder={searchPlaceholder}
             value={keyword}
             onChange={handleKeywordChange}
             showClear
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: isMobile ? '100%' : 260 }}
           />
           {activeTab === HISTORY_TAB_TOPUP && (
             <Select
-              placeholder={t('状态筛选')}
+              placeholder={t('全部状态')}
               value={statusFilter}
               onChange={handleStatusFilterChange}
               style={{ width: 150 }}
               showClear
             >
-              <Select.Option value='success'>{t('成功')}</Select.Option>
-              <Select.Option value='pending'>{t('待支付')}</Select.Option>
-              <Select.Option value='failed'>{t('失败')}</Select.Option>
-              <Select.Option value='expired'>{t('已过期')}</Select.Option>
+              {TOPUP_STATUS_OPTIONS.map((status) => (
+                <Select.Option key={status || 'all'} value={status}>
+                  {status
+                    ? t(STATUS_CONFIG[status]?.key || status)
+                    : t('全部状态')}
+                </Select.Option>
+              ))}
             </Select>
           )}
+          {activeTab === HISTORY_TAB_TOPUP && (
+            <Select
+              placeholder={t('全部支付方式')}
+              value={paymentMethodFilter}
+              onChange={handlePaymentMethodChange}
+              style={{ width: 180 }}
+              showClear
+            >
+              {TOPUP_PAYMENT_OPTIONS.map((method) => (
+                <Select.Option key={method || 'all'} value={method}>
+                  {method
+                    ? t(PAYMENT_METHOD_MAP[method] || method)
+                    : t('全部支付方式')}
+                </Select.Option>
+              ))}
+            </Select>
+          )}
+          {activeTab === HISTORY_TAB_REDEMPTION && (
+            <Select
+              placeholder={t('全部类型')}
+              value={redemptionTypeFilter}
+              onChange={handleRedemptionTypeChange}
+              style={{ width: 150 }}
+              showClear
+            >
+              {REDEMPTION_TYPE_OPTIONS.map((type) => (
+                <Select.Option key={type || 'all'} value={type}>
+                  {type
+                    ? type === 'subscription'
+                      ? t('套餐兑换')
+                      : t('额度兑换')
+                    : t('全部类型')}
+                </Select.Option>
+              ))}
+            </Select>
+          )}
+          <Input
+            type='datetime-local'
+            value={startAt}
+            onChange={handleStartAtChange}
+            style={{ width: 210 }}
+          />
+          <Input
+            type='datetime-local'
+            value={endAt}
+            onChange={handleEndAtChange}
+            style={{ width: 210 }}
+          />
+          <Button onClick={handleResetFilters}>{t('重置筛选')}</Button>
         </Space>
       </div>
 

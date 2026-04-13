@@ -67,6 +67,13 @@ func GetOptions(c *gin.Context) {
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
 		value := common.Interface2String(v)
+		if maskedValue, ok := getMaskedOptionValue(k, value); ok {
+			options = append(options, &model.Option{
+				Key:   k,
+				Value: maskedValue,
+			})
+			continue
+		}
 		if strings.HasSuffix(k, "Token") ||
 			strings.HasSuffix(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||
@@ -96,6 +103,27 @@ func GetOptions(c *gin.Context) {
 		"data":    options,
 	})
 	return
+}
+
+func getMaskedOptionValue(key, value string) (string, bool) {
+	switch key {
+	case "payment_notify_setting.ServerChanSendKey", "payment_notify_setting.PushPlusToken":
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return "", true
+		}
+		return maskSensitiveOptionValue(trimmed), true
+	default:
+		return "", false
+	}
+}
+
+func maskSensitiveOptionValue(value string) string {
+	runes := []rune(value)
+	if len(runes) <= 8 {
+		return "********"
+	}
+	return string(runes[:4]) + "****" + string(runes[len(runes)-4:])
 }
 
 type OptionUpdateRequest struct {
@@ -305,6 +333,24 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "console_setting.contact_channels":
+		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ContactChannels")
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "SelfServiceSubscriptionConversionCampaign":
+		err = model.ValidateSelfServiceSubscriptionConversionCampaign(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "SubscriptionPlanForNewUser", "SubscriptionPlanForInviter", "SubscriptionPlanForInvitee":
 		planId, parseErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
 		if parseErr != nil || planId < 0 {
@@ -330,6 +376,15 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "邀请奖励防刷配置必须是大于等于 0 的整数",
+			})
+			return
+		}
+	case "checkin_setting.leaderboard_limit":
+		count, parseErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
+		if parseErr != nil || count < 1 || count > 1000 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "签到榜展示条数必须是 1 到 1000 的整数",
 			})
 			return
 		}

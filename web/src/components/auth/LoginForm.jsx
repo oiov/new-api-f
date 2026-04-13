@@ -67,6 +67,8 @@ import WeChatIcon from '../common/logo/WeChatIcon';
 import LinuxDoIcon from '../common/logo/LinuxDoIcon';
 import SeoMeta from '../common/seo/SeoMeta';
 import TwoFAVerification from './TwoFAVerification';
+import AuthConfigNotice from './AuthConfigNotice';
+import { getFriendlyLoginError, getLoginConfigItems } from './authHelpers';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord, SiGoogle } from 'react-icons/si';
 import { getAuthSeo } from '../../helpers/seo';
@@ -139,6 +141,12 @@ const LoginForm = () => {
       return {};
     }
   }, [statusState?.status]);
+  const passwordLoginEnabled = status.password_login_enabled !== false;
+  const registerEnabled = status.register_enabled !== false;
+  const loginConfigItems = useMemo(
+    () => getLoginConfigItems(status, passkeySupported, t),
+    [status, passkeySupported, t],
+  );
   const hasCustomOAuthProviders =
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthLoginOptions = Boolean(
@@ -193,7 +201,7 @@ const LoginForm = () => {
 
   const onSubmitWeChatVerificationCode = async () => {
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
       return;
     }
     setWechatCodeSubmitLoading(true);
@@ -204,17 +212,16 @@ const LoginForm = () => {
       const { success, message, data } = res.data;
       if (success) {
         userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
         setUserData(data);
         updateAPI();
         navigate('/');
-        showSuccess('登录成功！');
+        showSuccess(t('登录成功！'));
         setShowWeChatLoginModal(false);
       } else {
         showError(message);
       }
     } catch (error) {
-      showError('登录失败，请重试');
+      showError(t('登录失败，请重试'));
     } finally {
       setWechatCodeSubmitLoading(false);
     }
@@ -225,12 +232,16 @@ const LoginForm = () => {
   }
 
   async function handleSubmit(e) {
+    if (!passwordLoginEnabled) {
+      showInfo(t('当前站点已关闭账号密码登录，请使用页面上其他可用的登录方式'));
+      return;
+    }
     if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
       showInfo(t('请先阅读并同意用户协议和隐私政策'));
       return;
     }
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
       return;
     }
     setSubmitted(true);
@@ -256,23 +267,23 @@ const LoginForm = () => {
           userDispatch({ type: 'login', payload: data });
           setUserData(data);
           updateAPI();
-          showSuccess('登录成功！');
+          showSuccess(t('登录成功！'));
           if (username === 'root' && password === '123456') {
             Modal.error({
-              title: '您正在使用默认密码！',
-              content: '请立刻修改默认密码！',
+              title: t('您正在使用默认密码！'),
+              content: t('请立刻修改默认密码！'),
               centered: true,
             });
           }
           navigate('/console');
         } else {
-          showError(message);
+          showError(getFriendlyLoginError(message, status, t));
         }
       } else {
-        showError('请输入用户名和密码！');
+        showError(t('请输入用户名和密码！'));
       }
     } catch (error) {
-      showError('登录失败，请重试');
+      showError(t('登录失败，请重试'));
     } finally {
       setLoginLoading(false);
     }
@@ -305,8 +316,7 @@ const LoginForm = () => {
       const { success, message, data } = res.data;
       if (success) {
         userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
-        showSuccess('登录成功！');
+        showSuccess(t('登录成功！'));
         setUserData(data);
         updateAPI();
         navigate('/');
@@ -314,7 +324,7 @@ const LoginForm = () => {
         showError(message);
       }
     } catch (error) {
-      showError('登录失败，请重试');
+      showError(t('登录失败，请重试'));
     }
   };
 
@@ -492,16 +502,16 @@ const LoginForm = () => {
         userDispatch({ type: 'login', payload: finish.data });
         setUserData(finish.data);
         updateAPI();
-        showSuccess('登录成功！');
+        showSuccess(t('登录成功！'));
         navigate('/console');
       } else {
-        showError(finish.message || 'Passkey 登录失败，请重试');
+        showError(finish.message || t('Passkey 登录失败，请重试'));
       }
     } catch (error) {
       if (error?.name === 'AbortError') {
-        showInfo('已取消 Passkey 登录');
+        showInfo(t('已取消 Passkey 登录'));
       } else {
-        showError('Passkey 登录失败，请重试');
+        showError(t('Passkey 登录失败，请重试'));
       }
     } finally {
       setPasskeyLoading(false);
@@ -527,7 +537,7 @@ const LoginForm = () => {
     userDispatch({ type: 'login', payload: data });
     setUserData(data);
     updateAPI();
-    showSuccess('登录成功！');
+    showSuccess(t('登录成功！'));
     navigate('/console');
   };
 
@@ -542,7 +552,7 @@ const LoginForm = () => {
       <div className='flex flex-col items-center'>
         <div className='w-full max-w-md'>
           <div className='flex items-center justify-center mb-6 gap-2'>
-            <img src={logo} alt='Logo' className='h-10 rounded-full' />
+            <img src={logo} alt={t('站点标志')} className='h-10 rounded-full' />
             <Title heading={3} className='!text-gray-800'>
               {systemName}
             </Title>
@@ -555,6 +565,17 @@ const LoginForm = () => {
               </Title>
             </div>
             <div className='px-2 py-8'>
+              <AuthConfigNotice
+                title={t('当前登录配置')}
+                description={t(
+                  '这里展示的是站点当前实际生效的登录与注册开关，和系统设置中的配置保持一致',
+                )}
+                items={loginConfigItems}
+                tip={t(
+                  '如果某种登录方式没有出现，通常是因为管理员尚未开启对应配置',
+                )}
+                tone={passwordLoginEnabled ? 'default' : 'warning'}
+              />
               <div className='space-y-3'>
                 {status.wechat_login && (
                   <Button
@@ -704,16 +725,18 @@ const LoginForm = () => {
                   {t('或')}
                 </Divider>
 
-                <Button
-                  theme='solid'
-                  type='primary'
-                  className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
-                  icon={<IconMail size='large' />}
-                  onClick={handleEmailLoginClick}
-                  loading={emailLoginLoading}
-                >
-                  <span className='ml-3'>{t('使用 邮箱或用户名 登录')}</span>
-                </Button>
+                {passwordLoginEnabled && (
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    className='w-full h-12 flex items-center justify-center bg-black text-white !rounded-full hover:bg-gray-800 transition-colors'
+                    icon={<IconMail size='large' />}
+                    onClick={handleEmailLoginClick}
+                    loading={emailLoginLoading}
+                  >
+                    <span className='ml-3'>{t('使用 邮箱或用户名 登录')}</span>
+                  </Button>
+                )}
               </div>
 
               {(hasUserAgreement || hasPrivacyPolicy) && (
@@ -754,7 +777,7 @@ const LoginForm = () => {
                 </div>
               )}
 
-              {!status.self_use_mode_enabled && (
+              {!status.self_use_mode_enabled && registerEnabled && (
                 <div className='mt-6 text-center text-sm'>
                   <Text>
                     {t('没有账户？')}{' '}
@@ -779,7 +802,7 @@ const LoginForm = () => {
       <div className='flex flex-col items-center'>
         <div className='w-full max-w-md'>
           <div className='flex items-center justify-center mb-6 gap-2'>
-            <img src={logo} alt='Logo' className='h-10 rounded-full' />
+            <img src={logo} alt={t('站点标志')} className='h-10 rounded-full' />
             <Title heading={3}>{systemName}</Title>
           </div>
 
@@ -790,6 +813,17 @@ const LoginForm = () => {
               </Title>
             </div>
             <div className='px-2 py-8'>
+              <AuthConfigNotice
+                title={t('当前登录配置')}
+                description={t(
+                  '提交前可以先看这里，确认密码登录、注册入口和额外验证要求是否已开启',
+                )}
+                items={loginConfigItems}
+                tip={t(
+                  '这些状态会实时影响当前表单是否可用，避免提交后才看到英文或系统级报错',
+                )}
+                tone={passwordLoginEnabled ? 'default' : 'warning'}
+              />
               {status.passkey_login && passkeySupported && (
                 <Button
                   theme='outline'
@@ -869,7 +903,8 @@ const LoginForm = () => {
                     onClick={handleSubmit}
                     loading={loginLoading}
                     disabled={
-                      (hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms
+                      !passwordLoginEnabled ||
+                      ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms)
                     }
                   >
                     {t('继续')}
@@ -907,7 +942,7 @@ const LoginForm = () => {
                 </>
               )}
 
-              {!status.self_use_mode_enabled && (
+              {!status.self_use_mode_enabled && registerEnabled && (
                 <div className='mt-6 text-center text-sm'>
                   <Text>
                     {t('没有账户？')}{' '}
@@ -943,7 +978,7 @@ const LoginForm = () => {
         }}
       >
         <div className='flex flex-col items-center'>
-          <img src={status.wechat_qrcode} alt='微信二维码' className='mb-4' />
+          <img src={status.wechat_qrcode} alt={t('微信二维码')} className='mb-4' />
         </div>
 
         <div className='text-center mb-4'>
@@ -986,7 +1021,7 @@ const LoginForm = () => {
                 />
               </svg>
             </div>
-            两步验证
+            {t('两步验证')}
           </div>
         }
         visible={showTwoFA}

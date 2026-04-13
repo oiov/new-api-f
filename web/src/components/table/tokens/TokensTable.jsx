@@ -49,6 +49,9 @@ const TokensTable = (tokensData) => {
     setShowEdit,
     refresh,
     t,
+    showUsernameColumn,
+    allowSensitiveActions,
+    readonly,
   } = tokensData;
 
   // Get all columns
@@ -65,6 +68,9 @@ const TokensTable = (tokensData) => {
       setEditingToken,
       setShowEdit,
       refresh,
+      showUsernameColumn,
+      allowSensitiveActions,
+      readonly,
     });
   }, [
     t,
@@ -78,6 +84,9 @@ const TokensTable = (tokensData) => {
     setEditingToken,
     setShowEdit,
     refresh,
+    showUsernameColumn,
+    allowSensitiveActions,
+    readonly,
   ]);
 
   // Handle compact mode by removing fixed positioning

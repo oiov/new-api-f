@@ -34,7 +34,14 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { IconClose, IconPlay, IconSave } from '@douyinfe/semi-icons';
-import { API, showError, showSuccess } from '../../../../helpers';
+import {
+  API,
+  buildGroupOptions,
+  renderGroup,
+  renderGroupOption,
+  showError,
+  showSuccess,
+} from '../../../../helpers';
 import { formatSubscriptionDuration } from '../../../../helpers/subscriptionFormat';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import CardTable from '../../../common/ui/CardTable';
@@ -59,25 +66,20 @@ function buildPayload(values) {
   };
 }
 
-const RESOURCE_OPTIONS = [
-  { label: '额度', value: 'quota' },
-  { label: '次数', value: 'request_count' },
-];
+const SubscriptionMigrationModal = ({ visible, handleClose, refresh, t }) => {
+  const RESOURCE_OPTIONS = [
+    { label: t('额度'), value: 'quota' },
+    { label: t('次数'), value: 'request_count' },
+  ];
 
-const DURATION_OPTIONS = [
-  { label: '不排除', value: '' },
-  { label: '天卡', value: 'day' },
-  { label: '周卡', value: 'week' },
-  { label: '月卡', value: 'month' },
-  { label: '年卡', value: 'year' },
-];
+  const DURATION_OPTIONS = [
+    { label: t('不排除'), value: '' },
+    { label: t('天卡'), value: 'day' },
+    { label: t('周卡'), value: 'week' },
+    { label: t('月卡'), value: 'month' },
+    { label: t('年卡'), value: 'year' },
+  ];
 
-const SubscriptionMigrationModal = ({
-  visible,
-  handleClose,
-  refresh,
-  t,
-}) => {
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
   const [plans, setPlans] = useState([]);
@@ -125,13 +127,7 @@ const SubscriptionMigrationModal = ({
         showError(plansRes.data?.message || t('加载套餐失败'));
       }
       if (groupsRes.data?.success) {
-        const groups = groupsRes.data?.data || [];
-        setGroupOptions(
-          groups.map((group) => ({
-            label: group,
-            value: group,
-          })),
-        );
+        setGroupOptions(buildGroupOptions(groupsRes.data?.data || []));
       } else {
         showError(groupsRes.data?.message || t('加载分组失败'));
       }
@@ -256,7 +252,8 @@ const SubscriptionMigrationModal = ({
       {
         title: t('用户分组'),
         dataIndex: 'user_group',
-        render: (text) => <Tag size='small'>{text || '-'}</Tag>,
+        render: (text) =>
+          text ? renderGroup(text) : <Tag size='small'>-</Tag>,
       },
       {
         title: t('旧套餐'),
@@ -265,7 +262,10 @@ const SubscriptionMigrationModal = ({
           <div>
             <div>{text || `#${record.old_plan_id}`}</div>
             <Text type='tertiary' size='small'>
-              #{record.old_plan_id} · {record.old_upgrade_group || '-'}
+              #{record.old_plan_id} ·{' '}
+              {record.old_upgrade_group
+                ? renderGroup(record.old_upgrade_group)
+                : '-'}
             </Text>
           </div>
         ),
@@ -288,7 +288,10 @@ const SubscriptionMigrationModal = ({
           <div>
             <div>{text || `#${record.target_plan_id}`}</div>
             <Text type='tertiary' size='small'>
-              #{record.target_plan_id} · {record.target_upgrade_group || '-'}
+              #{record.target_plan_id} ·{' '}
+              {record.target_upgrade_group
+                ? renderGroup(record.target_upgrade_group)
+                : '-'}
             </Text>
           </div>
         ),
@@ -353,11 +356,18 @@ const SubscriptionMigrationModal = ({
               icon={<IconSave />}
               onClick={handleExecute}
               loading={executing}
-              disabled={!previewResult || Number(previewResult?.data?.total || 0) <= 0}
+              disabled={
+                !previewResult || Number(previewResult?.data?.total || 0) <= 0
+              }
             >
               {t('执行迁移')}
             </Button>
-            <Button theme='light' type='primary' icon={<IconClose />} onClick={handleClose}>
+            <Button
+              theme='light'
+              type='primary'
+              icon={<IconClose />}
+              onClick={handleClose}
+            >
               {t('关闭')}
             </Button>
           </Space>
@@ -387,6 +397,7 @@ const SubscriptionMigrationModal = ({
                 label={t('用户分组')}
                 placeholder={t('请选择用户分组')}
                 optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
                 filter
               />
               <Form.Select
@@ -394,6 +405,7 @@ const SubscriptionMigrationModal = ({
                 label={t('旧订阅分组')}
                 placeholder={t('留空则跟用户分组一致')}
                 optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
                 filter
                 allowCreate
               />
@@ -429,7 +441,8 @@ const SubscriptionMigrationModal = ({
             <Tag color='orange'>{t('默认排除天卡')}</Tag>
             {previewResult ? (
               <Text>
-                {t('命中用户')} {Number(previewResult.data?.total || 0)} {t('个')}
+                {t('命中用户')} {Number(previewResult.data?.total || 0)}{' '}
+                {t('个')}
               </Text>
             ) : (
               <Text type='tertiary'>{t('变更表单后需要重新预览')}</Text>
@@ -445,9 +458,13 @@ const SubscriptionMigrationModal = ({
             scroll={{ x: 'max-content' }}
             empty={
               <Empty
-                image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
+                image={
+                  <IllustrationNoResult style={{ width: 150, height: 150 }} />
+                }
                 darkModeImage={
-                  <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
+                  <IllustrationNoResultDark
+                    style={{ width: 150, height: 150 }}
+                  />
                 }
                 description={t('暂无预览结果')}
                 style={{ padding: 30 }}

@@ -27,15 +27,105 @@ type ModelRequest struct {
 	Group string `json:"group,omitempty"`
 }
 
+func validateRequestedModelAccess(c *gin.Context, modelName string) bool {
+	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
+	if !modelLimitEnable {
+		return true
+	}
+	s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
+	if !ok {
+		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
+		return false
+	}
+	tokenModelLimit, ok := s.(map[string]bool)
+	if !ok {
+		tokenModelLimit = map[string]bool{}
+	}
+	matchName := ratio_setting.FormatMatchingModelName(modelName)
+	if _, ok := tokenModelLimit[matchName]; !ok {
+		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelName}))
+		return false
+	}
+	return true
+}
+
+func getForcedChannelKeyIndex(c *gin.Context) int {
+	if c == nil {
+		return -1
+	}
+	value, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex)
+	if !ok || value == nil {
+		return -1
+	}
+	index, ok := value.(int)
+	if !ok {
+		return -1
+	}
+	return index
+}
+
+func applyAggregateSubscriptionRoute(c *gin.Context, modelName string) *types.NewAPIError {
+	if c == nil || strings.TrimSpace(modelName) == "" {
+		return nil
+	}
+	if c.GetString("token_name") != model.SubscriptionAggregateAccessTokenName {
+		return nil
+	}
+	if _, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
+		return nil
+	}
+	userId := c.GetInt("id")
+	preferredSubscriptionID, _ := strconv.Atoi(strings.TrimSpace(c.GetHeader("X-NewAPI-Preferred-Subscription-Id")))
+	var (
+		decision *model.SubscriptionRouteDecision
+		err      error
+	)
+	if preferredSubscriptionID > 0 {
+		decision, err = model.GetAggregateSubscriptionRouteForPreferredSubscription(userId, preferredSubscriptionID, modelName)
+	} else {
+		decision, err = model.GetPreferredSubscriptionRouteForAggregateToken(userId, modelName)
+	}
+	if err != nil {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeModelNotFound, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	if decision != nil && strings.TrimSpace(decision.ExhaustedMessage) != "" {
+		return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %s", decision.ExhaustedMessage), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	if decision == nil || decision.UserSubscriptionId <= 0 || decision.SpecificChannelId <= 0 {
+		return nil
+	}
+	common.SetContextKey(c, constant.ContextKeyPreferredSubscriptionId, decision.UserSubscriptionId)
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(decision.SpecificChannelId))
+	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, decision.SpecificChannelKeyIndex)
+	if decision.RouteGroup != "" {
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, decision.RouteGroup)
+		common.SetContextKey(c, constant.ContextKeyTokenGroup, decision.RouteGroup)
+	}
+	return nil
+}
+
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
-		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if shouldSelectChannel && modelRequest.Model != "" {
+			if err := applyAggregateSubscriptionRoute(c, modelRequest.Model); err != nil {
+				statusCode := err.StatusCode
+				if statusCode <= 0 {
+					statusCode = http.StatusServiceUnavailable
+				}
+				abortWithOpenAiMessage(c, statusCode, err.Error(), err.GetErrorCode())
+				return
+			}
+		}
+		if shouldSelectChannel && modelRequest.Model != "" && !validateRequestedModelAccess(c, modelRequest.Model) {
+			return
+		}
+		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {
@@ -47,33 +137,12 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
 				return
 			}
-			if channel.Status != common.ChannelStatusEnabled {
+			if channel.Status != common.ChannelStatusEnabled || channel.ReachedUsageLimit() {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}
 		} else {
 			// Select a channel for the user
-			// check token model mapping
-			modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
-			if modelLimitEnable {
-				s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
-				if !ok {
-					// token model limit is empty, all models are not allowed
-					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
-					return
-				}
-				var tokenModelLimit map[string]bool
-				tokenModelLimit, ok = s.(map[string]bool)
-				if !ok {
-					tokenModelLimit = map[string]bool{}
-				}
-				matchName := ratio_setting.FormatMatchingModelName(modelRequest.Model) // match gpts & thinking-*
-				if _, ok := tokenModelLimit[matchName]; !ok {
-					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
-					return
-				}
-			}
-
 			if shouldSelectChannel {
 				if modelRequest.Model == "" {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
@@ -90,7 +159,10 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
+						userId := c.GetInt("id")
+						userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+						userQuota := common.GetContextKeyInt(c, constant.ContextKeyUserQuota)
+						if !service.GroupInUserUsableGroupsForUser(userId, userGroup, userQuota > 0, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}
@@ -108,8 +180,10 @@ func Distribute() func(c *gin.Context) {
 								return
 							}
 						} else if usingGroup == "auto" {
+							userId := c.GetInt("id")
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-							autoGroups := service.GetUserAutoGroup(userGroup)
+							userQuota := common.GetContextKeyInt(c, constant.ContextKeyUserQuota)
+							autoGroups := service.GetUserAutoGroupForUser(userId, userGroup, userQuota > 0)
 							for _, g := range autoGroups {
 								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
@@ -156,7 +230,10 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
+		if setupErr := SetupContextForSelectedChannel(c, channel, modelRequest.Model); setupErr != nil {
+			abortWithOpenAiMessage(c, http.StatusServiceUnavailable, setupErr.Error())
+			return
+		}
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)
@@ -367,7 +444,16 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
+	forcedIndex := getForcedChannelKeyIndex(c)
+	var key string
+	var index int
+	var newAPIError *types.NewAPIError
+	if forcedIndex >= 0 {
+		key, newAPIError = channel.GetSpecificKey(forcedIndex)
+		index = forcedIndex
+	} else {
+		key, index, newAPIError = channel.GetNextEnabledKey()
+	}
 	if newAPIError != nil {
 		return newAPIError
 	}

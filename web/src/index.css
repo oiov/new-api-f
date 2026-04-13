@@ -44,6 +44,7 @@ body {
 .app-sider {
   height: calc(100vh - 64px);
   height: calc(100dvh - 64px);
+  overflow: hidden;
 }
 
 code {
@@ -123,6 +124,7 @@ code {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
   transition: width 0.3s ease;
   background: var(--semi-color-bg-0);
 }
@@ -132,17 +134,34 @@ code {
   width: 100%;
   background: var(--semi-color-bg-0);
   height: 100%;
+  max-height: 100%;
   overflow-x: hidden;
   border-right: none;
   overflow-y: auto;
   min-height: 0;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  padding-bottom: 12px;
 }
 
 .sidebar-nav::-webkit-scrollbar {
-  display: none;
+  width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+
+.sidebar-container:hover .sidebar-nav,
+.sidebar-nav:hover {
+  scrollbar-color: rgba(15, 23, 42, 0.18) transparent;
+}
+
+.sidebar-container:hover .sidebar-nav::-webkit-scrollbar-thumb,
+.sidebar-nav:hover::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.18);
 }
 
 /* 侧边栏导航项样式 */
@@ -365,7 +384,9 @@ code {
   line-height: 1;
   background-color: var(--semi-color-fill-0);
   color: var(--semi-color-text-2);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .sbg-badge-active {
@@ -445,21 +466,56 @@ html.dark .sbg-variant-green {
   --semi-color-primary-light-active: rgba(52, 211, 153, 0.3);
 }
 
-
 .package-page-shell {
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--semi-color-bg-1) 88%, #ffffff 12%) 0%,
     var(--semi-color-bg-0) 100%
   );
+  position: relative;
+  overflow: hidden;
 }
 
 .package-page-shell .semi-card-body {
   padding: 18px !important;
 }
 
+.package-page-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(
+    circle,
+    rgba(14, 165, 233, 0.14) 0%,
+    rgba(14, 165, 233, 0) 72%
+  );
+  pointer-events: none;
+}
+
+.package-page-shell::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 auto;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(
+    circle,
+    rgba(249, 115, 22, 0.12) 0%,
+    rgba(249, 115, 22, 0) 75%
+  );
+  pointer-events: none;
+}
+
+.package-page-shell > .semi-card-body {
+  position: relative;
+  z-index: 1;
+}
+
 .package-usage-card {
-  border: 1px solid color-mix(in srgb, var(--semi-color-border) 78%, transparent 22%);
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 78%, transparent 22%);
   background: linear-gradient(
     165deg,
     color-mix(in srgb, var(--semi-color-bg-0) 92%, #ffffff 8%) 0%,
@@ -470,9 +526,24 @@ html.dark .sbg-variant-green {
 .package-usage-card-header {
   background: linear-gradient(
     110deg,
-    color-mix(in srgb, var(--semi-color-primary-light-default) 80%, transparent 20%) 0%,
-    color-mix(in srgb, var(--semi-color-primary-light-hover) 70%, transparent 30%) 50%,
-    color-mix(in srgb, var(--semi-color-primary-light-active) 60%, transparent 40%) 100%
+    color-mix(
+        in srgb,
+        var(--semi-color-primary-light-default) 80%,
+        transparent 20%
+      )
+      0%,
+    color-mix(
+        in srgb,
+        var(--semi-color-primary-light-hover) 70%,
+        transparent 30%
+      )
+      50%,
+    color-mix(
+        in srgb,
+        var(--semi-color-primary-light-active) 60%,
+        transparent 40%
+      )
+      100%
   );
 }
 
@@ -483,8 +554,601 @@ html.dark .sbg-variant-green {
 .package-usage-metric-card:hover {
   transform: translateY(-2px);
   box-shadow:
-    0 10px 20px color-mix(in srgb, var(--semi-color-shadow) 10%, transparent 90%),
+    0 10px 20px
+      color-mix(in srgb, var(--semi-color-shadow) 10%, transparent 90%),
     inset 0 1px 0 color-mix(in srgb, #ffffff 72%, transparent 28%);
+}
+
+.package-page-shell .semi-tabs-bar {
+  padding: 6px;
+  margin-bottom: 18px;
+  border-radius: 22px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--semi-color-fill-0) 82%, #ffffff 18%) 0%,
+    color-mix(in srgb, var(--semi-color-bg-1) 85%, #ffffff 15%) 100%
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 68%, transparent 32%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.package-page-shell .semi-tabs-tab {
+  min-height: 42px;
+  border-radius: 16px !important;
+  font-weight: 600;
+}
+
+.package-page-shell .semi-tabs-tab-active {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(248, 250, 252, 0.96) 100%
+  ) !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.package-page-shell .semi-collapse {
+  border-radius: 20px;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 78%, transparent 22%);
+  overflow: hidden;
+}
+
+.package-page-shell .semi-collapse-item {
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--semi-color-border) 78%,
+    transparent 22%
+  );
+}
+
+.package-page-shell .semi-collapse-header {
+  background: color-mix(in srgb, var(--semi-color-fill-0) 74%, #ffffff 26%);
+}
+
+.package-page-shell .semi-table-wrapper {
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 75%, transparent 25%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.subscription-plan-selling-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.subscription-plan-selling-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 2px 0 6px;
+  border: 0;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 66%, transparent 34%);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.subscription-plan-selling-toolbar__tabs {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+.subscription-plan-selling-toolbar__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.subscription-plan-selling-toolbar__switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 70%, transparent 30%);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 98%, #ffffff 2%);
+  box-shadow: none;
+}
+
+.subscription-plan-selling-toolbar__sort {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 2px 0 8px;
+  border-radius: 999px;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 70%, transparent 30%);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 98%, #ffffff 2%);
+  box-shadow: none;
+}
+
+.subscription-plan-selling-content {
+  padding: 14px 0 0;
+  border-radius: 0;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 0%, transparent 100%);
+  background: transparent;
+}
+
+.subscription-plan-selling-card {
+  border-radius: 20px !important;
+  border: 1px solid var(--semi-color-border) !important;
+  overflow: hidden;
+  background: var(--semi-color-bg-0) !important;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06) !important;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+
+.subscription-plan-selling-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.12) !important;
+  border-color: var(--semi-color-primary-light-hover) !important;
+}
+
+.subscription-plan-selling-card__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  padding: 0;
+}
+
+.subscription-plan-selling-card__top {
+  padding: 20px 20px 18px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--semi-color-primary-light-default) 28%, var(--semi-color-bg-0) 72%) 0%,
+    var(--semi-color-bg-0) 100%
+  );
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.subscription-plan-selling-card__summary {
+  display: flex;
+  flex-direction: column;
+  min-height: 104px;
+}
+
+.subscription-plan-selling-card__title-row {
+  align-items: flex-start;
+  min-height: 28px;
+}
+
+.subscription-plan-selling-card__title {
+  line-height: 1.45;
+}
+
+.subscription-plan-selling-card__subtitle {
+  min-height: 48px;
+}
+
+.subscription-plan-selling-card__hint {
+  min-height: 20px;
+}
+
+.subscription-plan-selling-card__hint-spacer {
+  display: block;
+  min-height: 20px;
+}
+
+.subscription-plan-selling-card__price {
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  color: var(--semi-color-text-0);
+}
+
+.subscription-plan-selling-card__duration {
+  margin-left: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-plan-selling-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 16px;
+}
+
+.subscription-plan-selling-card__metric {
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 70%, transparent 30%);
+  background: var(--semi-color-fill-0);
+}
+
+.subscription-plan-selling-card__metric-label {
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.subscription-plan-selling-card__metric-value {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--semi-color-text-0);
+}
+
+.subscription-plan-selling-card__bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.subscription-plan-selling-card__restriction-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.subscription-plan-selling-card__restriction-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-plan-selling-card__tag-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.subscription-plan-selling-card__tag-group .pricing-clickable-tag,
+.pricing-plan-detail-restrictions-descriptions .pricing-clickable-tag {
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.subscription-plan-selling-card__tag-group .pricing-clickable-tag:hover,
+.pricing-plan-detail-restrictions-descriptions .pricing-clickable-tag:hover {
+  transform: translateY(-1px);
+}
+
+.subscription-purchase-modal .semi-modal-content {
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+  box-shadow: 0 28px 64px rgba(15, 23, 42, 0.18);
+}
+
+.subscription-purchase-modal {
+  width: min(420px, calc(100vw - 24px));
+}
+
+.subscription-purchase-modal .semi-modal-header {
+  padding: 14px 16px 10px;
+  border-bottom: none;
+}
+
+.subscription-purchase-modal .semi-modal-body {
+  padding: 0 16px 16px;
+  max-height: min(78vh, 760px);
+  overflow-y: auto;
+}
+
+.subscription-purchase-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.subscription-purchase-modal__hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+  background: radial-gradient(
+      circle at top left,
+      rgba(14, 165, 233, 0.12) 0%,
+      rgba(14, 165, 233, 0) 38%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.96) 0%,
+      rgba(248, 250, 252, 0.98) 100%
+    );
+}
+
+.subscription-purchase-modal__hero-main {
+  min-width: 180px;
+  flex: 1 1 180px;
+}
+
+.subscription-purchase-modal__eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.subscription-purchase-modal__title {
+  display: block;
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--semi-color-text-0);
+  letter-spacing: -0.03em;
+}
+
+.subscription-purchase-modal__subtitle {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.subscription-purchase-modal__price-box {
+  min-width: 160px;
+  max-width: 100%;
+  flex: 0 1 220px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  text-align: right;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+@media (max-width: 640px) {
+  .subscription-purchase-modal__hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .subscription-purchase-modal__hero-main {
+    min-width: 0;
+    flex-basis: auto;
+  }
+
+  .subscription-purchase-modal__title {
+    font-size: 18px;
+    line-height: 1.2;
+  }
+
+  .subscription-purchase-modal__price-box {
+    min-width: 0;
+    width: 100%;
+    text-align: left;
+  }
+
+  .subscription-purchase-modal__price-current {
+    font-size: 28px;
+  }
+}
+
+.subscription-purchase-modal__price-original {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.subscription-purchase-modal__price-current {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  color: #2563eb;
+}
+
+.subscription-purchase-modal__price-current span {
+  margin-right: 2px;
+  font-size: 15px;
+}
+
+.subscription-purchase-modal__price-duration {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-purchase-modal__collapse .semi-collapse-item {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 96%, #ffffff 4%);
+}
+
+.subscription-purchase-modal__collapse .semi-collapse-header {
+  padding: 12px 14px;
+}
+
+.subscription-purchase-modal__collapse .semi-collapse-content {
+  padding: 0;
+}
+
+.subscription-purchase-modal__summary {
+  padding: 14px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+}
+
+.subscription-purchase-modal__summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.subscription-purchase-modal__summary-card {
+  padding: 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--semi-color-bg-0) 92%, #ffffff 8%);
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+}
+
+.subscription-purchase-modal__summary-label {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-purchase-modal__summary-value {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--semi-color-text-0);
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.subscription-purchase-modal__meta {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.subscription-purchase-modal__meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--semi-color-text-1);
+}
+
+.subscription-purchase-modal__meta-row strong {
+  color: var(--semi-color-text-0);
+  font-weight: 700;
+  text-align: right;
+}
+
+.subscription-purchase-modal__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.subscription-purchase-modal__notice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.subscription-purchase-modal__payment {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 94%, #ffffff 6%);
+}
+
+.subscription-purchase-modal__section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.subscription-purchase-modal__payment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.subscription-purchase-modal__payment-button {
+  min-height: 38px;
+  border-radius: 12px;
+}
+
+.subscription-purchase-modal__epay-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.subscription-purchase-modal__epay-select .semi-select {
+  border-radius: 14px;
+}
+
+.subscription-purchase-modal__epay-submit {
+  border-radius: 12px;
+  min-height: 38px;
+}
+
+@media (max-width: 640px) {
+  .subscription-purchase-modal__summary-grid,
+  .subscription-purchase-modal__payment-grid,
+  .subscription-purchase-modal__epay-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .subscription-purchase-modal__meta-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .subscription-purchase-modal__meta-row strong {
+    text-align: left;
+  }
+}
+
+.subscription-plan-selling-card__restriction-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.subscription-plan-selling-card__restriction-label {
+  padding-top: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-plan-selling-card__restriction-empty {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-plan-selling-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 html.dark .package-page-shell {
@@ -496,12 +1160,163 @@ html.dark .package-page-shell {
 }
 
 html.dark .package-usage-card {
-  border-color: color-mix(in srgb, var(--semi-color-border) 45%, transparent 55%);
-  background: linear-gradient(160deg, rgba(30, 41, 59, 0.78) 0%, rgba(15, 23, 42, 0.75) 100%);
+  border-color: color-mix(
+    in srgb,
+    var(--semi-color-border) 45%,
+    transparent 55%
+  );
+  background: linear-gradient(
+    160deg,
+    rgba(30, 41, 59, 0.78) 0%,
+    rgba(15, 23, 42, 0.75) 100%
+  );
 }
 
 html.dark .package-usage-card-header {
-  background: linear-gradient(110deg, rgba(59, 130, 246, 0.2) 0%, rgba(99, 102, 241, 0.16) 52%, rgba(147, 51, 234, 0.14) 100%);
+  background: linear-gradient(
+    110deg,
+    rgba(59, 130, 246, 0.2) 0%,
+    rgba(99, 102, 241, 0.16) 52%,
+    rgba(147, 51, 234, 0.14) 100%
+  );
+}
+
+html.dark .package-page-shell .semi-tabs-bar {
+  background: linear-gradient(
+    135deg,
+    rgba(30, 41, 59, 0.84) 0%,
+    rgba(15, 23, 42, 0.9) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html.dark .package-page-shell .semi-tabs-tab-active {
+  background: linear-gradient(
+    135deg,
+    rgba(51, 65, 85, 0.92) 0%,
+    rgba(30, 41, 59, 0.92) 100%
+  ) !important;
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.35);
+}
+
+html.dark .package-page-shell .semi-collapse,
+html.dark .package-page-shell .semi-table-wrapper {
+  border-color: color-mix(
+    in srgb,
+    var(--semi-color-border) 44%,
+    transparent 56%
+  );
+}
+
+html.dark .subscription-plan-selling-card {
+  background: rgba(15, 23, 42, 0.98) !important;
+  border-color: color-mix(in srgb, var(--semi-color-border) 55%, transparent 45%) !important;
+}
+
+html.dark .subscription-plan-selling-card:hover {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35) !important;
+}
+
+html.dark .subscription-plan-selling-card__top {
+  background: linear-gradient(
+    145deg,
+    rgba(37, 99, 235, 0.14) 0%,
+    rgba(30, 41, 59, 0.55) 100%
+  );
+  border-bottom-color: color-mix(in srgb, var(--semi-color-border) 50%, transparent 50%);
+}
+
+html.dark .subscription-plan-selling-card__metric {
+  border-color: color-mix(
+    in srgb,
+    var(--semi-color-border) 44%,
+    transparent 56%
+  );
+  background: rgba(30, 41, 59, 0.72);
+}
+
+html.dark .pricing-plan-detail-restrictions-descriptions {
+  border-color: color-mix(in srgb, var(--semi-color-border) 44%, transparent 56%);
+  background: rgba(15, 23, 42, 0.62);
+}
+
+html.dark .pricing-plan-detail-restrictions-descriptions .semi-descriptions-item {
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--semi-color-border) 44%,
+    transparent 56%
+  );
+}
+
+html.dark .subscription-purchase-modal .semi-modal-content {
+  box-shadow: 0 28px 64px rgba(2, 6, 23, 0.45);
+}
+
+html.dark .subscription-purchase-modal__hero,
+html.dark .subscription-purchase-modal__summary,
+html.dark .subscription-purchase-modal__payment,
+html.dark .subscription-purchase-modal__summary-card,
+html.dark .subscription-purchase-modal__price-box {
+  border-color: color-mix(in srgb, var(--semi-color-border) 44%, transparent 56%);
+}
+
+html.dark .subscription-purchase-modal__hero {
+  background: radial-gradient(
+      circle at top left,
+      rgba(37, 99, 235, 0.18) 0%,
+      rgba(37, 99, 235, 0) 38%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(30, 41, 59, 0.92) 0%,
+      rgba(15, 23, 42, 0.92) 100%
+    );
+}
+
+html.dark .subscription-purchase-modal__summary,
+html.dark .subscription-purchase-modal__payment,
+html.dark .subscription-purchase-modal__summary-card,
+html.dark .subscription-purchase-modal__price-box {
+  background: rgba(15, 23, 42, 0.82);
+}
+
+html.dark .pricing-landing-tabbar {
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--semi-color-border) 50%,
+    transparent 50%
+  );
+}
+
+html.dark .subscription-pricing-hero {
+  border-color: color-mix(in srgb, var(--semi-color-border) 44%, transparent 56%);
+  box-shadow: 0 24px 56px rgba(2, 6, 23, 0.34);
+}
+
+html.dark .subscription-pricing-hero__points span,
+html.dark .subscription-pricing-stat-card,
+html.dark .subscription-pricing-feature-card {
+  border-color: color-mix(in srgb, var(--semi-color-border) 44%, transparent 56%);
+  background: rgba(15, 23, 42, 0.76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+html.dark .subscription-pricing-stat-card-primary {
+  background: linear-gradient(
+    135deg,
+    rgba(14, 165, 233, 0.2) 0%,
+    rgba(37, 99, 235, 0.16) 48%,
+    rgba(15, 23, 42, 0.82) 100%
+  );
+}
+
+html.dark .subscription-pricing-feature-card__icon {
+  color: #93c5fd;
+  background: linear-gradient(
+    135deg,
+    rgba(37, 99, 235, 0.28),
+    rgba(14, 165, 233, 0.18)
+  );
 }
 
 .semi-tabs-content {
@@ -530,6 +1345,10 @@ html.dark .package-usage-card-header {
 
 .topup-page-tabs > .semi-tabs-content .semi-tabs-pane > div {
   height: auto !important;
+}
+
+.topup-page-tabs--single > .semi-tabs-bar {
+  display: none !important;
 }
 
 .topup-recharge-tabs {
@@ -878,6 +1697,186 @@ html:not(.dark) .blur-ball-teal {
   opacity: 0.2;
 }
 
+/* ==================== Home Landing — Animations & Interactions ==================== */
+
+@keyframes hl-fade-up {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes hl-slide-right {
+  from { opacity: 0; transform: translateX(44px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes hl-gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+@keyframes hl-pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.7); }
+  60%       { box-shadow: 0 0 0 7px rgba(16,185,129,0); }
+}
+@keyframes hl-float-indigo {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50%       { transform: translateX(-50%) translateY(-18px); }
+}
+@keyframes hl-float-teal {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-22px); }
+}
+@keyframes hl-surface-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(10px, -12px, 0) scale(1.03); }
+}
+
+/* Blur ball float */
+.blur-ball-indigo { animation: hl-float-indigo 9s ease-in-out infinite; }
+.blur-ball-teal   { animation: hl-float-teal   11s ease-in-out infinite; }
+
+/* Gradient animated title */
+.hl-gradient-text {
+  background: linear-gradient(135deg, #0891b2 0%, #6366f1 45%, #0e7490 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: hl-gradient-shift 5s ease infinite;
+}
+html.dark .hl-gradient-text {
+  background: linear-gradient(135deg, #22d3ee 0%, #818cf8 45%, #06b6d4 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: hl-gradient-shift 5s ease infinite;
+}
+
+/* Live pulse dot */
+.hl-pulse-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  vertical-align: middle;
+  margin-right: 5px;
+  flex-shrink: 0;
+  animation: hl-pulse-dot 1.8s ease-in-out infinite;
+}
+
+/* Scroll reveal */
+.hl-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+.hl-reveal.hl-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Card hover — lift + glow */
+.hl-card-hover {
+  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1),
+              box-shadow 0.25s ease,
+              border-color 0.25s ease;
+}
+.hl-card-hover:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 24px 64px rgba(14,165,233,0.2);
+  border-color: rgba(6,182,212,0.4);
+}
+html.dark .hl-card-hover:hover {
+  box-shadow: 0 24px 64px rgba(14,165,233,0.12);
+  border-color: rgba(6,182,212,0.3);
+}
+
+/* Stat card hover */
+.hl-stat-hover {
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.hl-stat-hover:hover {
+  transform: translateY(-3px) scale(1.03);
+  border-color: rgba(6,182,212,0.35);
+}
+
+/* Trust item hover */
+.hl-trust-hover {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.hl-trust-hover:hover {
+  border-color: rgba(6,182,212,0.35) !important;
+}
+html:not(.dark) .hl-trust-hover:hover {
+  background-color: rgba(6,182,212,0.04) !important;
+}
+html.dark .hl-trust-hover:hover {
+  background-color: rgba(6,182,212,0.06) !important;
+}
+
+/* Chip hover */
+.hl-chip-hover {
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+.hl-chip-hover:hover {
+  transform: scale(1.04);
+}
+html:not(.dark) .hl-chip-hover:hover {
+  background-color: rgba(6,182,212,0.07) !important;
+}
+html.dark .hl-chip-hover:hover {
+  background-color: rgba(6,182,212,0.1) !important;
+}
+
+.hl-spotlight-surface {
+  position: relative;
+  isolation: isolate;
+  --hl-mx: 50%;
+  --hl-my: 50%;
+}
+
+.hl-spotlight-surface::before,
+.hl-spotlight-surface::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hl-spotlight-surface::before {
+  z-index: 0;
+  opacity: 0.7;
+  background:
+    linear-gradient(115deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.42) 22%, rgba(255,255,255,0) 42%),
+    radial-gradient(circle at 18% 24%, rgba(6,182,212,0.09), transparent 22%),
+    radial-gradient(circle at 78% 18%, rgba(99,102,241,0.08), transparent 24%),
+    radial-gradient(circle at 72% 78%, rgba(16,185,129,0.08), transparent 22%);
+  transform-origin: center;
+  animation: hl-surface-drift 14s ease-in-out infinite;
+}
+
+.hl-spotlight-surface::after {
+  z-index: 0;
+  opacity: 0.95;
+  background:
+    radial-gradient(circle at var(--hl-mx) var(--hl-my), rgba(34,211,238,0.18), transparent 0 18%),
+    radial-gradient(circle at calc(var(--hl-mx) + 12%) calc(var(--hl-my) + 8%), rgba(99,102,241,0.10), transparent 0 16%);
+  transition: background-position 0.18s ease, opacity 0.25s ease;
+}
+
+html.dark .hl-spotlight-surface::before {
+  background:
+    linear-gradient(115deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.05) 22%, rgba(255,255,255,0) 42%),
+    radial-gradient(circle at 18% 24%, rgba(34,211,238,0.10), transparent 22%),
+    radial-gradient(circle at 78% 18%, rgba(129,140,248,0.10), transparent 24%),
+    radial-gradient(circle at 72% 78%, rgba(16,185,129,0.10), transparent 22%);
+}
+
+html.dark .hl-spotlight-surface::after {
+  background:
+    radial-gradient(circle at var(--hl-mx) var(--hl-my), rgba(34,211,238,0.11), transparent 0 20%),
+    radial-gradient(circle at calc(var(--hl-mx) + 12%) calc(var(--hl-my) + 8%), rgba(129,140,248,0.10), transparent 0 16%);
+}
+
 /* ==================== 卡片马卡龙模糊球（类封装） ==================== */
 /* 使用方式：给容器加上 with-pastel-balls 类即可，无需在 JSX 中插入额外节点 */
 .with-pastel-balls {
@@ -981,20 +1980,39 @@ html.dark .with-pastel-balls::before {
   height: calc(100vh - 60px);
   overflow: hidden;
   margin-top: 60px;
+  border-radius: 28px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-bg-1) 86%, #ffffff 14%) 0%,
+    var(--semi-color-bg-0) 100%
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
 }
 
 .pricing-sidebar {
-  width: clamp(280px, 24vw, 520px) !important;
-  min-width: clamp(280px, 24vw, 520px) !important;
-  max-width: clamp(280px, 24vw, 520px) !important;
+  width: clamp(260px, 22vw, 480px) !important;
+  min-width: clamp(260px, 22vw, 480px) !important;
+  max-width: clamp(260px, 22vw, 480px) !important;
   height: calc(100vh - 60px);
-  background-color: var(--semi-color-bg-0);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-fill-0) 86%, #ffffff 14%) 0%,
+    var(--semi-color-bg-0) 100%
+  );
+  border-right: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 74%, transparent 26%);
   overflow: auto;
 }
 
 .pricing-content {
   height: calc(100vh - 60px);
-  background-color: var(--semi-color-bg-0);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-bg-0) 94%, #ffffff 6%) 0%,
+    var(--semi-color-bg-0) 100%
+  );
   display: flex;
   flex-direction: column;
 }
@@ -1010,13 +2028,21 @@ html.dark .with-pastel-balls::before {
   overflow: auto;
 }
 
+/* 顶部标题+搜索 sticky 区域 */
 .pricing-search-header {
-  padding: 0.5rem;
-  background-color: var(--semi-color-bg-0);
+  padding: 14px 16px 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-bg-0) 90%, #ffffff 10%) 0%,
+    var(--semi-color-bg-0) 100%
+  );
   flex-shrink: 0;
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 6;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 78%, transparent 22%);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
 }
 
 .pricing-view-container {
@@ -1028,6 +2054,1256 @@ html.dark .with-pastel-balls::before {
   flex: 1;
   overflow: auto;
   min-height: 0;
+}
+
+/* ── 企业级供应商标题区域 ── */
+.pricing-vendor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 14px;
+  gap: 12px;
+  border-radius: 22px;
+  margin: 2px 2px 8px;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 18px 32px rgba(15, 23, 42, 0.05);
+}
+
+.pricing-vendor-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.pricing-vendor-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pricing-vendor-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pricing-vendor-header-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--semi-color-text-0);
+  line-height: 1.3;
+  white-space: nowrap;
+  letter-spacing: -0.45px;
+}
+
+.pricing-vendor-header-desc {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 搜索 + 操作栏 */
+.pricing-search-actions {
+  padding: 10px 2px 14px;
+}
+
+/* ── 分组信息条 ── */
+.pricing-group-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 0 2px 8px;
+  border-radius: 18px;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+  animation: pricing-group-bar-in 0.22s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.pricing-landing-page {
+  position: relative;
+}
+
+.pricing-landing-tabbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 78%, transparent 22%);
+}
+
+.pricing-landing-tabbar__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-1);
+  margin-bottom: -1px;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+  outline: none;
+  white-space: nowrap;
+}
+
+.pricing-landing-tabbar__button:hover {
+  color: var(--semi-color-text-0);
+}
+
+.pricing-landing-tabbar__button-active {
+  color: var(--semi-color-primary);
+  border-bottom-color: var(--semi-color-primary);
+}
+
+.pricing-landing-tabpanel {
+  padding-top: 12px;
+}
+
+.pricing-landing-hero {
+  background: radial-gradient(
+      circle at top left,
+      rgba(14, 165, 233, 0.16) 0%,
+      rgba(14, 165, 233, 0) 34%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      rgba(249, 115, 22, 0.15) 0%,
+      rgba(249, 115, 22, 0) 32%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.94) 0%,
+      rgba(248, 250, 252, 0.98) 48%,
+      rgba(255, 247, 237, 0.95) 100%
+    );
+}
+
+.pricing-landing-hero-glow {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+.pricing-landing-hero-glow-primary {
+  top: 18px;
+  right: 20%;
+  width: 140px;
+  height: 140px;
+  background: rgba(14, 165, 233, 0.14);
+}
+
+.pricing-landing-hero-glow-secondary {
+  right: 26px;
+  bottom: 18px;
+  width: 180px;
+  height: 180px;
+  background: rgba(249, 115, 22, 0.14);
+}
+
+.pricing-landing-tabs > .semi-tabs-bar {
+  margin: 0;
+  padding: 10px;
+  border-bottom: 0 !important;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--semi-color-fill-0) 82%, #ffffff 18%) 0%,
+    color-mix(in srgb, var(--semi-color-bg-1) 84%, #ffffff 16%) 100%
+  );
+}
+
+.pricing-landing-tabs > .semi-tabs-bar .semi-tabs-tab {
+  min-height: 46px;
+  border-radius: 18px !important;
+  font-weight: 700;
+}
+
+.pricing-landing-tabs > .semi-tabs-bar .semi-tabs-tab-active {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.98) 100%
+  ) !important;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+.pricing-landing-tabs > .semi-tabs-content {
+  height: auto !important;
+  padding: 18px !important;
+}
+
+.pricing-landing-tabs > .semi-tabs-content .semi-tabs-pane {
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.pricing-landing-tabs > .semi-tabs-content .semi-tabs-pane > div {
+  height: auto !important;
+}
+
+.pricing-landing-model-panel .pricing-layout {
+  margin-top: 0;
+  height: min(960px, calc(100vh - 180px));
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.pricing-landing-model-panel .pricing-sidebar,
+.pricing-landing-model-panel .pricing-content {
+  height: min(960px, calc(100vh - 180px));
+}
+
+.pricing-landing-model-panel .pricing-sidebar {
+  border-right: 1px solid var(--semi-color-border);
+  background: var(--semi-color-bg-0);
+}
+
+.pricing-landing-model-panel .pricing-content {
+  background: var(--semi-color-bg-0);
+}
+
+.pricing-landing-model-panel .pricing-search-header {
+  background: var(--semi-color-bg-0);
+}
+
+.subscription-pricing-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.subscription-pricing-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 30px;
+  padding: 28px;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, rgba(255, 255, 255, 0.38) 24%);
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.08);
+}
+
+.subscription-pricing-hero__content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.subscription-pricing-hero__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.subscription-pricing-hero__eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.subscription-pricing-hero__title {
+  max-width: 12ch;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.subscription-pricing-hero__desc {
+  display: block;
+  max-width: 720px;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.subscription-pricing-hero__points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.subscription-pricing-hero__points span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 74%, transparent 26%);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 78%, #ffffff 22%);
+  color: var(--semi-color-text-0);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.subscription-pricing-hero__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.subscription-pricing-stat-card {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 88%, #ffffff 12%);
+  box-shadow:
+    0 14px 30px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.subscription-pricing-stat-card-primary {
+  grid-column: span 2;
+  background: linear-gradient(
+    135deg,
+    rgba(14, 165, 233, 0.14) 0%,
+    rgba(59, 130, 246, 0.12) 48%,
+    color-mix(in srgb, var(--semi-color-bg-0) 88%, #ffffff 12%) 100%
+  );
+}
+
+.subscription-pricing-stat-card__label {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-pricing-stat-card__value {
+  margin-top: 8px;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--semi-color-text-0);
+  letter-spacing: -0.05em;
+}
+
+.subscription-pricing-stat-card__sub {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--semi-color-text-1);
+}
+
+.subscription-pricing-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.subscription-pricing-feature-card {
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-bg-0) 94%, #ffffff 6%) 0%,
+    var(--semi-color-bg-0) 100%
+  );
+}
+
+.subscription-pricing-feature-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  color: #2563eb;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.18),
+    rgba(14, 165, 233, 0.12)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 10px 24px rgba(59, 130, 246, 0.12);
+}
+
+.subscription-pricing-feature-card__title {
+  margin-top: 16px;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--semi-color-text-0);
+}
+
+.subscription-pricing-feature-card__desc {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--semi-color-text-1);
+}
+
+.pricing-plan-detail-page {
+  padding-top: 72px;
+}
+
+.pricing-plan-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 316px;
+  gap: 16px;
+  align-items: start;
+}
+
+.pricing-plan-detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pricing-plan-detail-sidebar {
+  position: sticky;
+  top: 84px;
+}
+
+@media (max-width: 1024px) {
+  .pricing-plan-detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pricing-plan-detail-sidebar {
+    position: relative;
+    top: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .pricing-plan-detail-page {
+    padding-top: clamp(88px, 14vw, 120px);
+  }
+}
+
+.pricing-plan-detail-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 20px;
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, rgba(255, 255, 255, 0.4) 24%);
+  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.08);
+}
+
+.pricing-plan-detail-hero__top {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.pricing-plan-detail-hero__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.pricing-plan-detail-hero__eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.pricing-plan-detail-hero__title {
+  line-height: 1.08;
+  font-size: clamp(28px, 3vw, 38px) !important;
+}
+
+.pricing-plan-detail-hero__subtitle {
+  display: block;
+  max-width: 760px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.pricing-plan-detail-hero__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.pricing-plan-detail-summary-card {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+}
+
+.pricing-plan-detail-summary-card__label {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--semi-color-text-2);
+  margin-bottom: 6px;
+}
+
+.pricing-plan-detail-summary-card__value {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--semi-color-text-0);
+  font-weight: 600;
+}
+
+.pricing-plan-detail-hero__badge {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 96px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(248, 250, 252, 0.84) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 16px 30px rgba(15, 23, 42, 0.08);
+}
+
+.pricing-plan-detail-hero__badge-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f766e;
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.18),
+    rgba(14, 165, 233, 0.12)
+  );
+}
+
+.pricing-plan-detail-hero__badge-label {
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--semi-color-text-1);
+  font-weight: 700;
+}
+
+.pricing-plan-detail-stats {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.pricing-plan-detail-stat {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--semi-color-bg-0) 88%, #ffffff 12%);
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 64%, transparent 36%);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
+}
+
+.pricing-plan-detail-stat__label {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--semi-color-text-2);
+}
+
+.pricing-plan-detail-stat__value {
+  margin-top: 6px;
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--semi-color-text-0);
+  word-break: break-word;
+}
+
+.pricing-plan-detail-stat__sub {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--semi-color-text-1);
+}
+
+.pricing-plan-detail-section {
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-bg-0) 92%, #ffffff 8%) 0%,
+    var(--semi-color-bg-0) 100%
+  );
+}
+
+.pricing-plan-detail-section__header {
+  margin-bottom: 14px;
+}
+
+.pricing-plan-detail-highlights {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.pricing-plan-detail-highlight {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 18px;
+  min-width: 0;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--semi-color-fill-0) 72%, #ffffff 28%);
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
+}
+
+.pricing-plan-detail-highlight__icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #0284c7;
+  background: rgba(14, 165, 233, 0.12);
+}
+
+.pricing-plan-detail-highlight__title {
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 700;
+  color: var(--semi-color-text-0);
+}
+
+.pricing-plan-detail-highlight__desc {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--semi-color-text-1);
+}
+
+.pricing-plan-detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pricing-plan-detail-metric {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--semi-color-fill-0) 56%, #ffffff 44%);
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
+  min-width: 0;
+}
+
+.pricing-plan-detail-metric__label {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--semi-color-text-2);
+  margin-bottom: 6px;
+}
+
+.pricing-plan-detail-metric__value {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--semi-color-text-0);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.pricing-plan-detail-restrictions-descriptions {
+  border: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+  border-radius: 18px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--semi-color-fill-0) 52%, #ffffff 48%);
+}
+
+.pricing-plan-detail-restrictions-descriptions .semi-descriptions-item {
+  padding: 14px 16px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+}
+
+.pricing-plan-detail-restrictions-descriptions
+  .semi-descriptions-item:last-child {
+  border-bottom: none;
+}
+
+.pricing-plan-detail-restrictions-descriptions .semi-descriptions-item-key {
+  width: 120px;
+  font-size: 12px;
+  color: var(--semi-color-text-1);
+  font-weight: 600;
+}
+
+.pricing-plan-detail-restrictions-descriptions .semi-descriptions-item-value {
+  font-size: 13px;
+  color: var(--semi-color-text-0);
+}
+
+.pricing-plan-detail-restrictions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pricing-plan-detail-restrictions__row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding: 18px 0;
+  border-top: 1px solid color-mix(in srgb, var(--semi-color-border) 68%, transparent 32%);
+}
+
+.pricing-plan-detail-restrictions__row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.pricing-plan-detail-restrictions__label {
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 700;
+  color: var(--semi-color-text-1);
+}
+
+.pricing-plan-detail-restrictions__content {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  line-height: 1.7;
+}
+
+.pricing-plan-detail-empty-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 12px;
+  color: #0f766e;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.16);
+}
+
+.pricing-plan-detail-buy-card {
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 76%, transparent 24%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-bg-0) 90%, #ffffff 10%) 0%,
+    color-mix(in srgb, var(--semi-color-bg-1) 92%, #ffffff 8%) 100%
+  );
+}
+
+.pricing-plan-detail-buy-card__header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.pricing-plan-detail-buy-card__price {
+  flex: 0 0 auto;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--semi-color-text-0);
+  letter-spacing: -0.03em;
+}
+
+.pricing-plan-detail-buy-card__price span {
+  margin-right: 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--semi-color-text-2);
+}
+
+.pricing-plan-detail-buy-card__price-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pricing-plan-detail-buy-card__checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 14px;
+}
+
+.pricing-plan-detail-buy-card__checklist-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--semi-color-text-1);
+}
+
+.pricing-plan-detail-buy-card__checklist-item svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #0284c7;
+}
+
+.pricing-plan-detail-buy-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0 14px;
+}
+
+.pricing-plan-detail-buy-card__meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--semi-color-text-1);
+}
+
+.pricing-plan-detail-buy-card__meta-row strong {
+  color: var(--semi-color-text-0);
+  font-weight: 700;
+  text-align: right;
+}
+
+.pricing-plan-detail-buy-card .semi-button + .semi-button {
+  margin-top: 10px;
+}
+
+.pricing-plan-detail-buy-card__footnote {
+  margin-top: 12px;
+}
+
+html.dark .pricing-layout {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96) 0%,
+    rgba(17, 24, 39, 0.98) 100%
+  );
+  border-color: rgba(71, 85, 105, 0.45);
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.36);
+}
+
+html.dark .pricing-sidebar {
+  background: linear-gradient(
+    180deg,
+    rgba(30, 41, 59, 0.94) 0%,
+    rgba(15, 23, 42, 0.96) 100%
+  );
+}
+
+html.dark .pricing-content,
+html.dark .pricing-search-header {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96) 0%,
+    rgba(17, 24, 39, 0.98) 100%
+  );
+}
+
+html.dark .pricing-vendor-header,
+html.dark .pricing-group-info-bar {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 18px 36px rgba(2, 6, 23, 0.24);
+}
+
+html.dark .pricing-landing-hero {
+  background: radial-gradient(
+      circle at top left,
+      rgba(14, 165, 233, 0.18) 0%,
+      rgba(14, 165, 233, 0) 34%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      rgba(249, 115, 22, 0.16) 0%,
+      rgba(249, 115, 22, 0) 32%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(15, 23, 42, 0.96) 0%,
+      rgba(17, 24, 39, 0.98) 48%,
+      rgba(41, 37, 36, 0.96) 100%
+    );
+}
+
+html.dark .pricing-landing-tabs > .semi-tabs-bar {
+  background: linear-gradient(
+    135deg,
+    rgba(30, 41, 59, 0.86) 0%,
+    rgba(15, 23, 42, 0.9) 100%
+  );
+}
+
+html.dark .pricing-landing-tabs > .semi-tabs-bar .semi-tabs-tab-active {
+  background: linear-gradient(
+    135deg,
+    rgba(51, 65, 85, 0.95) 0%,
+    rgba(30, 41, 59, 0.95) 100%
+  ) !important;
+  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.34);
+}
+
+html.dark .pricing-plan-detail-hero {
+  border-color: rgba(71, 85, 105, 0.42);
+  box-shadow: 0 24px 56px rgba(2, 6, 23, 0.28);
+}
+
+html.dark .pricing-plan-detail-summary-card,
+html.dark .pricing-plan-detail-hero__badge {
+  background: rgba(15, 23, 42, 0.56);
+  border-color: rgba(148, 163, 184, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html.dark .pricing-plan-detail-stat,
+html.dark .pricing-plan-detail-section,
+html.dark .pricing-plan-detail-highlight,
+html.dark .pricing-plan-detail-metric,
+html.dark .pricing-plan-detail-buy-card {
+  background: rgba(15, 23, 42, 0.84);
+  border-color: rgba(71, 85, 105, 0.45);
+  box-shadow: 0 18px 34px rgba(2, 6, 23, 0.2);
+}
+
+html.dark .pricing-plan-detail-empty-note {
+  color: #86efac;
+  background: rgba(22, 101, 52, 0.18);
+  border-color: rgba(74, 222, 128, 0.18);
+}
+
+@media (max-width: 767px) {
+  .pricing-layout,
+  .pricing-sidebar,
+  .pricing-content {
+    height: auto;
+  }
+
+  .pricing-layout {
+    margin-top: 0;
+    border-radius: 22px;
+  }
+
+  .pricing-search-header {
+    padding: 12px 12px 0;
+  }
+
+  .pricing-vendor-header {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .pricing-landing-tabs > .semi-tabs-content {
+    padding: 14px !important;
+  }
+
+  .pricing-landing-tabbar {
+    overflow-x: auto;
+    padding-top: 12px;
+  }
+
+  .pricing-landing-tabbar__button {
+    flex-shrink: 0;
+  }
+
+  .pricing-landing-model-panel .pricing-layout,
+  .pricing-landing-model-panel .pricing-sidebar,
+  .pricing-landing-model-panel .pricing-content {
+    height: auto;
+  }
+
+  .pricing-plan-detail-page {
+    padding-top: clamp(88px, 14vw, 120px);
+  }
+
+  .pricing-plan-detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .pricing-plan-detail-sidebar {
+    position: static;
+  }
+
+  .pricing-plan-detail-hero,
+  .pricing-plan-detail-section {
+    border-radius: 22px;
+  }
+
+  .pricing-plan-detail-hero {
+    padding: 20px;
+  }
+
+  .pricing-plan-detail-hero__top {
+    flex-direction: column;
+  }
+
+  .pricing-plan-detail-hero__summary,
+  .pricing-plan-detail-stats,
+  .pricing-plan-detail-highlights,
+  .pricing-plan-detail-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pricing-plan-detail-hero__badge {
+    width: 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+  }
+
+  .pricing-plan-detail-stat__value {
+    font-size: 21px;
+  }
+
+  .pricing-plan-detail-restrictions__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .pricing-plan-detail-buy-card__header {
+    flex-direction: column;
+  }
+
+  .subscription-pricing-page {
+    gap: 16px;
+  }
+
+  .subscription-pricing-hero {
+    border-radius: 24px;
+    padding: 20px;
+  }
+
+  .subscription-pricing-hero__content,
+  .subscription-pricing-feature-grid,
+  .subscription-pricing-hero__stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .subscription-pricing-stat-card-primary {
+    grid-column: auto;
+  }
+
+  .subscription-pricing-stat-card__value {
+    font-size: 26px;
+  }
+
+  .subscription-purchase-modal .semi-modal-body {
+    padding: 0 14px 14px;
+  }
+
+  .subscription-purchase-modal__hero,
+  .subscription-purchase-modal__section-head {
+    flex-direction: column;
+  }
+
+  .subscription-purchase-modal__price-box {
+    width: 100%;
+    text-align: left;
+  }
+
+  .subscription-purchase-modal__summary-grid,
+  .subscription-purchase-modal__payment-grid,
+  .subscription-purchase-modal__epay-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .subscription-plan-selling-card__restriction-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .subscription-plan-selling-card__restriction-label {
+    padding-top: 0;
+  }
+
+  .subscription-plan-selling-card__inner,
+  .subscription-plan-selling-card__top {
+    padding: 16px;
+  }
+
+  .subscription-plan-selling-card__price {
+    font-size: 28px;
+  }
+
+  .subscription-plan-selling-card__metrics {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+
+  .subscription-plan-selling-pagination {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .subscription-plan-selling-toolbar {
+    align-items: stretch;
+  }
+
+  .subscription-plan-selling-toolbar__controls {
+    justify-content: space-between;
+  }
+}
+
+@keyframes pricing-group-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── 卡片网格 ── */
+.pricing-card-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .pricing-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .subscription-plan-selling-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .pricing-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .subscription-plan-selling-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1536px) {
+  .pricing-card-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+}
+
+/* 单张模型卡片 */
+.pricing-model-card {
+  --card-accent: var(--semi-color-primary);
+  --card-bg-tint: var(--semi-color-bg-0);
+  border-radius: 18px !important;
+  /* top border 用 CSS 变量，允许每张卡片 override */
+  border-top: 3px solid var(--card-accent) !important;
+  border-right: 1px solid var(--semi-color-border) !important;
+  border-bottom: 1px solid var(--semi-color-border) !important;
+  border-left: 1px solid var(--semi-color-border) !important;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-accent) 5%, var(--semi-color-bg-0) 95%) 0%,
+    var(--semi-color-bg-0) 100%
+  ) !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06) !important;
+  cursor: pointer;
+  transition:
+    transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.18s ease !important;
+  overflow: hidden;
+}
+
+.pricing-model-card:hover {
+  box-shadow: 0 10px 32px color-mix(in srgb, var(--card-accent) 20%, rgba(15,23,42,0.08) 80%) !important;
+  border-top-color: color-mix(in srgb, var(--card-accent) 85%, transparent 15%) !important;
+  transform: translateY(-4px);
+}
+
+html.dark .pricing-model-card {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-accent) 8%, var(--semi-color-bg-1) 92%) 0%,
+    var(--semi-color-bg-1) 100%
+  ) !important;
+  border-right-color: color-mix(in srgb, var(--semi-color-border) 55%, transparent 45%) !important;
+  border-bottom-color: color-mix(in srgb, var(--semi-color-border) 55%, transparent 45%) !important;
+  border-left-color: color-mix(in srgb, var(--semi-color-border) 55%, transparent 45%) !important;
+}
+
+html.dark .pricing-model-card:hover {
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38) !important;
+}
+
+.pricing-model-card--selected {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-accent) 10%, var(--semi-color-bg-0) 90%) 0%,
+    var(--semi-color-bg-0) 100%
+  ) !important;
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--card-accent) 28%, transparent 72%) !important;
+}
+
+html.dark .pricing-model-card--selected {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card-accent) 14%, var(--semi-color-bg-1) 86%) 0%,
+    var(--semi-color-bg-1) 100%
+  ) !important;
+}
+
+/* 价格行 */
+.pricing-price-label {
+  color: var(--semi-color-text-3);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.pricing-price-suffix {
+  font-weight: 400;
+  color: var(--semi-color-text-3);
+  font-size: 10px;
 }
 
 /* ==================== semi-ui 组件自定义样式 ==================== */

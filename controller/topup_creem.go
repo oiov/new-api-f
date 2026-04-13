@@ -8,13 +8,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	"io"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/thanhpk/randstr"
@@ -302,7 +305,10 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 	// Try complete subscription order first
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
-	if err := model.CompleteSubscriptionOrder(referenceId, common.GetJsonString(event)); err == nil {
+	if completedNow, err := model.CompleteSubscriptionOrderWithResult(referenceId, common.GetJsonString(event)); err == nil {
+		if completedNow {
+			notifySubscriptionPaymentSuccessAsync(referenceId)
+		}
 		c.Status(http.StatusOK)
 		return
 	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
@@ -352,11 +358,27 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 		log.Printf("警告：Creem回调中客户姓名为空 - 订单号: %s", referenceId)
 	}
 
-	err := model.RechargeCreem(referenceId, customerEmail, customerName)
+	completed, err := model.RechargeCreem(referenceId, customerEmail, customerName)
 	if err != nil {
 		log.Printf("Creem充值处理失败: %s, 订单号: %s", err.Error(), referenceId)
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
+	}
+	if completed {
+		service.NotifyPaymentSuccessAsync(service.PaymentSuccessNotification{
+			Category:      "充值",
+			TradeNo:       topUp.TradeNo,
+			UserID:        topUp.UserId,
+			PaymentMethod: topUp.PaymentMethod,
+			Money:         topUp.Money,
+			Quota:         logger.FormatQuota(int(topUp.Amount)),
+		})
+		model.NotifyTopUpSuccessToUserAsync(
+			topUp.UserId,
+			topUp.PaymentMethod,
+			topUp.Money,
+			logger.FormatQuota(int(topUp.Amount)),
+		)
 	}
 
 	log.Printf("Creem充值成功 - 订单号: %s, 充值额度: %d, 支付金额: %.2f",

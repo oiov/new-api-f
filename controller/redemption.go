@@ -125,8 +125,12 @@ func GetAllRedemptions(c *gin.Context) {
 func GetUserRedemptionHistory(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	keyword := c.Query("keyword")
-	items, total, err := model.GetRedemptionHistory(userId, keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	items, total, err := model.GetRedemptionHistoryWithFilters(userId, model.RedemptionHistoryFilters{
+		Keyword:        c.Query("keyword"),
+		RedemptionType: c.Query("redemption_type"),
+		StartTimestamp: parseQueryInt64(c.Query("start_timestamp")),
+		EndTimestamp:   parseQueryInt64(c.Query("end_timestamp")),
+	}, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -138,8 +142,12 @@ func GetUserRedemptionHistory(c *gin.Context) {
 
 func GetAllRedemptionHistory(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	keyword := c.Query("keyword")
-	items, total, err := model.GetRedemptionHistory(0, keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	items, total, err := model.GetRedemptionHistoryWithFilters(0, model.RedemptionHistoryFilters{
+		Keyword:        c.Query("keyword"),
+		RedemptionType: c.Query("redemption_type"),
+		StartTimestamp: parseQueryInt64(c.Query("start_timestamp")),
+		EndTimestamp:   parseQueryInt64(c.Query("end_timestamp")),
+	}, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -147,6 +155,11 @@ func GetAllRedemptionHistory(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
+}
+
+func parseQueryInt64(raw string) int64 {
+	value, _ := strconv.ParseInt(raw, 10, 64)
+	return value
 }
 
 func SearchRedemptions(c *gin.Context) {

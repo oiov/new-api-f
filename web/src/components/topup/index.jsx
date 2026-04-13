@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useContext, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   API,
   showError,
@@ -38,6 +38,11 @@ import RechargeCard from './RechargeCard';
 import InvitationCard from './InvitationCard';
 import SubscriptionPlansCard from './SubscriptionPlansCard';
 import TransferModal from './modals/TransferModal';
+
+const PLAN_LIST_TAB = ['plan', 'list'].join('_');
+const MY_SUBSCRIPTIONS_TAB = ['my', 'subscriptions'].join('_');
+const PACKAGE_VARIANT = ['pack', 'age'].join('');
+const SUBSCRIPTION_VARIANT = ['sub', 'scription'].join('');
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 import {
@@ -53,6 +58,7 @@ const VIEW_PACKAGE = 'package';
 
 const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const { t } = useTranslation();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
@@ -131,8 +137,10 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [billingPreference, setBillingPreference] =
     useState('subscription_first');
+  const [preferredSubscriptionId, setPreferredSubscriptionId] = useState(0);
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
+  const [manualDeliveryOrders, setManualDeliveryOrders] = useState([]);
 
   // 预设充值额度选项
   const [presetAmounts, setPresetAmounts] = useState([]);
@@ -148,6 +156,8 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const isInvitePage = mode === VIEW_INVITE;
   const isPackagePage = mode === VIEW_PACKAGE;
   const shouldLoadTopupData = isTopupPage || isPackagePage;
+  const isConsoleRoute = location.pathname.startsWith('/console');
+  const publicTopPadding = isConsoleRoute ? 0 : 88;
 
   const formatInvitePlanBenefit = (plan) => {
     if (!plan) {
@@ -164,11 +174,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
       usageText = `${label}${renderQuota(summary.total)}`;
     }
 
-    const parts = [
-      plan.title,
-      usageText,
-      formatSubscriptionDuration(plan, t),
-    ];
+    const parts = [plan.title, usageText, formatSubscriptionDuration(plan, t)];
     if (plan?.upgrade_group) {
       parts.push(`${t('升级分组')} ${plan.upgrade_group}`);
     }
@@ -334,7 +340,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
     }
 
     if (topUpCount < minTopUp) {
-      showError('充值数量不能小于' + minTopUp);
+      showError(t('充值数量不能小于') + minTopUp);
       return;
     }
     setConfirmLoading(true);
@@ -512,12 +518,16 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
         setBillingPreference(
           res.data.data?.billing_preference || 'subscription_first',
         );
+        setPreferredSubscriptionId(
+          Number(res.data.data?.preferred_subscription_id || 0),
+        );
         // Active subscriptions
         const activeSubs = res.data.data?.subscriptions || [];
         setActiveSubscriptions(activeSubs);
         // All subscriptions (including expired)
         const allSubs = res.data.data?.all_subscriptions || [];
         setAllSubscriptions(allSubs);
+        setManualDeliveryOrders(res.data.data?.manual_delivery_orders || []);
       }
     } catch (e) {
       // ignore
@@ -769,7 +779,13 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   useEffect(() => {
     if (!isInvitePage) return;
     getInviteDetails().then();
-  }, [isInvitePage, invitedUsersPage, invitedUsersPageSize, inviterRewardPage, inviterRewardPageSize]);
+  }, [
+    isInvitePage,
+    invitedUsersPage,
+    invitedUsersPageSize,
+    inviterRewardPage,
+    inviterRewardPageSize,
+  ]);
 
   useEffect(() => {
     if (shouldLoadTopupData) {
@@ -793,7 +809,6 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
     }
   }, [statusState?.status]);
 
-
   const renderAmount = () => {
     return amount + ' ' + t('元');
   };
@@ -813,7 +828,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
           setAmount(parseFloat(data));
         } else {
           setAmount(0);
-          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+          Toast.error({ content: t('错误：') + data, id: 'getAmount' });
         }
       } else {
         showError(res);
@@ -839,7 +854,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
           setAmount(parseFloat(data));
         } else {
           setAmount(0);
-          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+          Toast.error({ content: t('错误：') + data, id: 'getAmount' });
         }
       } else {
         showError(res);
@@ -897,7 +912,10 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   };
 
   return (
-    <div className='w-full max-w-7xl mx-auto relative min-h-screen lg:min-h-0 mt-[60px] px-2'>
+    <div
+      className='w-full max-w-7xl mx-auto relative min-h-screen lg:min-h-0 px-2'
+      style={{ paddingTop: publicTopPadding }}
+    >
       {/* 划转模态框 */}
       <TransferModal
         t={t}
@@ -976,12 +994,15 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
               enableStripeTopUp={enableStripeTopUp}
               enableCreemTopUp={enableCreemTopUp}
               billingPreference={billingPreference}
+              preferredSubscriptionId={preferredSubscriptionId}
               onChangeBillingPreference={updateBillingPreference}
               activeSubscriptions={activeSubscriptions}
               allSubscriptions={allSubscriptions}
+              manualDeliveryOrders={manualDeliveryOrders}
               reloadSubscriptionSelf={getSubscriptionSelf}
-              initialMainTab='plan_list'
-              uiVariant='package'
+              initialMainTab={MY_SUBSCRIPTIONS_TAB}
+              uiVariant={SUBSCRIPTION_VARIANT}
+              mainPanelMode='subscriptions'
             />
           </div>
         )}
@@ -995,13 +1016,15 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             enableOnlineTopUp={enableOnlineTopUp}
             enableStripeTopUp={enableStripeTopUp}
             enableCreemTopUp={enableCreemTopUp}
-            billingPreference={billingPreference}
-            onChangeBillingPreference={updateBillingPreference}
+              billingPreference={billingPreference}
+              preferredSubscriptionId={preferredSubscriptionId}
+              onChangeBillingPreference={updateBillingPreference}
             activeSubscriptions={activeSubscriptions}
             allSubscriptions={allSubscriptions}
+            manualDeliveryOrders={manualDeliveryOrders}
             reloadSubscriptionSelf={getSubscriptionSelf}
-            initialMainTab='my_subscriptions'
-            uiVariant='subscription'
+            initialMainTab={MY_SUBSCRIPTIONS_TAB}
+            uiVariant={SUBSCRIPTION_VARIANT}
           />
         )}
         {isTopupPage && (

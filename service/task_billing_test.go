@@ -46,6 +46,8 @@ func TestMain(m *testing.M) {
 		&model.Token{},
 		&model.Log{},
 		&model.Channel{},
+		&model.Model{},
+		&model.Vendor{},
 		&model.SubscriptionPlan{},
 		&model.UserSubscription{},
 		&model.SubscriptionPreConsumeRecord{},
@@ -68,6 +70,8 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM tokens")
 		model.DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
+		model.DB.Exec("DELETE FROM models")
+		model.DB.Exec("DELETE FROM vendors")
 		model.DB.Exec("DELETE FROM subscription_pre_consume_records")
 		model.DB.Exec("DELETE FROM subscription_plans")
 		model.DB.Exec("DELETE FROM user_subscriptions")
@@ -474,6 +478,268 @@ func TestPreConsumeUserSubscription_AllowsUsableChildGroupOfCurrentSubscriptionG
 	assert.Equal(t, int64(500), getSubscriptionUsed(t, sub.Id))
 }
 
+func TestPreConsumeUserSubscription_AllowsUsingGroupWhenCurrentUserGroupIsStale(t *testing.T) {
+	truncate(t)
+
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","codex_sub":"Codex 订阅组"}`))
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"vip分组"}`))
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Clear()
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.AddAll(map[string]map[string]string{
+			"vip": {
+				"append_1":   "vip_special_group_1",
+				"-:remove_1": "vip_removed_group_1",
+			},
+		})
+	})
+
+	const userID = 12
+	seedUser(t, userID, 10000)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Update("group", "codex包月").Error)
+
+	seedSubscriptionPlan(t, 112, model.SubscriptionResourceQuota)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 112).Update("upgrade_group", "codex_sub").Error)
+
+	sub := &model.UserSubscription{
+		Id:           112,
+		UserId:       userID,
+		PlanId:       112,
+		AmountTotal:  5000,
+		AmountUsed:   0,
+		UpgradeGroup: "codex_sub",
+		Status:       "active",
+		StartTime:    time.Now().Unix(),
+		EndTime:      time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	res, err := model.PreConsumeUserSubscription("req-stale-user-group", userID, "test-model", "codex_sub", 0, 500)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, sub.Id, res.UserSubscriptionId)
+	assert.Equal(t, int64(500), res.PreConsumed)
+	assert.Equal(t, model.SubscriptionResourceQuota, res.ResourceType)
+	assert.Equal(t, int64(500), getSubscriptionUsed(t, sub.Id))
+}
+
+func TestPreConsumeUserSubscription_RejectsUsingGroupOnlyAllowedByStaleCurrentUserGroup(t *testing.T) {
+	truncate(t)
+
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","codex_sub":"Codex 订阅组"}`))
+	ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Set("default", map[string]string{
+		"claude": "Claude 分组",
+	})
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"vip分组"}`))
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Clear()
+		ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.AddAll(map[string]map[string]string{
+			"vip": {
+				"append_1":   "vip_special_group_1",
+				"-:remove_1": "vip_removed_group_1",
+			},
+		})
+	})
+
+	const userID = 13
+	seedUser(t, userID, 10000)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Update("group", "default").Error)
+
+	seedSubscriptionPlan(t, 113, model.SubscriptionResourceQuota)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 113).Update("upgrade_group", "codex_sub").Error)
+
+	sub := &model.UserSubscription{
+		Id:           113,
+		UserId:       userID,
+		PlanId:       113,
+		AmountTotal:  5000,
+		AmountUsed:   0,
+		UpgradeGroup: "codex_sub",
+		Status:       "active",
+		StartTime:    time.Now().Unix(),
+		EndTime:      time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	res, err := model.PreConsumeUserSubscription("req-stale-user-group-reject", userID, "test-model", "claude", 0, 500)
+	require.Error(t, err)
+	require.Nil(t, res)
+	assert.Contains(t, err.Error(), "subscription quota insufficient")
+	assert.Equal(t, int64(0), getSubscriptionUsed(t, sub.Id))
+}
+
+func TestPreConsumeUserSubscription_RejectsModelOutsidePlanScope(t *testing.T) {
+	truncate(t)
+
+	const userID = 14
+	seedUser(t, userID, 10000)
+	seedSubscriptionPlan(t, 114, model.SubscriptionResourceQuota)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 114).Updates(map[string]any{
+		"allowed_models_json": `["claude-3-7-sonnet"]`,
+	}).Error)
+
+	sub := &model.UserSubscription{
+		Id:                114,
+		UserId:            userID,
+		PlanId:            114,
+		AmountTotal:       5000,
+		AmountUsed:        0,
+		AllowedModelsJSON: `["claude-3-7-sonnet"]`,
+		Status:            "active",
+		StartTime:         time.Now().Unix(),
+		EndTime:           time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	res, err := model.PreConsumeUserSubscription("req-model-scope-reject", userID, "gpt-4o", "", 0, 500)
+	require.Error(t, err)
+	require.Nil(t, res)
+	assert.Contains(t, err.Error(), "subscription quota insufficient")
+	assert.Equal(t, int64(0), getSubscriptionUsed(t, sub.Id))
+}
+
+func TestPreConsumeUserSubscription_RejectsVendorOutsidePlanScope(t *testing.T) {
+	truncate(t)
+
+	const userID = 15
+	seedUser(t, userID, 10000)
+	seedSubscriptionPlan(t, 115, model.SubscriptionResourceQuota)
+	require.NoError(t, model.DB.Create(&model.Vendor{Id: 501, Name: "Anthropic"}).Error)
+	require.NoError(t, model.DB.Create(&model.Vendor{Id: 502, Name: "OpenAI"}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id:        501,
+		ModelName: "claude-3-7-sonnet",
+		VendorID:  501,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Model{
+		Id:        502,
+		ModelName: "gpt-4o",
+		VendorID:  502,
+	}).Error)
+
+	sub := &model.UserSubscription{
+		Id:                   115,
+		UserId:               userID,
+		PlanId:               115,
+		AmountTotal:          5000,
+		AmountUsed:           0,
+		AllowedVendorIDsJSON: `[501]`,
+		Status:               "active",
+		StartTime:            time.Now().Unix(),
+		EndTime:              time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	res, err := model.PreConsumeUserSubscription("req-vendor-scope-reject", userID, "gpt-4o", "", 0, 500)
+	require.Error(t, err)
+	require.Nil(t, res)
+	assert.Contains(t, err.Error(), "subscription quota insufficient")
+	assert.Equal(t, int64(0), getSubscriptionUsed(t, sub.Id))
+}
+
+func TestPreConsumeUserSubscription_AllowsVendorScopeWithDefaultVendorRule(t *testing.T) {
+	truncate(t)
+
+	const userID = 16
+	seedUser(t, userID, 10000)
+	seedSubscriptionPlan(t, 116, model.SubscriptionResourceQuota)
+	require.NoError(t, model.DB.Create(&model.Vendor{Id: 601, Name: "OpenAI"}).Error)
+
+	sub := &model.UserSubscription{
+		Id:                   116,
+		UserId:               userID,
+		PlanId:               116,
+		AmountTotal:          5000,
+		AmountUsed:           0,
+		AllowedVendorIDsJSON: `[601]`,
+		Status:               "active",
+		StartTime:            time.Now().Unix(),
+		EndTime:              time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	res, err := model.PreConsumeUserSubscription("req-vendor-scope-default-rule", userID, "gpt-4o", "", 0, 500)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, sub.Id, res.UserSubscriptionId)
+	assert.Equal(t, int64(500), res.PreConsumed)
+}
+
+func TestSyncActiveSubscriptionsForPlanTx_PreservesRestrictionSnapshot(t *testing.T) {
+	truncate(t)
+
+	seedSubscriptionPlan(t, 117, model.SubscriptionResourceRequestCount)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 117).Updates(map[string]any{
+		"allowed_models_json": `["claude-3-7-sonnet"]`,
+	}).Error)
+
+	sub := &model.UserSubscription{
+		Id:                117,
+		UserId:            17,
+		PlanId:            117,
+		ResourceType:      model.SubscriptionResourceRequestCount,
+		RequestCountTotal: 100,
+		RequestCountUsed:  0,
+		AllowedModelsJSON: `["claude-3-7-sonnet"]`,
+		Status:            "active",
+		StartTime:         time.Now().Unix(),
+		EndTime:           time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 117).Updates(map[string]any{
+		"request_count_total": 200,
+		"allowed_models_json": `["gpt-4o"]`,
+	}).Error)
+
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return model.SyncActiveSubscriptionsForPlanTx(tx, 117)
+	}))
+
+	var refreshed model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", 117).First(&refreshed).Error)
+	assert.Equal(t, int64(200), refreshed.RequestCountTotal)
+	assert.Equal(t, `["claude-3-7-sonnet"]`, refreshed.AllowedModelsJSON)
+}
+
+func TestCreateMigratedUserSubscriptionTx_CopiesTargetRestrictionSnapshot(t *testing.T) {
+	truncate(t)
+
+	seedUser(t, 18, 10000)
+	seedSubscriptionPlan(t, 118, model.SubscriptionResourceRequestCount)
+	seedSubscriptionPlan(t, 119, model.SubscriptionResourceRequestCount)
+	require.NoError(t, model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", 119).Updates(map[string]any{
+		"allowed_models_json":     `["gpt-4o"]`,
+		"allowed_vendor_ids_json": `[701]`,
+	}).Error)
+
+	source := &model.UserSubscription{
+		Id:                118,
+		UserId:            18,
+		PlanId:            118,
+		ResourceType:      model.SubscriptionResourceRequestCount,
+		RequestCountTotal: 100,
+		RequestCountUsed:  10,
+		Status:            "active",
+		StartTime:         time.Now().Unix(),
+		EndTime:           time.Now().Add(24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(source).Error)
+
+	result, err := model.ExecuteSubscriptionMigration(model.SubscriptionMigrationFilter{
+		TargetPlanId:       119,
+		SourcePlanIds:      []int{118},
+		SourceResourceType: model.SubscriptionResourceRequestCount,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.Migrated)
+
+	var migrated model.UserSubscription
+	require.NoError(t, model.DB.Where("plan_id = ? AND user_id = ?", 119, 18).First(&migrated).Error)
+	assert.Equal(t, `["gpt-4o"]`, migrated.AllowedModelsJSON)
+	assert.Equal(t, `[701]`, migrated.AllowedVendorIDsJSON)
+}
+
 func TestRefundTaskQuota_NoToken(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()
@@ -831,6 +1097,50 @@ func TestBillingSessionSettle_DualLimitRequestCountZeroUsageRefundsAmountAndCoun
 	assert.Equal(t, int64(0), relayInfo.SubscriptionPreConsumedCount)
 	assert.Equal(t, int64(0), relayInfo.SubscriptionAmountUsedAfterPreConsume)
 	assert.Equal(t, int64(0), relayInfo.SubscriptionRequestCountUsedAfterPreConsume)
+}
+
+func TestBillingSessionRefund_RequestCountSubscriptionRefundsPreConsumedCount(t *testing.T) {
+	truncate(t)
+
+	const userID = 63
+	const subID = 63
+	const requestID = "req-request-count-refund"
+
+	seedUser(t, userID, 0)
+	seedRequestCountSubscription(t, subID, userID, 100, 0)
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       requestID,
+		UserId:          userID,
+		OriginModelName: "test-model",
+		UsingGroup:      "",
+	}
+	session := &BillingSession{
+		relayInfo: relayInfo,
+		funding: &SubscriptionFunding{
+			requestId:  requestID,
+			userId:     userID,
+			modelName:  "test-model",
+			usingGroup: "",
+			amount:     6000,
+		},
+	}
+
+	require.Nil(t, session.preConsume(ctx, 6000))
+	assert.True(t, session.NeedsRefund())
+	assert.Equal(t, int64(1), getSubscriptionRequestCountUsed(t, subID))
+
+	session.Refund(ctx)
+
+	require.Eventually(t, func() bool {
+		return getSubscriptionRequestCountUsed(t, subID) == 0
+	}, 2*time.Second, 20*time.Millisecond)
+
+	var record model.SubscriptionPreConsumeRecord
+	require.NoError(t, model.DB.Where("request_id = ?", requestID).First(&record).Error)
+	assert.Equal(t, "refunded", record.Status)
 }
 
 func TestRefundTaskQuota_DualLimitRequestCountSubscriptionAlsoRefundsTokenQuota(t *testing.T) {

@@ -464,8 +464,8 @@ const ViewLogsModal = ({ visible, onCancel, deployment, t }) => {
                   value={streamFilter}
                   onChange={handleStreamChange}
                 >
-                  <Radio value='stdout'>STDOUT</Radio>
-                  <Radio value='stderr'>STDERR</Radio>
+                  <Radio value='stdout'>{t('标准输出')}</Radio>
+                  <Radio value='stderr'>{t('标准错误')}</Radio>
                 </Radio.Group>
               </Space>
 

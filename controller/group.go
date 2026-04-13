@@ -12,36 +12,57 @@ import (
 )
 
 func GetGroups(c *gin.Context) {
-	groupNames := make([]string, 0)
-	for groupName := range ratio_setting.GetGroupRatioCopy() {
-		groupNames = append(groupNames, groupName)
+	groupNames := ratio_setting.GetGroupRatioCopy()
+	groups := make(map[string]map[string]interface{}, len(groupNames))
+	for groupName, ratio := range groupNames {
+		groups[groupName] = map[string]interface{}{
+			"desc":          setting.GetUsableGroupDescription(groupName),
+			"ratio":         ratio,
+			"billing_type":  service.GetGroupBillingType(groupName),
+			"billing_label": service.GetGroupBillingLabel(groupName),
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    groupNames,
+		"data":    groups,
 	})
 }
 
 func GetUserGroups(c *gin.Context) {
 	usableGroups := make(map[string]map[string]interface{})
-	userGroup := ""
 	userId := c.GetInt("id")
-	userGroup, _ = model.GetUserGroup(userId, false)
-	userUsableGroups := service.GetUserUsableGroups(userGroup)
-	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
-		// UserUsableGroups contains the groups that the user can use
-		if desc, ok := userUsableGroups[groupName]; ok {
-			usableGroups[groupName] = map[string]interface{}{
-				"ratio": service.GetUserGroupRatio(userGroup, groupName),
-				"desc":  desc,
-			}
+	userCache, err := model.GetUserCache(userId)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	hasQuotaBalance := true
+	if setting.EnableGroupBillingFilter {
+		hasQuotaBalance = userCache.Quota > 0
+	}
+	effectiveGroup := service.ResolveEffectiveUserGroupForUser(userId, userCache.Group, hasQuotaBalance)
+	userUsableGroups := service.GetUserUsableGroupsForUser(userId, userCache.Group, hasQuotaBalance)
+	for groupName, desc := range userUsableGroups {
+		if groupName == "auto" {
+			continue
+		}
+		usableGroups[groupName] = map[string]interface{}{
+			"ratio":         service.GetUserGroupRatio(effectiveGroup, groupName),
+			"desc":          desc,
+			"billing_type":  service.GetGroupBillingType(groupName),
+			"billing_label": service.GetGroupBillingLabel(groupName),
 		}
 	}
 	if _, ok := userUsableGroups["auto"]; ok {
 		usableGroups["auto"] = map[string]interface{}{
-			"ratio": "自动",
-			"desc":  setting.GetUsableGroupDescription("auto"),
+			"ratio":         "自动",
+			"desc":          setting.GetUsableGroupDescription("auto"),
+			"billing_type":  service.GetGroupBillingType("auto"),
+			"billing_label": service.GetGroupBillingLabel("auto"),
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{

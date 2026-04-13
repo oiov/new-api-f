@@ -33,6 +33,7 @@ import ResetPasskeyModal from './modals/ResetPasskeyModal';
 import ResetTwoFAModal from './modals/ResetTwoFAModal';
 import UserSubscriptionsModal from './modals/UserSubscriptionsModal';
 import UserBillingSubscriptionHistoryModal from './modals/UserBillingSubscriptionHistoryModal';
+import SendSiteNotificationModal from './modals/SendSiteNotificationModal';
 
 const UsersTable = (usersData) => {
   const {
@@ -68,6 +69,8 @@ const UsersTable = (usersData) => {
   const [showUserHistoryModal, setShowUserHistoryModal] = useState(false);
   const [showSetAffCountModal, setShowSetAffCountModal] = useState(false);
   const [setAffCountValue, setSetAffCountValue] = useState(0);
+  const [showSendSiteNotificationModal, setShowSendSiteNotificationModal] =
+    useState(false);
 
   // Modal handlers
   const showPromoteUserModal = (user) => {
@@ -126,6 +129,11 @@ const UsersTable = (usersData) => {
     setShowSetAffCountModal(true);
   };
 
+  const showSendSiteNotificationUserModal = (user) => {
+    setModalUser(user);
+    setShowSendSiteNotificationModal(true);
+  };
+
   // Modal confirm handlers
   const handlePromoteConfirm = () => {
     manageUser(modalUser.id, 'promote', modalUser);
@@ -175,6 +183,7 @@ const UsersTable = (usersData) => {
       showUserHistoryModal: showUserHistoryUserModal,
       resetAffCount: showResetAffCountModal,
       setAffCount: showSetAffCountUserModal,
+      sendSiteNotification: showSendSiteNotificationUserModal,
     });
   }, [
     t,
@@ -190,6 +199,7 @@ const UsersTable = (usersData) => {
     showUserHistoryUserModal,
     showResetAffCountModal,
     showSetAffCountUserModal,
+    showSendSiteNotificationUserModal,
   ]);
 
   // Handle compact mode by removing fixed positioning
@@ -324,6 +334,17 @@ const UsersTable = (usersData) => {
           placeholder={t('请输入邀请次数')}
         />
       </Modal>
+
+      <SendSiteNotificationModal
+        visible={showSendSiteNotificationModal}
+        onCancel={() => setShowSendSiteNotificationModal(false)}
+        user={modalUser}
+        t={t}
+        onSuccess={() => {
+          setShowSendSiteNotificationModal(false);
+          refresh?.();
+        }}
+      />
     </>
   );
 };

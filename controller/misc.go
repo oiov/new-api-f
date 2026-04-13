@@ -46,10 +46,14 @@ func GetStatus(c *gin.Context) {
 
 	passkeySetting := system_setting.GetPasskeySettings()
 	legalSetting := system_setting.GetLegalSettings()
+	checkinSetting := operation_setting.GetCheckinSetting()
 
 	data := gin.H{
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
+		"password_login_enabled":      common.PasswordLoginEnabled,
+		"password_register_enabled":   common.PasswordRegisterEnabled,
+		"register_enabled":            common.RegisterEnabled,
 		"email_verification":          common.EmailVerificationEnabled,
 		"google_oauth":                common.GoogleOAuthEnabled,
 		"google_oauth_register":       common.IsGoogleOAuthRegisterEnabled(),
@@ -106,6 +110,7 @@ func GetStatus(c *gin.Context) {
 		"uptime_kuma_enabled":   cs.UptimeKumaEnabled,
 		"announcements_enabled": cs.AnnouncementsEnabled,
 		"faq_enabled":           cs.FAQEnabled,
+		"contact_channels":      console_setting.GetContactChannels(),
 
 		// 模块管理配置
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
@@ -125,7 +130,11 @@ func GetStatus(c *gin.Context) {
 		"setup":                       constant.Setup,
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
-		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+		"checkin_enabled":             checkinSetting.Enabled,
+		"checkin_setting.open_weekdays": checkinSetting.OpenWeekdays,
+		"checkin_setting.open_start_seconds": checkinSetting.OpenStartSeconds,
+		"checkin_setting.open_end_seconds": checkinSetting.OpenEndSeconds,
+		"checkin_setting.daily_user_limit": checkinSetting.DailyUserLimit,
 		"_qn":                         "new-api",
 	}
 

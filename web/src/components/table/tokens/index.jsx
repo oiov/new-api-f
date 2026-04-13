@@ -26,11 +26,7 @@ import {
   Typography,
   Select,
 } from '@douyinfe/semi-ui';
-import {
-  API,
-  showError,
-  selectFilter,
-} from '../../../helpers';
+import { API, showError, selectFilter } from '../../../helpers';
 import { getModelCategories } from '../../../helpers/providerIcons';
 import CardPro from '../../common/ui/CardPro';
 import TokensTable from './TokensTable';
@@ -44,6 +40,7 @@ import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
 
 function TokensPage() {
+  const ZCF_DOC_URL = 'https://doc.nbility.dev/start';
   // Define the function first, then pass it into the hook to avoid TDZ errors
   const openFluentNotificationRef = useRef(null);
   const openCCSwitchModalRef = useRef(null);
@@ -61,11 +58,12 @@ function TokensPage() {
     fetchTokenKey: async () => '',
   });
   const [modelOptions, setModelOptions] = useState([]);
+  const [groupOptions, setGroupOptions] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [fluentNoticeOpen, setFluentNoticeOpen] = useState(false);
   const [prefillKey, setPrefillKey] = useState('');
   const [ccSwitchVisible, setCCSwitchVisible] = useState(false);
-  const [ccSwitchKey, setCCSwitchKey] = useState('');
+  const [ccSwitchToken, setCCSwitchToken] = useState(null);
 
   // Keep latest data for handlers inside notifications
   useEffect(() => {
@@ -118,6 +116,32 @@ function TokensPage() {
       showError(e.message || 'Failed to load models');
     }
   };
+
+  const loadGroups = async () => {
+    try {
+      const res = await API.get('/api/user/self/groups');
+      const { success, message, data } = res.data || {};
+      if (success) {
+        const options = Object.entries(data || {}).map(([group, info]) => ({
+          label: info?.desc || group,
+          value: group,
+          ratio: info?.ratio,
+          billingType: info?.billing_type,
+          billingLabel: info?.billing_label,
+          fullLabel: info?.desc || group,
+        }));
+        setGroupOptions(options);
+      } else {
+        showError(tokensData.t(message));
+      }
+    } catch (e) {
+      showError(e.message || 'Failed to load groups');
+    }
+  };
+
+  useEffect(() => {
+    loadGroups();
+  }, []);
 
   function openFluentNotification(key) {
     const { t } = latestRef.current;
@@ -191,11 +215,11 @@ function TokensPage() {
   // assign after definition so hook callback can call it safely
   openFluentNotificationRef.current = openFluentNotification;
 
-  function openCCSwitchModal(key) {
+  function openCCSwitchModal(record) {
     if (modelOptions.length === 0) {
       loadModels();
     }
-    setCCSwitchKey(key || '');
+    setCCSwitchToken(record || null);
     setCCSwitchVisible(true);
   }
   openCCSwitchModalRef.current = openCCSwitchModal;
@@ -386,8 +410,11 @@ function TokensPage() {
 
       <CCSwitchModal
         visible={ccSwitchVisible}
-        onClose={() => setCCSwitchVisible(false)}
-        tokenKey={ccSwitchKey}
+        onClose={() => {
+          setCCSwitchVisible(false);
+          setCCSwitchToken(null);
+        }}
+        tokenRecord={ccSwitchToken}
         modelOptions={modelOptions}
       />
 
@@ -397,6 +424,7 @@ function TokensPage() {
           <TokensDescription
             compactMode={compactMode}
             setCompactMode={setCompactMode}
+            zcfDocUrl={ZCF_DOC_URL}
             t={t}
           />
         }
@@ -419,6 +447,7 @@ function TokensPage() {
                 searchTokens={searchTokens}
                 loading={loading}
                 searching={searching}
+                groupOptions={groupOptions}
                 t={t}
               />
             </div>

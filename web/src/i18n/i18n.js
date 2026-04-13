@@ -116,6 +116,7 @@ export const initI18n = (async () => {
     supportedLngs: supportedLanguages,
     resources,
     fallbackLng: FALLBACK_LANGUAGE,
+    returnEmptyString: false,
     nsSeparator: false,
     interpolation: {
       escapeValue: false,

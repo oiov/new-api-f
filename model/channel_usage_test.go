@@ -82,3 +82,127 @@ func TestUpdateChannelUsageUpdatesMemoryCacheImmediately(t *testing.T) {
 		assert.EqualValues(t, 1, persisted.UsedCount)
 	})
 }
+
+func TestGetSpecificKeyReturnsErrorWhenMultiKeyLimitReached(t *testing.T) {
+	withChannelUsageTestDB(t, func() {
+		channel := &Channel{
+			Id:     2,
+			Name:   "multi-key-channel",
+			Key:    "sk-a\nsk-b",
+			Status: common.ChannelStatusEnabled,
+			Group:  "default",
+			Models: "gpt-4o-mini",
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 2,
+				MultiKeyStatusList: map[int]int{
+					0: common.ChannelStatusEnabled,
+					1: common.ChannelStatusEnabled,
+				},
+				MultiKeyUsedCount: map[int]int64{
+					0: 3,
+				},
+				MultiKeyMaxRequestCount: map[int]int64{
+					0: 3,
+				},
+			},
+			Weight:   common.GetPointer[uint](0),
+			Priority: common.GetPointer[int64](0),
+		}
+		require.NoError(t, DB.Create(channel).Error)
+
+		_, errResp := channel.GetSpecificKey(0)
+		require.NotNil(t, errResp)
+
+		key, okResp := channel.GetSpecificKey(1)
+		require.Nil(t, okResp)
+		assert.Equal(t, "sk-b", key)
+	})
+}
+
+func TestGetSpecificKeyReturnsErrorWhenSingleKeyLimitReached(t *testing.T) {
+	withChannelUsageTestDB(t, func() {
+		channel := &Channel{
+			Id:              5,
+			Name:            "single-key-channel",
+			Key:             "sk-only",
+			Status:          common.ChannelStatusEnabled,
+			Group:           "default",
+			Models:          "gpt-4o-mini",
+			UsedCount:       3,
+			MaxRequestCount: 3,
+			Weight:          common.GetPointer[uint](0),
+			Priority:        common.GetPointer[int64](0),
+		}
+		require.NoError(t, DB.Create(channel).Error)
+
+		_, errResp := channel.GetSpecificKey(0)
+		require.NotNil(t, errResp)
+	})
+}
+
+func TestResetChannelRequestCountsBatchResetsSingleAndMultiKeyUsage(t *testing.T) {
+	withChannelUsageTestDB(t, func() {
+		single := &Channel{
+			Id:              3,
+			Name:            "single",
+			Key:             "sk-single",
+			Status:          common.ChannelStatusEnabled,
+			Group:           "default",
+			Models:          "gpt-4o-mini",
+			UsedCount:       8,
+			MaxRequestCount: 10,
+			Weight:          common.GetPointer[uint](0),
+			Priority:        common.GetPointer[int64](0),
+		}
+		multi := &Channel{
+			Id:        4,
+			Name:      "multi",
+			Key:       "sk-1\nsk-2",
+			Status:    common.ChannelStatusEnabled,
+			Group:     "default",
+			Models:    "gpt-4o-mini",
+			UsedCount: 5,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 2,
+				MultiKeyUsedCount: map[int]int64{
+					0: 2,
+					1: 3,
+				},
+			},
+			Weight:   common.GetPointer[uint](0),
+			Priority: common.GetPointer[int64](0),
+		}
+		require.NoError(t, DB.Create(single).Error)
+		require.NoError(t, DB.Create(multi).Error)
+		require.NoError(t, single.AddAbilities(nil))
+		require.NoError(t, multi.AddAbilities(nil))
+
+		InitChannelCache()
+
+		nextLastID, scanned, reset, err := ResetChannelRequestCountsBatch(0, 10)
+		require.NoError(t, err)
+		assert.EqualValues(t, 4, nextLastID)
+		assert.EqualValues(t, 2, scanned)
+		assert.EqualValues(t, 2, reset)
+
+		var reloadedSingle Channel
+		require.NoError(t, DB.Select("used_count").Where("id = ?", single.Id).First(&reloadedSingle).Error)
+		assert.EqualValues(t, 0, reloadedSingle.UsedCount)
+
+		var reloadedMulti Channel
+		require.NoError(t, DB.Select("used_count", "channel_info").Where("id = ?", multi.Id).First(&reloadedMulti).Error)
+		assert.EqualValues(t, 0, reloadedMulti.UsedCount)
+		assert.Nil(t, reloadedMulti.ChannelInfo.MultiKeyUsedCount)
+
+		cachedSingle, err := CacheGetChannel(single.Id)
+		require.NoError(t, err)
+		assert.EqualValues(t, 0, cachedSingle.UsedCount)
+
+		cachedMulti, err := CacheGetChannel(multi.Id)
+		require.NoError(t, err)
+		assert.EqualValues(t, 0, cachedMulti.UsedCount)
+		assert.Nil(t, cachedMulti.ChannelInfo.MultiKeyUsedCount)
+	})
+}

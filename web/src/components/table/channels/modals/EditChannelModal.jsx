@@ -21,13 +21,18 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   API,
+  buildGroupOptions,
+  renderGroupOption,
   showError,
   showInfo,
   showSuccess,
   verifyJSON,
 } from '../../../../helpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
-import { CHANNEL_OPTIONS, MODEL_FETCHABLE_CHANNEL_TYPES } from '../../../../constants';
+import {
+  CHANNEL_OPTIONS,
+  MODEL_FETCHABLE_CHANNEL_TYPES,
+} from '../../../../constants';
 import {
   SideSheet,
   Space,
@@ -48,11 +53,7 @@ import {
   Input,
   Tooltip,
 } from '@douyinfe/semi-ui';
-import {
-  getChannelModels,
-  copy,
-  selectFilter,
-} from '../../../../helpers';
+import { getChannelModels, copy, selectFilter } from '../../../../helpers';
 import {
   getChannelIcon,
   getModelCategories,
@@ -127,6 +128,16 @@ const PARAM_OVERRIDE_OPERATIONS_TEMPLATE = {
 };
 
 const DEPRECATED_DOUBAO_CODING_PLAN_BASE_URL = 'doubao-coding-plan';
+
+const PACKAGE_POOL_LABELS = {
+  'subscription_plan:19': 'Claude Lite',
+  'subscription_plan:20': 'Claude Mini Plus',
+  'subscription_plan:21': 'Claude Mini Max',
+  'subscription_plan:22': 'Claude Premium',
+  'subscription_plan:23': 'Claude Premium+',
+  'subscription_plan:24': 'Claude Nano',
+  'subscription_plan:25': 'Claude Micro',
+};
 
 // 支持并且已适配通过接口获取模型列表的渠道类型
 const MODEL_FETCHABLE_TYPES = new Set([
@@ -251,6 +262,20 @@ const EditChannelModal = (props) => {
   const [keyMode, setKeyMode] = useState('append'); // 密钥模式：replace（覆盖）或 append（追加）
   const [isEnterpriseAccount, setIsEnterpriseAccount] = useState(false); // 是否为企业账户
   const [doubaoApiEditUnlocked, setDoubaoApiEditUnlocked] = useState(false); // 豆包渠道自定义 API 地址隐藏入口
+  const canEditAsMultiKey = isEdit && inputs.type !== 57;
+  const packagePoolName = useMemo(() => {
+    const normalizedTag = (inputs.tag || '').trim();
+    return PACKAGE_POOL_LABELS[normalizedTag] || '';
+  }, [inputs.tag]);
+  const packagePoolGroup = useMemo(() => {
+    if (!Array.isArray(inputs.groups) || inputs.groups.length === 0) {
+      return '';
+    }
+    const matchedGroup = inputs.groups.find((group) =>
+      String(group || '').trim().startsWith('sub_plan_'),
+    );
+    return String(matchedGroup || '').trim();
+  }, [inputs.groups]);
   const redirectModelList = useMemo(() => {
     const mapping = inputs.model_mapping;
     if (typeof mapping !== 'string') return [];
@@ -281,7 +306,8 @@ const EditChannelModal = (props) => {
     [inputs.upstream_model_update_last_detected_models],
   );
   const upstreamDetectedModelsPreview = useMemo(
-    () => upstreamDetectedModels.slice(0, UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT),
+    () =>
+      upstreamDetectedModels.slice(0, UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT),
     [upstreamDetectedModels],
   );
   const upstreamDetectedModelsOmittedCount =
@@ -314,9 +340,7 @@ const EditChannelModal = (props) => {
       return {
         tagLabel: t('不更改'),
         tagColor: 'grey',
-        preview: t(
-          '此项可选，用于覆盖请求参数。不支持覆盖 stream 参数',
-        ),
+        preview: t('此项可选，用于覆盖请求参数。不支持覆盖 stream 参数'),
       };
     }
     if (!verifyJSON(raw)) {
@@ -849,6 +873,8 @@ const EditChannelModal = (props) => {
       } else {
         setBatch(false);
         setMultiToSingle(false);
+        setMultiKeyMode('random');
+        data.multi_key_mode = 'random';
       }
       // 解析渠道额外设置并合并到data中
       if (data.setting) {
@@ -1148,12 +1174,7 @@ const EditChannelModal = (props) => {
       if (res === undefined) {
         return;
       }
-      setGroupOptions(
-        res.data.data.map((group) => ({
-          label: group,
-          value: group,
-        })),
-      );
+      setGroupOptions(buildGroupOptions(res.data.data));
     } catch (error) {
       showError(error.message);
     }
@@ -1819,10 +1840,16 @@ const EditChannelModal = (props) => {
     }
 
     if (isEdit) {
+      const shouldEnableMultiKey = batch;
       res = await API.put(`/api/channel/`, {
         ...localInputs,
         id: parseInt(channelId),
-        key_mode: isMultiKeyChannel ? keyMode : undefined, // 只在多key模式下传递
+        key_mode:
+          shouldEnableMultiKey || isMultiKeyChannel ? keyMode : undefined,
+        multi_key_mode:
+          shouldEnableMultiKey || isMultiKeyChannel
+            ? inputs.multi_key_mode || multiKeyMode
+            : undefined,
       });
     } else {
       res = await API.post(`/api/channel/`, {
@@ -1932,68 +1959,79 @@ const EditChannelModal = (props) => {
     }
   };
 
-  const batchAllowed = (!isEdit || isMultiKeyChannel) && inputs.type !== 57;
+  const batchAllowed =
+    (!isEdit || isMultiKeyChannel || canEditAsMultiKey) && inputs.type !== 57;
   const batchExtra = batchAllowed ? (
     <Space>
-      {!isEdit && (
-        <Checkbox
-          disabled={isEdit}
-          checked={batch}
-          onChange={(e) => {
-            const checked = e.target.checked;
+      <Checkbox
+        disabled={isEdit && isMultiKeyChannel}
+        checked={batch}
+        onChange={(e) => {
+          const checked = e.target.checked;
 
-            if (!checked && vertexFileList.length > 1) {
-              Modal.confirm({
-                title: t('切换为单密钥模式'),
-                content: t(
-                  '将仅保留第一个密钥文件，其余文件将被移除，是否继续？',
-                ),
-                onOk: () => {
-                  const firstFile = vertexFileList[0];
-                  const firstKey = vertexKeys[0] ? [vertexKeys[0]] : [];
+          if (!checked && vertexFileList.length > 1) {
+            Modal.confirm({
+              title: t('切换为单密钥模式'),
+              content: t(
+                '将仅保留第一个密钥文件，其余文件将被移除，是否继续？',
+              ),
+              onOk: () => {
+                const firstFile = vertexFileList[0];
+                const firstKey = vertexKeys[0] ? [vertexKeys[0]] : [];
 
-                  setVertexFileList([firstFile]);
-                  setVertexKeys(firstKey);
+                setVertexFileList([firstFile]);
+                setVertexKeys(firstKey);
 
-                  formApiRef.current?.setValue('vertex_files', [firstFile]);
-                  setInputs((prev) => ({ ...prev, vertex_files: [firstFile] }));
+                formApiRef.current?.setValue('vertex_files', [firstFile]);
+                setInputs((prev) => ({ ...prev, vertex_files: [firstFile] }));
 
-                  setBatch(false);
-                  setMultiToSingle(false);
-                  setMultiKeyMode('random');
-                },
-                onCancel: () => {
-                  setBatch(true);
-                },
-                centered: true,
-              });
-              return;
+                setBatch(false);
+                setMultiToSingle(false);
+                setMultiKeyMode('random');
+              },
+              onCancel: () => {
+                setBatch(true);
+              },
+              centered: true,
+            });
+            return;
+          }
+
+          setBatch(checked);
+          if (!checked) {
+            setMultiToSingle(false);
+            setMultiKeyMode('random');
+            setInputs((prevInputs) => {
+              const newInputs = { ...prevInputs };
+              delete newInputs.multi_key_mode;
+              return newInputs;
+            });
+          } else {
+            if (isEdit) {
+              setMultiToSingle(true);
+              setInputs((prevInputs) => ({
+                ...prevInputs,
+                multi_key_mode: prevInputs.multi_key_mode || multiKeyMode,
+              }));
             }
-
-            setBatch(checked);
-            if (!checked) {
-              setMultiToSingle(false);
-              setMultiKeyMode('random');
-            } else {
-              // 批量模式下禁用手动输入，并清空手动输入的内容
-              setUseManualInput(false);
-              if (inputs.type === 41) {
-                // 清空手动输入的密钥内容
-                if (formApiRef.current) {
-                  formApiRef.current.setValue('key', '');
-                }
-                handleInputChange('key', '');
+            // 批量模式下禁用手动输入，并清空手动输入的内容
+            setUseManualInput(false);
+            if (inputs.type === 41) {
+              // 清空手动输入的密钥内容
+              if (formApiRef.current) {
+                formApiRef.current.setValue('key', '');
               }
+              handleInputChange('key', '');
             }
-          }}
-        >
-          {t('批量创建')}
-        </Checkbox>
-      )}
-      {batch && (
+          }
+        }}
+      >
+        {isEdit ? t('开启多密钥') : t('批量创建')}
+      </Checkbox>
+      {batch && !isEdit && (
         <>
           <Checkbox
-            disabled={isEdit}
+            disabled={isEdit && isMultiKeyChannel}
             checked={multiToSingle}
             onChange={() => {
               setMultiToSingle((prev) => {
@@ -2296,10 +2334,10 @@ const EditChannelModal = (props) => {
                           placeholder={t('请选择密钥格式')}
                           optionList={[
                             {
-                              label: 'AccessKey / SecretAccessKey',
+                              label: t('AccessKey / SecretAccessKey'),
                               value: 'ak_sk',
                             },
-                            { label: 'API Key', value: 'api_key' },
+                            { label: t('API Key'), value: 'api_key' },
                           ]}
                           style={{ width: '100%' }}
                           value={inputs.aws_key_type || 'ak_sk'}
@@ -2322,8 +2360,8 @@ const EditChannelModal = (props) => {
                         label={t('密钥格式')}
                         placeholder={t('请选择密钥格式')}
                         optionList={[
-                          { label: 'JSON', value: 'json' },
-                          { label: 'API Key', value: 'api_key' },
+                          { label: t('JSON'), value: 'json' },
+                          { label: t('API Key'), value: 'api_key' },
                         ]}
                         style={{ width: '100%' }}
                         value={inputs.vertex_key_type || 'json'}
@@ -2407,7 +2445,7 @@ const EditChannelModal = (props) => {
                           extraText={
                             <div className='flex items-center gap-2 flex-wrap'>
                               {isEdit &&
-                                isMultiKeyChannel &&
+                                (isMultiKeyChannel || (batch && multiToSingle)) &&
                                 keyMode === 'append' && (
                                   <Text type='warning' size='small'>
                                     {t(
@@ -2622,7 +2660,7 @@ const EditChannelModal = (props) => {
                                       {t('请输入完整的 JSON 格式密钥内容')}
                                     </Text>
                                     {isEdit &&
-                                      isMultiKeyChannel &&
+                                      (isMultiKeyChannel || (batch && multiToSingle)) &&
                                       keyMode === 'append' && (
                                         <Text type='warning' size='small'>
                                           {t(
@@ -2630,6 +2668,13 @@ const EditChannelModal = (props) => {
                                           )}
                                         </Text>
                                       )}
+                                    {isEdit && (isMultiKeyChannel || (batch && multiToSingle)) && (
+                                      <Text type='tertiary' size='small'>
+                                        {t(
+                                          '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
+                                        )}
+                                      </Text>
+                                    )}
                                     {isEdit && (
                                       <Button
                                         size='small'
@@ -2637,7 +2682,7 @@ const EditChannelModal = (props) => {
                                         theme='outline'
                                         onClick={handleShow2FAModal}
                                       >
-                                        {t('查看密钥')}
+                                        {t('查看现有密钥')}
                                       </Button>
                                     )}
                                     {batchExtra}
@@ -2703,7 +2748,7 @@ const EditChannelModal = (props) => {
                             extraText={
                               <div className='flex items-center gap-2'>
                                 {isEdit &&
-                                  isMultiKeyChannel &&
+                                  (isMultiKeyChannel || (batch && multiToSingle)) &&
                                   keyMode === 'append' && (
                                     <Text type='warning' size='small'>
                                       {t(
@@ -2711,6 +2756,13 @@ const EditChannelModal = (props) => {
                                       )}
                                     </Text>
                                   )}
+                                {isEdit && (isMultiKeyChannel || (batch && multiToSingle)) && (
+                                  <Text type='tertiary' size='small'>
+                                    {t(
+                                      '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
+                                    )}
+                                  </Text>
+                                )}
                                 {isEdit && (
                                   <Button
                                     size='small'
@@ -2718,7 +2770,7 @@ const EditChannelModal = (props) => {
                                     theme='outline'
                                     onClick={handleShow2FAModal}
                                   >
-                                    {t('查看密钥')}
+                                    {t('查看现有密钥')}
                                   </Button>
                                 )}
                                 {batchExtra}
@@ -2730,11 +2782,11 @@ const EditChannelModal = (props) => {
                       </>
                     )}
 
-                    {isEdit && isMultiKeyChannel && (
+                    {isEdit && (isMultiKeyChannel || (batch && multiToSingle)) && (
                       <Form.Select
                         field='key_mode'
-                        label={t('密钥更新模式')}
-                        placeholder={t('请选择密钥更新模式')}
+                        label={t('密钥修改方式')}
+                        placeholder={t('请选择密钥修改方式')}
                         optionList={[
                           { label: t('追加到现有密钥'), value: 'append' },
                           { label: t('覆盖现有密钥'), value: 'replace' },
@@ -2745,13 +2797,17 @@ const EditChannelModal = (props) => {
                         extraText={
                           <Text type='tertiary' size='small'>
                             {keyMode === 'replace'
-                              ? t('覆盖模式：将完全替换现有的所有密钥')
-                              : t('追加模式：将新密钥添加到现有密钥列表末尾')}
+                              ? t(
+                                  '覆盖模式：会用上方输入的新密钥完整替换现有密钥列表。',
+                                )
+                              : t(
+                                  '追加模式：会把上方输入的新密钥追加到现有密钥列表末尾。',
+                                )}
                           </Text>
                         }
                       />
                     )}
-                    {batch && multiToSingle && (
+                    {batch && (multiToSingle || isEdit) && (
                       <>
                         <Form.Select
                           field='multi_key_mode'
@@ -2784,9 +2840,9 @@ const EditChannelModal = (props) => {
                       <Form.Input
                         field='other'
                         label={t('模型版本')}
-                        placeholder={
-                          '请输入星火大模型版本，注意是接口地址中的版本号，例如：v2.1'
-                        }
+                        placeholder={t(
+                          '请输入星火大模型版本，注意是接口地址中的版本号，例如：v2.1',
+                        )}
                         onChange={(value) => handleInputChange('other', value)}
                         showClear
                       />
@@ -2817,7 +2873,7 @@ const EditChannelModal = (props) => {
                       <Form.Input
                         field='other'
                         label={t('知识库 ID')}
-                        placeholder={'请输入知识库 ID，例如：123456'}
+                        placeholder={t('请输入知识库 ID，例如：123456')}
                         onChange={(value) => handleInputChange('other', value)}
                         showClear
                       />
@@ -2826,10 +2882,10 @@ const EditChannelModal = (props) => {
                     {inputs.type === 39 && (
                       <Form.Input
                         field='other'
-                        label='Account ID'
-                        placeholder={
-                          '请输入Account ID，例如：d6b5da8hk1awo8nap34ube6gh'
-                        }
+                        label={t('Account ID')}
+                        placeholder={t(
+                          '请输入Account ID，例如：d6b5da8hk1awo8nap34ube6gh',
+                        )}
                         onChange={(value) => handleInputChange('other', value)}
                         showClear
                       />
@@ -2839,7 +2895,7 @@ const EditChannelModal = (props) => {
                       <Form.Input
                         field='other'
                         label={t('智能体ID')}
-                        placeholder={'请输入智能体ID，例如：7342866812345'}
+                        placeholder={t('请输入智能体ID，例如：7342866812345')}
                         onChange={(value) => handleInputChange('other', value)}
                         showClear
                       />
@@ -3422,9 +3478,44 @@ const EditChannelModal = (props) => {
                         '请在系统设置页面编辑分组倍率以添加新的分组：',
                       )}
                       optionList={groupOptions}
+                      renderOptionItem={renderGroupOption}
                       style={{ width: '100%' }}
                       onChange={(value) => handleInputChange('groups', value)}
                     />
+
+                    {packagePoolName ? (
+                      <Banner
+                        type='info'
+                        closeIcon={null}
+                        className='!rounded-xl mb-4'
+                        title={t('当前渠道已归属订阅套餐池')}
+                        description={
+                          <div className='flex flex-col gap-2 text-sm'>
+                            <div className='flex flex-wrap items-center gap-2'>
+                              <Tag color='blue' shape='circle' type='light'>
+                                {t('{{name}} 套餐池', { name: packagePoolName })}
+                              </Tag>
+                              <Tag color='white' shape='circle' type='ghost'>
+                                {inputs.tag}
+                              </Tag>
+                            </div>
+                            <div className='flex flex-wrap items-center gap-2'>
+                              <Text type='secondary'>
+                                {t('套餐专属分组')}
+                              </Text>
+                              <Tag color='orange' shape='circle' type='light'>
+                                {packagePoolGroup || t('未设置')}
+                              </Tag>
+                            </div>
+                            <Text type='tertiary'>
+                              {t(
+                                '这里的模型配置可以相同，但套餐池标签和套餐专属分组决定了它实际服务的是哪个套餐。',
+                              )}
+                            </Text>
+                          </div>
+                        }
+                      />
+                    ) : null}
 
                     <Form.Input
                       field='tag'
@@ -3515,79 +3606,81 @@ const EditChannelModal = (props) => {
                     />
 
                     <Form.Switch
-                        field='upstream_model_update_auto_sync_enabled'
-                        label={t('是否自动同步上游模型更新')}
-                        checkedText={t('开')}
-                        uncheckedText={t('关')}
-                        disabled={!inputs.upstream_model_update_check_enabled}
-                        onChange={(value) =>
-                            handleChannelOtherSettingsChange(
-                                'upstream_model_update_auto_sync_enabled',
-                                value,
-                            )
-                        }
-                        extraText={t(
-                            '开启后检测到新增模型会自动加入当前渠道模型列表',
-                        )}
+                      field='upstream_model_update_auto_sync_enabled'
+                      label={t('是否自动同步上游模型更新')}
+                      checkedText={t('开')}
+                      uncheckedText={t('关')}
+                      disabled={!inputs.upstream_model_update_check_enabled}
+                      onChange={(value) =>
+                        handleChannelOtherSettingsChange(
+                          'upstream_model_update_auto_sync_enabled',
+                          value,
+                        )
+                      }
+                      extraText={t(
+                        '开启后检测到新增模型会自动加入当前渠道模型列表',
+                      )}
                     />
 
                     <div className='text-xs text-gray-500 mb-3'>
                       {t('上次检测到可加入模型')}:&nbsp;
                       {upstreamDetectedModels.length === 0 ? (
-                          t('暂无')
+                        t('暂无')
                       ) : (
-                          <>
-                            <Tooltip
-                                position='topLeft'
-                                content={
-                                  <div className='max-w-[640px] break-all text-xs leading-5'>
-                                    {upstreamDetectedModels.join(', ')}
-                                  </div>
-                                }
-                            >
+                        <>
+                          <Tooltip
+                            position='topLeft'
+                            content={
+                              <div className='max-w-[640px] break-all text-xs leading-5'>
+                                {upstreamDetectedModels.join(', ')}
+                              </div>
+                            }
+                          >
                             <span className='cursor-help break-all'>
                               {upstreamDetectedModelsPreview.join(', ')}
                             </span>
-                            </Tooltip>
-                            <span className='ml-1 text-gray-400'>
+                          </Tooltip>
+                          <span className='ml-1 text-gray-400'>
                             {upstreamDetectedModelsOmittedCount > 0
-                                ? t('（共 {{total}} 个，省略 {{omit}} 个）', {
+                              ? t('（共 {{total}} 个，省略 {{omit}} 个）', {
                                   total: upstreamDetectedModels.length,
                                   omit: upstreamDetectedModelsOmittedCount,
                                 })
-                                : t('（共 {{total}} 个）', {
+                              : t('（共 {{total}} 个）', {
                                   total: upstreamDetectedModels.length,
                                 })}
                           </span>
-                          </>
+                        </>
                       )}
                     </div>
 
                     <div className='mb-4'>
                       <div className='flex items-center justify-between gap-2 mb-1'>
-                        <Text className='text-sm font-medium'>{t('参数覆盖')}</Text>
+                        <Text className='text-sm font-medium'>
+                          {t('参数覆盖')}
+                        </Text>
                         <Space wrap>
                           <Button
-                              size='small'
-                              type='primary'
-                              icon={<IconCode size={14} />}
-                              onClick={() => setParamOverrideEditorVisible(true)}
+                            size='small'
+                            type='primary'
+                            icon={<IconCode size={14} />}
+                            onClick={() => setParamOverrideEditorVisible(true)}
                           >
                             {t('可视化编辑')}
                           </Button>
                           <Button
-                              size='small'
-                              onClick={() =>
-                                  applyParamOverrideTemplate('operations', 'fill')
-                              }
+                            size='small'
+                            onClick={() =>
+                              applyParamOverrideTemplate('operations', 'fill')
+                            }
                           >
                             {t('填充新模板')}
                           </Button>
                           <Button
-                              size='small'
-                              onClick={() =>
-                                  applyParamOverrideTemplate('legacy', 'fill')
-                              }
+                            size='small'
+                            onClick={() =>
+                              applyParamOverrideTemplate('legacy', 'fill')
+                            }
                           >
                             {t('填充旧模板')}
                           </Button>
@@ -3601,14 +3694,16 @@ const EditChannelModal = (props) => {
                         </Space>
                       </div>
                       <Text type='tertiary' size='small'>
-                        {t('此项可选，用于覆盖请求参数。不支持覆盖 stream 参数')}
+                        {t(
+                          '此项可选，用于覆盖请求参数。不支持覆盖 stream 参数',
+                        )}
                       </Text>
                       <div
-                          className='mt-2 rounded-xl p-3'
-                          style={{
-                            backgroundColor: 'var(--semi-color-fill-0)',
-                            border: '1px solid var(--semi-color-fill-2)',
-                          }}
+                        className='mt-2 rounded-xl p-3'
+                        style={{
+                          backgroundColor: 'var(--semi-color-fill-0)',
+                          border: '1px solid var(--semi-color-fill-2)',
+                        }}
                       >
                         <div className='flex items-center justify-between mb-2'>
                           <Tag color={paramOverrideMeta.tagColor}>
@@ -3616,17 +3711,19 @@ const EditChannelModal = (props) => {
                           </Tag>
                           <Space spacing={8}>
                             <Button
-                                size='small'
-                                icon={<IconCopy />}
-                                type='tertiary'
-                                onClick={copyParamOverrideJson}
+                              size='small'
+                              icon={<IconCopy />}
+                              type='tertiary'
+                              onClick={copyParamOverrideJson}
                             >
                               {t('复制')}
                             </Button>
                             <Button
-                                size='small'
-                                type='tertiary'
-                                onClick={() => setParamOverrideEditorVisible(true)}
+                              size='small'
+                              type='tertiary'
+                              onClick={() =>
+                                setParamOverrideEditorVisible(true)
+                              }
                             >
                               {t('编辑')}
                             </Button>
@@ -3639,80 +3736,80 @@ const EditChannelModal = (props) => {
                     </div>
 
                     <Form.TextArea
-                        field='header_override'
-                        label={t('请求头覆盖')}
-                        placeholder={
-                            t('此项可选，用于覆盖请求头参数') +
-                            '\n' +
-                            t('格式示例：') +
-                            '\n{\n  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0",\n  "Authorization": "Bearer {api_key}"\n}'
-                        }
-                        autosize
-                        onChange={(value) =>
-                            handleInputChange('header_override', value)
-                        }
-                        extraText={
-                          <div className='flex flex-col gap-1'>
-                            <div className='flex gap-2 flex-wrap items-center'>
-                              <Text
-                                  className='!text-semi-color-primary cursor-pointer'
-                                  onClick={() =>
-                                      handleInputChange(
-                                          'header_override',
-                                          JSON.stringify(
-                                              {
-                                                '*': true,
-                                                're:^X-Trace-.*$': true,
-                                                'X-Foo': '{client_header:X-Foo}',
-                                                Authorization: 'Bearer {api_key}',
-                                                'User-Agent':
-                                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0',
-                                              },
-                                              null,
-                                              2,
-                                          ),
-                                      )
-                                  }
-                              >
-                                {t('填入模板')}
-                              </Text>
-                              <Text
-                                  className='!text-semi-color-primary cursor-pointer'
-                                  onClick={() =>
-                                      handleInputChange(
-                                          'header_override',
-                                          JSON.stringify(
-                                              {
-                                                '*': true,
-                                              },
-                                              null,
-                                              2,
-                                          ),
-                                      )
-                                  }
-                              >
-                                {t('填入透传模版')}
-                              </Text>
-                              <Text
-                                  className='!text-semi-color-primary cursor-pointer'
-                                  onClick={() => formatJsonField('header_override')}
-                              >
-                                {t('格式化')}
-                              </Text>
-                            </div>
-                            <div>
-                              <Text type='tertiary' size='small'>
-                                {t('支持变量：')}
-                              </Text>
-                              <div className='text-xs text-tertiary ml-2'>
-                                <div>
-                                  {t('渠道密钥')}: {'{api_key}'}
-                                </div>
+                      field='header_override'
+                      label={t('请求头覆盖')}
+                      placeholder={
+                        t('此项可选，用于覆盖请求头参数') +
+                        '\n' +
+                        t('格式示例：') +
+                        '\n{\n  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0",\n  "Authorization": "Bearer {api_key}"\n}'
+                      }
+                      autosize
+                      onChange={(value) =>
+                        handleInputChange('header_override', value)
+                      }
+                      extraText={
+                        <div className='flex flex-col gap-1'>
+                          <div className='flex gap-2 flex-wrap items-center'>
+                            <Text
+                              className='!text-semi-color-primary cursor-pointer'
+                              onClick={() =>
+                                handleInputChange(
+                                  'header_override',
+                                  JSON.stringify(
+                                    {
+                                      '*': true,
+                                      're:^X-Trace-.*$': true,
+                                      'X-Foo': '{client_header:X-Foo}',
+                                      Authorization: 'Bearer {api_key}',
+                                      'User-Agent':
+                                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0',
+                                    },
+                                    null,
+                                    2,
+                                  ),
+                                )
+                              }
+                            >
+                              {t('填入模板')}
+                            </Text>
+                            <Text
+                              className='!text-semi-color-primary cursor-pointer'
+                              onClick={() =>
+                                handleInputChange(
+                                  'header_override',
+                                  JSON.stringify(
+                                    {
+                                      '*': true,
+                                    },
+                                    null,
+                                    2,
+                                  ),
+                                )
+                              }
+                            >
+                              {t('填入透传模版')}
+                            </Text>
+                            <Text
+                              className='!text-semi-color-primary cursor-pointer'
+                              onClick={() => formatJsonField('header_override')}
+                            >
+                              {t('格式化')}
+                            </Text>
+                          </div>
+                          <div>
+                            <Text type='tertiary' size='small'>
+                              {t('支持变量：')}
+                            </Text>
+                            <div className='text-xs text-tertiary ml-2'>
+                              <div>
+                                {t('渠道密钥')}: {'{api_key}'}
                               </div>
                             </div>
                           </div>
-                        }
-                        showClear
+                        </div>
+                      }
+                      showClear
                     />
                     <JSONEditor
                       key={`status_code_mapping-${isEdit ? channelId : 'new'}`}

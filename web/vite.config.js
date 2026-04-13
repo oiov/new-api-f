@@ -23,7 +23,7 @@ import pkg from '@douyinfe/vite-plugin-semi';
 import path from 'path';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
-const DEFAULT_PROXY_TARGET = 'https://nbility.dev';
+const DEFAULT_PROXY_TARGET = 'https://api.nbility.dev';
 const proxyTarget =
   process.env.BACKEND_ORIGIN ||
   process.env.VITE_REACT_APP_BACKEND_ORIGIN ||
@@ -118,6 +118,10 @@ export default defineConfig(({ command }) => ({
     host: '0.0.0.0',
     proxy: {
       '/api': {
+        target: proxyTarget,
+        changeOrigin: true,
+      },
+      '/uploads': {
         target: proxyTarget,
         changeOrigin: true,
       },

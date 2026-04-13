@@ -499,7 +499,7 @@ const InvitationCard = ({
                         )}
                       </div>
                       <div className='mt-1 text-sm text-gray-500'>
-                        @{item.username || '--'} · ID #{item.user_id}
+                        @{item.username || '--'} · {t('用户 ID')} #{item.user_id}
                       </div>
                     </div>
 

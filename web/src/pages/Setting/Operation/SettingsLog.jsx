@@ -48,6 +48,7 @@ export default function SettingsLog(props) {
     LogConsumeEnabled: false,
     ErrorLogDisplayEnabled: true,
     ErrorDetailsEnabled: true,
+    UpstreamModelNameAlignedToRequestEnabled: true,
     historyTimestamp: dayjs().subtract(1, 'month').toDate(),
   });
   const refForm = useRef();
@@ -135,7 +136,7 @@ export default function SettingsLog(props) {
             }}
           >
             <Text strong style={{ color: '#d46b08' }}>
-              ⚠️ {t('注意')}：
+              {t('注意')}：
             </Text>
             <Text style={{ color: '#333' }}>{t('将删除')} </Text>
             <Text strong style={{ color: '#cf1322' }}>
@@ -208,8 +209,8 @@ export default function SettingsLog(props) {
                   field={'LogConsumeEnabled'}
                   label={t('启用额度消费日志记录')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) => {
                     setInputs({
                       ...inputs,
@@ -223,8 +224,8 @@ export default function SettingsLog(props) {
                   field={'ErrorLogDisplayEnabled'}
                   label={t('展示错误日志')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) => {
                     setInputs({
                       ...inputs,
@@ -245,8 +246,8 @@ export default function SettingsLog(props) {
                   field={'ErrorDetailsEnabled'}
                   label={t('记录并返回详细错误')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) => {
                     setInputs({
                       ...inputs,
@@ -260,6 +261,28 @@ export default function SettingsLog(props) {
                   style={{ display: 'block', marginTop: 4 }}
                 >
                   {t('关闭后不记录错误日志，前端仅返回通用错误文案，用户侧日志也不展示错误日志')}
+                </Text>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'UpstreamModelNameAlignedToRequestEnabled'}
+                  label={t('上游模型名跟随请求模型展示')}
+                  size='default'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      UpstreamModelNameAlignedToRequestEnabled: value,
+                    });
+                  }}
+                />
+                <Text
+                  type='tertiary'
+                  size='small'
+                  style={{ display: 'block', marginTop: 4 }}
+                >
+                  {t('开启后，日志中的 upstream_model_name 将展示为用户请求的模型名，用于避免上游模型漂移直接暴露给终端用户。')}
                 </Text>
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>

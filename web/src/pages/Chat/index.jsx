@@ -57,7 +57,7 @@ const ChatPage = () => {
   return !isLoading && iframeSrc ? (
     <IframeViewport
       src={iframeSrc}
-      title='Token Frame'
+      title={t('令牌页面')}
       iframeProps={{
         allow: 'camera;microphone',
       }}

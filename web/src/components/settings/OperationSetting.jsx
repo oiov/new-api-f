@@ -27,6 +27,7 @@ import SettingsLog from '../../pages/Setting/Operation/SettingsLog';
 import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring';
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
+import SettingsContactPage from '../../pages/Setting/Operation/SettingsContactPage';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -60,6 +61,9 @@ const OperationSetting = () => {
     /* 左侧边栏模块管理（管理员） */
     SidebarModulesAdmin: '',
 
+    /* 联系页面配置 */
+    'console_setting.contact_channels': '',
+
     /* 敏感词设置 */
     CheckSensitiveEnabled: false,
     CheckSensitiveOnPromptEnabled: false,
@@ -69,6 +73,7 @@ const OperationSetting = () => {
     LogConsumeEnabled: false,
     ErrorLogDisplayEnabled: true,
     ErrorDetailsEnabled: true,
+    UpstreamModelNameAlignedToRequestEnabled: true,
 
     /* 监控设置 */
     ChannelDisableThreshold: 0,
@@ -84,6 +89,7 @@ const OperationSetting = () => {
     'checkin_setting.enabled': false,
     'checkin_setting.min_quota': 1000,
     'checkin_setting.max_quota': 10000,
+    'checkin_setting.leaderboard_limit': 100,
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,
@@ -140,6 +146,10 @@ const OperationSetting = () => {
         <div style={{ marginTop: '10px' }}>
           <SettingsSidebarModulesAdmin options={inputs} refresh={onRefresh} />
         </div>
+        {/* 联系页面配置 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsContactPage options={inputs} refresh={onRefresh} />
+        </Card>
         {/* 屏蔽词过滤设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsSensitiveWords options={inputs} refresh={onRefresh} />

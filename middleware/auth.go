@@ -73,12 +73,15 @@ func authHelper(c *gin.Context, minRole int) {
 			return
 		}
 	}
-	// get header New-Api-User
-	apiUserIdStr := c.Request.Header.Get("New-Api-User")
+	// get header Fish-X-Code-User or New-Api-User (legacy fallback)
+	apiUserIdStr := c.Request.Header.Get("Fish-X-Code-User")
+	if apiUserIdStr == "" {
+		apiUserIdStr = c.Request.Header.Get("New-Api-User")
+	}
 	if apiUserIdStr == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": "无权进行此操作，未提供 New-Api-User",
+			"message": "无权进行此操作，未提供用户标识",
 		})
 		c.Abort()
 		return
@@ -87,7 +90,7 @@ func authHelper(c *gin.Context, minRole int) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": "无权进行此操作，New-Api-User 格式错误",
+			"message": "无权进行此操作，用户标识格式错误",
 		})
 		c.Abort()
 		return
@@ -96,7 +99,7 @@ func authHelper(c *gin.Context, minRole int) {
 	if id != apiUserId {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": "无权进行此操作，New-Api-User 与登录用户不匹配",
+			"message": "无权进行此操作，用户标识与登录用户不匹配",
 		})
 		c.Abort()
 		return
@@ -344,9 +347,14 @@ func TokenAuth() func(c *gin.Context) {
 
 		userGroup := userCache.Group
 		tokenGroup := token.Group
+		if token.IsSubscriptionAggregateAccessToken() {
+			// 聚合订阅访问 key 在 distributor 中会基于实际可用订阅重写路由分组，
+			// 这里不能先按默认分组做静态权限拦截。
+			tokenGroup = ""
+		}
 		if tokenGroup != "" {
 			// check common.UserUsableGroups[userGroup]
-			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
+			if !service.GroupInUserUsableGroupsForUser(token.UserId, userCache.Group, userCache.Quota > 0, tokenGroup) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
 				return
 			}
@@ -389,9 +397,20 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	}
 	common.SetContextKey(c, constant.ContextKeyTokenGroup, token.Group)
 	common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, token.CrossGroupRetry)
+	if token.SpecificChannelId > 0 {
+		c.Set("specific_channel_id", strconv.Itoa(token.SpecificChannelId))
+	}
+	if token.SpecificChannelKeyIndex >= 0 {
+		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, token.SpecificChannelKeyIndex)
+	} else if token.IsSubscriptionSpecificChannelToken() {
+		// 历史套餐令牌在渠道还是单 key 时只绑定了渠道，没有保存具体 key 索引。
+		// 当渠道后续扩展为多 key 时，默认固定到原始第 1 个 key，避免随机分流。
+		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, 0)
+	}
 	if len(parts) > 1 {
 		if model.IsAdmin(token.UserId) {
 			c.Set("specific_channel_id", parts[1])
+			common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, -1)
 		} else {
 			c.Header("specific_channel_version", "701e3ae1dc3f7975556d354e0675168d004891c8")
 			abortWithOpenAiMessage(c, http.StatusForbidden, "普通用户不支持指定渠道")

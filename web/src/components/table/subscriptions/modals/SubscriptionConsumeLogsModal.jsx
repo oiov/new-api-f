@@ -39,7 +39,11 @@ import {
 } from '../../../../helpers/utils';
 import { DATE_RANGE_PRESETS } from '../../../../constants/console.constants';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
-import { getSubscriptionResourceType } from '../../../../helpers/subscriptionFormat';
+import {
+  formatSubscriptionResetPeriod,
+  getSubscriptionResourceType,
+  getSubscriptionUsageSummary,
+} from '../../../../helpers/subscriptionFormat';
 import CardPro from '../../../common/ui/CardPro';
 import CardTable from '../../../common/ui/CardTable';
 
@@ -63,6 +67,29 @@ function getSubscriptionDisplay(other, planMetaMap) {
     planLabel,
     planIdLabel: planId > 0 ? `#${planId}` : '-',
   };
+}
+
+function renderPlanLimitDisplay(planMeta, t) {
+  if (!planMeta) {
+    return '-';
+  }
+  const summary = getSubscriptionUsageSummary(planMeta);
+  if (summary.resourceType === 'request_count') {
+    const items = [];
+    if (!summary.periodUnlimited) {
+      items.push(
+        `${t('周期次数')} ${summary.periodTotal}/${formatSubscriptionResetPeriod(planMeta, t)}`,
+      );
+    }
+    if (!summary.unlimited) {
+      items.push(`${t('总次数')} ${summary.total}`);
+    }
+    return items.length > 0 ? items.join(' · ') : t('不限次数');
+  }
+  if (!summary.unlimited) {
+    return `${t('总额度')} ${renderQuota(summary.total)}`;
+  }
+  return t('不限');
 }
 
 const SubscriptionConsumeLogsModal = ({
@@ -213,11 +240,32 @@ const SubscriptionConsumeLogsModal = ({
         },
       },
       {
+        title: t('套餐配置'),
+        width: 220,
+        render: (_, record) => {
+          const other = getLogOther(record?.other) || {};
+          const planId = Number(other?.subscription_plan_id || 0);
+          const planMeta = planMetaMap?.get(planId);
+          return (
+            <div className='text-xs text-gray-600'>
+              {renderPlanLimitDisplay(planMeta, t)}
+            </div>
+          );
+        },
+      },
+      {
         title: t('消耗'),
         width: 180,
         render: (_, record) => {
           const other = getLogOther(record?.other) || {};
-          const consumed = Number(other?.subscription_consumed || 0);
+          let consumed = Number(other?.subscription_consumed || 0);
+          // Fallback for older records: derive from pre_consumed + post_delta
+          if (consumed <= 0) {
+            const preConsumed = Number(other?.subscription_pre_consumed || 0);
+            const postDelta = Number(other?.subscription_post_delta || 0);
+            const fallback = preConsumed + postDelta;
+            if (fallback > 0) consumed = fallback;
+          }
           const remain = other?.subscription_remain;
           const total = other?.subscription_total;
           const planId = Number(other?.subscription_plan_id || 0);

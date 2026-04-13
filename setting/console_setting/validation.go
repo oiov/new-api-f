@@ -73,9 +73,89 @@ func ValidateConsoleSettings(settingsStr string, settingType string) error {
 		return validateFAQ(settingsStr)
 	case "UptimeKumaGroups":
 		return validateUptimeKumaGroups(settingsStr)
+	case "ContactChannels":
+		return validateContactChannels(settingsStr)
 	default:
 		return fmt.Errorf("未知的设置类型：%s", settingType)
 	}
+}
+
+func validateRelativeOrAbsoluteImageSource(src string, index int) error {
+	if strings.HasPrefix(src, "//") {
+		return fmt.Errorf("第%d个联系渠道的图片地址只能使用站内相对路径或完整的HTTPS地址", index)
+	}
+	if strings.HasPrefix(src, "/") {
+		if len(src) > 500 {
+			return fmt.Errorf("第%d个联系渠道的图片地址长度不能超过500字符", index)
+		}
+		return nil
+	}
+	if !strings.HasPrefix(strings.ToLower(src), "https://") {
+		return fmt.Errorf("第%d个联系渠道的图片地址只能使用站内相对路径或HTTPS地址", index)
+	}
+	return validateURL(src, index, "联系渠道")
+}
+
+func validateContactChannelTextField(value interface{}, index int, fieldName string, maxLength int, required bool) error {
+	text, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("第%d个联系渠道的%s格式不正确", index, fieldName)
+	}
+	text = strings.TrimSpace(text)
+	if required && text == "" {
+		return fmt.Errorf("第%d个联系渠道缺少%s", index, fieldName)
+	}
+	if len(text) > maxLength {
+		return fmt.Errorf("第%d个联系渠道的%s长度不能超过%d字符", index, fieldName, maxLength)
+	}
+	if err := checkDangerousContent(text, index, "联系渠道"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateContactChannelI18n(raw interface{}, index int) error {
+	if raw == nil {
+		return nil
+	}
+
+	i18nMap, ok := raw.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("第%d个联系渠道的i18n字段格式不正确", index)
+	}
+
+	for locale, localeValue := range i18nMap {
+		locale = strings.TrimSpace(locale)
+		if locale == "" {
+			return fmt.Errorf("第%d个联系渠道的i18n语言键不能为空", index)
+		}
+		if len(locale) > 20 {
+			return fmt.Errorf("第%d个联系渠道的i18n语言键长度不能超过20字符", index)
+		}
+
+		translatedFields, ok := localeValue.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("第%d个联系渠道的i18n.%s格式不正确", index, locale)
+		}
+
+		for _, field := range []struct {
+			name      string
+			maxLength int
+		}{
+			{name: "title", maxLength: 100},
+			{name: "subtitle", maxLength: 200},
+			{name: "tone", maxLength: 100},
+			{name: "actionLabel", maxLength: 100},
+		} {
+			if rawText, exists := translatedFields[field.name]; exists {
+				if err := validateContactChannelTextField(rawText, index, "i18n."+locale+"."+field.name, field.maxLength, false); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func validateApiInfo(apiInfoStr string) error {
@@ -209,6 +289,112 @@ func validateFAQ(faqStr string) error {
 		}
 	}
 	return nil
+}
+
+func validateContactChannels(channelsStr string) error {
+	list, err := parseJSONArray(channelsStr, "联系渠道")
+	if err != nil {
+		return err
+	}
+
+	if len(list) > 20 {
+		return fmt.Errorf("联系渠道数量不能超过20个")
+	}
+
+	keySet := make(map[string]struct{}, len(list))
+
+	for i, item := range list {
+		key, ok := item["key"].(string)
+		if !ok || strings.TrimSpace(key) == "" {
+			return fmt.Errorf("第%d个联系渠道缺少key字段", i+1)
+		}
+		key = strings.TrimSpace(key)
+		if len(key) > 100 {
+			return fmt.Errorf("第%d个联系渠道的key长度不能超过100字符", i+1)
+		}
+		if !slugRegex.MatchString(key) {
+			return fmt.Errorf("第%d个联系渠道的key只能包含字母、数字、下划线和连字符", i+1)
+		}
+		if _, exists := keySet[key]; exists {
+			return fmt.Errorf("第%d个联系渠道的key与其他联系渠道重复", i+1)
+		}
+		keySet[key] = struct{}{}
+
+		if err := validateContactChannelTextField(item["title"], i+1, "标题字段", 100, true); err != nil {
+			return err
+		}
+
+		imageSrc, ok := item["imageSrc"].(string)
+		if !ok || strings.TrimSpace(imageSrc) == "" {
+			return fmt.Errorf("第%d个联系渠道缺少图片地址字段", i+1)
+		}
+
+		if err := validateRelativeOrAbsoluteImageSource(strings.TrimSpace(imageSrc), i+1); err != nil {
+			return err
+		}
+
+		if subtitle, exists := item["subtitle"]; exists {
+			if err := validateContactChannelTextField(subtitle, i+1, "说明字段", 200, false); err != nil {
+				return err
+			}
+		}
+
+		if value, exists := item["value"]; exists {
+			valueStr, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("第%d个联系渠道的联系账号格式不正确", i+1)
+			}
+			if len(valueStr) > 100 {
+				return fmt.Errorf("第%d个联系渠道的联系账号长度不能超过100字符", i+1)
+			}
+		}
+
+		if copyValue, exists := item["copyValue"]; exists {
+			copyStr, ok := copyValue.(string)
+			if !ok {
+				return fmt.Errorf("第%d个联系渠道的复制内容格式不正确", i+1)
+			}
+			if len(copyStr) > 200 {
+				return fmt.Errorf("第%d个联系渠道的复制内容长度不能超过200字符", i+1)
+			}
+		}
+
+		if actionHref, exists := item["actionHref"]; exists {
+			actionHrefStr, ok := actionHref.(string)
+			if !ok {
+				return fmt.Errorf("第%d个联系渠道的跳转链接格式不正确", i+1)
+			}
+			if strings.TrimSpace(actionHrefStr) != "" {
+				if err := validateURL(strings.TrimSpace(actionHrefStr), i+1, "联系渠道"); err != nil {
+					return err
+				}
+			}
+		}
+
+		for _, field := range []struct {
+			name      string
+			maxLength int
+		}{
+			{name: "tone", maxLength: 100},
+			{name: "actionLabel", maxLength: 100},
+		} {
+			if raw, exists := item[field.name]; exists {
+				if err := validateContactChannelTextField(raw, i+1, field.name, field.maxLength, false); err != nil {
+					return err
+				}
+			}
+		}
+
+		if err := validateContactChannelI18n(item["i18n"], i+1); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func GetContactChannels() []map[string]interface{} {
+	return getJSONList(GetConsoleSetting().ContactChannels)
 }
 
 func getPublishTime(item map[string]interface{}) time.Time {

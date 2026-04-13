@@ -32,6 +32,10 @@ const PricingTopSection = memo(
     isMobile,
     sidebarProps,
     filterVendor,
+    filterGroup,
+    usableGroup,
+    groupRatio,
+    handleGroupClick,
     models,
     filteredModels,
     loading,
@@ -92,6 +96,10 @@ const PricingTopSection = memo(
           <PricingVendorIntroWithSkeleton
             loading={loading}
             filterVendor={filterVendor}
+            filterGroup={filterGroup}
+            usableGroup={usableGroup}
+            groupRatio={groupRatio}
+            handleGroupClick={handleGroupClick}
             models={filteredModels}
             allModels={models}
             t={t}

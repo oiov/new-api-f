@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useRef, useEffect, useState, useContext } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Button,
   Typography,
@@ -31,6 +32,7 @@ import {
   Switch,
   Row,
   Col,
+  Badge,
 } from '@douyinfe/semi-ui';
 import { IconMail, IconKey, IconBell, IconLink } from '@douyinfe/semi-icons';
 import { ShieldCheck, Bell, DollarSign, Settings } from 'lucide-react';
@@ -53,6 +55,7 @@ import {
   mergeAdminConfig,
   useSidebar,
 } from '../../../../hooks/common/useSidebar';
+import SiteNotificationsTab from './SiteNotificationsTab';
 
 const NotificationSettings = ({
   t,
@@ -60,10 +63,15 @@ const NotificationSettings = ({
   handleNotificationSettingChange,
   saveNotificationSettings,
 }) => {
+  const location = useLocation();
   const formApiRef = useRef(null);
+  const cardRef = useRef(null);
   const [statusState] = useContext(StatusContext);
   const [userState] = useContext(UserContext);
   const isAdminOrRoot = (userState?.user?.role || 0) >= 10;
+  const unreadSiteNotificationCount = Number(
+    userState?.user?.site_notification_unread_count || 0,
+  );
 
   // 左侧边栏设置相关状态
   const [sidebarLoading, setSidebarLoading] = useState(false);
@@ -88,6 +96,7 @@ const NotificationSettings = ({
       enabled: true,
       topup: true,
       personal: true,
+      siteNotifications: true,
     },
     admin: {
       enabled: true,
@@ -172,7 +181,12 @@ const NotificationSettings = ({
         midjourney: true,
         task: true,
       },
-      personal: { enabled: true, topup: true, personal: true },
+      personal: {
+        enabled: true,
+        topup: true,
+        personal: true,
+        siteNotifications: true,
+      },
       admin: {
         enabled: true,
         channel: true,
@@ -269,6 +283,25 @@ const NotificationSettings = ({
     loadActiveSubscriptions();
   }, [t]);
 
+  useEffect(() => {
+    const syncFromHash = () => {
+      if (window.location.hash !== '#site-notifications') {
+        return;
+      }
+      setActiveTabKey('site-notifications');
+      requestAnimationFrame(() => {
+        cardRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    };
+
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, [location.key]);
+
   // 初始化表单值
   useEffect(() => {
     if (formApiRef.current && notificationSettings) {
@@ -333,6 +366,11 @@ const NotificationSettings = ({
       modules: [
         { key: 'topup', title: t('充值兑换'), description: t('在线充值与兑换码管理') },
         { key: 'invite', title: t('邀请拉新'), description: t('邀请链接与奖励管理') },
+        {
+          key: 'siteNotifications',
+          title: t('站内信'),
+          description: t('管理员消息与发放通知'),
+        },
         {
           key: 'personal',
           title: t('个人设置'),
@@ -408,7 +446,8 @@ const NotificationSettings = ({
   const quotaNotifyDisabled = !notificationSettings.quotaNotifyEnabled;
 
   return (
-    <Card
+    <div ref={cardRef} id='site-notifications-card'>
+      <Card
       className='!rounded-2xl shadow-sm border-0'
       footer={
         <div className='flex justify-end gap-3'>
@@ -463,7 +502,7 @@ const NotificationSettings = ({
         {() => (
           <Tabs
             type='card'
-            defaultActiveKey='notification'
+            activeKey={activeTabKey}
             onChange={(key) => setActiveTabKey(key)}
           >
             {/* 通知配置 Tab */}
@@ -675,28 +714,28 @@ const NotificationSettings = ({
                               values: ['$0.99'],
                               timestamp: 1739950503,
                             }}
-                            title='webhook'
-                            language='json'
+                            title={t('Webhook')}
+                            language={t('JSON')}
                           />
                         </div>
                         <div className='text-xs text-gray-500 leading-relaxed'>
                           <div>
-                            <strong>type:</strong>{' '}
+                            <strong>{t('类型')}:</strong>{' '}
                             {t('通知类型 (quota_exceed: 额度预警)')}{' '}
                           </div>
                           <div>
-                            <strong>title:</strong> {t('通知标题')}
+                            <strong>{t('标题')}:</strong> {t('通知标题')}
                           </div>
                           <div>
-                            <strong>content:</strong>{' '}
+                            <strong>{t('内容')}:</strong>{' '}
                             {t('通知内容，支持 {{value}} 变量占位符')}
                           </div>
                           <div>
-                            <strong>values:</strong>{' '}
+                            <strong>{t('变量值')}:</strong>{' '}
                             {t('按顺序替换content中的变量占位符')}
                           </div>
                           <div>
-                            <strong>timestamp:</strong> {t('Unix时间戳')}
+                            <strong>{t('时间戳')}:</strong> {t('Unix时间戳')}
                           </div>
                         </div>
                       </div>
@@ -757,7 +796,7 @@ const NotificationSettings = ({
                             rel='noopener noreferrer'
                             className='text-blue-500 hover:text-blue-600 font-medium'
                           >
-                            Bark {t('官方文档')}
+                            {t('Bark')} {t('官方文档')}
                           </a>
                         </div>
                       </div>
@@ -861,7 +900,7 @@ const NotificationSettings = ({
                             rel='noopener noreferrer'
                             className='text-blue-500 hover:text-blue-600 font-medium'
                           >
-                            Gotify {t('官方文档')}
+                            {t('Gotify')} {t('官方文档')}
                           </a>
                         </div>
                       </div>
@@ -869,6 +908,22 @@ const NotificationSettings = ({
                   </>
                 )}
               </div>
+            </TabPane>
+
+            {/* 价格设置 Tab */}
+            <TabPane
+              tab={
+                <div className='flex items-center gap-2'>
+                  <Bell size={16} />
+                  <span>{t('站内信')}</span>
+                  {unreadSiteNotificationCount > 0 ? (
+                    <Badge count={unreadSiteNotificationCount} overflowCount={99} />
+                  ) : null}
+                </div>
+              }
+              itemKey='site-notifications'
+            >
+              <SiteNotificationsTab t={t} />
             </TabPane>
 
             {/* 价格设置 Tab */}
@@ -1067,7 +1122,8 @@ const NotificationSettings = ({
           </Tabs>
         )}
       </Form>
-    </Card>
+      </Card>
+    </div>
   );
 };
 

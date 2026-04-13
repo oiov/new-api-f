@@ -9,6 +9,8 @@ build
 *.db-journal
 logs
 web/dist
+web-next/.next
+web-next/node_modules
 .env
 one-api
 new-api
@@ -31,4 +33,10 @@ data/
 .gocache-temp
 .gopath
 .vercel
-.env*.local
+/pricing/
+scripts/
+!web/scripts/
+!web/scripts/generate-seo-artifacts.mjs
+.env.back
+.playwright-mcp
+tsconfig.tsbuildinfo

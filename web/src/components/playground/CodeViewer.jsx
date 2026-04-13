@@ -29,6 +29,8 @@ const PERFORMANCE_CONFIG = {
   VERY_LARGE_MULTIPLIER: 2, // 超大内容倍数
 };
 
+const formatCollapsedOverflow = (extraThousands) => `(+${extraThousands}K)`;
+
 const codeThemeStyles = {
   container: {
     backgroundColor: '#1e1e1e',
@@ -381,13 +383,13 @@ const CodeViewer = ({ content, title, language = 'json' }) => {
                 <span
                   style={{ fontSize: '11px', opacity: 0.7, marginLeft: '4px' }}
                 >
-                  (+
-                  {Math.round(
-                    (contentMetrics.length -
-                      PERFORMANCE_CONFIG.PREVIEW_LENGTH) /
-                      1000,
+                  {formatCollapsedOverflow(
+                    Math.round(
+                      (contentMetrics.length -
+                        PERFORMANCE_CONFIG.PREVIEW_LENGTH) /
+                        1000,
+                    ),
                   )}
-                  K)
                 </span>
               )}
             </Button>

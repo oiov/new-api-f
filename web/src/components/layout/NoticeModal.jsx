@@ -29,6 +29,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { API } from '../../helpers/api';
 import { showError, getRelativeTime } from '../../helpers/utils';
+import DefaultNotice from './DefaultNotice';
 import {
   IllustrationNoContent,
   IllustrationNoContentDark,
@@ -50,6 +51,7 @@ const NoticeModal = ({
 }) => {
   const { t } = useTranslation();
   const [noticeContent, setNoticeContent] = useState('');
+  const [useDefaultNotice, setUseDefaultNotice] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [renderedAnnouncementMap, setRenderedAnnouncementMap] = useState({});
@@ -94,17 +96,24 @@ const NoticeModal = ({
       const res = await API.get('/api/notice');
       const { success, message, data } = res.data;
       if (success) {
-        if (data !== '') {
+        if (data && data.trim() !== '') {
           const htmlNotice = await parseMarkdownToHtml(data);
           setNoticeContent(htmlNotice);
+          setUseDefaultNotice(false);
         } else {
+          // 后台未配置，展示默认国际化组件
           setNoticeContent('');
+          setUseDefaultNotice(true);
         }
       } else {
         showError(message);
+        setNoticeContent('');
+        setUseDefaultNotice(true);
       }
     } catch (error) {
       showError(error.message);
+      setNoticeContent('');
+      setUseDefaultNotice(true);
     } finally {
       setLoading(false);
     }
@@ -165,20 +174,8 @@ const NoticeModal = ({
       );
     }
 
-    if (!noticeContent) {
-      return (
-        <div className='py-12'>
-          <Empty
-            image={
-              <IllustrationNoContent style={{ width: 150, height: 150 }} />
-            }
-            darkModeImage={
-              <IllustrationNoContentDark style={{ width: 150, height: 150 }} />
-            }
-            description={t('暂无公告')}
-          />
-        </div>
-      );
+    if (useDefaultNotice) {
+      return <DefaultNotice />;
     }
 
     return (

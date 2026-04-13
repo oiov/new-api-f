@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -12,23 +13,75 @@ import (
 )
 
 type Token struct {
-	Id                 int            `json:"id"`
-	UserId             int            `json:"user_id" gorm:"index"`
-	Key                string         `json:"key" gorm:"type:char(48);uniqueIndex"`
-	Status             int            `json:"status" gorm:"default:1"`
-	Name               string         `json:"name" gorm:"index" `
-	CreatedTime        int64          `json:"created_time" gorm:"bigint"`
-	AccessedTime       int64          `json:"accessed_time" gorm:"bigint"`
-	ExpiredTime        int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
-	RemainQuota        int            `json:"remain_quota" gorm:"default:0"`
-	UnlimitedQuota     bool           `json:"unlimited_quota"`
-	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
-	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
-	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
-	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
-	Group              string         `json:"group" gorm:"default:''"`
-	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
-	DeletedAt          gorm.DeletedAt `gorm:"index"`
+	Id                      int            `json:"id"`
+	UserId                  int            `json:"user_id" gorm:"index"`
+	Username                string         `json:"username,omitempty" gorm:"column:username;->;-:migration"`
+	Key                     string         `json:"key" gorm:"type:char(48);uniqueIndex"`
+	SpecificChannelId       int            `json:"specific_channel_id" gorm:"type:int;not null;default:0"`
+	SpecificChannelKeyIndex int            `json:"specific_channel_key_index" gorm:"type:int;not null;default:-1"`
+	Status                  int            `json:"status" gorm:"default:1"`
+	Name                    string         `json:"name" gorm:"index" `
+	CreatedTime             int64          `json:"created_time" gorm:"bigint"`
+	AccessedTime            int64          `json:"accessed_time" gorm:"bigint"`
+	ExpiredTime             int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
+	RemainQuota             int            `json:"remain_quota" gorm:"default:0"`
+	UnlimitedQuota          bool           `json:"unlimited_quota"`
+	ModelLimitsEnabled      bool           `json:"model_limits_enabled"`
+	ModelLimits             string         `json:"model_limits" gorm:"type:text"`
+	AllowIps                *string        `json:"allow_ips" gorm:"default:''"`
+	UsedQuota               int            `json:"used_quota" gorm:"default:0"` // used quota
+	Group                   string         `json:"group" gorm:"default:''"`
+	CrossGroupRetry         bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	DeletedAt               gorm.DeletedAt `gorm:"index"`
+}
+
+const SubscriptionAggregateAccessTokenName = "Subscription Access"
+
+func (token *Token) IsActiveSubscriptionAggregateAccessToken(now int64) bool {
+	if token == nil {
+		return false
+	}
+	if !token.IsSubscriptionAggregateAccessToken() {
+		return false
+	}
+	return token.ExpiredTime == -1 || token.ExpiredTime > now
+}
+
+func (token *Token) IsSubscriptionSpecificChannelToken() bool {
+	if token == nil {
+		return false
+	}
+	if token.SpecificChannelId <= 0 {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(token.Group), "sub_plan_")
+}
+
+func (token *Token) IsSubscriptionAggregateAccessToken() bool {
+	if token == nil {
+		return false
+	}
+	return token.SpecificChannelId <= 0 && strings.TrimSpace(token.Name) == SubscriptionAggregateAccessTokenName
+}
+
+type AdminTokenSearchFilters struct {
+	Username     string
+	TokenName    string
+	Token        string
+	Status       string
+	Group        string
+	ExpiredState string
+	StartTime    int64
+	EndTime      int64
+}
+
+type UserTokenSearchFilters struct {
+	Keyword        string
+	Token          string
+	Status         string
+	Group          string
+	ExpiredState   string
+	UnlimitedState string
 }
 
 func (token *Token) Clean() {
@@ -85,7 +138,346 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	return tokens, err
 }
 
-func buildUserTokenSearchQuery(userId int, keyword string, token string) (*gorm.DB, error) {
+type activeSpecificChannelKeyBindingCount struct {
+	SpecificChannelKeyIndex int   `gorm:"column:specific_channel_key_index"`
+	BindingCount            int64 `gorm:"column:binding_count"`
+}
+
+type ActiveSpecificChannelKeyBindingDetail struct {
+	KeyIndex      int                                   `json:"key_index"`
+	BindingCount  int64                                 `json:"binding_count"`
+	BindingGroups []string                              `json:"binding_groups,omitempty"`
+	BindingUsers  []ActiveSpecificChannelKeyBindingUser `json:"binding_users,omitempty"`
+}
+
+type activeSpecificChannelKeyBindingDetailRow struct {
+	SpecificChannelKeyIndex int    `gorm:"column:specific_channel_key_index"`
+	Group                   string `gorm:"column:group_name"`
+	BindingCount            int64  `gorm:"column:binding_count"`
+}
+
+type ActiveSpecificChannelKeyBindingUser struct {
+	UserId      int    `json:"user_id"`
+	Username    string `json:"username"`
+	TokenId     int    `json:"token_id"`
+	TokenName   string `json:"token_name"`
+	TokenGroup  string `json:"token_group"`
+	ExpiredTime int64  `json:"expired_time"`
+	Status      int    `json:"status"`
+}
+
+type activeSpecificChannelKeyBindingUserRow struct {
+	SpecificChannelKeyIndex int    `gorm:"column:specific_channel_key_index"`
+	UserId                  int    `gorm:"column:user_id"`
+	Username                string `gorm:"column:username"`
+	TokenId                 int    `gorm:"column:token_id"`
+	TokenName               string `gorm:"column:token_name"`
+	TokenGroup              string `gorm:"column:token_group"`
+	ExpiredTime             int64  `gorm:"column:expired_time"`
+	Status                  int    `gorm:"column:status"`
+}
+
+type activeSpecificChannelKeyBindingSubscriptionDetailRow struct {
+	SpecificChannelKeyIndex int    `gorm:"column:specific_channel_key_index"`
+	Group                   string `gorm:"column:group_name"`
+	BindingCount            int64  `gorm:"column:binding_count"`
+}
+
+type activeSpecificChannelKeyBindingSubscriptionUserRow struct {
+	SpecificChannelKeyIndex int    `gorm:"column:specific_channel_key_index"`
+	UserId                  int    `gorm:"column:user_id"`
+	Username                string `gorm:"column:username"`
+	UserSubscriptionId      int    `gorm:"column:user_subscription_id"`
+	PlanId                  int    `gorm:"column:plan_id"`
+	SubscriptionGroup       string `gorm:"column:subscription_group"`
+	ExpiredTime             int64  `gorm:"column:expired_time"`
+	Status                  string `gorm:"column:status"`
+}
+
+func GetActiveSpecificChannelKeyBindingCountMap(channelId int) (map[int]int64, error) {
+	var rows []activeSpecificChannelKeyBindingCount
+	err := DB.Model(&Token{}).
+		Select("specific_channel_key_index, COUNT(*) AS binding_count").
+		Where(
+			"specific_channel_id = ? AND specific_channel_key_index >= 0 AND deleted_at IS NULL",
+			channelId,
+		).
+		Group("specific_channel_key_index").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int]int64, len(rows))
+	for _, row := range rows {
+		result[row.SpecificChannelKeyIndex] = row.BindingCount
+	}
+	return result, nil
+}
+
+func GetActiveSpecificChannelKeyBindingDetailMap(channelId int) (map[int]ActiveSpecificChannelKeyBindingDetail, error) {
+	var rows []activeSpecificChannelKeyBindingDetailRow
+	groupCol := commonGroupCol
+	if groupCol == "" {
+		if common.UsingPostgreSQL {
+			groupCol = `"group"`
+		} else {
+			groupCol = "`group`"
+		}
+	}
+	err := DB.Model(&Token{}).
+		Select("specific_channel_key_index, "+groupCol+" as group_name, COUNT(*) AS binding_count").
+		Where(
+			"specific_channel_id = ? AND specific_channel_key_index >= 0 AND deleted_at IS NULL",
+			channelId,
+		).
+		Group("specific_channel_key_index, " + groupCol).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[int]ActiveSpecificChannelKeyBindingDetail)
+	for _, row := range rows {
+		item := result[row.SpecificChannelKeyIndex]
+		item.KeyIndex = row.SpecificChannelKeyIndex
+		item.BindingCount += row.BindingCount
+		groupName := strings.TrimSpace(row.Group)
+		if groupName != "" {
+			exists := false
+			for _, current := range item.BindingGroups {
+				if current == groupName {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				item.BindingGroups = append(item.BindingGroups, groupName)
+			}
+		}
+		result[row.SpecificChannelKeyIndex] = item
+	}
+	now := common.GetTimestamp()
+	var subRows []activeSpecificChannelKeyBindingSubscriptionDetailRow
+	err = DB.Model(&UserSubscription{}).
+		Select("specific_channel_key_index, upgrade_group as group_name, COUNT(*) AS binding_count").
+		Where(
+			"specific_channel_id = ? AND specific_channel_key_index >= 0 AND status = ? AND end_time > ?",
+			channelId,
+			"active",
+			now,
+		).
+		Group("specific_channel_key_index, upgrade_group").
+		Find(&subRows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range subRows {
+		item := result[row.SpecificChannelKeyIndex]
+		item.KeyIndex = row.SpecificChannelKeyIndex
+		item.BindingCount += row.BindingCount
+		groupName := strings.TrimSpace(row.Group)
+		if groupName != "" {
+			exists := false
+			for _, current := range item.BindingGroups {
+				if current == groupName {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				item.BindingGroups = append(item.BindingGroups, groupName)
+			}
+		}
+		result[row.SpecificChannelKeyIndex] = item
+	}
+	qualifiedGroupCol := qualifiedTokenGroupCol()
+	var userRows []activeSpecificChannelKeyBindingUserRow
+	err = DB.Model(&Token{}).
+		Select("tokens.specific_channel_key_index, tokens.user_id, users.username, tokens.id as token_id, tokens.name as token_name, "+qualifiedGroupCol+" as token_group, tokens.expired_time, tokens.status").
+		Joins("LEFT JOIN users ON users.id = tokens.user_id").
+		Where(
+			"tokens.specific_channel_id = ? AND tokens.specific_channel_key_index >= 0 AND tokens.deleted_at IS NULL",
+			channelId,
+		).
+		Order("tokens.specific_channel_key_index asc, tokens.id asc").
+		Find(&userRows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range userRows {
+		item := result[row.SpecificChannelKeyIndex]
+		item.KeyIndex = row.SpecificChannelKeyIndex
+		item.BindingUsers = append(item.BindingUsers, ActiveSpecificChannelKeyBindingUser{
+			UserId:      row.UserId,
+			Username:    row.Username,
+			TokenId:     row.TokenId,
+			TokenName:   row.TokenName,
+			TokenGroup:  row.TokenGroup,
+			ExpiredTime: row.ExpiredTime,
+			Status:      row.Status,
+		})
+		result[row.SpecificChannelKeyIndex] = item
+	}
+	var subUserRows []activeSpecificChannelKeyBindingSubscriptionUserRow
+	err = DB.Model(&UserSubscription{}).
+		Select("user_subscriptions.specific_channel_key_index, user_subscriptions.user_id, users.username, user_subscriptions.id as user_subscription_id, user_subscriptions.plan_id, user_subscriptions.upgrade_group as subscription_group, user_subscriptions.end_time as expired_time, user_subscriptions.status").
+		Joins("LEFT JOIN users ON users.id = user_subscriptions.user_id").
+		Where(
+			"user_subscriptions.specific_channel_id = ? AND user_subscriptions.specific_channel_key_index >= 0 AND user_subscriptions.status = ? AND user_subscriptions.end_time > ?",
+			channelId,
+			"active",
+			now,
+		).
+		Order("user_subscriptions.specific_channel_key_index asc, user_subscriptions.id asc").
+		Find(&subUserRows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range subUserRows {
+		item := result[row.SpecificChannelKeyIndex]
+		item.KeyIndex = row.SpecificChannelKeyIndex
+		item.BindingUsers = append(item.BindingUsers, ActiveSpecificChannelKeyBindingUser{
+			UserId:      row.UserId,
+			Username:    row.Username,
+			TokenId:     -row.UserSubscriptionId,
+			TokenName:   fmt.Sprintf("订阅 #%d · Plan %d", row.UserSubscriptionId, row.PlanId),
+			TokenGroup:  row.SubscriptionGroup,
+			ExpiredTime: row.ExpiredTime,
+			Status:      1,
+		})
+		result[row.SpecificChannelKeyIndex] = item
+	}
+	return result, nil
+}
+
+func qualifiedTokenGroupCol() string {
+	if commonGroupCol != "" {
+		return "tokens." + commonGroupCol
+	}
+	if common.UsingPostgreSQL {
+		return `tokens."group"`
+	}
+	return "tokens.`group`"
+}
+
+func NormalizeLegacySpecificChannelKeyBindings(channelId int, defaultKeyIndex int) (int64, error) {
+	if channelId <= 0 {
+		return 0, errors.New("invalid channelId")
+	}
+	if defaultKeyIndex < 0 {
+		defaultKeyIndex = 0
+	}
+	updates := map[string]any{
+		"specific_channel_key_index": defaultKeyIndex,
+	}
+	result := DB.Model(&Token{}).
+		Where("specific_channel_id = ? AND specific_channel_key_index < 0 AND deleted_at IS NULL", channelId).
+		Updates(updates)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+func qualifiedTokenKeyCol() string {
+	if commonKeyCol != "" {
+		return "tokens." + commonKeyCol
+	}
+	if common.UsingPostgreSQL {
+		return `tokens."key"`
+	}
+	return "tokens.`key`"
+}
+
+func GetAllTokensByAdmin(startIdx int, num int) ([]*Token, int64, error) {
+	var tokens []*Token
+	var total int64
+
+	baseQuery := DB.Model(&Token{}).
+		Select("tokens.*, users.username").
+		Joins("LEFT JOIN users ON users.id = tokens.user_id")
+
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if err := baseQuery.
+		Order("tokens.id desc").
+		Limit(num).
+		Offset(startIdx).
+		Find(&tokens).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return tokens, total, nil
+}
+
+func buildAdminTokenSearchQuery(filters AdminTokenSearchFilters) (*gorm.DB, error) {
+	baseQuery := DB.Model(&Token{}).
+		Select("tokens.*, users.username").
+		Joins("LEFT JOIN users ON users.id = tokens.user_id")
+
+	if filters.Username != "" {
+		usernamePattern, err := sanitizeLikePattern(strings.TrimSpace(filters.Username))
+		if err != nil {
+			return nil, err
+		}
+		usernameQuery := baseQuery.Where("users.username LIKE ? ESCAPE '!'", usernamePattern)
+		if keywordInt, convErr := strconv.Atoi(strings.TrimSpace(filters.Username)); convErr == nil {
+			usernameQuery = usernameQuery.Or("tokens.user_id = ?", keywordInt)
+		}
+		baseQuery = usernameQuery
+	}
+
+	if filters.TokenName != "" {
+		tokenNamePattern, err := sanitizeLikePattern(strings.TrimSpace(filters.TokenName))
+		if err != nil {
+			return nil, err
+		}
+		baseQuery = baseQuery.Where("tokens.name LIKE ? ESCAPE '!'", tokenNamePattern)
+	}
+
+	if filters.Token != "" {
+		tokenPattern, err := sanitizeLikePattern(strings.TrimPrefix(strings.TrimSpace(filters.Token), "sk-"))
+		if err != nil {
+			return nil, err
+		}
+		baseQuery = baseQuery.Where(qualifiedTokenKeyCol()+" LIKE ? ESCAPE '!'", tokenPattern)
+	}
+
+	if filters.Status != "" {
+		status, err := strconv.Atoi(filters.Status)
+		if err != nil {
+			return nil, errors.New("状态参数无效")
+		}
+		baseQuery = baseQuery.Where("tokens.status = ?", status)
+	}
+
+	if filters.Group != "" {
+		baseQuery = baseQuery.Where(qualifiedTokenGroupCol()+" = ?", filters.Group)
+	}
+
+	now := common.GetTimestamp()
+	switch strings.TrimSpace(filters.ExpiredState) {
+	case "expired":
+		baseQuery = baseQuery.Where("tokens.expired_time <> ? AND tokens.expired_time < ?", -1, now)
+	case "not_expired":
+		baseQuery = baseQuery.Where("(tokens.expired_time = ? OR tokens.expired_time >= ?)", -1, now)
+	}
+
+	if filters.StartTime > 0 {
+		baseQuery = baseQuery.Where("tokens.created_time >= ?", filters.StartTime)
+	}
+	if filters.EndTime > 0 {
+		baseQuery = baseQuery.Where("tokens.created_time <= ?", filters.EndTime)
+	}
+
+	return baseQuery, nil
+}
+
+func buildUserTokenSearchQuery(userId int, filters UserTokenSearchFilters) (*gorm.DB, error) {
+	keyword := strings.TrimSpace(filters.Keyword)
+	token := strings.TrimPrefix(strings.TrimSpace(filters.Token), "sk-")
+
 	if token != "" {
 		token = strings.TrimPrefix(token, "sk-")
 	}
@@ -116,8 +508,36 @@ func buildUserTokenSearchQuery(userId int, keyword string, token string) (*gorm.
 		if err != nil {
 			return nil, err
 		}
-		baseQuery = baseQuery.Where(commonKeyCol+" LIKE ? ESCAPE '!'", tokenPattern)
+		baseQuery = baseQuery.Where(qualifiedTokenKeyCol()+" LIKE ? ESCAPE '!'", tokenPattern)
 	}
+
+	if filters.Status != "" {
+		status, err := strconv.Atoi(strings.TrimSpace(filters.Status))
+		if err != nil {
+			return nil, errors.New("状态参数无效")
+		}
+		baseQuery = baseQuery.Where("status = ?", status)
+	}
+
+	if group := strings.TrimSpace(filters.Group); group != "" {
+		baseQuery = baseQuery.Where(qualifiedTokenGroupCol()+" = ?", group)
+	}
+
+	now := common.GetTimestamp()
+	switch strings.TrimSpace(filters.ExpiredState) {
+	case "expired":
+		baseQuery = baseQuery.Where("expired_time <> ? AND expired_time < ?", -1, now)
+	case "not_expired":
+		baseQuery = baseQuery.Where("(expired_time = ? OR expired_time >= ?)", -1, now)
+	}
+
+	switch strings.TrimSpace(filters.UnlimitedState) {
+	case "unlimited":
+		baseQuery = baseQuery.Where("unlimited_quota = ?", true)
+	case "limited":
+		baseQuery = baseQuery.Where("unlimited_quota = ?", false)
+	}
+
 	return baseQuery, nil
 }
 
@@ -174,7 +594,7 @@ func sanitizeLikePattern(input string) (string, error) {
 
 const searchHardLimit = 100
 
-func SearchUserTokens(userId int, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+func SearchUserTokens(userId int, filters UserTokenSearchFilters, offset int, limit int) (tokens []*Token, total int64, err error) {
 	// model 层强制截断
 	if limit <= 0 || limit > searchHardLimit {
 		limit = searchHardLimit
@@ -183,7 +603,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		offset = 0
 	}
 
-	baseQuery, err := buildUserTokenSearchQuery(userId, keyword, token)
+	baseQuery, err := buildUserTokenSearchQuery(userId, filters)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -205,12 +625,39 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	return tokens, total, nil
 }
 
-func BatchDeleteInvalidTokensByFilter(userId int, keyword string, token string) (int, error) {
-	baseQuery, err := buildUserTokenSearchQuery(userId, keyword, token)
+func SearchTokensByAdmin(filters AdminTokenSearchFilters, offset int, limit int) (tokens []*Token, total int64, err error) {
+	if limit <= 0 || limit > searchHardLimit {
+		limit = searchHardLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	baseQuery, err := buildAdminTokenSearchQuery(filters)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if err = baseQuery.Count(&total).Error; err != nil {
+		common.SysError("failed to count admin search tokens: " + err.Error())
+		return nil, 0, errors.New("搜索令牌失败")
+	}
+
+	if err = baseQuery.Order("tokens.id desc").Offset(offset).Limit(limit).Find(&tokens).Error; err != nil {
+		common.SysError("failed to search admin tokens: " + err.Error())
+		return nil, 0, errors.New("搜索令牌失败")
+	}
+
+	return tokens, total, nil
+}
+
+func BatchDeleteInvalidTokensByFilter(userId int, filters UserTokenSearchFilters) (int, error) {
+	baseQuery, err := buildUserTokenSearchQuery(userId, filters)
 	if err != nil {
 		return 0, err
 	}
-	baseQuery = applyInvalidTokenFilter(baseQuery, common.GetTimestamp())
+	now := common.GetTimestamp()
+	baseQuery = applyInvalidTokenFilter(baseQuery, now)
 
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -229,7 +676,14 @@ func BatchDeleteInvalidTokensByFilter(userId int, keyword string, token string) 
 
 	ids := make([]int, 0, len(tokens))
 	for _, token := range tokens {
+		if token.IsActiveSubscriptionAggregateAccessToken(now) {
+			continue
+		}
 		ids = append(ids, token.Id)
+	}
+	if len(ids) == 0 {
+		tx.Rollback()
+		return 0, nil
 	}
 	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
@@ -242,11 +696,14 @@ func BatchDeleteInvalidTokensByFilter(userId int, keyword string, token string) 
 	if common.RedisEnabled {
 		gopool.Go(func() {
 			for _, token := range tokens {
+				if token.IsActiveSubscriptionAggregateAccessToken(now) {
+					continue
+				}
 				_ = cacheDeleteToken(token.Key)
 			}
 		})
 	}
-	return len(tokens), nil
+	return len(ids), nil
 }
 
 func ValidateUserToken(key string) (token *Token, err error) {
@@ -345,7 +802,14 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 		// Don't return error - fall through to DB
 	}
 	fromDB = true
-	err = DB.Where(commonKeyCol+" = ?", key).First(&token).Error
+	keyCol := commonKeyCol
+	if strings.TrimSpace(keyCol) == "" {
+		keyCol = "`key`"
+		if common.UsingPostgreSQL {
+			keyCol = `"key"`
+		}
+	}
+	err = DB.Where(keyCol+" = ?", key).First(&token).Error
 	return token, err
 }
 
@@ -368,7 +832,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "specific_channel_id", "specific_channel_key_index").Updates(token).Error
 	return err
 }
 
@@ -441,6 +905,9 @@ func DeleteTokenById(id int, userId int) (err error) {
 	err = DB.Where(token).First(&token).Error
 	if err != nil {
 		return err
+	}
+	if token.IsActiveSubscriptionAggregateAccessToken(common.GetTimestamp()) {
+		return errors.New("有效期内的 Subscription Access 令牌不可删除")
 	}
 	return token.Delete()
 }
@@ -519,6 +986,7 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	}
 
 	tx := DB.Begin()
+	now := common.GetTimestamp()
 
 	var tokens []Token
 	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Find(&tokens).Error; err != nil {
@@ -526,7 +994,19 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 		return 0, err
 	}
 
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+	deletableIDs := make([]int, 0, len(tokens))
+	for _, token := range tokens {
+		if token.IsActiveSubscriptionAggregateAccessToken(now) {
+			continue
+		}
+		deletableIDs = append(deletableIDs, token.Id)
+	}
+	if len(deletableIDs) == 0 {
+		tx.Rollback()
+		return 0, nil
+	}
+
+	if err := tx.Where("user_id = ? AND id IN (?)", userId, deletableIDs).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
@@ -538,10 +1018,13 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	if common.RedisEnabled {
 		gopool.Go(func() {
 			for _, t := range tokens {
+				if t.IsActiveSubscriptionAggregateAccessToken(now) {
+					continue
+				}
 				_ = cacheDeleteToken(t.Key)
 			}
 		})
 	}
 
-	return len(tokens), nil
+	return len(deletableIDs), nil
 }

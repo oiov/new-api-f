@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Button, Form } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
+import { renderGroupOption } from '../../../helpers';
 
 const ChannelsFilters = ({
   setEditingChannel,
@@ -32,6 +33,11 @@ const ChannelsFilters = ({
   enableTagMode,
   formApi,
   groupOptions,
+  PACKAGE_POOL_GROUPS,
+  activePackagePoolGroup,
+  applyPackagePoolFilter,
+  handleSearchGroupChange,
+  resetSearchFilters,
   loading,
   searching,
   t,
@@ -111,18 +117,14 @@ const ChannelsFilters = ({
               field='searchGroup'
               placeholder={t('选择分组')}
               optionList={[
-                { label: t('选择分组'), value: null },
+                { label: t('选择分组'), value: null, fullLabel: t('选择分组') },
                 ...groupOptions,
               ]}
+              renderOptionItem={renderGroupOption}
               className='w-full'
               showClear
               pure
-              onChange={() => {
-                // 延迟执行搜索，让表单值先更新
-                setTimeout(() => {
-                  searchChannels(enableTagMode);
-                }, 0);
-              }}
+              onChange={(value) => handleSearchGroupChange(value)}
             />
           </div>
           <Button
@@ -137,20 +139,37 @@ const ChannelsFilters = ({
           <Button
             size='small'
             type='tertiary'
-            onClick={() => {
-              if (formApi) {
-                formApi.reset();
-                // 重置后立即查询，使用setTimeout确保表单重置完成
-                setTimeout(() => {
-                  refresh();
-                }, 100);
-              }
-            }}
+            onClick={resetSearchFilters}
             className='w-full md:w-auto'
           >
             {t('重置')}
           </Button>
         </Form>
+        <div className='flex flex-wrap items-center justify-start gap-1.5 w-full md:w-auto'>
+          <Button
+            size='small'
+            type={activePackagePoolGroup === '' ? 'primary' : 'tertiary'}
+            theme={activePackagePoolGroup === '' ? 'light' : 'borderless'}
+            onClick={() => applyPackagePoolFilter('')}
+          >
+            {t('全部渠道')}
+          </Button>
+          {PACKAGE_POOL_GROUPS.map((item) => (
+            <Button
+              key={item.value}
+              size='small'
+              type={
+                activePackagePoolGroup === item.value ? 'primary' : 'tertiary'
+              }
+              theme={
+                activePackagePoolGroup === item.value ? 'light' : 'borderless'
+              }
+              onClick={() => applyPackagePoolFilter(item.value)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
       </div>
     </div>
   );

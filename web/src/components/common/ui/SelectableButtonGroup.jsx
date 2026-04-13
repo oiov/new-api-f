@@ -21,7 +21,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useMinimumLoadingTime } from '../../../hooks/common/useMinimumLoadingTime';
 import { useContainerWidth } from '../../../hooks/common/useContainerWidth';
 import {
-  Divider,
   Button,
   Row,
   Col,
@@ -64,7 +63,7 @@ const SelectableButtonGroup = ({
   const [skeletonCount] = useState(12);
   const [containerRef, containerWidth] = useContainerWidth();
 
-  const ConditionalTooltipText = ({ text }) => {
+  const ConditionalTooltipText = ({ text, tooltipContent }) => {
     const textRef = useRef(null);
     const [isOverflowing, setIsOverflowing] = useState(false);
 
@@ -80,8 +79,10 @@ const SelectableButtonGroup = ({
       </span>
     );
 
-    return isOverflowing ? (
-      <Tooltip content={text}>{textElement}</Tooltip>
+    const tooltip = tooltipContent || text;
+
+    return isOverflowing || tooltipContent ? (
+      <Tooltip content={tooltip}>{textElement}</Tooltip>
     ) : (
       textElement
     );
@@ -154,10 +155,13 @@ const SelectableButtonGroup = ({
               }}
             >
               {withCheckbox && (
-                <Skeleton.Title active style={{ width: 14, height: 14 }} />
+                <div
+                  className='animate-pulse bg-semi-color-fill-1 rounded'
+                  style={{ width: 14, height: 14, flexShrink: 0 }}
+                />
               )}
-              <Skeleton.Title
-                active
+              <div
+                className='animate-pulse bg-semi-color-fill-1 rounded'
                 style={{
                   width: `${60 + (index % 3) * 20}px`,
                   height: 14,
@@ -169,9 +173,7 @@ const SelectableButtonGroup = ({
       </Row>
     );
 
-    return (
-      <Skeleton loading={true} active placeholder={placeholder}></Skeleton>
-    );
+    return <Skeleton loading={true} placeholder={placeholder}></Skeleton>;
   };
 
   const contentElement = showSkeleton ? (
@@ -204,9 +206,14 @@ const SelectableButtonGroup = ({
               >
                 <div className='sbg-content'>
                   {item.icon && <span className='sbg-icon'>{item.icon}</span>}
-                  <ConditionalTooltipText text={item.label} />
+                  <ConditionalTooltipText
+                    text={item.label}
+                    tooltipContent={item.tooltip}
+                  />
                   {item.tagCount !== undefined && shouldShowTags && (
-                    <span className={`sbg-badge ${isActive ? 'sbg-badge-active' : ''}`}>
+                    <span
+                      className={`sbg-badge ${isActive ? 'sbg-badge-active' : ''}`}
+                    >
                       {item.tagCount}
                     </span>
                   )}
@@ -228,11 +235,15 @@ const SelectableButtonGroup = ({
               <div className='sbg-content'>
                 {item.icon && <span className='sbg-icon'>{item.icon}</span>}
                 <ConditionalTooltipText text={item.label} />
-                {item.tagCount !== undefined && shouldShowTags && item.tagCount !== '' && (
-                  <span className={`sbg-badge ${isActive ? 'sbg-badge-active' : ''}`}>
-                    {item.tagCount}
-                  </span>
-                )}
+                {item.tagCount !== undefined &&
+                  shouldShowTags &&
+                  item.tagCount !== '' && (
+                    <span
+                      className={`sbg-badge ${isActive ? 'sbg-badge-active' : ''}`}
+                    >
+                      {item.tagCount}
+                    </span>
+                  )}
               </div>
             </Button>
           </Col>
@@ -247,13 +258,31 @@ const SelectableButtonGroup = ({
       ref={containerRef}
     >
       {title && (
-        <Divider margin='12px' align='left'>
-          {showSkeleton ? (
-            <Skeleton.Title active style={{ width: 80, height: 14 }} />
-          ) : (
-            title
-          )}
-        </Divider>
+        <div
+          className='flex items-center gap-2 mb-2'
+          style={{ marginTop: 12, marginBottom: 4 }}
+        >
+          <span
+            className='text-xs font-medium whitespace-nowrap'
+            style={{ color: 'var(--semi-color-text-2)' }}
+          >
+            {showSkeleton ? (
+              <div
+                className='animate-pulse bg-semi-color-fill-1 rounded inline-block'
+                style={{ width: 80, height: 14 }}
+              />
+            ) : (
+              title
+            )}
+          </span>
+          <div
+            style={{
+              flex: 1,
+              height: 1,
+              background: 'var(--semi-color-border)',
+            }}
+          />
+        </div>
       )}
       {needCollapse && !showSkeleton ? (
         <div style={{ position: 'relative' }}>

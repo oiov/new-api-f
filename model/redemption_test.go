@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -32,7 +33,9 @@ func withRedemptionTestDB(t *testing.T, run func()) {
 		&User{},
 		&Redemption{},
 		&SubscriptionPlan{},
+		&SubscriptionOrder{},
 		&UserSubscription{},
+		&Channel{},
 		&Log{},
 	))
 
@@ -150,19 +153,19 @@ func TestRedeemSubscriptionRedemptionIgnoresSoldOutLimit(t *testing.T) {
 		}).Error)
 
 		require.NoError(t, DB.Create(&SubscriptionPlan{
-			Id:              12,
-			Title:           "售罄套餐",
-			PriceAmount:     19.9,
-			Currency:        "USD",
-			DurationUnit:    SubscriptionDurationMonth,
-			DurationValue:   1,
-			Enabled:         true,
-			SaleLimitCount:  1,
-			SoldCount:       1,
-			TotalAmount:     8000,
-			ResourceType:    SubscriptionResourceQuota,
-			CreatedAt:       common.GetTimestamp(),
-			UpdatedAt:       common.GetTimestamp(),
+			Id:             12,
+			Title:          "售罄套餐",
+			PriceAmount:    19.9,
+			Currency:       "USD",
+			DurationUnit:   SubscriptionDurationMonth,
+			DurationValue:  1,
+			Enabled:        true,
+			SaleLimitCount: 1,
+			SoldCount:      1,
+			TotalAmount:    8000,
+			ResourceType:   SubscriptionResourceQuota,
+			CreatedAt:      common.GetTimestamp(),
+			UpdatedAt:      common.GetTimestamp(),
 		}).Error)
 
 		require.NoError(t, DB.Create(&Redemption{
@@ -192,5 +195,96 @@ func TestRedeemSubscriptionRedemptionIgnoresSoldOutLimit(t *testing.T) {
 		var plan SubscriptionPlan
 		require.NoError(t, DB.First(&plan, "id = ?", 12).Error)
 		require.EqualValues(t, 2, plan.SoldCount)
+	})
+}
+
+func TestRedeemSubscriptionRedemption_ReservesPlaceholderForClaudeManualDelivery(t *testing.T) {
+	withRedemptionTestDB(t, func() {
+		now := common.GetTimestamp()
+		schemaJSON, err := encodeSubscriptionDeliveryFields([]SubscriptionDeliveryField{
+			{Key: "api_key", Label: "API Key", Type: "text", Copyable: true},
+			{Key: "base_url", Label: "Base URL", Type: "text", Copyable: true},
+			{Key: "usage_query_url", Label: "Usage URL", Type: "text", Copyable: true},
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, DB.Create(&User{
+			Id:       4,
+			Username: "manual_redemption_user",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		plan := &SubscriptionPlan{
+			Id:                      13,
+			Title:                   "Claude Manual Redemption",
+			DurationUnit:            SubscriptionDurationMonth,
+			DurationValue:           1,
+			Enabled:                 true,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       1800,
+			DeliveryMode:            SubscriptionDeliveryModeManualDelivery,
+			DeliveryFieldSchemaJSON: schemaJSON,
+			AllowedModelsJSON:       `["claude-sonnet-4-6"]`,
+			UpgradeGroup:            "vip",
+			CreatedAt:               now,
+			UpdatedAt:               now,
+		}
+		require.NoError(t, DB.Create(plan).Error)
+
+		tag := subscriptionPlanChannelPoolTag(plan.Id)
+		require.NoError(t, DB.Create(&Channel{
+			Id:          9001,
+			Name:        "Claude Redemption Fixed Channel",
+			Status:      common.ChannelStatusEnabled,
+			Key:         "seed-key-1",
+			Group:       "vip",
+			Tag:         &tag,
+			Models:      "claude-sonnet-4-6",
+			CreatedTime: now,
+			ChannelInfo: ChannelInfo{
+				IsMultiKey:   true,
+				MultiKeySize: 1,
+			},
+		}).Error)
+
+		require.NoError(t, DB.Create(&Redemption{
+			UserId:             1,
+			Key:                "manual-subscription-code",
+			Status:             common.RedemptionCodeStatusEnabled,
+			Name:               "人工发放套餐码",
+			RedemptionType:     RedemptionTypeSubscription,
+			SubscriptionPlanId: 13,
+			CreatedTime:        now,
+			ExpiredTime:        time.Now().Add(24 * time.Hour).Unix(),
+		}).Error)
+
+		result, err := Redeem("manual-subscription-code", 4)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, RedemptionTypeSubscription, result.RedemptionType)
+		require.Equal(t, 13, result.SubscriptionPlanId)
+		require.Equal(t, "Claude Manual Redemption", result.SubscriptionPlanTitle)
+		require.Zero(t, result.SubscriptionId)
+		require.NotZero(t, result.SubscriptionOrderId)
+		require.Equal(t, SubscriptionFulfillmentPending, result.FulfillmentStatus)
+
+		var order SubscriptionOrder
+		require.NoError(t, DB.First(&order, "id = ?", result.SubscriptionOrderId).Error)
+		require.Equal(t, 4, order.UserId)
+		require.Equal(t, 13, order.PlanId)
+		require.Equal(t, "redemption", order.PaymentMethod)
+		require.Equal(t, SubscriptionDeliveryModeManualDelivery, order.PlanDeliveryMode)
+		require.Equal(t, SubscriptionFulfillmentPending, order.FulfillmentStatus)
+		require.Equal(t, 9001, order.ReservedChannelId)
+		require.Equal(t, 1, order.ReservedChannelKeyIndex)
+
+		var channel Channel
+		require.NoError(t, DB.First(&channel, "id = ?", 9001).Error)
+		keys := channel.GetKeys()
+		require.Len(t, keys, 2)
+		require.Equal(t, "seed-key-1", keys[0])
+		require.True(t, strings.HasPrefix(keys[1], "reserved:sub_order:"))
+
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -163,8 +164,10 @@ func (s *BillingSession) needsRefundLocked() bool {
 		return true
 	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
-	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
-		return true
+	if sub, ok := s.funding.(*SubscriptionFunding); ok {
+		if sub.preConsumed > 0 || sub.preConsumedCnt > 0 {
+			return true
+		}
 	}
 	return false
 }
@@ -308,6 +311,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
+	pref = ResolveBillingPreferenceByGroup(relayInfo.UsingGroup, pref)
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
@@ -347,11 +351,12 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId:  relayInfo.RequestId,
-				userId:     relayInfo.UserId,
-				modelName:  relayInfo.OriginModelName,
-				usingGroup: relayInfo.UsingGroup,
-				amount:     subConsume,
+				requestId:               relayInfo.RequestId,
+				userId:                  relayInfo.UserId,
+				modelName:               relayInfo.OriginModelName,
+				usingGroup:              relayInfo.UsingGroup,
+				preferredSubscriptionId: common.GetContextKeyInt(c, constant.ContextKeyPreferredSubscriptionId),
+				amount:                  subConsume,
 			},
 		}
 		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、
@@ -379,7 +384,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	case "subscription_first":
 		fallthrough
 	default:
-		hasSub, subCheckErr := model.HasActiveUserSubscription(relayInfo.UserId)
+		hasSub, subCheckErr := model.HasUsableUserSubscription(relayInfo.UserId)
 		if subCheckErr != nil {
 			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}

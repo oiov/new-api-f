@@ -12,8 +12,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrRedeemFailed is returned when redemption fails due to database error
+// ErrRedeemFailed is returned when redemption fails due to a database/system error
 var ErrRedeemFailed = errors.New("redeem.failed")
+
+// User-facing redemption errors — returned directly to the caller without wrapping
+var (
+	ErrInvalidCode = errors.New("redeem.invalid_code")
+	ErrCodeUsed    = errors.New("redeem.code_used")
+	ErrCodeExpired = errors.New("redeem.code_expired")
+)
 
 type Redemption struct {
 	Id                    int            `json:"id"`
@@ -44,6 +51,8 @@ type RedeemResult struct {
 	SubscriptionPlanId    int    `json:"subscription_plan_id"`
 	SubscriptionPlanTitle string `json:"subscription_plan_title"`
 	SubscriptionId        int    `json:"subscription_id"`
+	SubscriptionOrderId   int    `json:"subscription_order_id"`
+	FulfillmentStatus     string `json:"fulfillment_status,omitempty"`
 }
 
 type RedemptionHistoryItem struct {
@@ -56,6 +65,13 @@ type RedemptionHistoryItem struct {
 	RedeemedTime          int64  `json:"redeemed_time"`
 	UsedUserId            int    `json:"used_user_id"`
 	Username              string `json:"username"`
+}
+
+type RedemptionHistoryFilters struct {
+	Keyword        string
+	RedemptionType string
+	StartTimestamp int64
+	EndTimestamp   int64
 }
 
 func NormalizeRedemptionType(redemptionType string) string {
@@ -150,6 +166,10 @@ func SearchRedemptions(keyword string, startIdx int, num int) (redemptions []*Re
 }
 
 func GetRedemptionHistory(userId int, keyword string, startIdx int, num int) (items []*RedemptionHistoryItem, total int64, err error) {
+	return GetRedemptionHistoryWithFilters(userId, RedemptionHistoryFilters{Keyword: keyword}, startIdx, num)
+}
+
+func GetRedemptionHistoryWithFilters(userId int, filters RedemptionHistoryFilters, startIdx int, num int) (items []*RedemptionHistoryItem, total int64, err error) {
 	tx := DB.Table("redemptions").
 		Select(
 			"redemptions.id, redemptions.name, redemptions.quota, redemptions.redemption_type, redemptions.subscription_plan_id, redemptions.redeemed_time, redemptions.used_user_id, COALESCE(users.username, '') as username",
@@ -161,7 +181,7 @@ func GetRedemptionHistory(userId int, keyword string, startIdx int, num int) (it
 		tx = tx.Where("redemptions.used_user_id = ?", userId)
 	}
 
-	keyword = strings.TrimSpace(keyword)
+	keyword := strings.TrimSpace(filters.Keyword)
 	if keyword != "" {
 		keywordTx := DB.Where("redemptions.name LIKE ?", "%"+keyword+"%")
 		if userId == 0 {
@@ -173,6 +193,15 @@ func GetRedemptionHistory(userId int, keyword string, startIdx int, num int) (it
 				Or("redemptions.used_user_id = ?", id)
 		}
 		tx = tx.Where(keywordTx)
+	}
+	if redemptionType := NormalizeRedemptionType(strings.TrimSpace(filters.RedemptionType)); strings.TrimSpace(filters.RedemptionType) != "" {
+		tx = tx.Where("redemptions.redemption_type = ?", redemptionType)
+	}
+	if filters.StartTimestamp > 0 {
+		tx = tx.Where("redemptions.redeemed_time >= ?", filters.StartTimestamp)
+	}
+	if filters.EndTimestamp > 0 {
+		tx = tx.Where("redemptions.redeemed_time <= ?", filters.EndTimestamp)
 	}
 
 	if err = tx.Count(&total).Error; err != nil {
@@ -207,6 +236,7 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 	}
 	redemption := &Redemption{}
 	result = &RedeemResult{}
+	var refreshChannelCache bool
 
 	keyCol := "`key`"
 	if common.UsingPostgreSQL {
@@ -216,13 +246,13 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
-			return errors.New("无效的兑换码")
+			return ErrInvalidCode
 		}
 		if redemption.Status != common.RedemptionCodeStatusEnabled {
-			return errors.New("该兑换码已被使用")
+			return ErrCodeUsed
 		}
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
-			return errors.New("该兑换码已过期")
+			return ErrCodeExpired
 		}
 		redemption.RedemptionType = NormalizeRedemptionType(redemption.RedemptionType)
 		result.RedemptionType = redemption.RedemptionType
@@ -235,13 +265,43 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 			if err != nil {
 				return err
 			}
-			sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption")
-			if err != nil {
-				return err
-			}
 			result.SubscriptionPlanId = plan.Id
 			result.SubscriptionPlanTitle = plan.Title
-			result.SubscriptionId = sub.Id
+			if normalizeSubscriptionDeliveryMode(plan.DeliveryMode) == SubscriptionDeliveryModeManualDelivery {
+				tradeNo, err := buildManualDeliveryTradeNo("redeem")
+				if err != nil {
+					return err
+				}
+				now := common.GetTimestamp()
+				order := &SubscriptionOrder{
+					UserId:        userId,
+					PlanId:        plan.Id,
+					Money:         0,
+					TradeNo:       tradeNo,
+					PaymentMethod: "redemption",
+					Status:        common.TopUpStatusSuccess,
+					CreateTime:    now,
+					CompleteTime:  now,
+				}
+				order.ApplyPlanSnapshot(plan)
+				if err := tx.Create(order).Error; err != nil {
+					return err
+				}
+				if isClaudeSeriesRequestCountManualDeliveryPlan(plan) {
+					if _, _, err := reserveManualDeliveryChannelSlotForOrderTx(tx, order, plan); err != nil {
+						return err
+					}
+					refreshChannelCache = true
+				}
+				result.SubscriptionOrderId = order.Id
+				result.FulfillmentStatus = order.FulfillmentStatus
+			} else {
+				sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption")
+				if err != nil {
+					return err
+				}
+				result.SubscriptionId = sub.Id
+			}
 		default:
 			err = tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
 			if err != nil {
@@ -256,8 +316,15 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 		return err
 	})
 	if err != nil {
+		// User-facing errors are passed through directly; system/DB errors are wrapped
+		if errors.Is(err, ErrInvalidCode) || errors.Is(err, ErrCodeUsed) || errors.Is(err, ErrCodeExpired) {
+			return nil, err
+		}
 		common.SysError("redemption failed: " + err.Error())
 		return nil, ErrRedeemFailed
+	}
+	if refreshChannelCache {
+		InitChannelCache()
 	}
 	switch result.RedemptionType {
 	case RedemptionTypeSubscription:
@@ -265,7 +332,11 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 		if strings.TrimSpace(planLabel) == "" {
 			planLabel = fmt.Sprintf("#%d", result.SubscriptionPlanId)
 		}
-		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码兑换订阅套餐 %s，兑换码ID %d，订阅ID %d", planLabel, redemption.Id, result.SubscriptionId))
+		if result.SubscriptionOrderId > 0 && result.SubscriptionId == 0 {
+			RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码创建订阅人工发放订单 %s，兑换码ID %d，订单ID %d", planLabel, redemption.Id, result.SubscriptionOrderId))
+		} else {
+			RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码兑换订阅套餐 %s，兑换码ID %d，订阅ID %d", planLabel, redemption.Id, result.SubscriptionId))
+		}
 	default:
 		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	}

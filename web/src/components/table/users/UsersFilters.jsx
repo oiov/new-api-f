@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useRef } from 'react';
 import { Form, Button } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
+import { renderGroupOption } from '../../../helpers';
 
 const UsersFilters = ({
   formInitValues,
@@ -76,6 +77,7 @@ const UsersFilters = ({
             field='searchGroup'
             placeholder={t('选择分组')}
             optionList={groupOptions}
+            renderOptionItem={renderGroupOption}
             onChange={(value) => {
               // Group change triggers automatic search
               setTimeout(() => {

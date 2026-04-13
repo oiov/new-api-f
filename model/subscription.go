@@ -1,8 +1,12 @@
 package model
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,6 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/hot"
 	"gorm.io/gorm"
 )
@@ -59,13 +65,62 @@ const (
 	SubscriptionResetDaily   = "daily"
 	SubscriptionResetWeekly  = "weekly"
 	SubscriptionResetMonthly = "monthly"
+	SubscriptionResetYearly  = "yearly"
 	SubscriptionResetCustom  = "custom"
+)
+
+const (
+	SubscriptionDeliveryModeAutoActivate   = "auto_activate"
+	SubscriptionDeliveryModeManualDelivery = "manual_delivery"
+)
+
+const (
+	SubscriptionFulfillmentNotRequired = "not_required"
+	SubscriptionFulfillmentPending     = "pending_delivery"
+	SubscriptionFulfillmentDelivered   = "delivered"
+	SubscriptionFulfillmentRejected    = "rejected"
 )
 
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
 )
+
+type SubscriptionDeliveryField struct {
+	Key          string `json:"key"`
+	Label        string `json:"label"`
+	Type         string `json:"type"`
+	Required     bool   `json:"required"`
+	Masked       bool   `json:"masked"`
+	Copyable     bool   `json:"copyable"`
+	SortOrder    int    `json:"sort_order"`
+	Placeholder  string `json:"placeholder"`
+	DefaultValue string `json:"default_value,omitempty"`
+}
+
+type SubscriptionDeliveryPayloadItem struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Type     string `json:"type"`
+	Value    string `json:"value"`
+	Masked   bool   `json:"masked"`
+	Copyable bool   `json:"copyable"`
+}
+
+type SubscriptionManualDeliverySummary struct {
+	Order       *SubscriptionOrder              `json:"order"`
+	Plan        *SubscriptionPlan               `json:"plan,omitempty"`
+	RefundOrder *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+}
+
+type AdminSubscriptionManualDeliverySummary struct {
+	Order              *SubscriptionOrder              `json:"order"`
+	Plan               *SubscriptionPlan               `json:"plan,omitempty"`
+	Username           string                          `json:"username"`
+	UserGroup          string                          `json:"user_group"`
+	UserSubscriptionId int                             `json:"user_subscription_id"`
+	RefundOrder        *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+}
 
 const (
 	subscriptionPlanCacheNamespace     = "new-api:subscription_plan:v1"
@@ -217,12 +272,28 @@ type SubscriptionPlan struct {
 
 	// ResourceType controls whether this plan is billed by quota or successful request count.
 	ResourceType string `json:"resource_type" gorm:"type:varchar(32);not null;default:'quota'"`
-	// RequestCountTotal is the total successful request count for request_count plans (0 = unlimited).
+	// RequestCountTotal is the total successful request count allowed across the whole subscription lifetime (0 = unlimited).
 	RequestCountTotal int64 `json:"request_count_total" gorm:"type:bigint;not null;default:0"`
+	// RequestCountPeriodTotal is the successful request count allowed within each reset period (0 = unlimited).
+	RequestCountPeriodTotal int64 `json:"request_count_period_total" gorm:"type:bigint;not null;default:0"`
 
 	// Quota reset period for plan
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
+	QuotaResetUseFixedClock bool   `json:"quota_reset_use_fixed_clock" gorm:"not null;default:false"`
+	QuotaResetFixedSeconds  int64  `json:"quota_reset_fixed_seconds" gorm:"type:bigint;not null;default:0"`
+
+	AllowedGroupsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_groups_json"`
+	AllowedModelsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_models_json"`
+	AllowedVendorIDsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_vendor_ids_json"`
+	DeliveryMode            string `json:"delivery_mode" gorm:"type:varchar(32);not null;default:'auto_activate'"`
+	DeliveryFieldSchemaJSON string `json:"-" gorm:"type:text;default:'';column:delivery_field_schema_json"`
+
+	AllowedGroups       []string                    `json:"allowed_groups,omitempty" gorm:"-"`
+	AllowedModels       []string                    `json:"allowed_models,omitempty" gorm:"-"`
+	AllowedVendorIDs    []int                       `json:"allowed_vendor_ids,omitempty" gorm:"-"`
+	AllowedVendorNames  []string                    `json:"allowed_vendor_names,omitempty" gorm:"-"`
+	DeliveryFieldSchema []SubscriptionDeliveryField `json:"delivery_field_schema,omitempty" gorm:"-"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
@@ -296,12 +367,14 @@ func (p *SubscriptionPlan) ApplyDisplayInventory() {
 
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
+	p.DeliveryMode = normalizeSubscriptionDeliveryMode(p.DeliveryMode)
 	p.CreatedAt = now
 	p.UpdatedAt = now
 	return nil
 }
 
 func (p *SubscriptionPlan) BeforeUpdate(tx *gorm.DB) error {
+	p.DeliveryMode = normalizeSubscriptionDeliveryMode(p.DeliveryMode)
 	p.UpdatedAt = common.GetTimestamp()
 	return nil
 }
@@ -313,16 +386,24 @@ type SubscriptionOrder struct {
 	PlanId int     `json:"plan_id" gorm:"index"`
 	Money  float64 `json:"money"`
 
-	PlanTitle               string `json:"plan_title" gorm:"type:varchar(255);default:''"`
-	PlanDurationUnit        string `json:"plan_duration_unit" gorm:"type:varchar(16);default:''"`
-	PlanDurationValue       int    `json:"plan_duration_value" gorm:"type:int;not null;default:0"`
-	PlanCustomSeconds       int64  `json:"plan_custom_seconds" gorm:"type:bigint;not null;default:0"`
-	PlanUpgradeGroup        string `json:"plan_upgrade_group" gorm:"type:varchar(64);default:''"`
-	PlanTotalAmount         int64  `json:"plan_total_amount" gorm:"type:bigint;not null;default:0"`
-	PlanResourceType        string `json:"plan_resource_type" gorm:"type:varchar(32);default:''"`
-	PlanRequestCountTotal   int64  `json:"plan_request_count_total" gorm:"type:bigint;not null;default:0"`
-	PlanQuotaResetPeriod    string `json:"plan_quota_reset_period" gorm:"type:varchar(16);default:''"`
-	PlanQuotaResetCustomSec int64  `json:"plan_quota_reset_custom_sec" gorm:"type:bigint;not null;default:0"`
+	PlanTitle                   string `json:"plan_title" gorm:"type:varchar(255);default:''"`
+	PlanDurationUnit            string `json:"plan_duration_unit" gorm:"type:varchar(16);default:''"`
+	PlanDurationValue           int    `json:"plan_duration_value" gorm:"type:int;not null;default:0"`
+	PlanCustomSeconds           int64  `json:"plan_custom_seconds" gorm:"type:bigint;not null;default:0"`
+	PlanUpgradeGroup            string `json:"plan_upgrade_group" gorm:"type:varchar(64);default:''"`
+	PlanTotalAmount             int64  `json:"plan_total_amount" gorm:"type:bigint;not null;default:0"`
+	PlanResourceType            string `json:"plan_resource_type" gorm:"type:varchar(32);default:''"`
+	PlanRequestCountTotal       int64  `json:"plan_request_count_total" gorm:"type:bigint;not null;default:0"`
+	PlanRequestCountPeriodTotal int64  `json:"plan_request_count_period_total" gorm:"type:bigint;not null;default:0"`
+	PlanQuotaResetPeriod        string `json:"plan_quota_reset_period" gorm:"type:varchar(16);default:''"`
+	PlanQuotaResetCustomSec     int64  `json:"plan_quota_reset_custom_sec" gorm:"type:bigint;not null;default:0"`
+	PlanQuotaResetUseFixedClock bool   `json:"plan_quota_reset_use_fixed_clock" gorm:"not null;default:false"`
+	PlanQuotaResetFixedSeconds  int64  `json:"plan_quota_reset_fixed_seconds" gorm:"type:bigint;not null;default:0"`
+	PlanAllowedGroupsJSON       string `json:"-" gorm:"type:text;default:'';column:plan_allowed_groups_json"`
+	PlanAllowedModelsJSON       string `json:"-" gorm:"type:text;default:'';column:plan_allowed_models_json"`
+	PlanAllowedVendorIDsJSON    string `json:"-" gorm:"type:text;default:'';column:plan_allowed_vendor_ids_json"`
+	PlanDeliveryMode            string `json:"plan_delivery_mode" gorm:"type:varchar(32);default:'auto_activate'"`
+	PlanDeliveryFieldSchemaJSON string `json:"-" gorm:"type:text;default:'';column:plan_delivery_field_schema_json"`
 
 	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -330,17 +411,36 @@ type SubscriptionOrder struct {
 	CreateTime    int64  `json:"create_time"`
 	CompleteTime  int64  `json:"complete_time"`
 
-	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
+	ProviderPayload         string `json:"provider_payload" gorm:"type:text"`
+	FulfillmentStatus       string `json:"fulfillment_status" gorm:"type:varchar(32);not null;default:'not_required';index"`
+	DeliveryPayloadJSON     string `json:"-" gorm:"type:text;default:'';column:delivery_payload_json"`
+	DeliveryAdminRemark     string `json:"delivery_admin_remark" gorm:"type:text;default:''"`
+	DeliveredBy             int    `json:"delivered_by" gorm:"type:int;not null;default:0"`
+	DeliveredAt             int64  `json:"delivered_at" gorm:"type:bigint;not null;default:0"`
+	RefundToQuota           bool   `json:"refund_to_quota" gorm:"not null;default:false"`
+	RefundQuotaAmount       int64  `json:"refund_quota_amount" gorm:"type:bigint;not null;default:0"`
+	ReservedChannelId       int    `json:"reserved_channel_id" gorm:"type:int;not null;default:0"`
+	ReservedChannelKeyIndex int    `json:"reserved_channel_key_index" gorm:"type:int;not null;default:-1"`
+
+	PlanDeliveryFieldSchema []SubscriptionDeliveryField       `json:"plan_delivery_field_schema,omitempty" gorm:"-"`
+	DeliveryPayload         []SubscriptionDeliveryPayloadItem `json:"delivery_payload,omitempty" gorm:"-"`
 }
 
 func (o *SubscriptionOrder) Insert() error {
 	if o.CreateTime == 0 {
 		o.CreateTime = common.GetTimestamp()
 	}
+	o.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(o.PlanDeliveryMode)
+	o.FulfillmentStatus = normalizeSubscriptionFulfillmentStatus(o.FulfillmentStatus)
 	return DB.Create(o).Error
 }
 
 func (o *SubscriptionOrder) Update() error {
+	o.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(o.PlanDeliveryMode)
+	o.FulfillmentStatus = normalizeSubscriptionFulfillmentStatus(o.FulfillmentStatus)
+	if o.ReservedChannelKeyIndex < -1 {
+		o.ReservedChannelKeyIndex = -1
+	}
 	return DB.Save(o).Error
 }
 
@@ -352,6 +452,7 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 	if err := DB.Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
 		return nil
 	}
+	ApplySubscriptionOrderDeliveryFields(&order)
 	return &order
 }
 
@@ -367,8 +468,20 @@ func (o *SubscriptionOrder) ApplyPlanSnapshot(plan *SubscriptionPlan) {
 	o.PlanTotalAmount = plan.TotalAmount
 	o.PlanResourceType = NormalizeSubscriptionResourceType(plan.ResourceType)
 	o.PlanRequestCountTotal = plan.RequestCountTotal
+	o.PlanRequestCountPeriodTotal = plan.RequestCountPeriodTotal
 	o.PlanQuotaResetPeriod = NormalizeResetPeriod(plan.QuotaResetPeriod)
 	o.PlanQuotaResetCustomSec = plan.QuotaResetCustomSeconds
+	o.PlanQuotaResetUseFixedClock = plan.QuotaResetUseFixedClock
+	o.PlanQuotaResetFixedSeconds = plan.QuotaResetFixedSeconds
+	o.PlanAllowedGroupsJSON = strings.TrimSpace(plan.AllowedGroupsJSON)
+	o.PlanAllowedModelsJSON = strings.TrimSpace(plan.AllowedModelsJSON)
+	o.PlanAllowedVendorIDsJSON = strings.TrimSpace(plan.AllowedVendorIDsJSON)
+	o.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(plan.DeliveryMode)
+	o.PlanDeliveryFieldSchemaJSON = strings.TrimSpace(plan.DeliveryFieldSchemaJSON)
+	o.FulfillmentStatus = SubscriptionFulfillmentNotRequired
+	if o.PlanDeliveryMode == SubscriptionDeliveryModeManualDelivery {
+		o.FulfillmentStatus = SubscriptionFulfillmentPending
+	}
 }
 
 func (o *SubscriptionOrder) SnapshotPlan() *SubscriptionPlan {
@@ -385,8 +498,16 @@ func (o *SubscriptionOrder) SnapshotPlan() *SubscriptionPlan {
 		TotalAmount:             o.PlanTotalAmount,
 		ResourceType:            NormalizeSubscriptionResourceType(o.PlanResourceType),
 		RequestCountTotal:       o.PlanRequestCountTotal,
+		RequestCountPeriodTotal: o.PlanRequestCountPeriodTotal,
 		QuotaResetPeriod:        NormalizeResetPeriod(o.PlanQuotaResetPeriod),
 		QuotaResetCustomSeconds: o.PlanQuotaResetCustomSec,
+		QuotaResetUseFixedClock: o.PlanQuotaResetUseFixedClock,
+		QuotaResetFixedSeconds:  o.PlanQuotaResetFixedSeconds,
+		AllowedGroupsJSON:       strings.TrimSpace(o.PlanAllowedGroupsJSON),
+		AllowedModelsJSON:       strings.TrimSpace(o.PlanAllowedModelsJSON),
+		AllowedVendorIDsJSON:    strings.TrimSpace(o.PlanAllowedVendorIDsJSON),
+		DeliveryMode:            normalizeSubscriptionDeliveryMode(o.PlanDeliveryMode),
+		DeliveryFieldSchemaJSON: strings.TrimSpace(o.PlanDeliveryFieldSchemaJSON),
 	}
 }
 
@@ -404,9 +525,52 @@ func buildSubscriptionPlanSnapshot(plan *SubscriptionPlan, planId int) *Subscrip
 		TotalAmount:             plan.TotalAmount,
 		ResourceType:            NormalizeSubscriptionResourceType(plan.ResourceType),
 		RequestCountTotal:       plan.RequestCountTotal,
+		RequestCountPeriodTotal: plan.RequestCountPeriodTotal,
 		QuotaResetPeriod:        NormalizeResetPeriod(plan.QuotaResetPeriod),
 		QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
+		QuotaResetUseFixedClock: plan.QuotaResetUseFixedClock,
+		QuotaResetFixedSeconds:  plan.QuotaResetFixedSeconds,
+		AllowedGroupsJSON:       strings.TrimSpace(plan.AllowedGroupsJSON),
+		AllowedModelsJSON:       strings.TrimSpace(plan.AllowedModelsJSON),
+		AllowedVendorIDsJSON:    strings.TrimSpace(plan.AllowedVendorIDsJSON),
+		DeliveryMode:            normalizeSubscriptionDeliveryMode(plan.DeliveryMode),
+		DeliveryFieldSchemaJSON: strings.TrimSpace(plan.DeliveryFieldSchemaJSON),
 	}
+}
+
+func mergeManualDeliveryEffectivePlan(snapshotPlan, currentPlan *SubscriptionPlan, planId int) *SubscriptionPlan {
+	if currentPlan == nil && snapshotPlan == nil {
+		return nil
+	}
+	if snapshotPlan == nil {
+		return buildSubscriptionPlanSnapshot(currentPlan, planId)
+	}
+	merged := buildSubscriptionPlanSnapshot(snapshotPlan, planId)
+	if merged == nil {
+		return buildSubscriptionPlanSnapshot(currentPlan, planId)
+	}
+	if currentPlan == nil {
+		return merged
+	}
+	merged.UpgradeGroup = strings.TrimSpace(currentPlan.UpgradeGroup)
+	merged.AllowedGroupsJSON = strings.TrimSpace(currentPlan.AllowedGroupsJSON)
+	merged.AllowedModelsJSON = strings.TrimSpace(currentPlan.AllowedModelsJSON)
+	merged.AllowedVendorIDsJSON = strings.TrimSpace(currentPlan.AllowedVendorIDsJSON)
+	merged.DeliveryMode = normalizeSubscriptionDeliveryMode(currentPlan.DeliveryMode)
+	merged.DeliveryFieldSchemaJSON = strings.TrimSpace(currentPlan.DeliveryFieldSchemaJSON)
+	return merged
+}
+
+func buildManualDeliveryTradeNo(prefix string) (string, error) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		prefix = "manual"
+	}
+	nonce, err := common.GenerateRandomCharsKey(24)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s-%d-%s", prefix, common.GetTimestamp(), nonce), nil
 }
 
 // User subscription instance
@@ -418,14 +582,21 @@ type UserSubscription struct {
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
 
-	ResourceType       string `json:"resource_type" gorm:"type:varchar(32);not null;default:'quota'"`
-	RequestCountTotal  int64  `json:"request_count_total" gorm:"type:bigint;not null;default:0"`
-	RequestCountUsed   int64  `json:"request_count_used" gorm:"type:bigint;not null;default:0"`
-	ResetPeriod        string `json:"reset_period" gorm:"type:varchar(16);not null;default:'never'"`
-	ResetCustomSeconds int64  `json:"reset_custom_seconds" gorm:"type:bigint;not null;default:0"`
-	DurationUnit       string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
-	DurationValue      int    `json:"duration_value" gorm:"type:int;not null;default:1"`
-	CustomSeconds      int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
+	ResourceType            string `json:"resource_type" gorm:"type:varchar(32);not null;default:'quota'"`
+	RequestCountTotal       int64  `json:"request_count_total" gorm:"type:bigint;not null;default:0"`
+	RequestCountUsed        int64  `json:"request_count_used" gorm:"type:bigint;not null;default:0"`
+	RequestCountPeriodTotal int64  `json:"request_count_period_total" gorm:"type:bigint;not null;default:0"`
+	RequestCountPeriodUsed  int64  `json:"request_count_period_used" gorm:"type:bigint;not null;default:0"`
+	ResetPeriod             string `json:"reset_period" gorm:"type:varchar(16);not null;default:'never'"`
+	ResetCustomSeconds      int64  `json:"reset_custom_seconds" gorm:"type:bigint;not null;default:0"`
+	ResetUseFixedClock      bool   `json:"reset_use_fixed_clock" gorm:"not null;default:false"`
+	ResetFixedSeconds       int64  `json:"reset_fixed_seconds" gorm:"type:bigint;not null;default:0"`
+	AllowedGroupsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_groups_json"`
+	AllowedModelsJSON       string `json:"-" gorm:"type:text;default:'';column:allowed_models_json"`
+	AllowedVendorIDsJSON    string `json:"-" gorm:"type:text;default:'';column:allowed_vendor_ids_json"`
+	DurationUnit            string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
+	DurationValue           int    `json:"duration_value" gorm:"type:int;not null;default:1"`
+	CustomSeconds           int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
 
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
@@ -433,11 +604,19 @@ type UserSubscription struct {
 
 	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin
 
+	SourceOrderId            int     `json:"source_order_id" gorm:"type:int;not null;default:0"`
+	SourceOrderTradeNo       string  `json:"source_order_trade_no" gorm:"type:varchar(255);default:'';index"`
+	SourceOrderPaymentMethod string  `json:"source_order_payment_method" gorm:"type:varchar(50);default:''"`
+	SourceOrderMoney         float64 `json:"source_order_money" gorm:"type:decimal(12,2);not null;default:0"`
+
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
 	NextResetTime int64 `json:"next_reset_time" gorm:"type:bigint;default:0;index"`
 
-	UpgradeGroup  string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
-	PrevUserGroup string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
+	UpgradeGroup            string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
+	PrevUserGroup           string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
+	AggregateEnabled        bool   `json:"aggregate_enabled" gorm:"not null;default:true"`
+	SpecificChannelId       int    `json:"specific_channel_id" gorm:"type:int;not null;default:0"`
+	SpecificChannelKeyIndex int    `json:"specific_channel_key_index" gorm:"type:int;not null;default:-1"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
@@ -456,13 +635,34 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 }
 
 type SubscriptionSummary struct {
-	Subscription *UserSubscription `json:"subscription"`
+	Subscription         *UserSubscription               `json:"subscription"`
+	RefundOrder          *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+	AggregateAccessToken *SubscriptionAccessTokenSummary `json:"aggregate_access_token,omitempty"`
+}
+
+type SubscriptionRefundOrderSummary struct {
+	OrderId       int     `json:"order_id"`
+	TradeNo       string  `json:"trade_no"`
+	TopUpId       int     `json:"topup_id"`
+	PaymentMethod string  `json:"payment_method"`
+	Money         float64 `json:"money"`
+	CompleteTime  int64   `json:"complete_time"`
 }
 
 type AdminUserSubscriptionSummary struct {
-	Subscription *UserSubscription `json:"subscription"`
-	Username     string            `json:"username"`
-	UserGroup    string            `json:"user_group"`
+	Subscription         *UserSubscription               `json:"subscription"`
+	Username             string                          `json:"username"`
+	UserGroup            string                          `json:"user_group"`
+	RefundOrder          *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+	AggregateAccessToken *SubscriptionAccessTokenSummary `json:"aggregate_access_token,omitempty"`
+}
+
+type SubscriptionAccessTokenSummary struct {
+	TokenId     int    `json:"token_id"`
+	TokenName   string `json:"token_name"`
+	KeyPreview  string `json:"key_preview"`
+	ExpiredTime int64  `json:"expired_time"`
+	Status      int    `json:"status"`
 }
 
 type SubscriptionMigrationFilter struct {
@@ -514,12 +714,20 @@ type SubscriptionMigrationExecutionResult struct {
 	Items        []SubscriptionMigrationExecutionItem `json:"items"`
 }
 
+type AdminTransferUserSubscriptionOptions struct {
+	TargetUserId int  `json:"target_user_id"`
+	Reactivate   bool `json:"reactivate"`
+}
+
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	if plan == nil {
 		return 0, errors.New("plan is nil")
 	}
 	if plan.DurationValue <= 0 && plan.DurationUnit != SubscriptionDurationCustom {
 		return 0, errors.New("duration_value must be > 0")
+	}
+	if endUnix, ok := calcFixedClockDeadlineEndTime(start, plan); ok {
+		return endUnix, nil
 	}
 	switch plan.DurationUnit {
 	case SubscriptionDurationYear:
@@ -542,12 +750,304 @@ func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	}
 }
 
+func isClaudePlan(plan *SubscriptionPlan) bool {
+	if plan == nil {
+		return false
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(plan.Title)), "claude") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(plan.UpgradeGroup)), "claude") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(plan.AllowedGroupsJSON)), "claude") {
+		return true
+	}
+	for _, group := range plan.AllowedGroups {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(group)), "claude") {
+			return true
+		}
+	}
+	for _, modelName := range plan.AllowedModels {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "claude") {
+			return true
+		}
+	}
+	for _, modelName := range decodeSubscriptionStringList(plan.AllowedModelsJSON) {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "claude") {
+			return true
+		}
+	}
+	return false
+}
+
+func isClaudeSubscription(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(sub.UpgradeGroup)), "claude") {
+		return true
+	}
+	for _, group := range decodeUserSubscriptionAllowedGroups(sub) {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(group)), "claude") {
+			return true
+		}
+	}
+	for _, modelName := range decodeUserSubscriptionAllowedModels(sub) {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "claude") {
+			return true
+		}
+	}
+	return false
+}
+
+func canTriggerClaudeActivationProbe(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	if !isClaudeSubscription(sub) {
+		return false
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+		return false
+	}
+	if getUserSubscriptionRouteGroup(sub) == "" {
+		return false
+	}
+	return sub.SpecificChannelId > 0
+}
+
+func pickClaudeActivationModel(sub *UserSubscription, token *Token) string {
+	if sub != nil {
+		for _, modelName := range decodeUserSubscriptionAllowedModels(sub) {
+			modelName = strings.TrimSpace(modelName)
+			if strings.HasPrefix(strings.ToLower(modelName), "claude") {
+				return modelName
+			}
+		}
+	}
+	if token != nil {
+		for _, modelName := range token.GetModelLimits() {
+			modelName = strings.TrimSpace(modelName)
+			if strings.HasPrefix(strings.ToLower(modelName), "claude") {
+				return modelName
+			}
+		}
+	}
+	return "claude-sonnet-4-6"
+}
+
+func triggerClaudeSubscriptionActivationProbeAsync(userId int, sub *UserSubscription) {
+	if userId <= 0 || !canTriggerClaudeActivationProbe(sub) {
+		return
+	}
+	subCopy := *sub
+	gopool.Go(func() {
+		if err := runClaudeSubscriptionActivationProbe(userId, &subCopy); err != nil {
+			common.SysError(fmt.Sprintf("trigger Claude subscription activation probe failed for user %d subscription %d: %v", userId, subCopy.Id, err))
+		}
+	})
+}
+
+func runClaudeSubscriptionActivationProbe(userId int, sub *UserSubscription) error {
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	if !canTriggerClaudeActivationProbe(sub) {
+		return errors.New("subscription is not eligible for Claude activation probe")
+	}
+	baseURL := resolveSubscriptionDeliveryBaseURL()
+	if baseURL == "" {
+		return errors.New("server address is empty")
+	}
+	token, err := EnsureSubscriptionAggregateAccessTokenForUser(userId)
+	if err != nil {
+		return err
+	}
+	if token == nil {
+		return errors.New("aggregate access token not found")
+	}
+	if strings.TrimSpace(token.Key) == "" {
+		return errors.New("aggregate access token key is empty")
+	}
+	if token.Status != common.TokenStatusEnabled {
+		return fmt.Errorf("aggregate access token is disabled: %d", token.Status)
+	}
+
+	modelName := pickClaudeActivationModel(sub, token)
+	payload := map[string]any{
+		"model":      modelName,
+		"max_tokens": 32,
+		"system":     "activation test",
+		"messages": []map[string]any{
+			{
+				"role":    "user",
+				"content": "hi",
+			},
+		},
+		"stream": false,
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/v1/messages", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("x-api-key", "sk-"+token.Key)
+	req.Header.Set("X-NewAPI-Preferred-Subscription-Id", strconv.Itoa(sub.Id))
+
+	client := &http.Client{Timeout: 45 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	if readErr != nil {
+		return readErr
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("activation probe http %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	return nil
+}
+
+func calcFixedClockDeadlineEndTime(start time.Time, plan *SubscriptionPlan) (int64, bool) {
+	if plan == nil {
+		return 0, false
+	}
+	if !isClaudePlan(plan) {
+		return 0, false
+	}
+	if plan.DurationUnit != SubscriptionDurationDay || plan.DurationValue <= 0 {
+		return 0, false
+	}
+	if NormalizeResetPeriod(plan.QuotaResetPeriod) != SubscriptionResetNever {
+		return 0, false
+	}
+	useFixed, fixedSeconds := normalizeResetFixedClock(
+		plan.QuotaResetUseFixedClock,
+		plan.QuotaResetFixedSeconds,
+		SubscriptionResetDaily,
+	)
+	if !useFixed {
+		return 0, false
+	}
+	localStart := subscriptionResetTime(start)
+	targetDay := localStart.AddDate(0, 0, plan.DurationValue)
+	hour := int(fixedSeconds / 3600)
+	minute := int((fixedSeconds % 3600) / 60)
+	second := int(fixedSeconds % 60)
+	deadline := time.Date(
+		targetDay.Year(),
+		targetDay.Month(),
+		targetDay.Day(),
+		hour,
+		minute,
+		second,
+		0,
+		targetDay.Location(),
+	)
+	if !deadline.After(localStart) {
+		deadline = deadline.AddDate(0, 0, 1)
+	}
+	return deadline.Unix(), true
+}
+
+func resolveExpiredSubscriptionFallbackGroupTx(tx *gorm.DB, userId int, upgradeGroup string) (string, error) {
+	if tx == nil || userId <= 0 {
+		return "", nil
+	}
+	upgradeGroup = strings.TrimSpace(upgradeGroup)
+	if upgradeGroup == "" {
+		return "", nil
+	}
+	var previousSub UserSubscription
+	err := tx.Where("user_id = ? AND prev_user_group <> '' AND prev_user_group <> ?",
+		userId, upgradeGroup).
+		Order("updated_at desc, end_time desc, id desc").
+		Limit(1).
+		Find(&previousSub).Error
+	if err != nil {
+		return "", err
+	}
+	if previousSub.Id > 0 {
+		return strings.TrimSpace(previousSub.PrevUserGroup), nil
+	}
+	return "default", nil
+}
+
 func NormalizeResetPeriod(period string) string {
 	switch strings.TrimSpace(period) {
-	case SubscriptionResetDaily, SubscriptionResetWeekly, SubscriptionResetMonthly, SubscriptionResetCustom:
+	case SubscriptionResetDaily, SubscriptionResetWeekly, SubscriptionResetMonthly, SubscriptionResetYearly, SubscriptionResetCustom:
 		return strings.TrimSpace(period)
 	default:
 		return SubscriptionResetNever
+	}
+}
+
+func resetPeriodSupportsFixedClock(period string) bool {
+	switch NormalizeResetPeriod(period) {
+	case SubscriptionResetDaily, SubscriptionResetWeekly, SubscriptionResetMonthly, SubscriptionResetYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeResetFixedClock(useFixed bool, fixedSeconds int64, period string) (bool, int64) {
+	if !useFixed || !resetPeriodSupportsFixedClock(period) {
+		return false, 0
+	}
+	if fixedSeconds < 0 {
+		return false, 0
+	}
+	if fixedSeconds >= 24*3600 {
+		return true, 24*3600 - 1
+	}
+	return true, fixedSeconds
+}
+
+func applyFixedClockToResetTime(base time.Time, next time.Time, period string, fixedSeconds int64) time.Time {
+	useFixed, normalizedFixedSeconds := normalizeResetFixedClock(true, fixedSeconds, period)
+	if !useFixed {
+		return next
+	}
+	localNext := subscriptionResetTime(next)
+	hour := int(normalizedFixedSeconds / 3600)
+	minute := int((normalizedFixedSeconds % 3600) / 60)
+	second := int(normalizedFixedSeconds % 60)
+	candidate := time.Date(
+		localNext.Year(),
+		localNext.Month(),
+		localNext.Day(),
+		hour,
+		minute,
+		second,
+		0,
+		localNext.Location(),
+	)
+	if candidate.After(subscriptionResetTime(base)) {
+		return candidate
+	}
+	switch NormalizeResetPeriod(period) {
+	case SubscriptionResetDaily:
+		return candidate.AddDate(0, 0, 1)
+	case SubscriptionResetWeekly:
+		return candidate.AddDate(0, 0, 7)
+	case SubscriptionResetMonthly:
+		return candidate.AddDate(0, 1, 0)
+	case SubscriptionResetYearly:
+		return candidate.AddDate(1, 0, 0)
+	default:
+		return candidate
 	}
 }
 
@@ -560,6 +1060,462 @@ func NormalizeSubscriptionResourceType(resourceType string) string {
 	}
 }
 
+func normalizeSubscriptionStringList(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(items))
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func normalizeSubscriptionIntList(items []int) []int {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(items))
+	result := make([]int, 0, len(items))
+	for _, item := range items {
+		if item <= 0 {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func encodeSubscriptionStringList(items []string) (string, error) {
+	normalized := normalizeSubscriptionStringList(items)
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func encodeSubscriptionIntList(items []int) (string, error) {
+	normalized := normalizeSubscriptionIntList(items)
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func normalizeSubscriptionDeliveryMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case SubscriptionDeliveryModeManualDelivery:
+		return SubscriptionDeliveryModeManualDelivery
+	default:
+		return SubscriptionDeliveryModeAutoActivate
+	}
+}
+
+func normalizeSubscriptionFulfillmentStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case SubscriptionFulfillmentPending:
+		return SubscriptionFulfillmentPending
+	case SubscriptionFulfillmentDelivered:
+		return SubscriptionFulfillmentDelivered
+	case SubscriptionFulfillmentRejected:
+		return SubscriptionFulfillmentRejected
+	default:
+		return SubscriptionFulfillmentNotRequired
+	}
+}
+
+func normalizeDeliveryFieldType(fieldType string) string {
+	switch strings.TrimSpace(fieldType) {
+	case "url", "textarea", "email", "password":
+		return strings.TrimSpace(fieldType)
+	default:
+		return "text"
+	}
+}
+
+func decodeSubscriptionStringList(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []string
+	if err := common.UnmarshalJsonStr(raw, &items); err != nil {
+		return nil
+	}
+	return normalizeSubscriptionStringList(items)
+}
+
+func decodeSubscriptionIntList(raw string) []int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []int
+	if err := common.UnmarshalJsonStr(raw, &items); err != nil {
+		return nil
+	}
+	return normalizeSubscriptionIntList(items)
+}
+
+func normalizeSubscriptionDeliveryFields(fields []SubscriptionDeliveryField) []SubscriptionDeliveryField {
+	if len(fields) == 0 {
+		return nil
+	}
+	result := make([]SubscriptionDeliveryField, 0, len(fields))
+	keySet := make(map[string]struct{}, len(fields))
+	for index, field := range fields {
+		key := strings.TrimSpace(field.Key)
+		label := strings.TrimSpace(field.Label)
+		if key == "" || label == "" {
+			continue
+		}
+		if _, exists := keySet[key]; exists {
+			continue
+		}
+		keySet[key] = struct{}{}
+		result = append(result, SubscriptionDeliveryField{
+			Key:          key,
+			Label:        label,
+			Type:         normalizeDeliveryFieldType(field.Type),
+			Required:     field.Required,
+			Masked:       field.Masked,
+			Copyable:     field.Copyable,
+			SortOrder:    field.SortOrder,
+			Placeholder:  strings.TrimSpace(field.Placeholder),
+			DefaultValue: strings.TrimSpace(field.DefaultValue),
+		})
+		if result[len(result)-1].SortOrder == 0 {
+			result[len(result)-1].SortOrder = index + 1
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func normalizeSubscriptionDeliveryPayload(items []SubscriptionDeliveryPayloadItem) []SubscriptionDeliveryPayloadItem {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]SubscriptionDeliveryPayloadItem, 0, len(items))
+	for _, item := range items {
+		key := strings.TrimSpace(item.Key)
+		label := strings.TrimSpace(item.Label)
+		value := strings.TrimSpace(item.Value)
+		if key == "" || label == "" || value == "" {
+			continue
+		}
+		result = append(result, SubscriptionDeliveryPayloadItem{
+			Key:      key,
+			Label:    label,
+			Type:     normalizeDeliveryFieldType(item.Type),
+			Value:    value,
+			Masked:   item.Masked,
+			Copyable: item.Copyable,
+		})
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func buildSubscriptionDeliveryFieldsFromPayload(items []SubscriptionDeliveryPayloadItem) []SubscriptionDeliveryField {
+	normalized := normalizeSubscriptionDeliveryPayload(items)
+	if len(normalized) == 0 {
+		return nil
+	}
+	fields := make([]SubscriptionDeliveryField, 0, len(normalized))
+	for index, item := range normalized {
+		fields = append(fields, SubscriptionDeliveryField{
+			Key:       item.Key,
+			Label:     item.Label,
+			Type:      normalizeDeliveryFieldType(item.Type),
+			Required:  true,
+			Masked:    item.Masked,
+			Copyable:  item.Copyable,
+			SortOrder: index + 1,
+		})
+	}
+	return normalizeSubscriptionDeliveryFields(fields)
+}
+
+func buildAutoIssuedSubscriptionDeliveryFields() []SubscriptionDeliveryField {
+	return normalizeSubscriptionDeliveryFields([]SubscriptionDeliveryField{
+		{
+			Key:       "api_key",
+			Label:     "API Key",
+			Type:      "text",
+			Required:  true,
+			Masked:    false,
+			Copyable:  false,
+			SortOrder: 1,
+		},
+		{
+			Key:       "base_url",
+			Label:     "Base URL",
+			Type:      "text",
+			Required:  true,
+			Masked:    false,
+			Copyable:  false,
+			SortOrder: 2,
+		},
+		{
+			Key:       "usage_query_url",
+			Label:     "Usage URL",
+			Type:      "text",
+			Required:  true,
+			Masked:    false,
+			Copyable:  false,
+			SortOrder: 3,
+		},
+	})
+}
+
+func encodeSubscriptionDeliveryFields(fields []SubscriptionDeliveryField) (string, error) {
+	normalized := normalizeSubscriptionDeliveryFields(fields)
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeSubscriptionDeliveryFields(raw string) []SubscriptionDeliveryField {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []SubscriptionDeliveryField
+	if err := common.UnmarshalJsonStr(raw, &items); err != nil {
+		return nil
+	}
+	return normalizeSubscriptionDeliveryFields(items)
+}
+
+func encodeSubscriptionDeliveryPayload(items []SubscriptionDeliveryPayloadItem) (string, error) {
+	normalized := normalizeSubscriptionDeliveryPayload(items)
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeSubscriptionDeliveryPayload(raw string) []SubscriptionDeliveryPayloadItem {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []SubscriptionDeliveryPayloadItem
+	if err := common.UnmarshalJsonStr(raw, &items); err != nil {
+		return nil
+	}
+	return normalizeSubscriptionDeliveryPayload(items)
+}
+
+func PrepareSubscriptionPlanRestrictionFields(plan *SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	allowedGroups, err := encodeSubscriptionStringList(plan.AllowedGroups)
+	if err != nil {
+		return err
+	}
+	allowedModels, err := encodeSubscriptionStringList(plan.AllowedModels)
+	if err != nil {
+		return err
+	}
+	allowedVendorIDs, err := encodeSubscriptionIntList(plan.AllowedVendorIDs)
+	if err != nil {
+		return err
+	}
+	plan.AllowedGroups = normalizeSubscriptionStringList(plan.AllowedGroups)
+	plan.AllowedModels = normalizeSubscriptionStringList(plan.AllowedModels)
+	plan.AllowedVendorIDs = normalizeSubscriptionIntList(plan.AllowedVendorIDs)
+	plan.AllowedGroupsJSON = allowedGroups
+	plan.AllowedModelsJSON = allowedModels
+	plan.AllowedVendorIDsJSON = allowedVendorIDs
+	plan.DeliveryMode = normalizeSubscriptionDeliveryMode(plan.DeliveryMode)
+	deliveryFieldSchema, err := encodeSubscriptionDeliveryFields(plan.DeliveryFieldSchema)
+	if err != nil {
+		return err
+	}
+	plan.DeliveryFieldSchema = normalizeSubscriptionDeliveryFields(plan.DeliveryFieldSchema)
+	plan.DeliveryFieldSchemaJSON = deliveryFieldSchema
+	return nil
+}
+
+func applySubscriptionPlanRestrictionFields(plan *SubscriptionPlan, vendorNamesByID map[int]string) {
+	if plan == nil {
+		return
+	}
+	plan.AllowedGroups = decodeSubscriptionStringList(plan.AllowedGroupsJSON)
+	plan.AllowedModels = decodeSubscriptionStringList(plan.AllowedModelsJSON)
+	plan.AllowedVendorIDs = decodeSubscriptionIntList(plan.AllowedVendorIDsJSON)
+	plan.DeliveryMode = normalizeSubscriptionDeliveryMode(plan.DeliveryMode)
+	plan.DeliveryFieldSchema = decodeSubscriptionDeliveryFields(plan.DeliveryFieldSchemaJSON)
+	if len(plan.AllowedVendorIDs) == 0 {
+		plan.AllowedVendorNames = nil
+		return
+	}
+	names := make([]string, 0, len(plan.AllowedVendorIDs))
+	for _, vendorID := range plan.AllowedVendorIDs {
+		name := strings.TrimSpace(vendorNamesByID[vendorID])
+		if name == "" {
+			name = strconv.Itoa(vendorID)
+		}
+		names = append(names, name)
+	}
+	plan.AllowedVendorNames = names
+}
+
+func ApplySubscriptionPlanRestrictionFields(plans []*SubscriptionPlan) {
+	if len(plans) == 0 {
+		return
+	}
+	vendorIDs := make([]int, 0)
+	vendorIDSet := make(map[int]struct{})
+	for _, plan := range plans {
+		if plan == nil {
+			continue
+		}
+		for _, vendorID := range decodeSubscriptionIntList(plan.AllowedVendorIDsJSON) {
+			if _, ok := vendorIDSet[vendorID]; ok {
+				continue
+			}
+			vendorIDSet[vendorID] = struct{}{}
+			vendorIDs = append(vendorIDs, vendorID)
+		}
+	}
+	vendorNamesByID := make(map[int]string, len(vendorIDs))
+	if len(vendorIDs) > 0 {
+		var vendors []Vendor
+		if err := DB.Select("id", "name").Where("id IN ?", vendorIDs).Find(&vendors).Error; err == nil {
+			for _, vendor := range vendors {
+				vendorNamesByID[vendor.Id] = vendor.Name
+			}
+		}
+	}
+	for _, plan := range plans {
+		applySubscriptionPlanRestrictionFields(plan, vendorNamesByID)
+	}
+}
+
+func ApplySubscriptionOrderDeliveryFields(order *SubscriptionOrder) {
+	if order == nil {
+		return
+	}
+	order.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(order.PlanDeliveryMode)
+	order.FulfillmentStatus = normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus)
+	order.PlanDeliveryFieldSchema = decodeSubscriptionDeliveryFields(order.PlanDeliveryFieldSchemaJSON)
+	order.DeliveryPayload = decodeSubscriptionDeliveryPayload(order.DeliveryPayloadJSON)
+}
+
+func decodeUserSubscriptionAllowedGroups(sub *UserSubscription) []string {
+	if sub == nil {
+		return nil
+	}
+	return decodeSubscriptionStringList(sub.AllowedGroupsJSON)
+}
+
+func decodeUserSubscriptionAllowedModels(sub *UserSubscription) []string {
+	if sub == nil {
+		return nil
+	}
+	return decodeSubscriptionStringList(sub.AllowedModelsJSON)
+}
+
+func decodeUserSubscriptionAllowedVendorIDs(sub *UserSubscription) []int {
+	if sub == nil {
+		return nil
+	}
+	return decodeSubscriptionIntList(sub.AllowedVendorIDsJSON)
+}
+
+func getVendorIDByModelNameTx(tx *gorm.DB, modelName string) int {
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return 0
+	}
+	query := tx
+	if query == nil {
+		query = DB
+	}
+	var exact Model
+	if err := query.Select("vendor_id").Where("model_name = ? AND deleted_at IS NULL", modelName).First(&exact).Error; err == nil {
+		return exact.VendorID
+	}
+	var rules []Model
+	if err := query.Select("vendor_id", "model_name", "name_rule").
+		Where("name_rule <> ? AND deleted_at IS NULL", NameRuleExact).
+		Find(&rules).Error; err != nil {
+		return 0
+	}
+	for _, rule := range rules {
+		switch rule.NameRule {
+		case NameRulePrefix:
+			if strings.HasPrefix(modelName, rule.ModelName) {
+				return rule.VendorID
+			}
+		case NameRuleSuffix:
+			if strings.HasSuffix(modelName, rule.ModelName) {
+				return rule.VendorID
+			}
+		case NameRuleContains:
+			if strings.Contains(modelName, rule.ModelName) {
+				return rule.VendorID
+			}
+		}
+	}
+	modelLower := strings.ToLower(modelName)
+	for pattern, vendorName := range defaultVendorRules {
+		if !strings.Contains(modelLower, pattern) {
+			continue
+		}
+		var vendor Vendor
+		if err := query.Select("id").Where("name = ? AND deleted_at IS NULL", vendorName).First(&vendor).Error; err == nil {
+			return vendor.Id
+		}
+		break
+	}
+	return 0
+}
+
 func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) int64 {
 	if plan == nil {
 		return 0
@@ -568,26 +1524,16 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 	if period == SubscriptionResetNever {
 		return 0
 	}
-	base = subscriptionResetTime(base)
 	var next time.Time
 	switch period {
 	case SubscriptionResetDaily:
-		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
-			AddDate(0, 0, 1)
+		next = base.Add(24 * time.Hour)
 	case SubscriptionResetWeekly:
-		// Align to next Monday 00:00
-		weekday := int(base.Weekday()) // Sunday=0
-		// Convert to Monday=1..Sunday=7
-		if weekday == 0 {
-			weekday = 7
-		}
-		daysUntil := 8 - weekday
-		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
-			AddDate(0, 0, daysUntil)
+		next = base.AddDate(0, 0, 7)
 	case SubscriptionResetMonthly:
-		// Align to first day of next month 00:00
-		next = time.Date(base.Year(), base.Month(), 1, 0, 0, 0, 0, base.Location()).
-			AddDate(0, 1, 0)
+		next = base.AddDate(0, 1, 0)
+	case SubscriptionResetYearly:
+		next = base.AddDate(1, 0, 0)
 	case SubscriptionResetCustom:
 		if plan.QuotaResetCustomSeconds <= 0 {
 			return 0
@@ -595,6 +1541,9 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 		next = base.Add(time.Duration(plan.QuotaResetCustomSeconds) * time.Second)
 	default:
 		return 0
+	}
+	if plan.QuotaResetUseFixedClock {
+		next = applyFixedClockToResetTime(base, next, period, plan.QuotaResetFixedSeconds)
 	}
 	if endUnix > 0 && next.Unix() > endUnix {
 		return 0
@@ -618,12 +1567,24 @@ func syncSubscriptionPlanSnapshotFields(sub *UserSubscription, plan *Subscriptio
 		sub.RequestCountTotal = plan.RequestCountTotal
 		changed = true
 	}
+	if sub.RequestCountPeriodTotal != plan.RequestCountPeriodTotal {
+		sub.RequestCountPeriodTotal = plan.RequestCountPeriodTotal
+		changed = true
+	}
 	if sub.ResetPeriod != resetPeriod {
 		sub.ResetPeriod = resetPeriod
 		changed = true
 	}
 	if sub.ResetCustomSeconds != plan.QuotaResetCustomSeconds {
 		sub.ResetCustomSeconds = plan.QuotaResetCustomSeconds
+		changed = true
+	}
+	if sub.ResetUseFixedClock != plan.QuotaResetUseFixedClock {
+		sub.ResetUseFixedClock = plan.QuotaResetUseFixedClock
+		changed = true
+	}
+	if sub.ResetFixedSeconds != plan.QuotaResetFixedSeconds {
+		sub.ResetFixedSeconds = plan.QuotaResetFixedSeconds
 		changed = true
 	}
 
@@ -653,6 +1614,8 @@ func recalculateSubscriptionResetWindow(sub *UserSubscription, now int64) bool {
 	snapshotPlan := &SubscriptionPlan{
 		QuotaResetPeriod:        resetPeriod,
 		QuotaResetCustomSeconds: sub.ResetCustomSeconds,
+		QuotaResetUseFixedClock: sub.ResetUseFixedClock,
+		QuotaResetFixedSeconds:  sub.ResetFixedSeconds,
 	}
 	next := calcNextResetTime(base, snapshotPlan, sub.EndTime)
 	for next > 0 && next <= now {
@@ -662,6 +1625,296 @@ func recalculateSubscriptionResetWindow(sub *UserSubscription, now int64) bool {
 	sub.LastResetTime = base.Unix()
 	sub.NextResetTime = next
 	return sub.LastResetTime != oldLastResetTime || sub.NextResetTime != oldNextResetTime
+}
+
+func getSubscriptionUsageWindowStart(sub *UserSubscription) int64 {
+	if sub == nil {
+		return 0
+	}
+	if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever {
+		return sub.StartTime
+	}
+	if sub.LastResetTime > 0 {
+		return sub.LastResetTime
+	}
+	return sub.StartTime
+}
+
+func getSubscriptionRequestCountPeriodLimit(sub *UserSubscription) int64 {
+	if sub == nil {
+		return 0
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+		return 0
+	}
+	if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever {
+		return 0
+	}
+	if sub.RequestCountPeriodTotal <= 0 {
+		return sub.RequestCountTotal
+	}
+	return sub.RequestCountPeriodTotal
+}
+
+func hasSeparatePeriodRequestCounter(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	return NormalizeResetPeriod(sub.ResetPeriod) != SubscriptionResetNever && sub.RequestCountPeriodTotal > 0
+}
+
+func hasLifetimeRequestCountLimit(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+		return false
+	}
+	if NormalizeResetPeriod(sub.ResetPeriod) != SubscriptionResetNever && !hasSeparatePeriodRequestCounter(sub) {
+		return false
+	}
+	return sub.RequestCountTotal > 0
+}
+
+func getCurrentRequestCountUsed(sub *UserSubscription) int64 {
+	if sub == nil {
+		return 0
+	}
+	if hasSeparatePeriodRequestCounter(sub) {
+		return sub.RequestCountPeriodUsed
+	}
+	return sub.RequestCountUsed
+}
+
+func formatSubscriptionUsagePercent(used int64, total int64) string {
+	if total <= 0 {
+		return "0.00%"
+	}
+	return fmt.Sprintf("%.2f%%", float64(used)/float64(total)*100)
+}
+
+func formatSubscriptionResetTimeLabel(resetUnix int64) string {
+	if resetUnix <= 0 {
+		return ""
+	}
+	return subscriptionResetTime(time.Unix(resetUnix, 0)).Format("2006-01-02 15:04:05")
+}
+
+func getSubscriptionPeriodUsageLabel(sub *UserSubscription) string {
+	switch NormalizeResetPeriod(sub.ResetPeriod) {
+	case SubscriptionResetDaily:
+		return "今日次数"
+	case SubscriptionResetWeekly:
+		return "本周次数"
+	case SubscriptionResetMonthly:
+		return "本月次数"
+	case SubscriptionResetYearly:
+		return "今年次数"
+	default:
+		return "本周期次数"
+	}
+}
+
+func buildSubscriptionQuotaInsufficientMessage(sub *UserSubscription, amount int64) string {
+	if sub == nil {
+		return fmt.Sprintf("subscription quota insufficient, need=%d", amount)
+	}
+	resourceType := NormalizeSubscriptionResourceType(sub.ResourceType)
+	if resourceType == SubscriptionResourceRequestCount {
+		messageParts := make([]string, 0, 4)
+		if hasLifetimeRequestCountLimit(sub) {
+			messageParts = append(messageParts, fmt.Sprintf(
+				"套餐总次数 %d/%d（%s）",
+				sub.RequestCountUsed,
+				sub.RequestCountTotal,
+				formatSubscriptionUsagePercent(sub.RequestCountUsed, sub.RequestCountTotal),
+			))
+		}
+		if periodLimit := getSubscriptionRequestCountPeriodLimit(sub); periodLimit > 0 {
+			currentUsed := getCurrentRequestCountUsed(sub)
+			messageParts = append(messageParts, fmt.Sprintf(
+				"%s %d/%d（%s）",
+				getSubscriptionPeriodUsageLabel(sub),
+				currentUsed,
+				periodLimit,
+				formatSubscriptionUsagePercent(currentUsed, periodLimit),
+			))
+		}
+		if nextReset := formatSubscriptionResetTimeLabel(sub.NextResetTime); nextReset != "" {
+			messageParts = append(messageParts, fmt.Sprintf("下次重置时间 %s", nextReset))
+		}
+		if len(messageParts) > 0 {
+			return "subscription quota insufficient: " + strings.Join(messageParts, "，")
+		}
+	}
+	if sub.AmountTotal > 0 {
+		return fmt.Sprintf(
+			"subscription quota insufficient: 套餐额度 %d/%d（%s）",
+			sub.AmountUsed,
+			sub.AmountTotal,
+			formatSubscriptionUsagePercent(sub.AmountUsed, sub.AmountTotal),
+		)
+	}
+	return fmt.Sprintf("subscription quota insufficient, need=%d", amount)
+}
+
+func hasUserSubscriptionRemainingEntitlement(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) == SubscriptionResourceRequestCount {
+		if hasLifetimeRequestCountLimit(sub) && sub.RequestCountUsed >= sub.RequestCountTotal {
+			return false
+		}
+		periodLimit := getSubscriptionRequestCountPeriodLimit(sub)
+		if periodLimit > 0 && getCurrentRequestCountUsed(sub) >= periodLimit {
+			return false
+		}
+		return true
+	}
+	if sub.AmountTotal <= 0 {
+		return true
+	}
+	return sub.AmountUsed < sub.AmountTotal
+}
+
+func isUserSubscriptionAggregateEnabled(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	return sub.AggregateEnabled
+}
+
+func isUserSubscriptionUsableNow(sub *UserSubscription, now int64) bool {
+	if sub == nil {
+		return false
+	}
+	if !isUserSubscriptionAggregateEnabled(sub) {
+		return false
+	}
+	if sub.Status != "active" {
+		return false
+	}
+	if sub.EndTime > 0 && sub.EndTime <= now {
+		return false
+	}
+	return hasUserSubscriptionRemainingEntitlement(sub)
+}
+
+func deriveUserSubscriptionStatus(sub *UserSubscription, now int64) string {
+	if sub == nil {
+		return "expired"
+	}
+	if sub.Status == "cancelled" {
+		return "cancelled"
+	}
+	if sub.EndTime > 0 && sub.EndTime <= now {
+		return "expired"
+	}
+	if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever && !hasUserSubscriptionRemainingEntitlement(sub) {
+		return "expired"
+	}
+	return "active"
+}
+
+func reconcileUserSubscriptionUsageFromLogs(sub *UserSubscription, now int64) (bool, error) {
+	if sub == nil {
+		return false, nil
+	}
+	windowStart := getSubscriptionUsageWindowStart(sub)
+	if windowStart <= 0 {
+		windowStart = sub.StartTime
+	}
+	if windowStart <= 0 {
+		windowStart = now
+	}
+	expectedAmountUsed, expectedPeriodCountUsed, preConsumeRequestIDs, err := summarizeUserSubscriptionUsageFromPreConsumeRecords(sub, windowStart, now)
+	if err != nil {
+		return false, err
+	}
+	summary, err := summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(0, sub.Id, 0, sub.UserId, windowStart, now, preConsumeRequestIDs)
+	if err != nil {
+		return false, err
+	}
+	expectedAmountUsed += summary.TotalQuotaConsumed
+	expectedPeriodCountUsed += summary.TotalRequestConsumed
+	if sub.AmountTotal > 0 && expectedAmountUsed > sub.AmountTotal {
+		expectedAmountUsed = sub.AmountTotal
+	}
+	if periodLimit := getSubscriptionRequestCountPeriodLimit(sub); periodLimit > 0 && expectedPeriodCountUsed > periodLimit {
+		expectedPeriodCountUsed = periodLimit
+	}
+	changed := false
+	if sub.AmountUsed != expectedAmountUsed {
+		sub.AmountUsed = expectedAmountUsed
+		changed = true
+	}
+	if hasSeparatePeriodRequestCounter(sub) {
+		expectedTotalCountUsed, _, totalPreConsumeRequestIDs, err := summarizeUserSubscriptionUsageFromPreConsumeRecords(sub, sub.StartTime, now)
+		if err != nil {
+			return false, err
+		}
+		totalSummary, err := summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(0, sub.Id, 0, sub.UserId, sub.StartTime, now, totalPreConsumeRequestIDs)
+		if err != nil {
+			return false, err
+		}
+		expectedTotalCountUsed += totalSummary.TotalRequestConsumed
+		if sub.RequestCountTotal > 0 && expectedTotalCountUsed > sub.RequestCountTotal {
+			expectedTotalCountUsed = sub.RequestCountTotal
+		}
+		if sub.RequestCountUsed != expectedTotalCountUsed {
+			sub.RequestCountUsed = expectedTotalCountUsed
+			changed = true
+		}
+		if sub.RequestCountPeriodUsed != expectedPeriodCountUsed {
+			sub.RequestCountPeriodUsed = expectedPeriodCountUsed
+			changed = true
+		}
+	} else {
+		if sub.RequestCountUsed != expectedPeriodCountUsed {
+			sub.RequestCountUsed = expectedPeriodCountUsed
+			changed = true
+		}
+		if sub.RequestCountPeriodUsed != 0 {
+			sub.RequestCountPeriodUsed = 0
+			changed = true
+		}
+	}
+	return changed, nil
+}
+
+func summarizeUserSubscriptionUsageFromPreConsumeRecords(sub *UserSubscription, startTimestamp int64, endTimestamp int64) (int64, int64, map[string]struct{}, error) {
+	if sub == nil {
+		return 0, 0, nil, nil
+	}
+	if DB == nil || !DB.Migrator().HasTable(&SubscriptionPreConsumeRecord{}) {
+		return 0, 0, nil, nil
+	}
+	type usageRecord struct {
+		RequestId string `gorm:"column:request_id"`
+		Count     int64  `gorm:"column:pre_consumed_count"`
+		Amount    int64  `gorm:"column:pre_consumed_amount"`
+	}
+	records := make([]usageRecord, 0)
+	err := DB.Model(&SubscriptionPreConsumeRecord{}).
+		Select("request_id, pre_consumed_count, pre_consumed_amount").
+		Where("user_subscription_id = ? AND user_id = ? AND status = ?", sub.Id, sub.UserId, "consumed").
+		Where("created_at >= ? AND created_at <= ?", startTimestamp, endTimestamp).
+		Find(&records).Error
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	requestIDs := make(map[string]struct{}, len(records))
+	var amountUsed int64
+	var countUsed int64
+	for _, record := range records {
+		amountUsed += record.Amount
+		countUsed += record.Count
+		if record.RequestId != "" {
+			requestIDs[record.RequestId] = struct{}{}
+		}
+	}
+	return amountUsed, countUsed, requestIDs, nil
 }
 
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {
@@ -724,17 +1977,24 @@ func validatePlanSaleFields(plan *SubscriptionPlan) error {
 	return nil
 }
 
-func CountUserSubscriptionsByPlan(userId int, planId int) (int64, error) {
+func CountUserPlanPurchases(userId int, planId int) (int64, error) {
 	if userId <= 0 || planId <= 0 {
 		return 0, errors.New("invalid userId or planId")
 	}
-	var count int64
+	var subscriptionCount int64
 	if err := DB.Model(&UserSubscription{}).
 		Where("user_id = ? AND plan_id = ?", userId, planId).
-		Count(&count).Error; err != nil {
+		Count(&subscriptionCount).Error; err != nil {
 		return 0, err
 	}
-	return count, nil
+	var manualOrderCount int64
+	if err := DB.Model(&SubscriptionOrder{}).
+		Where("user_id = ? AND plan_id = ? AND status = ? AND plan_delivery_mode = ? AND fulfillment_status <> ?",
+			userId, planId, common.TopUpStatusSuccess, SubscriptionDeliveryModeManualDelivery, SubscriptionFulfillmentRejected).
+		Count(&manualOrderCount).Error; err != nil {
+		return 0, err
+	}
+	return subscriptionCount + manualOrderCount, nil
 }
 
 func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
@@ -859,28 +2119,35 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		}
 	}
 	sub := &UserSubscription{
-		UserId:             userId,
-		PlanId:             lockedPlan.Id,
-		AmountTotal:        effectivePlan.TotalAmount,
-		AmountUsed:         0,
-		ResourceType:       NormalizeSubscriptionResourceType(effectivePlan.ResourceType),
-		RequestCountTotal:  effectivePlan.RequestCountTotal,
-		RequestCountUsed:   0,
-		ResetPeriod:        NormalizeResetPeriod(effectivePlan.QuotaResetPeriod),
-		ResetCustomSeconds: effectivePlan.QuotaResetCustomSeconds,
-		DurationUnit:       effectivePlan.DurationUnit,
-		DurationValue:      effectivePlan.DurationValue,
-		CustomSeconds:      effectivePlan.CustomSeconds,
-		StartTime:          now.Unix(),
-		EndTime:            endUnix,
-		Status:             "active",
-		Source:             source,
-		LastResetTime:      lastReset,
-		NextResetTime:      nextReset,
-		UpgradeGroup:       upgradeGroup,
-		PrevUserGroup:      prevGroup,
-		CreatedAt:          common.GetTimestamp(),
-		UpdatedAt:          common.GetTimestamp(),
+		UserId:                  userId,
+		PlanId:                  lockedPlan.Id,
+		AmountTotal:             effectivePlan.TotalAmount,
+		AmountUsed:              0,
+		ResourceType:            NormalizeSubscriptionResourceType(effectivePlan.ResourceType),
+		RequestCountTotal:       effectivePlan.RequestCountTotal,
+		RequestCountUsed:        0,
+		RequestCountPeriodTotal: effectivePlan.RequestCountPeriodTotal,
+		RequestCountPeriodUsed:  0,
+		ResetPeriod:             NormalizeResetPeriod(effectivePlan.QuotaResetPeriod),
+		ResetCustomSeconds:      effectivePlan.QuotaResetCustomSeconds,
+		ResetUseFixedClock:      effectivePlan.QuotaResetUseFixedClock,
+		ResetFixedSeconds:       effectivePlan.QuotaResetFixedSeconds,
+		AllowedGroupsJSON:       strings.TrimSpace(effectivePlan.AllowedGroupsJSON),
+		AllowedModelsJSON:       strings.TrimSpace(effectivePlan.AllowedModelsJSON),
+		AllowedVendorIDsJSON:    strings.TrimSpace(effectivePlan.AllowedVendorIDsJSON),
+		DurationUnit:            effectivePlan.DurationUnit,
+		DurationValue:           effectivePlan.DurationValue,
+		CustomSeconds:           effectivePlan.CustomSeconds,
+		StartTime:               now.Unix(),
+		EndTime:                 endUnix,
+		Status:                  "active",
+		Source:                  source,
+		LastResetTime:           lastReset,
+		NextResetTime:           nextReset,
+		UpgradeGroup:            upgradeGroup,
+		PrevUserGroup:           prevGroup,
+		CreatedAt:               common.GetTimestamp(),
+		UpdatedAt:               common.GetTimestamp(),
 	}
 	if err := tx.Create(sub).Error; err != nil {
 		return nil, err
@@ -895,10 +2162,11 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	return sub, nil
 }
 
-// Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
-func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
+// CompleteSubscriptionOrderWithResult completes a subscription order and reports whether this call
+// transitioned the order from pending to success.
+func CompleteSubscriptionOrderWithResult(tradeNo string, providerPayload string) (bool, error) {
 	if tradeNo == "" {
-		return errors.New("tradeNo is empty")
+		return false, errors.New("tradeNo is empty")
 	}
 	refCol := "`trade_no`"
 	if common.UsingPostgreSQL {
@@ -909,6 +2177,8 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	var logMoney float64
 	var logPaymentMethod string
 	var upgradeGroup string
+	var createdSub *UserSubscription
+	var refreshChannelCache bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
@@ -932,16 +2202,55 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 			}
 		}
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
-		if _, planErr = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order"); planErr != nil {
+		order.Status = common.TopUpStatusSuccess
+		order.CompleteTime = common.GetTimestamp()
+		order.PlanDeliveryMode = normalizeSubscriptionDeliveryMode(plan.DeliveryMode)
+		order.FulfillmentStatus = SubscriptionFulfillmentNotRequired
+		if order.PlanDeliveryMode == SubscriptionDeliveryModeManualDelivery {
+			order.FulfillmentStatus = SubscriptionFulfillmentPending
+		}
+		if providerPayload != "" {
+			order.ProviderPayload = providerPayload
+		}
+		if order.PlanDeliveryMode == SubscriptionDeliveryModeManualDelivery {
+			if isClaudeSeriesRequestCountManualDeliveryPlan(plan) {
+				if _, _, err := reserveManualDeliveryChannelSlotForOrderTx(tx, &order, plan); err != nil {
+					return err
+				}
+				refreshChannelCache = true
+			}
+			if err := tx.Save(&order).Error; err != nil {
+				return err
+			}
+			logUserId = order.UserId
+			logPlanTitle = plan.Title
+			logMoney = order.Money
+			logPaymentMethod = order.PaymentMethod
+			return nil
+		}
+		sub, planErr := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+		if planErr != nil {
 			return planErr
+		}
+		if err := tx.Model(sub).Updates(map[string]any{
+			"source_order_id":             order.Id,
+			"source_order_trade_no":       order.TradeNo,
+			"source_order_payment_method": order.PaymentMethod,
+			"source_order_money":          order.Money,
+			"updated_at":                  common.GetTimestamp(),
+		}).Error; err != nil {
+			return err
+		}
+		sub.SourceOrderId = order.Id
+		sub.SourceOrderTradeNo = order.TradeNo
+		sub.SourceOrderPaymentMethod = order.PaymentMethod
+		sub.SourceOrderMoney = order.Money
+		createdSub = sub
+		if err := provisionAggregateAccessForSubscriptionTx(tx, sub); err != nil {
+			return err
 		}
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
-		}
-		order.Status = common.TopUpStatusSuccess
-		order.CompleteTime = common.GetTimestamp()
-		if providerPayload != "" {
-			order.ProviderPayload = providerPayload
 		}
 		if err := tx.Save(&order).Error; err != nil {
 			return err
@@ -953,7 +2262,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if upgradeGroup != "" && logUserId > 0 {
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
@@ -961,8 +2270,21 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
+		NotifySubscriptionPurchaseSuccessToUserAsync(logUserId, logPlanTitle, logMoney, logPaymentMethod)
 	}
-	return nil
+	if logUserId > 0 && createdSub != nil {
+		triggerClaudeSubscriptionActivationProbeAsync(logUserId, createdSub)
+	}
+	if refreshChannelCache {
+		InitChannelCache()
+	}
+	return logUserId > 0, nil
+}
+
+// Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
+func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
+	_, err := CompleteSubscriptionOrderWithResult(tradeNo, providerPayload)
+	return err
 }
 
 func SyncActiveSubscriptionsForPlanTx(tx *gorm.DB, planId int) error {
@@ -1015,14 +2337,46 @@ func RefreshActiveSubscriptionResetWindows(batchSize int) (int, error) {
 		for i := range subs {
 			sub := subs[i]
 			lastID = sub.Id
-			if !recalculateSubscriptionResetWindow(&sub, now) {
+			originalStatus := sub.Status
+			baseUnix := sub.LastResetTime
+			if baseUnix <= 0 {
+				baseUnix = sub.StartTime
+			}
+			updates := map[string]interface{}{}
+			windowChanged := recalculateSubscriptionResetWindow(&sub, now)
+			advanced := sub.LastResetTime > baseUnix && sub.LastResetTime <= now
+			if advanced {
+				sub.AmountUsed = 0
+				if hasSeparatePeriodRequestCounter(&sub) {
+					sub.RequestCountPeriodUsed = 0
+				} else {
+					sub.RequestCountUsed = 0
+				}
+			}
+			usageChanged, err := reconcileUserSubscriptionUsageFromLogs(&sub, now)
+			if err != nil {
+				return totalUpdated, err
+			}
+			nextStatus := deriveUserSubscriptionStatus(&sub, now)
+			statusChanged := nextStatus != originalStatus
+			sub.Status = nextStatus
+			if !windowChanged && !advanced && !usageChanged && !statusChanged {
 				continue
 			}
-			if err := DB.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]interface{}{
-				"last_reset_time": sub.LastResetTime,
-				"next_reset_time": sub.NextResetTime,
-				"updated_at":      common.GetTimestamp(),
-			}).Error; err != nil {
+			if windowChanged {
+				updates["last_reset_time"] = sub.LastResetTime
+				updates["next_reset_time"] = sub.NextResetTime
+			}
+			if advanced || usageChanged {
+				updates["amount_used"] = sub.AmountUsed
+				updates["request_count_used"] = sub.RequestCountUsed
+				updates["request_count_period_used"] = sub.RequestCountPeriodUsed
+			}
+			if statusChanged {
+				updates["status"] = sub.Status
+			}
+			updates["updated_at"] = common.GetTimestamp()
+			if err := DB.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(updates).Error; err != nil {
 				return totalUpdated, err
 			}
 			totalUpdated++
@@ -1104,19 +2458,61 @@ func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) 
 		return "", nil, err
 	}
 	var createdSub *UserSubscription
+	var refreshChannelCache bool
+	isManualDelivery := normalizeSubscriptionDeliveryMode(plan.DeliveryMode) == SubscriptionDeliveryModeManualDelivery
 	source := strings.TrimSpace(sourceNote)
 	if source == "" {
 		source = "admin"
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
+		if isManualDelivery {
+			tradeNo, err := buildManualDeliveryTradeNo("admin")
+			if err != nil {
+				return err
+			}
+			now := common.GetTimestamp()
+			order := &SubscriptionOrder{
+				UserId:        userId,
+				PlanId:        plan.Id,
+				Money:         0,
+				TradeNo:       tradeNo,
+				PaymentMethod: "admin",
+				Status:        common.TopUpStatusSuccess,
+				CreateTime:    now,
+				CompleteTime:  now,
+			}
+			order.ApplyPlanSnapshot(plan)
+			if err := tx.Create(order).Error; err != nil {
+				return err
+			}
+			if isClaudeSeriesRequestCountManualDeliveryPlan(plan) {
+				if _, _, err := reserveManualDeliveryChannelSlotForOrderTx(tx, order, plan); err != nil {
+					return err
+				}
+				refreshChannelCache = true
+			}
+			return nil
+		}
 		sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, source)
 		if err == nil {
+			if bindErr := provisionAggregateAccessForSubscriptionTx(tx, sub); bindErr != nil {
+				return bindErr
+			}
 			createdSub = sub
 		}
 		return err
 	})
 	if err != nil {
 		return "", nil, err
+	}
+	if isManualDelivery {
+		if refreshChannelCache {
+			InitChannelCache()
+		}
+		return "已创建人工发放订单，请在人工发放列表中完成发放", nil, nil
+	}
+	if createdSub != nil {
+		triggerClaudeSubscriptionActivationProbeAsync(userId, createdSub)
 	}
 	if strings.TrimSpace(plan.UpgradeGroup) != "" {
 		_ = UpdateUserGroupCache(userId, plan.UpgradeGroup)
@@ -1141,6 +2537,79 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+func getUserPreferredSubscriptionIdTx(tx *gorm.DB, userId int) (int, error) {
+	if userId <= 0 {
+		return 0, errors.New("invalid userId")
+	}
+	if tx == nil {
+		tx = DB
+	}
+	var user User
+	if err := tx.Select("id", "setting").Where("id = ?", userId).First(&user).Error; err != nil {
+		return 0, err
+	}
+	return user.GetSetting().PreferredSubscriptionId, nil
+}
+
+func setUserPreferredSubscriptionIdTx(tx *gorm.DB, userId int, subscriptionId int) error {
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	if tx == nil {
+		tx = DB
+	}
+	var user User
+	if err := tx.Select("id", "setting").Where("id = ?", userId).First(&user).Error; err != nil {
+		return err
+	}
+	setting := user.GetSetting()
+	setting.PreferredSubscriptionId = subscriptionId
+	user.SetSetting(setting)
+	return tx.Model(&User{}).Where("id = ?", userId).Update("setting", user.Setting).Error
+}
+
+func clearUserPreferredSubscriptionIfMatchesTx(tx *gorm.DB, userId int, subscriptionId int) error {
+	if userId <= 0 || subscriptionId <= 0 {
+		return nil
+	}
+	current, err := getUserPreferredSubscriptionIdTx(tx, userId)
+	if err != nil {
+		return err
+	}
+	if current != subscriptionId {
+		return nil
+	}
+	return setUserPreferredSubscriptionIdTx(tx, userId, 0)
+}
+
+func GetActiveUserSubscriptionGroups(userId int) ([]string, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	var subs []UserSubscription
+	if err := DB.Select("upgrade_group").
+		Where("user_id = ? AND status = ? AND (end_time = 0 OR end_time > ?)", userId, "active", now).
+		Order("end_time asc, id asc").
+		Find(&subs).Error; err != nil {
+		return nil, err
+	}
+	groups := make([]string, 0, len(subs))
+	seen := make(map[string]struct{}, len(subs))
+	for i := range subs {
+		group := strings.TrimSpace(subs[i].UpgradeGroup)
+		if group == "" {
+			continue
+		}
+		if _, ok := seen[group]; ok {
+			continue
+		}
+		seen[group] = struct{}{}
+		groups = append(groups, group)
+	}
+	return groups, nil
+}
+
 // HasActiveUserSubscription returns whether the user has any active subscription.
 // This is a lightweight existence check to avoid heavy pre-consume transactions.
 func HasActiveUserSubscription(userId int) (bool, error) {
@@ -1155,6 +2624,26 @@ func HasActiveUserSubscription(userId int) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func HasUsableUserSubscription(userId int) (bool, error) {
+	if userId <= 0 {
+		return false, errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	var subs []UserSubscription
+	if err := DB.Select("id, status, end_time, resource_type, request_count_total, request_count_used, request_count_period_total, request_count_period_used, reset_period, amount_total, amount_used, aggregate_enabled").
+		Where("user_id = ? AND status = ? AND (end_time = 0 OR end_time > ?)", userId, "active", now).
+		Order("end_time asc, id asc").
+		Find(&subs).Error; err != nil {
+		return false, err
+	}
+	for i := range subs {
+		if isUserSubscriptionUsableNow(&subs[i], now) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // GetAllUserSubscriptions returns all subscriptions (active and expired) for a user.
@@ -1223,6 +2712,87 @@ func GetUserSubscriptionsByAdmin(userId int, pageInfo *common.PageInfo, keyword 
 	return buildSubscriptionSummaries(subs), total, nil
 }
 
+func ReconcileActiveUserSubscriptionsByUser(userId int) error {
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	var subIDs []int
+	if err := DB.Model(&UserSubscription{}).
+		Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		Order("id asc").
+		Pluck("id", &subIDs).Error; err != nil {
+		return err
+	}
+	for _, subID := range subIDs {
+		if err := DB.Transaction(func(tx *gorm.DB) error {
+			query := tx.Where("id = ? AND user_id = ?", subID, userId)
+			if !common.UsingSQLite {
+				query = query.Set("gorm:query_option", "FOR UPDATE")
+			}
+			var sub UserSubscription
+			if err := query.First(&sub).Error; err != nil {
+				return err
+			}
+			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			if err != nil {
+				return err
+			}
+			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
+				return err
+			}
+			originalStatus := sub.Status
+			usageChanged, err := reconcileUserSubscriptionUsageFromLogs(&sub, now)
+			if err != nil {
+				return err
+			}
+			nextStatus := deriveUserSubscriptionStatus(&sub, now)
+			statusChanged := nextStatus != originalStatus
+			sub.Status = nextStatus
+			if !usageChanged && !statusChanged {
+				return nil
+			}
+			updates := map[string]any{
+				"amount_used":               sub.AmountUsed,
+				"request_count_used":        sub.RequestCountUsed,
+				"request_count_period_used": sub.RequestCountPeriodUsed,
+				"updated_at":                common.GetTimestamp(),
+			}
+			if statusChanged {
+				updates["status"] = sub.Status
+			}
+			return tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(updates).Error
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func GetUserManualDeliveryOrders(userId int) ([]SubscriptionManualDeliverySummary, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var orders []SubscriptionOrder
+	if err := DB.Where("user_id = ? AND plan_delivery_mode = ? AND status = ?",
+		userId, SubscriptionDeliveryModeManualDelivery, common.TopUpStatusSuccess).
+		Order("id desc").
+		Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	items := make([]SubscriptionManualDeliverySummary, 0, len(orders))
+	for i := range orders {
+		summary, err := buildSelfManualDeliverySummary(&orders[i])
+		if err != nil {
+			return nil, err
+		}
+		if summary != nil {
+			items = append(items, *summary)
+		}
+	}
+	return items, nil
+}
+
 func GetUserSubscriptionById(userSubscriptionId int) (*UserSubscription, error) {
 	if userSubscriptionId <= 0 {
 		return nil, errors.New("invalid userSubscriptionId")
@@ -1258,14 +2828,141 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}
 	}
+	userIDSet := make(map[int]struct{}, len(subs))
+	for _, sub := range subs {
+		if sub.UserId > 0 {
+			userIDSet[sub.UserId] = struct{}{}
+		}
+	}
+	userIDs := make([]int, 0, len(userIDSet))
+	for userID := range userIDSet {
+		userIDs = append(userIDs, userID)
+	}
+	aggregateTokenMap, _ := buildSubscriptionAccessTokenSummaryMapByUserIDs(userIDs)
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
+		refundOrder, _ := buildSubscriptionRefundOrderSummaryFromSubscription(&subCopy, nil)
 		result = append(result, SubscriptionSummary{
-			Subscription: &subCopy,
+			Subscription:         &subCopy,
+			RefundOrder:          refundOrder,
+			AggregateAccessToken: aggregateTokenMap[subCopy.UserId],
 		})
 	}
 	return result
+}
+
+func maskSubscriptionAccessTokenKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 10 {
+		return "sk-" + key
+	}
+	return fmt.Sprintf("sk-%s...%s", key[:4], key[len(key)-6:])
+}
+
+func buildSubscriptionAccessTokenSummaryMapByUserIDs(userIDs []int) (map[int]*SubscriptionAccessTokenSummary, error) {
+	result := make(map[int]*SubscriptionAccessTokenSummary)
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+	keyCol := commonKeyCol
+	if keyCol == "" {
+		if common.UsingPostgreSQL {
+			keyCol = `"key"`
+		} else {
+			keyCol = "`key`"
+		}
+	}
+	var tokens []Token
+	if err := DB.Select("id", "user_id", "name", keyCol, "expired_time", "status").
+		Where("user_id IN ? AND name = ? AND deleted_at IS NULL", userIDs, SubscriptionAggregateAccessTokenName).
+		Order("id asc").
+		Find(&tokens).Error; err != nil {
+		return nil, err
+	}
+	for i := range tokens {
+		token := tokens[i]
+		if _, exists := result[token.UserId]; exists {
+			continue
+		}
+		result[token.UserId] = &SubscriptionAccessTokenSummary{
+			TokenId:     token.Id,
+			TokenName:   strings.TrimSpace(token.Name),
+			KeyPreview:  maskSubscriptionAccessTokenKey(token.Key),
+			ExpiredTime: token.ExpiredTime,
+			Status:      token.Status,
+		}
+	}
+	return result, nil
+}
+
+func buildSubscriptionRefundOrderSummaryFromSubscription(sub *UserSubscription, tx *gorm.DB) (*SubscriptionRefundOrderSummary, error) {
+	if sub == nil || sub.Source != "order" || strings.TrimSpace(sub.SourceOrderTradeNo) == "" {
+		return nil, nil
+	}
+	summary := &SubscriptionRefundOrderSummary{
+		OrderId:       sub.SourceOrderId,
+		TradeNo:       strings.TrimSpace(sub.SourceOrderTradeNo),
+		PaymentMethod: strings.TrimSpace(sub.SourceOrderPaymentMethod),
+		Money:         sub.SourceOrderMoney,
+	}
+	topUpMap, err := buildTopUpMapByTradeNo([]string{summary.TradeNo}, tx)
+	if err != nil {
+		return nil, err
+	}
+	if topUp := topUpMap[summary.TradeNo]; topUp != nil {
+		summary.TopUpId = topUp.Id
+		summary.CompleteTime = topUp.CompleteTime
+		if summary.PaymentMethod == "" {
+			summary.PaymentMethod = topUp.PaymentMethod
+		}
+		if summary.Money <= 0 {
+			summary.Money = topUp.Money
+		}
+	} else if summary.OrderId > 0 {
+		db := DB
+		if tx != nil {
+			db = tx
+		}
+		var order SubscriptionOrder
+		if err := db.Select("complete_time").Where("id = ?", summary.OrderId).First(&order).Error; err == nil {
+			summary.CompleteTime = order.CompleteTime
+		}
+	}
+	return summary, nil
+}
+
+func buildSubscriptionRefundOrderSummaryFromOrder(order *SubscriptionOrder, tx *gorm.DB) (*SubscriptionRefundOrderSummary, error) {
+	if order == nil || strings.TrimSpace(order.TradeNo) == "" {
+		return nil, nil
+	}
+	summary := &SubscriptionRefundOrderSummary{
+		OrderId:       order.Id,
+		TradeNo:       strings.TrimSpace(order.TradeNo),
+		PaymentMethod: strings.TrimSpace(order.PaymentMethod),
+		Money:         order.Money,
+		CompleteTime:  order.CompleteTime,
+	}
+	topUpMap, err := buildTopUpMapByTradeNo([]string{summary.TradeNo}, tx)
+	if err != nil {
+		return nil, err
+	}
+	if topUp := topUpMap[summary.TradeNo]; topUp != nil {
+		summary.TopUpId = topUp.Id
+		if summary.PaymentMethod == "" {
+			summary.PaymentMethod = topUp.PaymentMethod
+		}
+		if summary.Money <= 0 {
+			summary.Money = topUp.Money
+		}
+		if summary.CompleteTime <= 0 {
+			summary.CompleteTime = topUp.CompleteTime
+		}
+	}
+	return summary, nil
 }
 
 type adminUserSubscriptionListRow struct {
@@ -1274,13 +2971,213 @@ type adminUserSubscriptionListRow struct {
 	UserGroup string `gorm:"column:user_group"`
 }
 
+type adminManualDeliveryOrderListRow struct {
+	SubscriptionOrder
+	Username  string `gorm:"column:username"`
+	UserGroup string `gorm:"column:user_group"`
+}
+
+func buildTopUpMapByTradeNo(tradeNos []string, tx *gorm.DB) (map[string]*TopUp, error) {
+	if len(tradeNos) == 0 {
+		return map[string]*TopUp{}, nil
+	}
+	db := DB
+	if tx != nil {
+		db = tx
+	}
+	var topUps []TopUp
+	if err := db.Where("trade_no IN ?", tradeNos).Find(&topUps).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[string]*TopUp, len(topUps))
+	for i := range topUps {
+		topUpCopy := topUps[i]
+		result[topUpCopy.TradeNo] = &topUpCopy
+	}
+	return result, nil
+}
+
+func validateManualDeliveryPayload(schema []SubscriptionDeliveryField, payload []SubscriptionDeliveryPayloadItem) ([]SubscriptionDeliveryPayloadItem, error) {
+	normalizedSchema := normalizeSubscriptionDeliveryFields(schema)
+	if len(normalizedSchema) == 0 {
+		return nil, errors.New("该套餐未配置交付字段模板")
+	}
+	schemaMap := make(map[string]SubscriptionDeliveryField, len(normalizedSchema))
+	for _, field := range normalizedSchema {
+		schemaMap[field.Key] = field
+	}
+	payloadMap := make(map[string]SubscriptionDeliveryPayloadItem, len(payload))
+	for _, item := range normalizeSubscriptionDeliveryPayload(payload) {
+		field, ok := schemaMap[item.Key]
+		if !ok {
+			continue
+		}
+		payloadMap[item.Key] = SubscriptionDeliveryPayloadItem{
+			Key:      field.Key,
+			Label:    field.Label,
+			Type:     field.Type,
+			Value:    strings.TrimSpace(item.Value),
+			Masked:   field.Masked,
+			Copyable: field.Copyable,
+		}
+	}
+	result := make([]SubscriptionDeliveryPayloadItem, 0, len(normalizedSchema))
+	for _, field := range normalizedSchema {
+		item, ok := payloadMap[field.Key]
+		if !ok {
+			if field.Required && !subscriptionDeliveryFieldIsAutoFilled(field.Key) {
+				return nil, fmt.Errorf("请填写交付字段：%s", field.Label)
+			}
+			continue
+		}
+		if strings.TrimSpace(item.Value) == "" {
+			if field.Required && !subscriptionDeliveryFieldIsAutoFilled(field.Key) {
+				return nil, fmt.Errorf("请填写交付字段：%s", field.Label)
+			}
+			continue
+		}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		if subscriptionDeliverySchemaHasOnlyAutoFilledFields(schemaMap) {
+			return result, nil
+		}
+		return nil, errors.New("请至少填写一项交付信息")
+	}
+	return result, nil
+}
+
+func subscriptionDeliveryFieldIsAutoFilled(key string) bool {
+	switch strings.TrimSpace(key) {
+	case "api_key", "base_url", "usage_query_url":
+		return true
+	default:
+		return false
+	}
+}
+
+func subscriptionDeliverySchemaHasOnlyAutoFilledFields(schemaMap map[string]SubscriptionDeliveryField) bool {
+	if len(schemaMap) == 0 {
+		return false
+	}
+	for key := range schemaMap {
+		if !subscriptionDeliveryFieldIsAutoFilled(key) {
+			return false
+		}
+	}
+	return true
+}
+
+func buildManualDeliveryPlan(order *SubscriptionOrder) *SubscriptionPlan {
+	if order == nil {
+		return nil
+	}
+	plan := order.SnapshotPlan()
+	if plan == nil {
+		return nil
+	}
+	ApplySubscriptionPlanRestrictionFields([]*SubscriptionPlan{plan})
+	return plan
+}
+
+func buildManualDeliverySummary(order *SubscriptionOrder, username string, userGroup string) (*AdminSubscriptionManualDeliverySummary, error) {
+	if order == nil {
+		return nil, nil
+	}
+	ApplySubscriptionOrderDeliveryFields(order)
+	refundOrder, err := buildSubscriptionRefundOrderSummaryFromOrder(order, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &AdminSubscriptionManualDeliverySummary{
+		Order:       order,
+		Plan:        buildManualDeliveryPlan(order),
+		Username:    username,
+		UserGroup:   userGroup,
+		RefundOrder: refundOrder,
+	}, nil
+}
+
+func buildLatestUserSubscriptionIDMapBySourceOrderIDs(orderIDs []int, tx *gorm.DB) (map[int]int, error) {
+	result := make(map[int]int)
+	if len(orderIDs) == 0 {
+		return result, nil
+	}
+	db := DB
+	if tx != nil {
+		db = tx
+	}
+	type row struct {
+		SourceOrderId int `gorm:"column:source_order_id"`
+		Id            int `gorm:"column:id"`
+	}
+	var rows []row
+	if err := db.
+		Table("user_subscriptions").
+		Select("source_order_id, id").
+		Where("source_order_id IN ?", orderIDs).
+		Order("source_order_id asc, id desc").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range rows {
+		if item.SourceOrderId <= 0 || item.Id <= 0 {
+			continue
+		}
+		if _, exists := result[item.SourceOrderId]; exists {
+			continue
+		}
+		result[item.SourceOrderId] = item.Id
+	}
+	return result, nil
+}
+
+func getLatestUserSubscriptionBySourceOrderIDTx(tx *gorm.DB, orderID int) (*UserSubscription, error) {
+	if orderID <= 0 {
+		return nil, errors.New("invalid orderID")
+	}
+	db := DB
+	if tx != nil {
+		db = tx
+	}
+	var sub UserSubscription
+	if err := db.Where("source_order_id = ?", orderID).
+		Order("id desc").
+		First(&sub).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &sub, nil
+}
+
+func buildSelfManualDeliverySummary(order *SubscriptionOrder) (*SubscriptionManualDeliverySummary, error) {
+	if order == nil {
+		return nil, nil
+	}
+	ApplySubscriptionOrderDeliveryFields(order)
+	refundOrder, err := buildSubscriptionRefundOrderSummaryFromOrder(order, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &SubscriptionManualDeliverySummary{
+		Order:       order,
+		Plan:        buildManualDeliveryPlan(order),
+		RefundOrder: refundOrder,
+	}, nil
+}
+
 func GetAdminUserSubscriptions(
 	pageInfo *common.PageInfo,
+	subscriptionId int,
 	username string,
 	userGroup string,
+	upgradeGroup string,
 	status string,
 	planId int,
 	source string,
+	resourceType string,
 	timeField string,
 	startTimestamp int64,
 	endTimestamp int64,
@@ -1288,10 +3185,16 @@ func GetAdminUserSubscriptions(
 	if pageInfo == nil {
 		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
 	}
+	subscriptionId = max(subscriptionId, 0)
 	username = strings.TrimSpace(username)
 	userGroup = strings.TrimSpace(userGroup)
+	upgradeGroup = strings.TrimSpace(upgradeGroup)
 	status = strings.TrimSpace(status)
 	source = strings.TrimSpace(source)
+	resourceType = strings.TrimSpace(resourceType)
+	if resourceType != "" {
+		resourceType = NormalizeSubscriptionResourceType(resourceType)
+	}
 	timeField = strings.TrimSpace(timeField)
 	now := common.GetTimestamp()
 
@@ -1299,6 +3202,9 @@ func GetAdminUserSubscriptions(
 		Select("user_subscriptions.*, users.username as username, users." + commonGroupCol + " as user_group").
 		Joins("left join users on users.id = user_subscriptions.user_id")
 
+	if subscriptionId > 0 {
+		baseQuery = baseQuery.Where("user_subscriptions.id = ?", subscriptionId)
+	}
 	if username != "" {
 		if keywordInt, err := strconv.Atoi(username); err == nil {
 			baseQuery = baseQuery.Where("users.id = ? OR users.username LIKE ?", keywordInt, "%"+username+"%")
@@ -1309,11 +3215,17 @@ func GetAdminUserSubscriptions(
 	if userGroup != "" {
 		baseQuery = baseQuery.Where("users."+commonGroupCol+" = ?", userGroup)
 	}
+	if upgradeGroup != "" {
+		baseQuery = baseQuery.Where("user_subscriptions.upgrade_group = ?", upgradeGroup)
+	}
 	if planId > 0 {
 		baseQuery = baseQuery.Where("user_subscriptions.plan_id = ?", planId)
 	}
 	if source != "" {
 		baseQuery = baseQuery.Where("user_subscriptions.source = ?", source)
+	}
+	if resourceType != "" {
+		baseQuery = baseQuery.Where("user_subscriptions.resource_type = ?", resourceType)
 	}
 	switch status {
 	case "active":
@@ -1350,17 +3262,1252 @@ func GetAdminUserSubscriptions(
 		Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
+	userIDSet := make(map[int]struct{}, len(rows))
+	for _, row := range rows {
+		if row.UserId > 0 {
+			userIDSet[row.UserId] = struct{}{}
+		}
+	}
+	userIDs := make([]int, 0, len(userIDSet))
+	for userID := range userIDSet {
+		userIDs = append(userIDs, userID)
+	}
+	aggregateTokenMap, _ := buildSubscriptionAccessTokenSummaryMapByUserIDs(userIDs)
 
 	items := make([]AdminUserSubscriptionSummary, 0, len(rows))
 	for _, row := range rows {
 		subCopy := row.UserSubscription
+		refundOrder, err := buildSubscriptionRefundOrderSummaryFromSubscription(&subCopy, nil)
+		if err != nil {
+			return nil, 0, err
+		}
 		items = append(items, AdminUserSubscriptionSummary{
-			Subscription: &subCopy,
-			Username:     row.Username,
-			UserGroup:    row.UserGroup,
+			Subscription:         &subCopy,
+			Username:             row.Username,
+			UserGroup:            row.UserGroup,
+			RefundOrder:          refundOrder,
+			AggregateAccessToken: aggregateTokenMap[subCopy.UserId],
 		})
 	}
 	return items, total, nil
+}
+
+func GetAdminManualDeliveryOrders(
+	pageInfo *common.PageInfo,
+	keyword string,
+	fulfillmentStatus string,
+	refundStatus string,
+	timeField string,
+	startTimestamp int64,
+	endTimestamp int64,
+) ([]AdminSubscriptionManualDeliverySummary, int64, error) {
+	if pageInfo == nil {
+		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
+	}
+	keyword = strings.TrimSpace(keyword)
+	fulfillmentStatus = normalizeSubscriptionFulfillmentStatus(fulfillmentStatus)
+	refundStatus = strings.TrimSpace(refundStatus)
+	timeField = strings.TrimSpace(timeField)
+	baseQuery := DB.Table("subscription_orders").
+		Select("subscription_orders.*, users.username as username, users."+commonGroupCol+" as user_group").
+		Joins("left join users on users.id = subscription_orders.user_id").
+		Where("subscription_orders.plan_delivery_mode = ? AND subscription_orders.status = ?",
+			SubscriptionDeliveryModeManualDelivery, common.TopUpStatusSuccess)
+
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		if keywordInt, err := strconv.Atoi(keyword); err == nil {
+			baseQuery = baseQuery.Where("subscription_orders.id = ? OR subscription_orders.user_id = ? OR subscription_orders.plan_id = ? OR users.id = ? OR users.username LIKE ? OR subscription_orders.trade_no LIKE ? OR subscription_orders.plan_title LIKE ?",
+				keywordInt, keywordInt, keywordInt, keywordInt, like, like, like)
+		} else {
+			baseQuery = baseQuery.Where("users.username LIKE ? OR subscription_orders.trade_no LIKE ? OR subscription_orders.plan_title LIKE ?",
+				like, like, like)
+		}
+	}
+	if strings.TrimSpace(fulfillmentStatus) != "" && fulfillmentStatus != SubscriptionFulfillmentNotRequired {
+		baseQuery = baseQuery.Where("subscription_orders.fulfillment_status = ?", fulfillmentStatus)
+	}
+	switch refundStatus {
+	case "refunded":
+		baseQuery = baseQuery.Where("subscription_orders.refund_to_quota = ?", true)
+	case "not_refunded":
+		baseQuery = baseQuery.Where("subscription_orders.refund_to_quota = ?", false)
+	}
+	timeColumn := "subscription_orders.complete_time"
+	switch timeField {
+	case "delivered_at":
+		timeColumn = "subscription_orders.delivered_at"
+	case "created_at":
+		timeColumn = "subscription_orders.created_at"
+	}
+	if startTimestamp > 0 {
+		baseQuery = baseQuery.Where(timeColumn+" >= ?", startTimestamp)
+	}
+	if endTimestamp > 0 {
+		baseQuery = baseQuery.Where(timeColumn+" <= ?", endTimestamp)
+	}
+
+	var total int64
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var rows []adminManualDeliveryOrderListRow
+	if err := baseQuery.
+		Order("subscription_orders.id desc").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+
+	orderIDs := make([]int, 0, len(rows))
+	for i := range rows {
+		if rows[i].SubscriptionOrder.Id > 0 {
+			orderIDs = append(orderIDs, rows[i].SubscriptionOrder.Id)
+		}
+	}
+	userSubscriptionIDMap, err := buildLatestUserSubscriptionIDMapBySourceOrderIDs(orderIDs, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]AdminSubscriptionManualDeliverySummary, 0, len(rows))
+	for i := range rows {
+		orderCopy := rows[i].SubscriptionOrder
+		summary, err := buildManualDeliverySummary(&orderCopy, rows[i].Username, rows[i].UserGroup)
+		if err != nil {
+			return nil, 0, err
+		}
+		if summary != nil {
+			summary.UserSubscriptionId = userSubscriptionIDMap[orderCopy.Id]
+			items = append(items, *summary)
+		}
+	}
+	return items, total, nil
+}
+
+func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []SubscriptionDeliveryPayloadItem, adminRemark string) (*SubscriptionOrder, error) {
+	if orderId <= 0 {
+		return nil, errors.New("invalid orderId")
+	}
+	var result SubscriptionOrder
+	var upgradeGroup string
+	var targetUserId int
+	var createdSub *UserSubscription
+	var refreshChannelCache bool
+	var deliveryLogPlanTitle string
+	var deliveryLogTradeNo string
+	var deliveryLogAt int64
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var order SubscriptionOrder
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
+			return err
+		}
+		if order.PlanDeliveryMode != SubscriptionDeliveryModeManualDelivery {
+			return errors.New("该订单不是人工发放套餐")
+		}
+		if order.Status != common.TopUpStatusSuccess {
+			return errors.New("仅已支付成功的订单可发放")
+		}
+		alreadyDelivered := normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus) == SubscriptionFulfillmentDelivered
+		schema := decodeSubscriptionDeliveryFields(order.PlanDeliveryFieldSchemaJSON)
+		autoIssuedSchema := len(schema) > 0
+		if len(schema) == 0 {
+			plan := order.SnapshotPlan()
+			if plan != nil {
+				schema = decodeSubscriptionDeliveryFields(plan.DeliveryFieldSchemaJSON)
+				autoIssuedSchema = len(schema) > 0
+			}
+		}
+		snapshotPlan := order.SnapshotPlan()
+		currentPlan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
+		if err != nil {
+			return err
+		}
+		plan := mergeManualDeliveryEffectivePlan(snapshotPlan, currentPlan, order.PlanId)
+		if plan == nil {
+			return errors.New("套餐不存在，无法完成人工发放")
+		}
+		if len(schema) == 0 && isClaudeSeriesRequestCountManualDeliveryPlan(plan) {
+			schema = buildAutoIssuedSubscriptionDeliveryFields()
+			autoIssuedSchema = true
+		}
+		if len(schema) == 0 {
+			schema = buildSubscriptionDeliveryFieldsFromPayload(payload)
+		}
+		normalizedPayload, err := validateManualDeliveryPayload(schema, payload)
+		if err != nil {
+			return err
+		}
+		existingPayload := decodeSubscriptionDeliveryPayload(order.DeliveryPayloadJSON)
+		now := common.GetTimestamp()
+
+		// Only the standard Claude manual-delivery template should trigger
+		// automatic channel-pool allocation and token issuance.
+		if autoIssuedSchema && isAutoIssuedSubscriptionDeliverySchema(schema) {
+			baseURL := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "base_url"))
+			if baseURL == "" {
+				baseURL = strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "base_url"))
+			}
+			if baseURL == "" {
+				baseURL = resolveSubscriptionDeliveryBaseURL()
+			}
+			usageQueryURL := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "usage_query_url"))
+			if usageQueryURL == "" {
+				usageQueryURL = strings.TrimSpace(getSubscriptionDeliveryPayloadValue(existingPayload, "usage_query_url"))
+			}
+			if usageQueryURL == "" {
+				usageQueryURL = "https://api-key-tool.nbility.dev/"
+			}
+			if baseURL == "" {
+				return errors.New("当前未配置站点地址(ServerAddress)，无法自动发放套餐")
+			}
+			isClaudeRequestPlan := isClaudeSeriesRequestCountManualDeliveryPlan(plan)
+			sub, err := getLatestUserSubscriptionBySourceOrderIDTx(tx, order.Id)
+			if err != nil {
+				return err
+			}
+			var (
+				channel  *Channel
+				keyIndex = -1
+			)
+			if isClaudeRequestPlan {
+				realChannelKey := strings.TrimSpace(getSubscriptionDeliveryPayloadValue(normalizedPayload, "api_key"))
+				if realChannelKey == "" && (!alreadyDelivered || sub == nil) {
+					return errors.New("请填写真实 Key 后再发放")
+				}
+				if order.ReservedChannelId <= 0 || order.ReservedChannelKeyIndex < 0 {
+					channel, keyIndex, err = reserveManualDeliveryChannelSlotForOrderTx(tx, &order, plan)
+					if err != nil {
+						return err
+					}
+					order.ReservedChannelId = channel.Id
+					order.ReservedChannelKeyIndex = keyIndex
+				}
+				if realChannelKey != "" {
+					channel, err = replaceReservedChannelKeyTx(tx, order.ReservedChannelId, order.ReservedChannelKeyIndex, realChannelKey)
+					if err != nil {
+						return err
+					}
+					refreshChannelCache = true
+				} else {
+					channel, err = GetChannelById(order.ReservedChannelId, true)
+					if err != nil {
+						return err
+					}
+				}
+				keyIndex = order.ReservedChannelKeyIndex
+			}
+			if sub == nil {
+				targetUserId = order.UserId
+				upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+				sub, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+				if err != nil {
+					return err
+				}
+				if err := tx.Model(sub).Updates(map[string]any{
+					"source_order_id":             order.Id,
+					"source_order_trade_no":       order.TradeNo,
+					"source_order_payment_method": order.PaymentMethod,
+					"source_order_money":          order.Money,
+					"updated_at":                  common.GetTimestamp(),
+				}).Error; err != nil {
+					return err
+				}
+				if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
+					return err
+				}
+				createdSub = sub
+			}
+			if isClaudeRequestPlan {
+				if channel == nil || channel.Id <= 0 || keyIndex < 0 {
+					return errors.New("当前订单缺少可用的预留渠道槽位")
+				}
+				if err := tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]any{
+					"specific_channel_id":        channel.Id,
+					"specific_channel_key_index": keyIndex,
+					"updated_at":                 common.GetTimestamp(),
+				}).Error; err != nil {
+					return err
+				}
+				sub.SpecificChannelId = channel.Id
+				sub.SpecificChannelKeyIndex = keyIndex
+			} else if err := provisionAggregateAccessForSubscriptionTx(tx, sub); err != nil {
+				return err
+			}
+
+			aggregateToken, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, order.UserId)
+			if err != nil {
+				return err
+			}
+			if err := refreshSubscriptionAggregateAccessTokenTx(tx, aggregateToken); err != nil {
+				return err
+			}
+			if common.RedisEnabled {
+				tokenCopy := *aggregateToken
+				gopool.Go(func() {
+					_ = cacheSetToken(tokenCopy)
+				})
+			}
+			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", "sk-"+aggregateToken.Key)
+
+			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "base_url", baseURL)
+			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "usage_query_url", usageQueryURL)
+		}
+
+		payloadJSON, err := encodeSubscriptionDeliveryPayload(normalizedPayload)
+		if err != nil {
+			return err
+		}
+		updates := map[string]any{
+			"fulfillment_status":    SubscriptionFulfillmentDelivered,
+			"delivery_payload_json": payloadJSON,
+			"delivery_admin_remark": strings.TrimSpace(adminRemark),
+			"delivered_by":          adminId,
+			"delivered_at":          now,
+		}
+		if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", orderId).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
+			return err
+		}
+		deliveryLogPlanTitle = strings.TrimSpace(result.PlanTitle)
+		deliveryLogTradeNo = strings.TrimSpace(result.TradeNo)
+		deliveryLogAt = result.DeliveredAt
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if upgradeGroup != "" && targetUserId > 0 {
+		_ = UpdateUserGroupCache(targetUserId, upgradeGroup)
+	}
+	if targetUserId > 0 && createdSub != nil {
+		triggerClaudeSubscriptionActivationProbeAsync(targetUserId, createdSub)
+	}
+	if refreshChannelCache {
+		InitChannelCache()
+	}
+	if targetUserId > 0 {
+		RecordAdminSubscriptionDeliveryLog(RecordAdminSubscriptionDeliveryLogParams{
+			UserId:    targetUserId,
+			LogType:   LogTypeManage,
+			Content:   fmt.Sprintf("管理员发放人工套餐订单，套餐：%s，订单号：%s", fallbackSubscriptionLogText(deliveryLogPlanTitle), fallbackSubscriptionLogText(deliveryLogTradeNo)),
+			ModelName: deliveryLogPlanTitle,
+			CreatedAt: deliveryLogAt,
+			Other: map[string]interface{}{
+				"scene":           "subscription_manual_delivery",
+				"action":          "deliver",
+				"trade_no":        deliveryLogTradeNo,
+				"plan_title":      deliveryLogPlanTitle,
+				"order_id":        result.Id,
+				"refund_to_quota": false,
+			},
+		})
+	}
+	ApplySubscriptionOrderDeliveryFields(&result)
+	return &result, nil
+}
+
+func subscriptionPlanChannelPoolTag(planId int) string {
+	if planId <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("subscription_plan:%d", planId)
+}
+
+func isClaudeSeriesRequestCountManualDeliveryPlan(plan *SubscriptionPlan) bool {
+	if plan == nil {
+		return false
+	}
+	if NormalizeSubscriptionResourceType(plan.ResourceType) != SubscriptionResourceRequestCount {
+		return false
+	}
+	if normalizeSubscriptionDeliveryMode(plan.DeliveryMode) != SubscriptionDeliveryModeManualDelivery {
+		return false
+	}
+	title := strings.ToLower(strings.TrimSpace(plan.Title))
+	if strings.Contains(title, "claude") {
+		return true
+	}
+	for _, modelName := range decodeSubscriptionStringList(plan.AllowedModelsJSON) {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "claude") {
+			return true
+		}
+	}
+	return false
+}
+
+func buildReservedPlaceholderKey(orderId int, userId int) string {
+	return fmt.Sprintf("reserved:sub_order:%d:user:%d:%d", orderId, userId, common.GetTimestamp())
+}
+
+func reindexChannelIntMapAfterKeyRemoval(source map[int]int, removedIndex int) map[int]int {
+	if len(source) == 0 {
+		return nil
+	}
+	target := make(map[int]int, len(source))
+	for idx, value := range source {
+		switch {
+		case idx < removedIndex:
+			target[idx] = value
+		case idx > removedIndex:
+			target[idx-1] = value
+		}
+	}
+	if len(target) == 0 {
+		return nil
+	}
+	return target
+}
+
+func reindexChannelInt64MapAfterKeyRemoval(source map[int]int64, removedIndex int) map[int]int64 {
+	if len(source) == 0 {
+		return nil
+	}
+	target := make(map[int]int64, len(source))
+	for idx, value := range source {
+		switch {
+		case idx < removedIndex:
+			target[idx] = value
+		case idx > removedIndex:
+			target[idx-1] = value
+		}
+	}
+	if len(target) == 0 {
+		return nil
+	}
+	return target
+}
+
+func reindexChannelStringMapAfterKeyRemoval(source map[int]string, removedIndex int) map[int]string {
+	if len(source) == 0 {
+		return nil
+	}
+	target := make(map[int]string, len(source))
+	for idx, value := range source {
+		switch {
+		case idx < removedIndex:
+			target[idx] = value
+		case idx > removedIndex:
+			target[idx-1] = value
+		}
+	}
+	if len(target) == 0 {
+		return nil
+	}
+	return target
+}
+
+func shiftBoundChannelKeyIndexesAfterRemovalTx(tx *gorm.DB, channelId int, removedIndex int, currentOrderId int) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if channelId <= 0 || removedIndex < 0 {
+		return errors.New("invalid channel binding removal context")
+	}
+
+	orderQuery := tx.Model(&SubscriptionOrder{}).
+		Where("reserved_channel_id = ? AND reserved_channel_key_index > ?", channelId, removedIndex)
+	if currentOrderId > 0 {
+		orderQuery = orderQuery.Where("id <> ?", currentOrderId)
+	}
+	if err := orderQuery.Update("reserved_channel_key_index", gorm.Expr("reserved_channel_key_index - 1")).Error; err != nil {
+		return err
+	}
+
+	if err := tx.Model(&UserSubscription{}).
+		Where("specific_channel_id = ? AND specific_channel_key_index > ?", channelId, removedIndex).
+		Update("specific_channel_key_index", gorm.Expr("specific_channel_key_index - 1")).Error; err != nil {
+		return err
+	}
+
+	if err := tx.Model(&Token{}).
+		Where("specific_channel_id = ? AND specific_channel_key_index > ? AND deleted_at IS NULL", channelId, removedIndex).
+		Update("specific_channel_key_index", gorm.Expr("specific_channel_key_index - 1")).Error; err != nil {
+		return err
+	}
+
+	if err := tx.Model(&EcomAgentAccount{}).
+		Where("assigned_channel_id = ? AND assigned_channel_key_index > ?", channelId, removedIndex).
+		Update("assigned_channel_key_index", gorm.Expr("assigned_channel_key_index - 1")).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func releaseReservedChannelSlotTx(tx *gorm.DB, order *SubscriptionOrder) (bool, error) {
+	if tx == nil {
+		return false, errors.New("tx is nil")
+	}
+	if order == nil {
+		return false, errors.New("order is nil")
+	}
+	if order.ReservedChannelId <= 0 || order.ReservedChannelKeyIndex < 0 {
+		return false, nil
+	}
+
+	var channel Channel
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", order.ReservedChannelId).First(&channel).Error; err != nil {
+		return false, err
+	}
+
+	keys := channel.GetKeys()
+	if order.ReservedChannelKeyIndex >= len(keys) {
+		return false, errors.New("预留 Key 槽位不存在")
+	}
+
+	keyIndex := order.ReservedChannelKeyIndex
+	if err := shiftBoundChannelKeyIndexesAfterRemovalTx(tx, channel.Id, keyIndex, order.Id); err != nil {
+		return false, err
+	}
+	keys = append(keys[:keyIndex], keys[keyIndex+1:]...)
+	channel.Key = strings.Join(keys, "\n")
+	channel.ChannelInfo.MultiKeySize = len(keys)
+	channel.ChannelInfo.MultiKeyStatusList = reindexChannelIntMapAfterKeyRemoval(channel.ChannelInfo.MultiKeyStatusList, keyIndex)
+	channel.ChannelInfo.MultiKeyDisabledReason = reindexChannelStringMapAfterKeyRemoval(channel.ChannelInfo.MultiKeyDisabledReason, keyIndex)
+	channel.ChannelInfo.MultiKeyDisabledTime = reindexChannelInt64MapAfterKeyRemoval(channel.ChannelInfo.MultiKeyDisabledTime, keyIndex)
+	channel.ChannelInfo.MultiKeyUsedCount = reindexChannelInt64MapAfterKeyRemoval(channel.ChannelInfo.MultiKeyUsedCount, keyIndex)
+	channel.ChannelInfo.MultiKeyMaxRequestCount = reindexChannelInt64MapAfterKeyRemoval(channel.ChannelInfo.MultiKeyMaxRequestCount, keyIndex)
+
+	if err := tx.Model(&Channel{}).
+		Where("id = ?", channel.Id).
+		Updates(map[string]any{
+			"key":          channel.Key,
+			"channel_info": channel.ChannelInfo,
+		}).Error; err != nil {
+		return false, err
+	}
+
+	order.ReservedChannelId = 0
+	order.ReservedChannelKeyIndex = -1
+	if err := tx.Model(&SubscriptionOrder{}).
+		Where("id = ?", order.Id).
+		Updates(map[string]any{
+			"reserved_channel_id":        0,
+			"reserved_channel_key_index": -1,
+		}).Error; err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func reserveManualDeliveryChannelSlotForOrderTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) (*Channel, int, error) {
+	if tx == nil {
+		return nil, -1, errors.New("tx is nil")
+	}
+	if order == nil || order.Id <= 0 || order.UserId <= 0 || plan == nil || plan.Id <= 0 {
+		return nil, -1, errors.New("invalid order or plan")
+	}
+	if order.ReservedChannelId > 0 && order.ReservedChannelKeyIndex >= 0 {
+		var channel Channel
+		if err := tx.Where("id = ?", order.ReservedChannelId).First(&channel).Error; err != nil {
+			return nil, -1, err
+		}
+		return &channel, order.ReservedChannelKeyIndex, nil
+	}
+	tag := subscriptionPlanChannelPoolTag(plan.Id)
+	if tag == "" {
+		return nil, -1, errors.New("渠道标签为空，无法预留发放槽位")
+	}
+	var channels []Channel
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("tag = ? AND status = ?", tag, common.ChannelStatusEnabled).
+		Order("id asc").
+		Find(&channels).Error; err != nil {
+		return nil, -1, err
+	}
+	if len(channels) == 0 {
+		return nil, -1, errors.New("未找到可用于发放的固定渠道")
+	}
+	if len(channels) > 1 {
+		return nil, -1, errors.New("检测到多个固定渠道，请只保留一个渠道用于按次发放")
+	}
+	channel := &channels[0]
+	if !channel.ChannelInfo.IsMultiKey {
+		return nil, -1, errors.New("固定发放渠道必须开启多 Key 模式")
+	}
+	keys := channel.GetKeys()
+	keys = append(keys, buildReservedPlaceholderKey(order.Id, order.UserId))
+	channel.Key = strings.Join(keys, "\n")
+	channel.ChannelInfo.MultiKeySize = len(keys)
+	if err := tx.Model(&Channel{}).
+		Where("id = ?", channel.Id).
+		Updates(map[string]any{
+			"key":          channel.Key,
+			"channel_info": channel.ChannelInfo,
+		}).Error; err != nil {
+		return nil, -1, err
+	}
+	keyIndex := len(keys) - 1
+	order.ReservedChannelId = channel.Id
+	order.ReservedChannelKeyIndex = keyIndex
+	if err := tx.Model(&SubscriptionOrder{}).
+		Where("id = ?", order.Id).
+		Updates(map[string]any{
+			"reserved_channel_id":        channel.Id,
+			"reserved_channel_key_index": keyIndex,
+		}).Error; err != nil {
+		return nil, -1, err
+	}
+	return channel, keyIndex, nil
+}
+
+func replaceReservedChannelKeyTx(tx *gorm.DB, channelId int, keyIndex int, realKey string) (*Channel, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if channelId <= 0 || keyIndex < 0 {
+		return nil, errors.New("invalid reserved channel binding")
+	}
+	realKey = strings.TrimSpace(realKey)
+	if realKey == "" {
+		return nil, errors.New("真实 Key 不能为空")
+	}
+	var channel Channel
+	if err := tx.Where("id = ?", channelId).First(&channel).Error; err != nil {
+		return nil, err
+	}
+	keys := channel.GetKeys()
+	if keyIndex >= len(keys) {
+		return nil, errors.New("预留 Key 槽位不存在")
+	}
+	keys[keyIndex] = realKey
+	channel.Key = strings.Join(keys, "\n")
+	channel.ChannelInfo.MultiKeySize = len(keys)
+	if err := tx.Model(&Channel{}).
+		Where("id = ?", channelId).
+		Updates(map[string]any{
+			"key":          channel.Key,
+			"channel_info": channel.ChannelInfo,
+			"status":       common.ChannelStatusEnabled,
+		}).Error; err != nil {
+		return nil, err
+	}
+	channel.Status = common.ChannelStatusEnabled
+	return &channel, nil
+}
+
+func subscriptionDeliverySchemaHasKey(schema []SubscriptionDeliveryField, key string) bool {
+	key = strings.TrimSpace(key)
+	if key == "" || len(schema) == 0 {
+		return false
+	}
+	for _, f := range schema {
+		if strings.TrimSpace(f.Key) == key {
+			return true
+		}
+	}
+	return false
+}
+
+func isAutoIssuedSubscriptionDeliverySchema(schema []SubscriptionDeliveryField) bool {
+	return subscriptionDeliverySchemaHasKey(schema, "api_key") &&
+		subscriptionDeliverySchemaHasKey(schema, "base_url") &&
+		subscriptionDeliverySchemaHasKey(schema, "usage_query_url")
+}
+
+func getOrCreateSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var token Token
+	err := tx.Where("user_id = ? AND name = ? AND deleted_at IS NULL", userId, SubscriptionAggregateAccessTokenName).
+		Order("id asc").
+		First(&token).Error
+	if err == nil {
+		return &token, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	key, err := common.GenerateKey()
+	if err != nil {
+		return nil, err
+	}
+	token = Token{
+		UserId:                  userId,
+		Name:                    SubscriptionAggregateAccessTokenName,
+		Key:                     key,
+		Status:                  common.TokenStatusEnabled,
+		CreatedTime:             common.GetTimestamp(),
+		AccessedTime:            common.GetTimestamp(),
+		ExpiredTime:             -1,
+		UnlimitedQuota:          true,
+		Group:                   "default",
+		SpecificChannelId:       0,
+		SpecificChannelKeyIndex: -1,
+	}
+	if err := tx.Create(&token).Error; err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
+func disableSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var token Token
+	err := tx.Where("user_id = ? AND name = ? AND deleted_at IS NULL", userId, SubscriptionAggregateAccessTokenName).
+		Order("id asc").
+		First(&token).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	updates := map[string]any{
+		"status":                     common.TokenStatusDisabled,
+		"expired_time":               common.GetTimestamp(),
+		"model_limits_enabled":       false,
+		"model_limits":               "",
+		"specific_channel_id":        0,
+		"specific_channel_key_index": -1,
+	}
+	if err := tx.Model(&Token{}).Where("id = ?", token.Id).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	token.Status = common.TokenStatusDisabled
+	token.ExpiredTime = updates["expired_time"].(int64)
+	token.ModelLimitsEnabled = false
+	token.ModelLimits = ""
+	token.SpecificChannelId = 0
+	token.SpecificChannelKeyIndex = -1
+	return &token, nil
+}
+
+func refreshSubscriptionAggregateAccessTokenTx(tx *gorm.DB, token *Token) error {
+	if tx == nil || token == nil || token.Id <= 0 || token.UserId <= 0 {
+		return errors.New("invalid aggregate token args")
+	}
+	now := GetDBTimestampWithTx(tx)
+	var subs []UserSubscription
+	if err := tx.Select("allowed_models_json", "end_time", "resource_type", "upgrade_group", "allowed_groups_json", "specific_channel_id", "aggregate_enabled").
+		Where("user_id = ? AND status = ? AND end_time > ?", token.UserId, "active", now).
+		Order("id asc").
+		Find(&subs).Error; err != nil {
+		return err
+	}
+	latestExpiredTime := int64(-1)
+	unionModels := make(map[string]struct{})
+	modelLimitEnabled := true
+	for i := range subs {
+		sub := subs[i]
+		if !isUserSubscriptionAggregateEnabled(&sub) {
+			continue
+		}
+		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+			continue
+		}
+		if getUserSubscriptionRouteGroup(&sub) == "" {
+			continue
+		}
+		if sub.SpecificChannelId <= 0 {
+			continue
+		}
+		if sub.EndTime > latestExpiredTime {
+			latestExpiredTime = sub.EndTime
+		}
+		models := decodeSubscriptionStringList(sub.AllowedModelsJSON)
+		if len(models) == 0 {
+			modelLimitEnabled = false
+			continue
+		}
+		if !modelLimitEnabled {
+			continue
+		}
+		for _, modelName := range models {
+			modelName = strings.TrimSpace(modelName)
+			if modelName == "" {
+				continue
+			}
+			unionModels[modelName] = struct{}{}
+		}
+	}
+	if latestExpiredTime <= 0 {
+		disabledToken, err := disableSubscriptionAggregateAccessTokenTx(tx, token.UserId)
+		if err != nil {
+			return err
+		}
+		if disabledToken != nil {
+			*token = *disabledToken
+		}
+		return nil
+	}
+	updates := map[string]any{
+		"status":                     common.TokenStatusEnabled,
+		"expired_time":               latestExpiredTime,
+		"unlimited_quota":            true,
+		"group":                      "default",
+		"specific_channel_id":        0,
+		"specific_channel_key_index": -1,
+	}
+	if !modelLimitEnabled || len(unionModels) == 0 {
+		updates["model_limits_enabled"] = false
+		updates["model_limits"] = ""
+	} else {
+		models := make([]string, 0, len(unionModels))
+		for modelName := range unionModels {
+			models = append(models, modelName)
+		}
+		slices.Sort(models)
+		updates["model_limits_enabled"] = true
+		updates["model_limits"] = strings.Join(models, ",")
+	}
+	if err := tx.Model(&Token{}).Where("id = ?", token.Id).Updates(updates).Error; err != nil {
+		return err
+	}
+	token.Status = common.TokenStatusEnabled
+	token.ExpiredTime = latestExpiredTime
+	token.UnlimitedQuota = true
+	token.Group = "default"
+	token.SpecificChannelId = 0
+	token.SpecificChannelKeyIndex = -1
+	if value, ok := updates["model_limits_enabled"].(bool); ok {
+		token.ModelLimitsEnabled = value
+	}
+	if value, ok := updates["model_limits"].(string); ok {
+		token.ModelLimits = value
+	}
+	return nil
+}
+
+func provisionAggregateAccessForSubscriptionTx(tx *gorm.DB, sub *UserSubscription) error {
+	if tx == nil || sub == nil || sub.Id <= 0 || sub.UserId <= 0 {
+		return nil
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+		return nil
+	}
+	routeGroup := getUserSubscriptionRouteGroup(sub)
+	if !strings.HasPrefix(routeGroup, "sub_plan_") {
+		return nil
+	}
+	if sub.SpecificChannelId <= 0 {
+		planTag := subscriptionPlanChannelPoolTag(sub.PlanId)
+		if planTag == "" {
+			return nil
+		}
+		channel, keyIndex, err := allocateSubscriptionPlanChannelFromPoolTx(tx, planTag)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]any{
+			"specific_channel_id":        channel.Id,
+			"specific_channel_key_index": keyIndex,
+			"updated_at":                 common.GetTimestamp(),
+		}).Error; err != nil {
+			return err
+		}
+		sub.SpecificChannelId = channel.Id
+		sub.SpecificChannelKeyIndex = keyIndex
+	}
+	aggregateToken, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, sub.UserId)
+	if err != nil {
+		return err
+	}
+	return refreshSubscriptionAggregateAccessTokenTx(tx, aggregateToken)
+}
+
+func EnsureSubscriptionAggregateAccessTokenForUser(userId int) (*Token, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var result *Token
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		now := GetDBTimestampWithTx(tx)
+		var subs []UserSubscription
+		if err := tx.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+			Order("id asc").
+			Find(&subs).Error; err != nil {
+			return err
+		}
+		needsAggregateToken := false
+		for i := range subs {
+			sub := subs[i]
+			if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+				continue
+			}
+			if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+				return err
+			}
+			if err := provisionAggregateAccessForSubscriptionTx(tx, &sub); err != nil {
+				return err
+			}
+			if sub.SpecificChannelId <= 0 || getUserSubscriptionRouteGroup(&sub) == "" {
+				continue
+			}
+			needsAggregateToken = true
+			break
+		}
+		if !needsAggregateToken {
+			token, err := disableSubscriptionAggregateAccessTokenTx(tx, userId)
+			if err != nil {
+				return err
+			}
+			if token != nil {
+				tokenCopy := *token
+				result = &tokenCopy
+			}
+			return nil
+		}
+		token, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, userId)
+		if err != nil {
+			return err
+		}
+		if err := refreshSubscriptionAggregateAccessTokenTx(tx, token); err != nil {
+			return err
+		}
+		tokenCopy := *token
+		result = &tokenCopy
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result != nil && common.RedisEnabled {
+		tokenCopy := *result
+		gopool.Go(func() {
+			_ = cacheSetToken(tokenCopy)
+		})
+	}
+	return result, nil
+}
+
+func ensureSubscriptionAggregateAccessTokenForUserTx(tx *gorm.DB, userId int) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	now := GetDBTimestampWithTx(tx)
+	var subs []UserSubscription
+	if err := tx.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		Order("id asc").
+		Find(&subs).Error; err != nil {
+		return err
+	}
+	needsAggregateToken := false
+	for i := range subs {
+		sub := subs[i]
+		if !isUserSubscriptionAggregateEnabled(&sub) {
+			continue
+		}
+		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+			continue
+		}
+		if sub.SpecificChannelId <= 0 || getUserSubscriptionRouteGroup(&sub) == "" {
+			if err := provisionAggregateAccessForSubscriptionTx(tx, &sub); err != nil {
+				return err
+			}
+		}
+		if sub.SpecificChannelId <= 0 || getUserSubscriptionRouteGroup(&sub) == "" {
+			continue
+		}
+		needsAggregateToken = true
+	}
+	if !needsAggregateToken {
+		_, err := disableSubscriptionAggregateAccessTokenTx(tx, userId)
+		return err
+	}
+	token, err := getOrCreateSubscriptionAggregateAccessTokenTx(tx, userId)
+	if err != nil {
+		return err
+	}
+	return refreshSubscriptionAggregateAccessTokenTx(tx, token)
+}
+
+func allocateSubscriptionPlanChannelFromPoolTx(tx *gorm.DB, tag string) (*Channel, int, error) {
+	if tx == nil {
+		return nil, -1, errors.New("tx is nil")
+	}
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return nil, -1, errors.New("tag is empty")
+	}
+	type boundKeyBinding struct {
+		SpecificChannelId       int
+		SpecificChannelKeyIndex int
+	}
+	var bindings []boundKeyBinding
+	if err := tx.Model(&Token{}).
+		Select("specific_channel_id", "specific_channel_key_index").
+		Where("specific_channel_id > 0 AND deleted_at IS NULL").
+		Find(&bindings).Error; err != nil {
+		return nil, -1, err
+	}
+	now := GetDBTimestampWithTx(tx)
+	var subscriptionBindings []boundKeyBinding
+	if err := tx.Model(&UserSubscription{}).
+		Select("specific_channel_id", "specific_channel_key_index").
+		Where("specific_channel_id > 0 AND status = ? AND end_time > ?", "active", now).
+		Find(&subscriptionBindings).Error; err != nil {
+		return nil, -1, err
+	}
+	usedKeyMap := make(map[string]struct{}, len(bindings))
+	usedWholeChannel := make(map[int]struct{})
+	for _, binding := range bindings {
+		if binding.SpecificChannelId <= 0 {
+			continue
+		}
+		if binding.SpecificChannelKeyIndex < 0 {
+			usedWholeChannel[binding.SpecificChannelId] = struct{}{}
+			continue
+		}
+		usedKeyMap[fmt.Sprintf("%d:%d", binding.SpecificChannelId, binding.SpecificChannelKeyIndex)] = struct{}{}
+	}
+	for _, binding := range subscriptionBindings {
+		if binding.SpecificChannelId <= 0 {
+			continue
+		}
+		if binding.SpecificChannelKeyIndex < 0 {
+			usedWholeChannel[binding.SpecificChannelId] = struct{}{}
+			continue
+		}
+		usedKeyMap[fmt.Sprintf("%d:%d", binding.SpecificChannelId, binding.SpecificChannelKeyIndex)] = struct{}{}
+	}
+
+	var channels []Channel
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("tag = ? AND status = ?", tag, common.ChannelStatusEnabled).
+		Order("id asc").
+		Find(&channels).Error; err != nil {
+		return nil, -1, err
+	}
+	for i := range channels {
+		channel := &channels[i]
+		keys := channel.GetKeys()
+		if len(keys) == 0 {
+			continue
+		}
+		if !channel.ChannelInfo.IsMultiKey {
+			if _, exists := usedWholeChannel[channel.Id]; exists {
+				continue
+			}
+			if _, exists := usedKeyMap[fmt.Sprintf("%d:%d", channel.Id, 0)]; exists {
+				continue
+			}
+			return channel, 0, nil
+		}
+		if _, exists := usedWholeChannel[channel.Id]; exists {
+			continue
+		}
+		for keyIndex := range keys {
+			if !channel.IsSpecificKeyAvailable(keyIndex) {
+				continue
+			}
+			if _, exists := usedKeyMap[fmt.Sprintf("%d:%d", channel.Id, keyIndex)]; exists {
+				continue
+			}
+			return channel, keyIndex, nil
+		}
+	}
+	return nil, -1, nil
+}
+
+func upsertSubscriptionDeliveryPayloadValue(payload []SubscriptionDeliveryPayloadItem, schema []SubscriptionDeliveryField, key string, value string) []SubscriptionDeliveryPayloadItem {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return payload
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return payload
+	}
+	label := ""
+	typ := ""
+	masked := false
+	copyable := false
+	found := false
+	for _, f := range schema {
+		if strings.TrimSpace(f.Key) != key {
+			continue
+		}
+		found = true
+		label = f.Label
+		typ = f.Type
+		masked = f.Masked
+		copyable = f.Copyable
+		break
+	}
+	if !found {
+		return payload
+	}
+	for i := range payload {
+		if strings.TrimSpace(payload[i].Key) != key {
+			continue
+		}
+		payload[i].Value = value
+		if label != "" {
+			payload[i].Label = label
+		}
+		if typ != "" {
+			payload[i].Type = typ
+		}
+		payload[i].Masked = masked
+		payload[i].Copyable = copyable
+		return payload
+	}
+	item := SubscriptionDeliveryPayloadItem{
+		Key:      key,
+		Label:    label,
+		Type:     typ,
+		Value:    value,
+		Masked:   masked,
+		Copyable: copyable,
+	}
+	return append(payload, item)
+}
+
+func getSubscriptionDeliveryPayloadValue(payload []SubscriptionDeliveryPayloadItem, key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	for _, item := range payload {
+		if strings.TrimSpace(item.Key) == key {
+			return strings.TrimSpace(item.Value)
+		}
+	}
+	return ""
+}
+
+func resolveSubscriptionDeliveryBaseURL() string {
+	return strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/")
+}
+
+func calcManualDeliveryOrderRefundQuota(order *SubscriptionOrder) int64 {
+	if order == nil || order.Money <= 0 {
+		return 0
+	}
+	return int64(convertSubscriptionConversionAmountToQuota(order.Money))
+}
+
+func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string, refundToQuota bool) (*SubscriptionOrder, error) {
+	if orderId <= 0 {
+		return nil, errors.New("invalid orderId")
+	}
+	var result SubscriptionOrder
+	var logUserId int
+	var refundQuota int64
+	var logContent string
+	var logType = LogTypeManage
+	var refreshChannelCache bool
+	var rejectLogPlanTitle string
+	var rejectLogTradeNo string
+	var rejectLogAt int64
+	var rejectLogRefundToQuota bool
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var order SubscriptionOrder
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
+			return err
+		}
+		if order.PlanDeliveryMode != SubscriptionDeliveryModeManualDelivery {
+			return errors.New("该订单不是人工发放套餐")
+		}
+		if order.Status != common.TopUpStatusSuccess {
+			return errors.New("仅已支付成功的订单可拒绝")
+		}
+		if normalizeSubscriptionFulfillmentStatus(order.FulfillmentStatus) == SubscriptionFulfillmentDelivered {
+			return errors.New("该订单已发放，不能拒绝")
+		}
+		releasedReservedSlot, err := releaseReservedChannelSlotTx(tx, &order)
+		if err != nil {
+			return err
+		}
+		if releasedReservedSlot {
+			refreshChannelCache = true
+		}
+		now := common.GetTimestamp()
+		logUserId = order.UserId
+		if refundToQuota && !order.RefundToQuota {
+			refundQuota = calcManualDeliveryOrderRefundQuota(&order)
+			if refundQuota <= 0 {
+				return errors.New("该订单没有可返还的额度")
+			}
+			if err := tx.Model(&User{}).
+				Where("id = ?", order.UserId).
+				Update("quota", gorm.Expr("quota + ?", refundQuota)).Error; err != nil {
+				return err
+			}
+		}
+		nextRefundToQuota := order.RefundToQuota || refundToQuota
+		nextRefundQuotaAmount := order.RefundQuotaAmount
+		if refundQuota > 0 {
+			nextRefundQuotaAmount += refundQuota
+		}
+		updates := map[string]any{
+			"fulfillment_status":    SubscriptionFulfillmentRejected,
+			"delivery_admin_remark": strings.TrimSpace(adminRemark),
+			"delivered_by":          adminId,
+			"delivered_at":          now,
+			"refund_to_quota":       nextRefundToQuota,
+			"refund_quota_amount":   nextRefundQuotaAmount,
+		}
+		if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", orderId).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
+			return err
+		}
+		rejectLogPlanTitle = strings.TrimSpace(result.PlanTitle)
+		rejectLogTradeNo = strings.TrimSpace(result.TradeNo)
+		rejectLogAt = result.DeliveredAt
+		rejectLogRefundToQuota = result.RefundToQuota && result.RefundQuotaAmount > 0
+		if refundQuota > 0 {
+			logType = LogTypeRefund
+			logContent = fmt.Sprintf("管理员拒绝人工发放套餐订单，已返还余额额度: %d", refundQuota)
+		} else if result.RefundToQuota && result.RefundQuotaAmount > 0 {
+			logContent = fmt.Sprintf("管理员更新人工发放套餐订单拒绝原因；该订单已返还余额额度: %d", result.RefundQuotaAmount)
+		} else {
+			logContent = "管理员拒绝人工发放套餐订单，未返还余额额度"
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if refreshChannelCache {
+		InitChannelCache()
+	}
+	if logUserId > 0 && logContent != "" {
+		RecordAdminSubscriptionDeliveryLog(RecordAdminSubscriptionDeliveryLogParams{
+			UserId:    logUserId,
+			LogType:   logType,
+			Content:   logContent,
+			ModelName: rejectLogPlanTitle,
+			CreatedAt: rejectLogAt,
+			Other: map[string]interface{}{
+				"scene":           "subscription_manual_delivery",
+				"action":          "reject",
+				"trade_no":        rejectLogTradeNo,
+				"plan_title":      rejectLogPlanTitle,
+				"order_id":        result.Id,
+				"refund_to_quota": rejectLogRefundToQuota,
+			},
+		})
+	}
+	ApplySubscriptionOrderDeliveryFields(&result)
+	return &result, nil
+}
+
+func fallbackSubscriptionLogText(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "-"
+	}
+	return trimmed
 }
 
 func normalizeSubscriptionMigrationFilter(filter SubscriptionMigrationFilter) SubscriptionMigrationFilter {
@@ -1497,6 +4644,8 @@ func alignMigratedSubscriptionResetWindow(sub *UserSubscription, plan *Subscript
 	snapshotPlan := &SubscriptionPlan{
 		QuotaResetPeriod:        period,
 		QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
+		QuotaResetUseFixedClock: plan.QuotaResetUseFixedClock,
+		QuotaResetFixedSeconds:  plan.QuotaResetFixedSeconds,
 	}
 	next := calcNextResetTime(base, snapshotPlan, sub.EndTime)
 	for next > 0 && next <= now {
@@ -1600,28 +4749,35 @@ func createMigratedUserSubscriptionTx(tx *gorm.DB, source *UserSubscription, tar
 		requestCountTotal = 0
 	}
 	newSub := &UserSubscription{
-		UserId:             source.UserId,
-		PlanId:             targetPlan.Id,
-		AmountTotal:        amountTotal,
-		AmountUsed:         amountUsed,
-		ResourceType:       targetResourceType,
-		RequestCountTotal:  requestCountTotal,
-		RequestCountUsed:   requestCountUsed,
-		ResetPeriod:        NormalizeResetPeriod(targetPlan.QuotaResetPeriod),
-		ResetCustomSeconds: targetPlan.QuotaResetCustomSeconds,
-		DurationUnit:       targetPlan.DurationUnit,
-		DurationValue:      targetPlan.DurationValue,
-		CustomSeconds:      targetPlan.CustomSeconds,
-		StartTime:          source.StartTime,
-		EndTime:            source.EndTime,
-		Status:             "active",
-		Source:             "migration",
-		LastResetTime:      lastReset,
-		NextResetTime:      nextReset,
-		UpgradeGroup:       targetGroup,
-		PrevUserGroup:      prevGroup,
-		CreatedAt:          common.GetTimestamp(),
-		UpdatedAt:          common.GetTimestamp(),
+		UserId:                  source.UserId,
+		PlanId:                  targetPlan.Id,
+		AmountTotal:             amountTotal,
+		AmountUsed:              amountUsed,
+		ResourceType:            targetResourceType,
+		RequestCountTotal:       requestCountTotal,
+		RequestCountUsed:        requestCountUsed,
+		RequestCountPeriodTotal: targetPlan.RequestCountPeriodTotal,
+		RequestCountPeriodUsed:  source.RequestCountPeriodUsed,
+		ResetPeriod:             NormalizeResetPeriod(targetPlan.QuotaResetPeriod),
+		ResetCustomSeconds:      targetPlan.QuotaResetCustomSeconds,
+		ResetUseFixedClock:      targetPlan.QuotaResetUseFixedClock,
+		ResetFixedSeconds:       targetPlan.QuotaResetFixedSeconds,
+		AllowedGroupsJSON:       strings.TrimSpace(targetPlan.AllowedGroupsJSON),
+		AllowedModelsJSON:       strings.TrimSpace(targetPlan.AllowedModelsJSON),
+		AllowedVendorIDsJSON:    strings.TrimSpace(targetPlan.AllowedVendorIDsJSON),
+		DurationUnit:            targetPlan.DurationUnit,
+		DurationValue:           targetPlan.DurationValue,
+		CustomSeconds:           targetPlan.CustomSeconds,
+		StartTime:               source.StartTime,
+		EndTime:                 source.EndTime,
+		Status:                  "active",
+		Source:                  "migration",
+		LastResetTime:           lastReset,
+		NextResetTime:           nextReset,
+		UpgradeGroup:            targetGroup,
+		PrevUserGroup:           prevGroup,
+		CreatedAt:               common.GetTimestamp(),
+		UpdatedAt:               common.GetTimestamp(),
 	}
 	if err := tx.Create(newSub).Error; err != nil {
 		return nil, "", err
@@ -1664,7 +4820,7 @@ func ExecuteSubscriptionMigration(filter SubscriptionMigrationFilter) (*Subscrip
 			if source.Status != "active" || source.EndTime <= common.GetTimestamp() {
 				return errors.New("subscription is no longer active")
 			}
-			newSub, newGroup, err := createMigratedUserSubscriptionTx(tx, &source, targetPlan, GetDBTimestamp())
+			newSub, newGroup, err := createMigratedUserSubscriptionTx(tx, &source, targetPlan, GetDBTimestampWithTx(tx))
 			if err != nil {
 				return err
 			}
@@ -1692,6 +4848,349 @@ func ExecuteSubscriptionMigration(filter SubscriptionMigrationFilter) (*Subscrip
 	return result, nil
 }
 
+func transferSubscriptionConsumeLogsOwner(tx *gorm.DB, subscriptionId int, sourceUserId int, targetUserId int, targetUsername string) (int64, error) {
+	if subscriptionId <= 0 || sourceUserId <= 0 || targetUserId <= 0 || sourceUserId == targetUserId {
+		return 0, nil
+	}
+	logDB := LOG_DB
+	if logDB == nil || logDB == DB {
+		logDB = tx
+	}
+	if logDB == nil {
+		return 0, errors.New("log db is nil")
+	}
+	query := logDB.Model(&Log{}).
+		Where("type = ? AND user_id = ?", LogTypeConsume, sourceUserId).
+		Where("other LIKE ?", `%"billing_source":"subscription"%`)
+	query = applySubscriptionJSONIdFilter(query, "subscription_id", subscriptionId)
+
+	updates := map[string]any{
+		"user_id": targetUserId,
+	}
+	if strings.TrimSpace(targetUsername) != "" {
+		updates["username"] = strings.TrimSpace(targetUsername)
+	}
+	result := query.Updates(updates)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+func getSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var token Token
+	err := tx.Where("user_id = ? AND name = ? AND deleted_at IS NULL", userId, SubscriptionAggregateAccessTokenName).
+		Order("id asc").
+		First(&token).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
+func normalizeSubscriptionAccessTokenKey(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "sk-")
+	return strings.TrimSpace(raw)
+}
+
+func getDeliveredSubscriptionAccessTokenTx(tx *gorm.DB, sub *UserSubscription) (*Token, error) {
+	if tx == nil || sub == nil || sub.SourceOrderId <= 0 {
+		return nil, nil
+	}
+	var order SubscriptionOrder
+	if err := tx.Select("id", "delivery_payload_json").Where("id = ?", sub.SourceOrderId).First(&order).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	payload := decodeSubscriptionDeliveryPayload(order.DeliveryPayloadJSON)
+	apiKey := normalizeSubscriptionAccessTokenKey(getSubscriptionDeliveryPayloadValue(payload, "api_key"))
+	if apiKey == "" {
+		return nil, nil
+	}
+	var token Token
+	err := tx.Where("key = ? AND deleted_at IS NULL", apiKey).First(&token).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
+func hasOtherActiveAggregateEligibleSubscriptionsTx(tx *gorm.DB, userId int, excludeSubscriptionId int, now int64) (bool, error) {
+	if tx == nil {
+		return false, errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return false, errors.New("invalid userId")
+	}
+	var subs []UserSubscription
+	if err := tx.Select("id", "resource_type", "upgrade_group", "allowed_groups_json", "end_time", "status").
+		Where("user_id = ? AND status = ? AND end_time > ? AND id <> ?", userId, "active", now, excludeSubscriptionId).
+		Find(&subs).Error; err != nil {
+		return false, err
+	}
+	for i := range subs {
+		sub := subs[i]
+		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+			continue
+		}
+		if getUserSubscriptionRouteGroup(&sub) == "" {
+			continue
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func syncTransferredSubscriptionOrderAccessTokenTx(tx *gorm.DB, sub *UserSubscription, targetToken *Token) error {
+	if tx == nil || sub == nil || sub.SourceOrderId <= 0 || targetToken == nil || targetToken.Id <= 0 {
+		return nil
+	}
+	var order SubscriptionOrder
+	if err := tx.Select("id", "plan_delivery_field_schema_json", "delivery_payload_json").
+		Where("id = ?", sub.SourceOrderId).
+		First(&order).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	payload := decodeSubscriptionDeliveryPayload(order.DeliveryPayloadJSON)
+	if len(payload) == 0 && strings.TrimSpace(order.PlanDeliveryFieldSchemaJSON) == "" {
+		return nil
+	}
+	schema := decodeSubscriptionDeliveryFields(order.PlanDeliveryFieldSchemaJSON)
+	if len(schema) == 0 {
+		schema = buildSubscriptionDeliveryFieldsFromPayload(payload)
+	}
+	if len(schema) == 0 {
+		return nil
+	}
+	nextPayload := upsertSubscriptionDeliveryPayloadValue(payload, schema, "api_key", "sk-"+targetToken.Key)
+	if len(nextPayload) == 0 {
+		return nil
+	}
+	payloadJSON, err := encodeSubscriptionDeliveryPayload(nextPayload)
+	if err != nil {
+		return err
+	}
+	return tx.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Updates(map[string]any{
+		"delivery_payload_json": payloadJSON,
+	}).Error
+}
+
+func restoreTransferredSubscriptionState(sub *UserSubscription, now int64) (int64, error) {
+	if sub == nil {
+		return 0, errors.New("subscription is nil")
+	}
+	planSnapshot := subscriptionDurationSnapshotToPlan(sub)
+	if planSnapshot == nil {
+		return 0, errors.New("invalid subscription duration snapshot")
+	}
+	restoredEndTime, err := calcPlanEndTime(time.Unix(sub.StartTime, 0), planSnapshot)
+	if err != nil {
+		return 0, err
+	}
+	if restoredEndTime <= now {
+		return 0, errors.New("该订阅自然有效期已过，无法重新激活")
+	}
+	sub.Status = "active"
+	sub.EndTime = restoredEndTime
+	recalculateSubscriptionResetWindow(sub, now)
+	return restoredEndTime, nil
+}
+
+func AdminTransferUserSubscription(userSubscriptionId int, options AdminTransferUserSubscriptionOptions) (string, error) {
+	if userSubscriptionId <= 0 {
+		return "", errors.New("invalid userSubscriptionId")
+	}
+	if options.TargetUserId <= 0 {
+		return "", errors.New("invalid targetUserId")
+	}
+
+	now := common.GetTimestamp()
+	sourceCacheGroup := ""
+	var sourceUserId int
+	var targetUserId int
+	var targetUsername string
+	var movedLogCount int64
+	var reactivated bool
+	var transferredSub *UserSubscription
+	preservedToken := false
+	externalLogTransfer := LOG_DB != nil && LOG_DB != DB
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", userSubscriptionId).
+			First(&sub).Error; err != nil {
+			return err
+		}
+		if sub.UserId == options.TargetUserId {
+			return errors.New("不能转移给当前用户")
+		}
+
+		var targetUser User
+		if err := tx.Select("id", "username").Where("id = ?", options.TargetUserId).First(&targetUser).Error; err != nil {
+			return err
+		}
+
+		sourceUserId = sub.UserId
+		targetUserId = targetUser.Id
+		targetUsername = strings.TrimSpace(targetUser.Username)
+		if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sourceUserId, sub.Id); err != nil {
+			return err
+		}
+
+		sourceAggregateToken, err := getSubscriptionAggregateAccessTokenTx(tx, sourceUserId)
+		if err != nil {
+			return err
+		}
+		targetAggregateToken, err := getSubscriptionAggregateAccessTokenTx(tx, targetUserId)
+		if err != nil {
+			return err
+		}
+		deliveredAccessToken, err := getDeliveredSubscriptionAccessTokenTx(tx, &sub)
+		if err != nil {
+			return err
+		}
+
+		sourceView := sub
+		downgradedGroup, err := downgradeUserGroupForSubscriptionTx(tx, &sourceView, now)
+		if err != nil {
+			return err
+		}
+		if downgradedGroup != "" {
+			sourceCacheGroup = downgradedGroup
+		}
+
+		updates := map[string]any{
+			"user_id":         targetUserId,
+			"prev_user_group": "",
+			"updated_at":      now,
+		}
+		sub.UserId = targetUserId
+		sub.PrevUserGroup = ""
+
+		if options.Reactivate {
+			restoredEndTime, err := restoreTransferredSubscriptionState(&sub, now)
+			if err != nil {
+				return err
+			}
+			updates["status"] = sub.Status
+			updates["end_time"] = restoredEndTime
+			updates["last_reset_time"] = sub.LastResetTime
+			updates["next_reset_time"] = sub.NextResetTime
+			reactivated = true
+		}
+
+		if err := tx.Model(&UserSubscription{}).
+			Where("id = ?", sub.Id).
+			Updates(updates).Error; err != nil {
+			return err
+		}
+
+		if deliveredAccessToken != nil &&
+			sourceAggregateToken != nil &&
+			deliveredAccessToken.Id == sourceAggregateToken.Id &&
+			targetAggregateToken == nil {
+			hasOtherSubs, err := hasOtherActiveAggregateEligibleSubscriptionsTx(tx, sourceUserId, sub.Id, now)
+			if err != nil {
+				return err
+			}
+			if !hasOtherSubs {
+				if err := tx.Model(&Token{}).
+					Where("id = ?", deliveredAccessToken.Id).
+					Updates(map[string]any{
+						"user_id": targetUserId,
+					}).Error; err != nil {
+					return err
+				}
+				preservedToken = true
+			}
+		}
+
+		if !externalLogTransfer {
+			if moved, err := transferSubscriptionConsumeLogsOwner(tx, sub.Id, sourceUserId, targetUserId, targetUsername); err != nil {
+				return err
+			} else {
+				movedLogCount = moved
+			}
+		}
+
+		if err := ensureSubscriptionAggregateAccessTokenForUserTx(tx, sourceUserId); err != nil {
+			return err
+		}
+		if err := ensureSubscriptionAggregateAccessTokenForUserTx(tx, targetUserId); err != nil {
+			return err
+		}
+		targetAggregateToken, err = getSubscriptionAggregateAccessTokenTx(tx, targetUserId)
+		if err != nil {
+			return err
+		}
+		if err := syncTransferredSubscriptionOrderAccessTokenTx(tx, &sub, targetAggregateToken); err != nil {
+			return err
+		}
+
+		subCopy := sub
+		transferredSub = &subCopy
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if sourceCacheGroup != "" && sourceUserId > 0 {
+		_ = UpdateUserGroupCache(sourceUserId, sourceCacheGroup)
+	}
+	logTransferWarning := ""
+	if externalLogTransfer {
+		moved, logErr := transferSubscriptionConsumeLogsOwner(nil, userSubscriptionId, sourceUserId, targetUserId, targetUsername)
+		if logErr != nil {
+			logTransferWarning = fmt.Sprintf("历史消耗日志迁移失败：%s", logErr.Error())
+		} else {
+			movedLogCount = moved
+		}
+	}
+	if reactivated && transferredSub != nil {
+		triggerClaudeSubscriptionActivationProbeAsync(targetUserId, transferredSub)
+	}
+
+	msgParts := []string{
+		fmt.Sprintf("订阅已转移给用户 #%d", targetUserId),
+	}
+	if reactivated {
+		msgParts = append(msgParts, "并已按原自然有效期恢复生效")
+	}
+	if movedLogCount > 0 {
+		msgParts = append(msgParts, fmt.Sprintf("已迁移 %d 条历史消耗日志归属", movedLogCount))
+	}
+	if sourceCacheGroup != "" {
+		msgParts = append(msgParts, fmt.Sprintf("原用户分组已回退到 %s", sourceCacheGroup))
+	}
+	if preservedToken {
+		msgParts = append(msgParts, "已保留原 Subscription Access Key 不变")
+	}
+	if logTransferWarning != "" {
+		msgParts = append(msgParts, logTransferWarning)
+	}
+	return strings.Join(msgParts, "；"), nil
+}
+
 // AdminInvalidateUserSubscription marks a user subscription as cancelled and ends it immediately.
 func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	if userSubscriptionId <= 0 {
@@ -1700,6 +5199,7 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	now := common.GetTimestamp()
 	cacheGroup := ""
 	downgradeGroup := ""
+	releasedManualSlot := false
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
@@ -1708,11 +5208,29 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 			return err
 		}
 		userId = sub.UserId
+		if sub.SourceOrderId > 0 {
+			var order SubscriptionOrder
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+				Where("id = ?", sub.SourceOrderId).
+				First(&order).Error; err != nil {
+				return err
+			}
+			released, err := releaseReservedChannelSlotTx(tx, &order)
+			if err != nil {
+				return err
+			}
+			releasedManualSlot = released
+		}
 		if err := tx.Model(&sub).Updates(map[string]interface{}{
-			"status":     "cancelled",
-			"end_time":   now,
-			"updated_at": now,
+			"status":                     "cancelled",
+			"end_time":                   now,
+			"updated_at":                 now,
+			"specific_channel_id":        0,
+			"specific_channel_key_index": -1,
 		}).Error; err != nil {
+			return err
+		}
+		if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
 			return err
 		}
 		target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, now)
@@ -1723,7 +5241,7 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 			cacheGroup = target
 			downgradeGroup = target
 		}
-		return nil
+		return ensureSubscriptionAggregateAccessTokenForUserTx(tx, userId)
 	})
 	if err != nil {
 		return "", err
@@ -1731,8 +5249,15 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	if cacheGroup != "" && userId > 0 {
 		_ = UpdateUserGroupCache(userId, cacheGroup)
 	}
+	msgParts := make([]string, 0, 2)
+	if releasedManualSlot {
+		msgParts = append(msgParts, "订阅已作废，并已释放人工发放位置")
+	}
 	if downgradeGroup != "" {
-		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
+		msgParts = append(msgParts, fmt.Sprintf("用户分组将回退到 %s", downgradeGroup))
+	}
+	if len(msgParts) > 0 {
+		return strings.Join(msgParts, "；"), nil
 	}
 	return "", nil
 }
@@ -1764,7 +5289,10 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		if err := tx.Where("id = ?", userSubscriptionId).Delete(&UserSubscription{}).Error; err != nil {
 			return err
 		}
-		return nil
+		if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
+			return err
+		}
+		return ensureSubscriptionAggregateAccessTokenForUserTx(tx, userId)
 	})
 	if err != nil {
 		return "", err
@@ -1784,6 +5312,10 @@ const (
 	AdminSubscriptionActionExtendDays   = "extend_days"
 	AdminSubscriptionActionReduceDays   = "reduce_days"
 	AdminSubscriptionActionResetUsage   = "reset_usage_now"
+	AdminSubscriptionActionEnableAccess = "enable_aggregate_access"
+	AdminSubscriptionActionDisableAccess = "disable_aggregate_access"
+	AdminSubscriptionActionSetPreferred = "set_preferred"
+	AdminSubscriptionActionClearPreferred = "clear_preferred"
 )
 
 func NormalizeAdminSubscriptionAction(action string) string {
@@ -1798,6 +5330,14 @@ func NormalizeAdminSubscriptionAction(action string) string {
 		return AdminSubscriptionActionReducePeriod
 	case AdminSubscriptionActionResetUsage:
 		return AdminSubscriptionActionResetUsage
+	case AdminSubscriptionActionEnableAccess:
+		return AdminSubscriptionActionEnableAccess
+	case AdminSubscriptionActionDisableAccess:
+		return AdminSubscriptionActionDisableAccess
+	case AdminSubscriptionActionSetPreferred:
+		return AdminSubscriptionActionSetPreferred
+	case AdminSubscriptionActionClearPreferred:
+		return AdminSubscriptionActionClearPreferred
 	default:
 		return ""
 	}
@@ -1853,6 +5393,11 @@ func applyPlanDurationToUnix(baseUnix int64, plan *SubscriptionPlan, direction i
 		multiplier = 1
 	}
 	base := time.Unix(baseUnix, 0)
+	if direction > 0 && multiplier == 1 {
+		if endUnix, ok := calcFixedClockDeadlineEndTime(base, plan); ok {
+			return endUnix, nil
+		}
+	}
 	step := int(multiplier)
 	switch plan.DurationUnit {
 	case SubscriptionDurationYear:
@@ -1911,11 +5456,30 @@ func calcSubscriptionNextResetFromNow(sub *UserSubscription, now int64) int64 {
 	snapshotPlan := &SubscriptionPlan{
 		QuotaResetPeriod:        NormalizeResetPeriod(sub.ResetPeriod),
 		QuotaResetCustomSeconds: sub.ResetCustomSeconds,
+		QuotaResetUseFixedClock: sub.ResetUseFixedClock,
+		QuotaResetFixedSeconds:  sub.ResetFixedSeconds,
 	}
 	if snapshotPlan.QuotaResetPeriod == SubscriptionResetNever {
 		return 0
 	}
 	return calcNextResetTime(time.Unix(now, 0), snapshotPlan, sub.EndTime)
+}
+
+func validatePreferredSubscriptionForUserTx(tx *gorm.DB, userId int, sub *UserSubscription) error {
+	if tx == nil || sub == nil {
+		return errors.New("invalid preferred subscription args")
+	}
+	if userId <= 0 || sub.UserId != userId {
+		return errors.New("subscription does not belong to user")
+	}
+	now := GetDBTimestampWithTx(tx)
+	if sub.Status != "active" || (sub.EndTime > 0 && sub.EndTime <= now) {
+		return errors.New("subscription is not active")
+	}
+	if !isUserSubscriptionAggregateEnabled(sub) {
+		return errors.New("subscription is not enabled for aggregate access")
+	}
+	return nil
 }
 
 func AdminOperateUserSubscription(userSubscriptionId int, action string, value int64) (string, error) {
@@ -1926,7 +5490,12 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 	if action == "" {
 		return "", errors.New("invalid subscription action")
 	}
-	if action != AdminSubscriptionActionResetUsage && value <= 0 {
+	if action != AdminSubscriptionActionResetUsage &&
+		action != AdminSubscriptionActionEnableAccess &&
+		action != AdminSubscriptionActionDisableAccess &&
+		action != AdminSubscriptionActionSetPreferred &&
+		action != AdminSubscriptionActionClearPreferred &&
+		value <= 0 {
 		value = 1
 	}
 	now := GetDBTimestamp()
@@ -1989,7 +5558,11 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 				return errors.New("subscription is not active")
 			}
 			sub.AmountUsed = 0
-			sub.RequestCountUsed = 0
+			if hasSeparatePeriodRequestCounter(&sub) {
+				sub.RequestCountPeriodUsed = 0
+			} else {
+				sub.RequestCountUsed = 0
+			}
 			if NormalizeResetPeriod(sub.ResetPeriod) == SubscriptionResetNever {
 				sub.LastResetTime = 0
 				sub.NextResetTime = 0
@@ -1998,8 +5571,41 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 				sub.NextResetTime = calcSubscriptionNextResetFromNow(&sub, now)
 			}
 			message = "已提前重置当前周期用量"
+		case AdminSubscriptionActionEnableAccess:
+			if sub.AggregateEnabled {
+				message = "该订阅已参与聚合消耗"
+				break
+			}
+			sub.AggregateEnabled = true
+			message = "已启用该订阅的聚合消耗"
+		case AdminSubscriptionActionDisableAccess:
+			if !sub.AggregateEnabled {
+				message = "该订阅已暂停聚合消耗"
+				break
+			}
+			sub.AggregateEnabled = false
+			if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
+				return err
+			}
+			message = "已暂停该订阅的聚合消耗"
+		case AdminSubscriptionActionSetPreferred:
+			if err := validatePreferredSubscriptionForUserTx(tx, sub.UserId, &sub); err != nil {
+				return err
+			}
+			if err := setUserPreferredSubscriptionIdTx(tx, sub.UserId, sub.Id); err != nil {
+				return err
+			}
+			message = "已设为优先消耗订阅"
+		case AdminSubscriptionActionClearPreferred:
+			if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
+				return err
+			}
+			message = "已取消优先消耗订阅"
 		}
-		return tx.Save(&sub).Error
+		if err := tx.Save(&sub).Error; err != nil {
+			return err
+		}
+		return ensureSubscriptionAggregateAccessTokenForUserTx(tx, sub.UserId)
 	})
 	if err != nil {
 		return "", err
@@ -2008,17 +5614,23 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 }
 
 type SubscriptionPreConsumeResult struct {
-	UserSubscriptionId int
-	PreConsumed        int64
-	PreConsumedAmount  int64
-	PreConsumedCount   int64
-	AmountTotal        int64
-	AmountUsedBefore   int64
-	AmountUsedAfter    int64
-	ResourceType       string
-	RequestCountTotal  int64
-	RequestCountBefore int64
-	RequestCountAfter  int64
+	UserSubscriptionId       int
+	SpecificChannelId        int
+	SpecificChannelKeyIndex  int
+	RouteGroup               string
+	PreConsumed              int64
+	PreConsumedAmount        int64
+	PreConsumedCount         int64
+	AmountTotal              int64
+	AmountUsedBefore         int64
+	AmountUsedAfter          int64
+	ResourceType             string
+	RequestCountTotal        int64
+	RequestCountPeriodTotal  int64
+	RequestCountBefore       int64
+	RequestCountAfter        int64
+	RequestCountPeriodBefore int64
+	RequestCountPeriodAfter  int64
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -2081,7 +5693,17 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 			}
 			upgradeGroup := strings.TrimSpace(lastExpired.UpgradeGroup)
 			prevGroup := strings.TrimSpace(lastExpired.PrevUserGroup)
-			if upgradeGroup == "" || prevGroup == "" {
+			if upgradeGroup == "" {
+				return nil
+			}
+			if prevGroup == "" {
+				resolvedPrevGroup, resolveErr := resolveExpiredSubscriptionFallbackGroupTx(tx, userId, upgradeGroup)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				prevGroup = resolvedPrevGroup
+			}
+			if prevGroup == "" {
 				return nil
 			}
 			currentGroup, err := getUserGroupByIdTx(tx, userId)
@@ -2159,7 +5781,11 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, _ 
 		return nil
 	}
 	sub.AmountUsed = 0
-	sub.RequestCountUsed = 0
+	if hasSeparatePeriodRequestCounter(sub) {
+		sub.RequestCountPeriodUsed = 0
+	} else {
+		sub.RequestCountUsed = 0
+	}
 	return tx.Save(sub).Error
 }
 
@@ -2177,14 +5803,268 @@ func isUserSubscriptionEligibleForPreConsume(sub *UserSubscription, amount int64
 			return false, requiredAmount, requiredCount, resourceType
 		}
 	}
-	if sub.RequestCountTotal > 0 {
+	if hasLifetimeRequestCountLimit(sub) {
 		requiredCount = 1
 		remain := sub.RequestCountTotal - sub.RequestCountUsed
 		if remain < requiredCount {
 			return false, requiredAmount, requiredCount, resourceType
 		}
 	}
+	if periodLimit := getSubscriptionRequestCountPeriodLimit(sub); periodLimit > 0 {
+		requiredCount = 1
+		remain := periodLimit - getCurrentRequestCountUsed(sub)
+		if remain < requiredCount {
+			return false, requiredAmount, requiredCount, resourceType
+		}
+	}
 	return true, requiredAmount, requiredCount, resourceType
+}
+
+func getUserSubscriptionRouteGroup(sub *UserSubscription) string {
+	if sub == nil {
+		return ""
+	}
+	group := strings.TrimSpace(sub.UpgradeGroup)
+	if group != "" {
+		return group
+	}
+	allowedGroups := decodeUserSubscriptionAllowedGroups(sub)
+	if len(allowedGroups) == 1 {
+		return strings.TrimSpace(allowedGroups[0])
+	}
+	return ""
+}
+
+func tryBackfillUserSubscriptionChannelBindingTx(tx *gorm.DB, sub *UserSubscription) error {
+	if tx == nil || sub == nil || sub.Id <= 0 || sub.UserId <= 0 {
+		return nil
+	}
+	if sub.SpecificChannelId > 0 {
+		return nil
+	}
+	if sub.SourceOrderId <= 0 {
+		return nil
+	}
+	var order SubscriptionOrder
+	if err := tx.Select("id", "plan_title").Where("id = ?", sub.SourceOrderId).First(&order).Error; err != nil {
+		return nil
+	}
+	expectedName := fmt.Sprintf("%s #%d", strings.TrimSpace(order.PlanTitle), order.Id)
+	if strings.TrimSpace(expectedName) == "" {
+		return nil
+	}
+	var token Token
+	if err := tx.Select("specific_channel_id", "specific_channel_key_index").
+		Where("user_id = ? AND name = ? AND specific_channel_id > 0 AND deleted_at IS NULL", sub.UserId, expectedName).
+		Order("id asc").
+		First(&token).Error; err != nil {
+		return nil
+	}
+	sub.SpecificChannelId = token.SpecificChannelId
+	sub.SpecificChannelKeyIndex = token.SpecificChannelKeyIndex
+	return tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]any{
+		"specific_channel_id":        sub.SpecificChannelId,
+		"specific_channel_key_index": sub.SpecificChannelKeyIndex,
+		"updated_at":                 common.GetTimestamp(),
+	}).Error
+}
+
+type SubscriptionRouteDecision struct {
+	UserSubscriptionId      int
+	PlanId                  int
+	RouteGroup              string
+	SpecificChannelId       int
+	SpecificChannelKeyIndex int
+	ExhaustedMessage        string
+}
+
+func GetAggregateSubscriptionRouteForPreferredSubscription(userId int, preferredSubID int, modelName string) (*SubscriptionRouteDecision, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	if preferredSubID <= 0 {
+		return nil, errors.New("invalid preferred subscription id")
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return nil, errors.New("modelName is empty")
+	}
+	now := GetDBTimestamp()
+	var result *SubscriptionRouteDecision
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		query := tx
+		if !common.UsingSQLite {
+			query = query.Set("gorm:query_option", "FOR UPDATE")
+		}
+		var sub UserSubscription
+		if err := query.
+			Where("id = ? AND user_id = ? AND status = ? AND end_time > ?", preferredSubID, userId, "active", now).
+			First(&sub).Error; err != nil {
+			return err
+		}
+		if !isUserSubscriptionAggregateEnabled(&sub) {
+			return errors.New("preferred subscription is not enabled for aggregate access")
+		}
+		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+			return errors.New("preferred subscription is not request_count")
+		}
+		resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
+		if !doesUserSubscriptionMatchAllowedModel(&sub, modelName) {
+			return fmt.Errorf("preferred subscription model mismatch: subscription=%d model=%s", sub.Id, modelName)
+		}
+		if !doesUserSubscriptionMatchAllowedVendor(&sub, resolvedVendorID) {
+			return fmt.Errorf("preferred subscription vendor mismatch: subscription=%d vendor=%d", sub.Id, resolvedVendorID)
+		}
+		routeGroup := getUserSubscriptionRouteGroup(&sub)
+		if routeGroup == "" {
+			return fmt.Errorf("preferred subscription route group is empty: subscription=%d", sub.Id)
+		}
+		if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, nil, now); err != nil {
+			return err
+		}
+		if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+			return err
+		}
+		if err := provisionAggregateAccessForSubscriptionTx(tx, &sub); err != nil {
+			return err
+		}
+		if sub.SpecificChannelId <= 0 {
+			return fmt.Errorf("preferred subscription channel binding missing: subscription=%d", sub.Id)
+		}
+		eligible, _, requiredCount, _ := isUserSubscriptionEligibleForPreConsume(&sub, 1)
+		if !eligible || requiredCount <= 0 {
+			result = &SubscriptionRouteDecision{
+				ExhaustedMessage: buildSubscriptionQuotaInsufficientMessage(&sub, 1),
+			}
+			return nil
+		}
+		var channel Channel
+		if err := tx.Where("id = ?", sub.SpecificChannelId).First(&channel).Error; err != nil {
+			return err
+		}
+		if channel.Status != common.ChannelStatusEnabled {
+			return errors.New("preferred subscription channel is disabled")
+		}
+		if sub.SpecificChannelKeyIndex >= 0 && !channel.IsSpecificKeyAvailable(sub.SpecificChannelKeyIndex) {
+			return errors.New("preferred subscription channel key is unavailable")
+		}
+		result = &SubscriptionRouteDecision{
+			UserSubscriptionId:      sub.Id,
+			PlanId:                  sub.PlanId,
+			RouteGroup:              routeGroup,
+			SpecificChannelId:       sub.SpecificChannelId,
+			SpecificChannelKeyIndex: sub.SpecificChannelKeyIndex,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func GetPreferredSubscriptionRouteForAggregateToken(userId int, modelName string) (*SubscriptionRouteDecision, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	now := GetDBTimestamp()
+	var result *SubscriptionRouteDecision
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		query := tx
+		if !common.UsingSQLite {
+			query = query.Set("gorm:query_option", "FOR UPDATE")
+		}
+		var subs []UserSubscription
+		if err := query.
+			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+			Order("end_time asc, id asc").
+			Find(&subs).Error; err != nil {
+			return err
+		}
+		if len(subs) == 0 {
+			return nil
+		}
+		preferredSubID, err := getUserPreferredSubscriptionIdTx(tx, userId)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if preferredSubID > 0 {
+			preferredDecision, preferredErr := GetAggregateSubscriptionRouteForPreferredSubscription(userId, preferredSubID, modelName)
+			if preferredErr == nil {
+				result = preferredDecision
+				return nil
+			}
+		}
+		resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
+		var exhaustedCandidate *UserSubscription
+		for i := range subs {
+			sub := subs[i]
+			if !isUserSubscriptionAggregateEnabled(&sub) {
+				continue
+			}
+			if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedModel(&sub, modelName) {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedVendor(&sub, resolvedVendorID) {
+				continue
+			}
+			routeGroup := getUserSubscriptionRouteGroup(&sub)
+			if routeGroup == "" {
+				continue
+			}
+			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, nil, now); err != nil {
+				return err
+			}
+			if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+				return err
+			}
+			if err := provisionAggregateAccessForSubscriptionTx(tx, &sub); err != nil {
+				return err
+			}
+			if sub.SpecificChannelId <= 0 {
+				continue
+			}
+			eligible, _, requiredCount, _ := isUserSubscriptionEligibleForPreConsume(&sub, 1)
+			if !eligible || requiredCount <= 0 {
+				if exhaustedCandidate == nil {
+					subCopy := sub
+					exhaustedCandidate = &subCopy
+				}
+				continue
+			}
+			var channel Channel
+			if err := tx.Where("id = ?", sub.SpecificChannelId).First(&channel).Error; err != nil {
+				continue
+			}
+			if channel.Status != common.ChannelStatusEnabled {
+				continue
+			}
+			if sub.SpecificChannelKeyIndex >= 0 && !channel.IsSpecificKeyAvailable(sub.SpecificChannelKeyIndex) {
+				continue
+			}
+			result = &SubscriptionRouteDecision{
+				UserSubscriptionId:      sub.Id,
+				PlanId:                  sub.PlanId,
+				RouteGroup:              routeGroup,
+				SpecificChannelId:       sub.SpecificChannelId,
+				SpecificChannelKeyIndex: sub.SpecificChannelKeyIndex,
+			}
+			return nil
+		}
+		if exhaustedCandidate != nil {
+			result = &SubscriptionRouteDecision{
+				ExhaustedMessage: buildSubscriptionQuotaInsufficientMessage(exhaustedCandidate, 1),
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func getUsableGroupsForUserGroup(userGroup string) map[string]string {
@@ -2218,17 +6098,72 @@ func doesUserSubscriptionMatchGroup(sub *UserSubscription, usingGroup string, cu
 	}
 	subGroup := strings.TrimSpace(sub.UpgradeGroup)
 	usingGroup = strings.TrimSpace(usingGroup)
+	currentUserGroup = strings.TrimSpace(currentUserGroup)
 	if subGroup == "" || usingGroup == "" {
 		return true
 	}
 	if subGroup == usingGroup {
 		return true
 	}
-	if strings.TrimSpace(currentUserGroup) != subGroup {
+	if currentUserGroup == "" {
 		return false
 	}
-	_, ok := getUsableGroupsForUserGroup(currentUserGroup)[usingGroup]
+	if currentUserGroup == subGroup {
+		_, ok := getUsableGroupsForUserGroup(currentUserGroup)[usingGroup]
+		return ok
+	}
+	_, ok := getUsableGroupsForUserGroup(subGroup)[usingGroup]
 	return ok
+}
+
+func doesUserSubscriptionMatchAllowedGroup(sub *UserSubscription, usingGroup string) bool {
+	allowedGroups := decodeUserSubscriptionAllowedGroups(sub)
+	if len(allowedGroups) == 0 {
+		return true
+	}
+	usingGroup = strings.TrimSpace(usingGroup)
+	if usingGroup == "" {
+		return false
+	}
+	for _, group := range allowedGroups {
+		if group == usingGroup {
+			return true
+		}
+	}
+	return false
+}
+
+func doesUserSubscriptionMatchAllowedModel(sub *UserSubscription, modelName string) bool {
+	allowedModels := decodeUserSubscriptionAllowedModels(sub)
+	if len(allowedModels) == 0 {
+		return true
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return false
+	}
+	for _, allowedModel := range allowedModels {
+		if allowedModel == modelName {
+			return true
+		}
+	}
+	return false
+}
+
+func doesUserSubscriptionMatchAllowedVendor(sub *UserSubscription, vendorID int) bool {
+	allowedVendorIDs := decodeUserSubscriptionAllowedVendorIDs(sub)
+	if len(allowedVendorIDs) == 0 {
+		return true
+	}
+	if vendorID <= 0 {
+		return false
+	}
+	for _, allowedVendorID := range allowedVendorIDs {
+		if allowedVendorID == vendorID {
+			return true
+		}
+	}
+	return false
 }
 
 func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int, sub *UserSubscription, requiredAmount int64, requiredCount int64, resourceType string, returnValue *SubscriptionPreConsumeResult) error {
@@ -2237,6 +6172,7 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 	}
 	usedBefore := sub.AmountUsed
 	requestCountBefore := sub.RequestCountUsed
+	requestCountPeriodBefore := sub.RequestCountPeriodUsed
 	primaryPreConsumed := requiredAmount
 	if primaryPreConsumed <= 0 {
 		primaryPreConsumed = requiredCount
@@ -2257,6 +6193,9 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 				return errors.New("subscription pre-consume already refunded")
 			}
 			returnValue.UserSubscriptionId = sub.Id
+			returnValue.SpecificChannelId = sub.SpecificChannelId
+			returnValue.SpecificChannelKeyIndex = sub.SpecificChannelKeyIndex
+			returnValue.RouteGroup = getUserSubscriptionRouteGroup(sub)
 			returnValue.PreConsumed = dup.PreConsumed
 			returnValue.PreConsumedAmount = dup.PreConsumedAmount
 			returnValue.PreConsumedCount = dup.PreConsumedCount
@@ -2265,14 +6204,22 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			returnValue.ResourceType = resourceType
 			returnValue.RequestCountTotal = sub.RequestCountTotal
+			returnValue.RequestCountPeriodTotal = sub.RequestCountPeriodTotal
 			returnValue.RequestCountBefore = sub.RequestCountUsed
 			returnValue.RequestCountAfter = sub.RequestCountUsed
+			returnValue.RequestCountPeriodBefore = sub.RequestCountPeriodUsed
+			returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
 			return nil
 		}
 		return err
 	}
 	if requiredCount > 0 {
-		sub.RequestCountUsed += requiredCount
+		if hasLifetimeRequestCountLimit(sub) || !hasSeparatePeriodRequestCounter(sub) {
+			sub.RequestCountUsed += requiredCount
+		}
+		if hasSeparatePeriodRequestCounter(sub) {
+			sub.RequestCountPeriodUsed += requiredCount
+		}
 	}
 	if requiredAmount > 0 {
 		sub.AmountUsed += requiredAmount
@@ -2281,6 +6228,9 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 		return err
 	}
 	returnValue.UserSubscriptionId = sub.Id
+	returnValue.SpecificChannelId = sub.SpecificChannelId
+	returnValue.SpecificChannelKeyIndex = sub.SpecificChannelKeyIndex
+	returnValue.RouteGroup = getUserSubscriptionRouteGroup(sub)
 	returnValue.PreConsumed = primaryPreConsumed
 	returnValue.PreConsumedAmount = requiredAmount
 	returnValue.PreConsumedCount = requiredCount
@@ -2289,13 +6239,53 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 	returnValue.AmountUsedAfter = sub.AmountUsed
 	returnValue.ResourceType = resourceType
 	returnValue.RequestCountTotal = sub.RequestCountTotal
+	returnValue.RequestCountPeriodTotal = sub.RequestCountPeriodTotal
 	returnValue.RequestCountBefore = requestCountBefore
 	returnValue.RequestCountAfter = sub.RequestCountUsed
+	returnValue.RequestCountPeriodBefore = requestCountPeriodBefore
+	returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
 	return nil
 }
 
-// PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+func trySelectPreferredUserSubscriptionTx(tx *gorm.DB, requestId string, userId int, preferredSubID int, modelName string, amount int64, returnValue *SubscriptionPreConsumeResult) error {
+	if tx == nil || preferredSubID <= 0 {
+		return nil
+	}
+	now := GetDBTimestampWithTx(tx)
+	var sub UserSubscription
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("id = ? AND user_id = ? AND status = ? AND end_time > ?", preferredSubID, userId, "active", now).
+		First(&sub).Error; err != nil {
+		return err
+	}
+	if !isUserSubscriptionAggregateEnabled(&sub) {
+		return errors.New("preferred subscription is not enabled for aggregate access")
+	}
+	if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+		return err
+	}
+	if !doesUserSubscriptionMatchAllowedModel(&sub, modelName) {
+		return fmt.Errorf("preferred subscription model mismatch: subscription=%d model=%s", sub.Id, modelName)
+	}
+	resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
+	if !doesUserSubscriptionMatchAllowedVendor(&sub, resolvedVendorID) {
+		return fmt.Errorf("preferred subscription vendor mismatch: subscription=%d vendor=%d", sub.Id, resolvedVendorID)
+	}
+	routeGroup := getUserSubscriptionRouteGroup(&sub)
+	if routeGroup == "" {
+		return fmt.Errorf("preferred subscription route group is empty: subscription=%d", sub.Id)
+	}
+	if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, nil, now); err != nil {
+		return err
+	}
+	eligible, requiredAmount, requiredCount, resourceType := isUserSubscriptionEligibleForPreConsume(&sub, amount)
+	if !eligible {
+		return fmt.Errorf("%s", buildSubscriptionQuotaInsufficientMessage(&sub, amount))
+	}
+	return applyUserSubscriptionPreConsumeTx(tx, requestId, userId, &sub, requiredAmount, requiredCount, resourceType, returnValue)
+}
+
+func preConsumeUserSubscriptionWithPreference(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64, preferredSubID int) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -2324,6 +6314,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				return err
 			}
 			returnValue.UserSubscriptionId = sub.Id
+			returnValue.SpecificChannelId = sub.SpecificChannelId
+			returnValue.SpecificChannelKeyIndex = sub.SpecificChannelKeyIndex
+			returnValue.RouteGroup = getUserSubscriptionRouteGroup(&sub)
 			returnValue.PreConsumed = existing.PreConsumed
 			returnValue.PreConsumedAmount = existing.PreConsumedAmount
 			returnValue.PreConsumedCount = existing.PreConsumedCount
@@ -2332,8 +6325,11 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			returnValue.ResourceType = NormalizeSubscriptionResourceType(sub.ResourceType)
 			returnValue.RequestCountTotal = sub.RequestCountTotal
+			returnValue.RequestCountPeriodTotal = sub.RequestCountPeriodTotal
 			returnValue.RequestCountBefore = sub.RequestCountUsed
 			returnValue.RequestCountAfter = sub.RequestCountUsed
+			returnValue.RequestCountPeriodBefore = sub.RequestCountPeriodUsed
+			returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
 			return nil
 		}
 
@@ -2347,15 +6343,34 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
 		}
+		if preferredSubID > 0 {
+			if err := trySelectPreferredUserSubscriptionTx(tx, requestId, userId, preferredSubID, modelName, amount, returnValue); err == nil {
+				return nil
+			}
+		}
 		currentUserGroup, err := getUserGroupByIdTx(tx, userId)
 		if err != nil {
 			return err
 		}
+		resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
+		var exhaustedCandidate *UserSubscription
 		requestCountCandidates := make([]UserSubscription, 0, len(subs))
 		quotaCandidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
 			sub := candidate
+			if !isUserSubscriptionAggregateEnabled(&sub) {
+				continue
+			}
 			if !doesUserSubscriptionMatchGroup(&sub, usingGroup, currentUserGroup) {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedGroup(&sub, usingGroup) {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedModel(&sub, modelName) {
+				continue
+			}
+			if !doesUserSubscriptionMatchAllowedVendor(&sub, resolvedVendorID) {
 				continue
 			}
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
@@ -2365,8 +6380,15 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
+			if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
+				return err
+			}
 			eligible, _, _, resourceType := isUserSubscriptionEligibleForPreConsume(&sub, amount)
 			if !eligible {
+				if exhaustedCandidate == nil {
+					subCopy := sub
+					exhaustedCandidate = &subCopy
+				}
 				continue
 			}
 			if resourceType == SubscriptionResourceRequestCount {
@@ -2385,12 +6407,24 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			_, requiredAmount, requiredCount, resourceType := isUserSubscriptionEligibleForPreConsume(&selected, amount)
 			return applyUserSubscriptionPreConsumeTx(tx, requestId, userId, &selected, requiredAmount, requiredCount, resourceType, returnValue)
 		}
+		if exhaustedCandidate != nil {
+			return fmt.Errorf("%s", buildSubscriptionQuotaInsufficientMessage(exhaustedCandidate, amount))
+		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return returnValue, nil
+}
+
+// PreConsumeUserSubscription pre-consumes from any active subscription total quota.
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+	return preConsumeUserSubscriptionWithPreference(requestId, userId, modelName, usingGroup, quotaType, amount, 0)
+}
+
+func PreConsumePreferredUserSubscription(requestId string, userId int, preferredSubID int, modelName string, usingGroup string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+	return preConsumeUserSubscriptionWithPreference(requestId, userId, modelName, usingGroup, quotaType, amount, preferredSubID)
 }
 
 // RefundSubscriptionPreConsume is idempotent and refunds pre-consumed subscription quota by requestId.
@@ -2560,14 +6594,27 @@ func postConsumeUserSubscriptionDeltaDetailedTx(tx *gorm.DB, userSubscriptionId 
 		return err
 	}
 	if countDelta != 0 {
-		newCountUsed := sub.RequestCountUsed + countDelta
-		if newCountUsed < 0 {
-			newCountUsed = 0
+		if hasLifetimeRequestCountLimit(&sub) || !hasSeparatePeriodRequestCounter(&sub) {
+			newCountUsed := sub.RequestCountUsed + countDelta
+			if newCountUsed < 0 {
+				newCountUsed = 0
+			}
+			if hasLifetimeRequestCountLimit(&sub) && newCountUsed > sub.RequestCountTotal {
+				return fmt.Errorf("subscription request count exceeds total, used=%d total=%d", newCountUsed, sub.RequestCountTotal)
+			}
+			sub.RequestCountUsed = newCountUsed
 		}
-		if sub.RequestCountTotal > 0 && newCountUsed > sub.RequestCountTotal {
-			return fmt.Errorf("subscription request count exceeds total, used=%d total=%d", newCountUsed, sub.RequestCountTotal)
+		if hasSeparatePeriodRequestCounter(&sub) || sub.RequestCountPeriodUsed > 0 {
+			newPeriodCountUsed := sub.RequestCountPeriodUsed + countDelta
+			if newPeriodCountUsed < 0 {
+				newPeriodCountUsed = 0
+			}
+			periodLimit := getSubscriptionRequestCountPeriodLimit(&sub)
+			if periodLimit > 0 && newPeriodCountUsed > periodLimit {
+				return fmt.Errorf("subscription request count exceeds period limit, used=%d total=%d", newPeriodCountUsed, periodLimit)
+			}
+			sub.RequestCountPeriodUsed = newPeriodCountUsed
 		}
-		sub.RequestCountUsed = newCountUsed
 	}
 	if amountDelta != 0 {
 		newAmountUsed := sub.AmountUsed + amountDelta

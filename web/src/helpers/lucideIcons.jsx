@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import {
+  Activity,
   LayoutDashboard,
   TerminalSquare,
   MessageSquare,
@@ -26,15 +27,23 @@ import {
   BarChart3,
   Image as ImageIcon,
   CheckSquare,
-  CreditCard,
   Layers,
-  Gift,
   User,
   Settings,
   CircleUser,
-  Package,
   Server,
   CalendarClock,
+  Wallet,
+  ReceiptText,
+  Users,
+  ContactRound,
+  BadgePercent,
+  Boxes,
+  Package,
+  BadgeDollarSign,
+  BookOpen,
+  Mail,
+  Landmark,
 } from 'lucide-react';
 
 export function getLucideIcon(key, selected = false) {
@@ -56,7 +65,12 @@ export function getLucideIcon(key, selected = false) {
     case 'chat':
       return <MessageSquare {...commonProps} color={iconColor} />;
     case 'token':
+    case 'tokenAdmin':
       return <Key {...commonProps} color={iconColor} />;
+    case 'ecomagent':
+      return <Boxes {...commonProps} color={iconColor} />;
+    case 'package':
+      return <Package {...commonProps} color={iconColor} />;
     case 'log':
       return <BarChart3 {...commonProps} color={iconColor} />;
     case 'midjourney':
@@ -64,22 +78,41 @@ export function getLucideIcon(key, selected = false) {
     case 'task':
       return <CheckSquare {...commonProps} color={iconColor} />;
     case 'topup':
-      return <CreditCard {...commonProps} color={iconColor} />;
+      return <Wallet {...commonProps} color={iconColor} />;
+    case 'invoice':
+    case 'invoiceAdmin':
+      return <ReceiptText {...commonProps} color={iconColor} />;
+    case 'invite':
+      return <Users {...commonProps} color={iconColor} />;
+    case 'siteNotifications':
+      return <Mail {...commonProps} color={iconColor} />;
     case 'channel':
       return <Layers {...commonProps} color={iconColor} />;
     case 'redemption':
-      return <Gift {...commonProps} color={iconColor} />;
+      return <BadgePercent {...commonProps} color={iconColor} />;
     case 'user':
     case 'personal':
       return <User {...commonProps} color={iconColor} />;
     case 'models':
-      return <Package {...commonProps} color={iconColor} />;
+      return <Boxes {...commonProps} color={iconColor} />;
     case 'deployment':
       return <Server {...commonProps} color={iconColor} />;
     case 'subscription':
       return <CalendarClock {...commonProps} color={iconColor} />;
+    case 'checkinAdmin':
+      return <CalendarClock {...commonProps} color={iconColor} />;
+    case 'about':
+      return <Activity {...commonProps} color={iconColor} />;
+    case 'contact':
+      return <ContactRound {...commonProps} color={iconColor} />;
+    case 'pricing':
+      return <BadgeDollarSign {...commonProps} color={iconColor} />;
+    case 'docs':
+      return <BookOpen {...commonProps} color={iconColor} />;
     case 'setting':
       return <Settings {...commonProps} color={iconColor} />;
+    case 'financeAdmin':
+      return <Landmark {...commonProps} color={iconColor} />;
     default:
       return <CircleUser {...commonProps} color={iconColor} />;
   }

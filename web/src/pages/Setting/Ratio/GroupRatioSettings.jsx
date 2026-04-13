@@ -18,10 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Row, Select, Spin } from '@douyinfe/semi-ui';
 import {
   compareObjects,
   API,
+  buildGroupOptions,
+  renderGroupOption,
   showError,
   showSuccess,
   showWarning,
@@ -29,19 +31,49 @@ import {
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
+/** 将 JSON 字符串数组解析为数组，解析失败返回空数组 */
+const parseJsonArray = (str) => {
+  if (!str || str.trim() === '') return [];
+  try {
+    const arr = JSON.parse(str);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+};
+
+/** 所有字段的默认值，确保 inputs/inputsRow 始终含完整 key 集合 */
+const DEFAULT_INPUTS = {
+  GroupRatio: '',
+  UserUsableGroups: '',
+  GroupGroupRatio: '',
+  'group_ratio_setting.group_special_usable_group': '',
+  AutoGroups: '',
+  DefaultUseAutoGroup: false,
+  EnableGroupBillingFilter: false,
+  SubscriptionGroups: '',
+  QuotaGroups: '',
+};
+
 export default function GroupRatioSettings(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState({
-    GroupRatio: '',
-    UserUsableGroups: '',
-    GroupGroupRatio: '',
-    'group_ratio_setting.group_special_usable_group': '',
-    AutoGroups: '',
-    DefaultUseAutoGroup: false,
-  });
+  const [inputs, setInputs] = useState({ ...DEFAULT_INPUTS });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
+  const [groupOptions, setGroupOptions] = useState([]);
+
+  /** 调用后端接口获取已配置的分组列表（与渠道管理页保持一致） */
+  const fetchGroups = async () => {
+    try {
+      const res = await API.get('/api/group/');
+      if (res?.data?.success) {
+        setGroupOptions(buildGroupOptions(res.data.data));
+      }
+    } catch {
+      // 静默失败，Select 仍可手动输入
+    }
+  };
 
   async function onSubmit() {
     try {
@@ -98,9 +130,16 @@ export default function GroupRatioSettings(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
+    fetchGroups();
+  }, []);
+
+  useEffect(() => {
+    // 从默认值出发，确保所有 key 始终存在
+    // 即使后端未返回某字段（新增字段未初始化时），inputsRow 也含该 key
+    // 这样 compareObjects 的 hasOwnProperty 检查不会漏掉新字段
+    const currentInputs = { ...DEFAULT_INPUTS };
     for (let key in props.options) {
-      if (Object.keys(inputs).includes(key)) {
+      if (key in DEFAULT_INPUTS) {
         currentInputs[key] = props.options[key];
       }
     }
@@ -215,40 +254,27 @@ export default function GroupRatioSettings(props) {
         </Row>
         <Row gutter={16}>
           <Col xs={24} sm={16}>
-            <Form.TextArea
+            <Form.Slot
               label={t('自动分组auto，从第一个开始选择')}
-              placeholder={t('为一个 JSON 文本')}
-              field={'AutoGroups'}
-              autosize={{ minRows: 6, maxRows: 12 }}
-              trigger='blur'
-              stopValidateWithError
-              rules={[
-                {
-                  validator: (rule, value) => {
-                    if (!value || value.trim() === '') {
-                      return true; // Allow empty values
-                    }
-
-                    // First check if it's valid JSON
-                    try {
-                      const parsed = JSON.parse(value);
-
-                      // Check if it's an array
-                      if (!Array.isArray(parsed)) {
-                        return false;
-                      }
-
-                      // Check if every element is a string
-                      return parsed.every((item) => typeof item === 'string');
-                    } catch (error) {
-                      return false;
-                    }
-                  },
-                  message: t('必须是有效的 JSON 字符串数组，例如：["g1","g2"]'),
-                },
-              ]}
-              onChange={(value) => setInputs({ ...inputs, AutoGroups: value })}
-            />
+              extraText={t(
+                '从已有分组中勾选，依次尝试排列顺序；也可直接输入分组名添加不在列表中的分组',
+              )}
+            >
+              <Select
+                multiple
+                value={parseJsonArray(inputs.AutoGroups)}
+                optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
+                allowCreate
+                onChange={(values) =>
+                  setInputs({ ...inputs, AutoGroups: JSON.stringify(values) })
+                }
+                style={{ width: '100%' }}
+                placeholder={t('请选择或输入分组，按顺序排列')}
+                filter
+                showClear
+              />
+            </Form.Slot>
           </Col>
         </Row>
         <Row gutter={16}>
@@ -262,6 +288,73 @@ export default function GroupRatioSettings(props) {
                 setInputs({ ...inputs, DefaultUseAutoGroup: value })
               }
             />
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={16}>
+            <Form.Switch
+              label={t('按计费类型限制可选分组')}
+              extraText={t(
+                '开启后，有活跃订阅的用户只能选择「订阅专属分组」，纯按量用户只能选择「按量专属分组」。不在任何一个列表中的分组对所有用户可见。两个列表均为空时此开关不生效。',
+              )}
+              field={'EnableGroupBillingFilter'}
+              onChange={(value) =>
+                setInputs({ ...inputs, EnableGroupBillingFilter: value })
+              }
+            />
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col xs={24} sm={16}>
+            <Form.Slot
+              label={t('订阅专属分组')}
+              extraText={t(
+                '仅有活跃订阅的用户可见的分组名称列表。开启「按计费类型限制可选分组」后生效。',
+              )}
+            >
+              <Select
+                multiple
+                value={parseJsonArray(inputs.SubscriptionGroups)}
+                optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
+                allowCreate
+                onChange={(values) =>
+                  setInputs({
+                    ...inputs,
+                    SubscriptionGroups: JSON.stringify(values),
+                  })
+                }
+                style={{ width: '100%' }}
+                placeholder={t('请选择或输入订阅专属分组')}
+                filter
+                showClear
+              />
+            </Form.Slot>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col xs={24} sm={16}>
+            <Form.Slot
+              label={t('按量专属分组')}
+              extraText={t(
+                '仅按量计费（无活跃订阅）用户可见的分组名称列表。开启「按计费类型限制可选分组」后生效。',
+              )}
+            >
+              <Select
+                multiple
+                value={parseJsonArray(inputs.QuotaGroups)}
+                optionList={groupOptions}
+                renderOptionItem={renderGroupOption}
+                allowCreate
+                onChange={(values) =>
+                  setInputs({ ...inputs, QuotaGroups: JSON.stringify(values) })
+                }
+                style={{ width: '100%' }}
+                placeholder={t('请选择或输入按量专属分组')}
+                filter
+                showClear
+              />
+            </Form.Slot>
           </Col>
         </Row>
       </Form>

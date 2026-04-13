@@ -187,7 +187,7 @@ twofa.code_invalid: "验证码或备用码不正确"
 
 # Rate limit messages
 rate_limit.reached: "您已达到请求数限制：{{.Minutes}}分钟内最多请求{{.Max}}次"
-rate_limit.total_reached: "https://nbility.dev/ 订阅制中转站 您已达到总请求数限制：{{.Minutes}}分钟内最多请求{{.Max}}次，包括失败次数"
+rate_limit.total_reached: "您已达到总请求数限制：{{.Minutes}}分钟内最多请求{{.Max}}次，包括失败次数"
 
 # Setting messages
 setting.invalid_type: "无效的预警类型"
@@ -241,6 +241,9 @@ oauth.trust_level_low: "Linux DO 信任等级未达到管理员设置的最低�
 
 # Model layer error messages
 redeem.failed: "兑换失败，请稍后重试"
+redeem.invalid_code: "无效的兑换码"
+redeem.code_used: "该兑换码已被使用"
+redeem.code_expired: "该兑换码已过期"
 user.create_default_token_error: "创建默认令牌失败"
 common.uuid_duplicate: "请重试，系统生成的 UUID 竟然重复了！"
 common.invalid_input: "输入不合法"

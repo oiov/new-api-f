@@ -22,6 +22,7 @@ export * from './auth';
 export * from './utils';
 export * from './base64';
 export * from './api';
+export * from './group';
 export * from './render';
 export * from './providerIcons';
 export * from './markdownAnimation';

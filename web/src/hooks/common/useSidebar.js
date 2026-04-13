@@ -43,11 +43,15 @@ export const DEFAULT_ADMIN_CONFIG = {
   personal: {
     enabled: true,
     topup: true,
+    invoice: true,
     invite: true,
     personal: true,
+    siteNotifications: true,
   },
   public: {
     enabled: true,
+    pricing: true,
+    docs: true,
     about: true,
     contact: true,
   },
@@ -57,10 +61,15 @@ export const DEFAULT_ADMIN_CONFIG = {
     models: true,
     deployment: true,
     redemption: true,
+    tokenAdmin: true,
+    ecomagent: true,
     user: true,
     subscription: true,
     setting: true,
     riskControl: true,
+    invoiceAdmin: true,
+    financeAdmin: true,
+    checkinAdmin: true,
   },
 };
 

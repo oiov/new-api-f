@@ -25,8 +25,13 @@ import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useTranslation } from 'react-i18next';
 import { API } from '../../helpers/api';
-import { getLogo, getSystemName, showError } from '../../helpers/utils';
-import { getStatusCacheAge, readStatusData, setStatusData } from '../../helpers/data';
+import { getLogo, showError } from '../../helpers/utils';
+import {
+  getStatusCacheAge,
+  getUserData,
+  readStatusData,
+  setStatusData,
+} from '../../helpers/data';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useLocation } from 'react-router-dom';
@@ -36,6 +41,11 @@ const HeaderBar = lazy(() => import('./headerbar'));
 const FooterBar = lazy(() => import('./Footer'));
 const SiderBar = lazy(() => import('./SiderBar'));
 const STATUS_CACHE_MAX_AGE = 5 * 60 * 1000;
+const SITE_URL = (
+  import.meta.env.VITE_PUBLIC_SITE_URL || 'https://nbility.dev'
+).replace(/\/$/, '');
+const DEFAULT_PUBLIC_ICON = `${SITE_URL}/favicon.ico`;
+const DEFAULT_PUBLIC_TOUCH_ICON = `${SITE_URL}/logo.png`;
 
 const PageLayout = () => {
   const [userState, userDispatch] = useContext(UserContext);
@@ -48,6 +58,7 @@ const PageLayout = () => {
 
   const cardProPages = [
     '/console/channel',
+    '/console/ecomagent',
     '/console/log',
     '/console/redemption',
     '/console/user',
@@ -55,6 +66,7 @@ const PageLayout = () => {
     '/console/midjourney',
     '/console/task',
     '/console/models',
+    '/console/invoice-admin',
     '/pricing',
   ];
 
@@ -66,25 +78,45 @@ const PageLayout = () => {
     location.pathname !== '/console/playground' &&
     location.pathname !== '/console/models';
 
-  const enablePageScrollRoutes = ['/console/topup', '/console/package'];
-  const shouldEnablePageScroll = enablePageScrollRoutes.includes(location.pathname);
+  const enablePageScrollRoutes = [
+    '/console/topup',
+    '/console/package',
+    '/console/invoice',
+  ];
+  const shouldEnablePageScroll = enablePageScrollRoutes.includes(
+    location.pathname,
+  );
 
   const isConsoleRoute = location.pathname.startsWith('/console');
   const showSider = isConsoleRoute && (!isMobile || drawerOpen);
 
+  const setHeadIcon = (rel, href) => {
+    const linkElement = document.head.querySelector(`link[rel="${rel}"]`);
+    if (linkElement) {
+      linkElement.href = href;
+      return;
+    }
+
+    const newLink = document.createElement('link');
+    newLink.setAttribute('rel', rel);
+    newLink.setAttribute('href', href);
+    document.head.appendChild(newLink);
+  };
+
   const applyBranding = (status) => {
-    const systemName = status?.system_name || getSystemName();
-    if (systemName) {
-      document.title = systemName;
+    if (!isConsoleRoute) {
+      setHeadIcon('icon', DEFAULT_PUBLIC_ICON);
+      setHeadIcon('shortcut icon', DEFAULT_PUBLIC_ICON);
+      setHeadIcon('apple-touch-icon', DEFAULT_PUBLIC_TOUCH_ICON);
+      return;
     }
 
     const logo = status?.logo || getLogo();
-    if (logo) {
-      const linkElement = document.querySelector("link[rel~='icon']");
-      if (linkElement) {
-        linkElement.href = logo;
-      }
-    }
+    if (!logo) return;
+
+    setHeadIcon('icon', logo);
+    setHeadIcon('shortcut icon', logo);
+    setHeadIcon('apple-touch-icon', logo);
   };
 
   useEffect(() => {
@@ -94,9 +126,8 @@ const PageLayout = () => {
   }, [isMobile, drawerOpen, collapsed, setCollapsed]);
 
   const loadUser = () => {
-    let user = localStorage.getItem('user');
-    if (user) {
-      let data = JSON.parse(user);
+    const data = getUserData();
+    if (data) {
       userDispatch({ type: 'login', payload: data });
     }
   };
@@ -129,7 +160,8 @@ const PageLayout = () => {
     }
 
     const cacheAge = getStatusCacheAge();
-    const refreshDelay = cachedStatus && cacheAge <= STATUS_CACHE_MAX_AGE ? 300 : 0;
+    const refreshDelay =
+      cachedStatus && cacheAge <= STATUS_CACHE_MAX_AGE ? 300 : 0;
     const refreshTask = window.setTimeout(() => {
       loadStatus().catch(console.error);
     }, refreshDelay);
@@ -137,7 +169,7 @@ const PageLayout = () => {
     return () => {
       window.clearTimeout(refreshTask);
     };
-  }, []);
+  }, [isConsoleRoute]);
 
   useEffect(() => {
     let preferredLang;
@@ -247,6 +279,11 @@ const PageLayout = () => {
                   : 'hidden',
               WebkitOverflowScrolling: 'touch',
               padding: shouldInnerPadding ? (isMobile ? '5px' : '24px') : '0',
+              paddingTop: shouldEnablePageScroll
+                ? isMobile
+                  ? '76px'
+                  : '88px'
+                : undefined,
               position: 'relative',
             }}
           >

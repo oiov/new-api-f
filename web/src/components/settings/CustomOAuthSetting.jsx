@@ -783,7 +783,7 @@ const CustomOAuthSetting = ({ serverAddress }) => {
               <Col span={12}>
                 <Form.Input
                   field="slug"
-                  label="Slug"
+                  label={t('Slug')}
                   placeholder={t('例如：github-enterprise')}
                   extraText={t('URL 标识，只能包含小写字母、数字和连字符')}
                   rules={[{ required: true, message: t('请输入 Slug') }]}
@@ -830,7 +830,7 @@ const CustomOAuthSetting = ({ serverAddress }) => {
               <Col span={12}>
                 <Form.Input
                   field="client_id"
-                  label="Client ID"
+                  label={t('Client ID')}
                   placeholder={t('OAuth Client ID')}
                   rules={[{ required: true, message: t('请输入 Client ID') }]}
                 />
@@ -838,7 +838,7 @@ const CustomOAuthSetting = ({ serverAddress }) => {
               <Col span={12}>
                 <Form.Input
                   field="client_secret"
-                  label="Client Secret"
+                  label={t('Client Secret')}
                   type="password"
                   placeholder={
                     editingProvider
@@ -910,7 +910,7 @@ const CustomOAuthSetting = ({ serverAddress }) => {
                 <Form.Input
                   field="scopes"
                   label={t('Scopes（可选）')}
-                  placeholder="openid profile email"
+                  placeholder={t('openid profile email')}
                   extraText={
                     discoveryInfo?.scopesSupported?.length
                       ? t('Discovery 建议 scopes：') +

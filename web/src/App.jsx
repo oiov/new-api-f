@@ -19,9 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import Loading from './components/common/ui/Loading';
-import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers/auth';
+import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute } from './helpers/auth';
 import { StatusContext } from './context/Status';
+import SeoMeta from './components/common/seo/SeoMeta';
+import { getRouteSeo } from './helpers/seo';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -43,15 +46,24 @@ const PasswordResetConfirm = lazy(
 );
 const Channel = lazy(() => import('./pages/Channel'));
 const Token = lazy(() => import('./pages/Token'));
+const AdminToken = lazy(() => import('./pages/AdminToken'));
+const EcomAgent = lazy(() => import('./pages/EcomAgent'));
 const Redemption = lazy(() => import('./pages/Redemption'));
 const TopUp = lazy(() => import('./pages/TopUp'));
+const InvoicePage = lazy(() => import('./pages/Invoice'));
+const InvoiceAdminPage = lazy(() => import('./pages/InvoiceAdmin'));
+const CheckinAdminPage = lazy(() => import('./pages/CheckinAdmin'));
 const PackagePage = lazy(() => import('./pages/Package'));
 const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
+const FinancePage = lazy(() => import('./pages/Finance'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Chat2Link = lazy(() => import('./pages/Chat2Link'));
 const Midjourney = lazy(() => import('./pages/Midjourney'));
 const Pricing = lazy(() => import('./pages/Pricing'));
+const SubscriptionPlanDetail = lazy(
+  () => import('./pages/Pricing/SubscriptionPlanDetail'),
+);
 const Task = lazy(() => import('./pages/Task'));
 const ModelPage = lazy(() => import('./pages/Model'));
 const ModelDeploymentPage = lazy(() => import('./pages/ModelDeployment'));
@@ -73,7 +85,12 @@ function DynamicOAuth2Callback() {
 
 function App() {
   const location = useLocation();
+  const { i18n } = useTranslation();
   const [statusState] = useContext(StatusContext);
+  const routeSeo = useMemo(
+    () => getRouteSeo(i18n.language, location.pathname),
+    [i18n.language, location.pathname],
+  );
 
   // 获取模型广场权限配置
   const pricingRequireAuth = useMemo(() => {
@@ -120,6 +137,11 @@ function App() {
   return (
     <Suspense fallback={<Loading></Loading>}>
       <SetupCheck>
+        <SeoMeta
+          key={`route-seo-${location.pathname}`}
+          {...routeSeo}
+          canonicalPath={location.pathname}
+        />
         <Routes>
           <Route
             path='/'
@@ -179,11 +201,27 @@ function App() {
             }
           />
           <Route
+            path='/console/token/admin'
+            element={
+              <AdminRoute>
+                <AdminToken />
+              </AdminRoute>
+            }
+          />
+          <Route
             path='/console/playground'
             element={
               <PrivateRoute>
                 <Playground />
               </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/ecomagent'
+            element={
+              <RootRoute>
+                <EcomAgent />
+              </RootRoute>
             }
           />
           <Route
@@ -335,6 +373,36 @@ function App() {
             }
           />
           <Route
+            path='/console/invoice'
+            element={
+              <PrivateRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <InvoicePage />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/invoice-admin'
+            element={
+              <RootRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <InvoiceAdminPage />
+                </Suspense>
+              </RootRoute>
+            }
+          />
+          <Route
+            path='/console/checkin-admin'
+            element={
+              <RootRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <CheckinAdminPage />
+                </Suspense>
+              </RootRoute>
+            }
+          />
+          <Route
             path='/console/invite'
             element={
               <PrivateRoute>
@@ -350,6 +418,16 @@ function App() {
               <PrivateRoute>
                 <Log />
               </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/finance'
+            element={
+              <AdminRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <FinancePage />
+                </Suspense>
+              </AdminRoute>
             }
           />
           <Route
@@ -397,6 +475,25 @@ function App() {
               ) : (
                 <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                   <Pricing />
+                </Suspense>
+              )
+            }
+          />
+          <Route
+            path='/pricing/subscription-plans/:planId'
+            element={
+              pricingRequireAuth ? (
+                <PrivateRoute>
+                  <Suspense
+                    fallback={<Loading></Loading>}
+                    key={location.pathname}
+                  >
+                    <SubscriptionPlanDetail />
+                  </Suspense>
+                </PrivateRoute>
+              ) : (
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <SubscriptionPlanDetail />
                 </Suspense>
               )
             }

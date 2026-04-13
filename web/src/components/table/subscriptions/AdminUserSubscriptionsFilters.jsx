@@ -21,6 +21,9 @@ import React, { useRef } from 'react';
 import { Form, Button } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { DATE_RANGE_PRESETS } from '../../../constants/console.constants';
+import { renderGroupOption } from '../../../helpers';
+
+const MANUAL_SUBMIT_FIELDS = new Set(['subscription_id', 'username']);
 
 const AdminUserSubscriptionsFilters = ({
   formInitValues,
@@ -41,6 +44,14 @@ const AdminUserSubscriptionsFilters = ({
     }, 100);
   };
 
+  const handleValueChange = (_, changedValues) => {
+    const changedField = Object.keys(changedValues || {})[0];
+    if (!changedField || MANUAL_SUBMIT_FIELDS.has(changedField)) {
+      return;
+    }
+    searchUserSubscriptions();
+  };
+
   return (
     <Form
       initValues={formInitValues}
@@ -55,9 +66,10 @@ const AdminUserSubscriptionsFilters = ({
       trigger='change'
       stopValidateWithError={false}
       className='w-full'
+      onValueChange={handleValueChange}
     >
       <div className='flex flex-col gap-2 w-full'>
-        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 w-full'>
+        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2 w-full'>
           <div className='w-full lg:col-span-2'>
             <div className='grid grid-cols-1 md:grid-cols-[160px_minmax(0,1fr)] gap-2'>
               <Form.Select
@@ -67,6 +79,7 @@ const AdminUserSubscriptionsFilters = ({
                   { label: t('生效开始时间'), value: 'start_time' },
                   { label: t('到期时间'), value: 'end_time' },
                 ]}
+                pure
                 size='small'
               />
               <Form.DatePicker
@@ -87,6 +100,16 @@ const AdminUserSubscriptionsFilters = ({
 
           <div className='relative w-full'>
             <Form.Input
+              field='subscription_id'
+              placeholder={t('订阅ID')}
+              showClear
+              pure
+              size='small'
+            />
+          </div>
+
+          <div className='relative w-full'>
+            <Form.Input
               field='username'
               prefix={<IconSearch />}
               placeholder={t('用户名或用户ID')}
@@ -100,9 +123,13 @@ const AdminUserSubscriptionsFilters = ({
             <Form.Select
               field='plan_id'
               placeholder={t('订阅套餐')}
-              optionList={[{ label: t('全部套餐'), value: '' }, ...(planOptions || [])]}
+              optionList={[
+                { label: t('全部套餐'), value: '' },
+                ...(planOptions || []),
+              ]}
               showClear
               filter
+              pure
               size='small'
             />
           </div>
@@ -110,10 +137,25 @@ const AdminUserSubscriptionsFilters = ({
           <div className='w-full'>
             <Form.Select
               field='group'
-              placeholder={t('用户分组')}
+              placeholder={t('配置分组')}
               optionList={groupOptions}
+              renderOptionItem={renderGroupOption}
               showClear
               filter
+              pure
+              size='small'
+            />
+          </div>
+
+          <div className='w-full'>
+            <Form.Select
+              field='upgrade_group'
+              placeholder={t('升级分组')}
+              optionList={groupOptions}
+              renderOptionItem={renderGroupOption}
+              showClear
+              filter
+              pure
               size='small'
             />
           </div>
@@ -128,6 +170,22 @@ const AdminUserSubscriptionsFilters = ({
                 { label: t('已过期'), value: 'expired' },
                 { label: t('已作废'), value: 'cancelled' },
               ]}
+              pure
+              size='small'
+            />
+          </div>
+
+          <div className='w-full'>
+            <Form.Select
+              field='resource_type'
+              placeholder={t('资源类型')}
+              optionList={[
+                { label: t('全部类型'), value: '' },
+                { label: t('按额度'), value: 'quota' },
+                { label: t('按次数'), value: 'request_count' },
+              ]}
+              showClear
+              pure
               size='small'
             />
           </div>
@@ -144,6 +202,7 @@ const AdminUserSubscriptionsFilters = ({
                 { label: t('邀请奖励'), value: 'invite_reward' },
               ]}
               showClear
+              pure
               size='small'
             />
           </div>

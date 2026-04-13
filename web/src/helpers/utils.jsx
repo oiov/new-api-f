@@ -27,22 +27,21 @@ import {
 } from '../constants/playground.constants';
 import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import { getUserData } from './data';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
 };
 export default HTMLToastContent;
 export function isAdmin() {
-  let user = localStorage.getItem('user');
+  const user = getUserData();
   if (!user) return false;
-  user = JSON.parse(user);
   return user.role >= 10;
 }
 
 export function isRoot() {
-  let user = localStorage.getItem('user');
+  const user = getUserData();
   if (!user) return false;
-  user = JSON.parse(user);
   return user.role >= 100;
 }
 
@@ -59,9 +58,8 @@ export function getLogo() {
 }
 
 export function getUserIdFromLocalStorage() {
-  let user = localStorage.getItem('user');
+  const user = getUserData();
   if (!user) return -1;
-  user = JSON.parse(user);
   return user.id;
 }
 
@@ -602,8 +600,17 @@ export const selectFilter = (input, option) => {
   const keyword = input.trim().toLowerCase();
   const valueText = (option?.value ?? '').toString().toLowerCase();
   const labelText = (option?.label ?? '').toString().toLowerCase();
+  const fullLabelText = (option?.fullLabel ?? '').toString().toLowerCase();
+  const billingLabelText = (option?.billingLabel ?? '')
+    .toString()
+    .toLowerCase();
 
-  return valueText.includes(keyword) || labelText.includes(keyword);
+  return (
+    valueText.includes(keyword) ||
+    labelText.includes(keyword) ||
+    fullLabelText.includes(keyword) ||
+    billingLabelText.includes(keyword)
+  );
 };
 
 // -------------------------------
@@ -715,7 +722,9 @@ export const calculateModelPrice = ({
         ? formatTokenPrice(inputRatioPriceUSD * Number(record.cache_ratio))
         : null,
       createCachePrice: hasRatioValue(record.create_cache_ratio)
-        ? formatTokenPrice(inputRatioPriceUSD * Number(record.create_cache_ratio))
+        ? formatTokenPrice(
+            inputRatioPriceUSD * Number(record.create_cache_ratio),
+          )
         : null,
       imagePrice: hasRatioValue(record.image_ratio)
         ? formatTokenPrice(inputRatioPriceUSD * Number(record.image_ratio))
@@ -761,11 +770,7 @@ export const calculateModelPrice = ({
   };
 };
 
-export const getModelPriceItems = (
-  priceData,
-  t,
-  quotaDisplayType = 'USD',
-) => {
+export const getModelPriceItems = (priceData, t, quotaDisplayType = 'USD') => {
   if (priceData.isPerToken) {
     if (quotaDisplayType === 'TOKENS' || priceData.isTokensDisplay) {
       return [
@@ -861,7 +866,10 @@ export const getModelPriceItems = (
         value: priceData.audioOutputPrice,
         suffix: unitSuffix,
       },
-    ].filter((item) => item.value !== null && item.value !== undefined && item.value !== '');
+    ].filter(
+      (item) =>
+        item.value !== null && item.value !== undefined && item.value !== '',
+    );
   }
 
   return [
@@ -871,7 +879,10 @@ export const getModelPriceItems = (
       value: priceData.price,
       suffix: ` / ${t('次')}`,
     },
-  ].filter((item) => item.value !== null && item.value !== undefined && item.value !== '');
+  ].filter(
+    (item) =>
+      item.value !== null && item.value !== undefined && item.value !== '',
+  );
 };
 
 // 格式化价格信息（用于卡片视图）

@@ -13,6 +13,7 @@ import (
 
 func SetApiRouter(router *gin.Engine) {
 	apiRouter := router.Group("/api")
+	apiRouter.Use(middleware.CORS())
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
@@ -31,6 +32,7 @@ func SetApiRouter(router *gin.Engine) {
 		//apiRouter.GET("/midjourney", controller.GetMidjourney)
 		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
 		apiRouter.GET("/pricing", middleware.TryUserAuth(), controller.GetPricing)
+		apiRouter.GET("/subscription/plans", controller.GetSubscriptionPlans) // public: no auth needed
 		apiRouter.GET("/anti_distribution/public", controller.GetAntiDistributionPublicConfig)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
@@ -106,11 +108,23 @@ func SetApiRouter(router *gin.Engine) {
 
 				// Check-in routes
 				selfRoute.GET("/checkin", controller.GetCheckinStatus)
+				selfRoute.GET("/checkin/leaderboard", controller.GetCheckinLeaderboard)
 				selfRoute.POST("/checkin", middleware.TurnstileCheck(), controller.DoCheckin)
 
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
+
+				// Invoice routes (user)
+				selfRoute.GET("/invoice/invoiceable", controller.GetInvoiceableTopUps)
+				selfRoute.GET("/invoice", controller.GetUserInvoices)
+				selfRoute.POST("/invoice", controller.CreateInvoice)
+				selfRoute.GET("/invoice/:id/topups", controller.GetInvoiceTopUps)
+				selfRoute.POST("/invoice/:id/send", controller.SendInvoiceEmailByUser)
+				selfRoute.GET("/notifications", controller.ListSelfSiteNotifications)
+				selfRoute.GET("/notifications/unread_count", controller.GetSelfSiteNotificationUnreadCount)
+				selfRoute.POST("/notifications/:id/read", controller.MarkSelfSiteNotificationRead)
+				selfRoute.POST("/notifications/read_all", controller.MarkAllSelfSiteNotificationsRead)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -130,6 +144,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.PUT("/", controller.UpdateUser)
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
+				adminRoute.POST("/notifications/send", controller.AdminSendSiteNotification)
 
 				// Admin 2FA routes
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
@@ -141,10 +156,12 @@ func SetApiRouter(router *gin.Engine) {
 		subscriptionRoute := apiRouter.Group("/subscription")
 		subscriptionRoute.Use(middleware.UserAuth())
 		{
-			subscriptionRoute.GET("/plans", controller.GetSubscriptionPlans)
 			subscriptionRoute.GET("/self", controller.GetSubscriptionSelf)
+			subscriptionRoute.GET("/self/conversion_campaign", controller.GetSelfServiceSubscriptionConversion)
+			subscriptionRoute.POST("/self/conversion_campaign/request", controller.CreateSelfServiceSubscriptionConversionRequest)
 			subscriptionRoute.GET("/self/consume_logs", controller.GetSubscriptionSelfConsumeLogs)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
+			subscriptionRoute.POST("/self/subscriptions/:id/action", controller.OperateSelfUserSubscription)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
@@ -161,12 +178,19 @@ func SetApiRouter(router *gin.Engine) {
 			// User subscription management (admin)
 			subscriptionAdminRoute.GET("/user_subscriptions", controller.AdminListAllUserSubscriptions)
 			subscriptionAdminRoute.GET("/consume_logs", controller.AdminListSubscriptionConsumeLogs)
+			subscriptionAdminRoute.GET("/conversion_requests", controller.AdminListSubscriptionConversionRequests)
+			subscriptionAdminRoute.POST("/conversion_requests/:id/approve", controller.AdminApproveSubscriptionConversionRequest)
+			subscriptionAdminRoute.POST("/conversion_requests/:id/reject", controller.AdminRejectSubscriptionConversionRequest)
+			subscriptionAdminRoute.GET("/manual_orders", controller.AdminListManualDeliveryOrders)
+			subscriptionAdminRoute.POST("/manual_orders/:id/deliver", controller.AdminDeliverManualDeliveryOrder)
+			subscriptionAdminRoute.POST("/manual_orders/:id/reject", controller.AdminRejectManualDeliveryOrder)
 			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)
 			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
 			subscriptionAdminRoute.POST("/migrations/preview", controller.AdminPreviewSubscriptionMigration)
 			subscriptionAdminRoute.POST("/migrations/execute", controller.AdminExecuteSubscriptionMigration)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/action", controller.AdminOperateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
+			subscriptionAdminRoute.POST("/user_subscriptions/:id/transfer", controller.AdminTransferUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
 		}
 
@@ -175,6 +199,32 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", controller.SubscriptionEpayReturn)
+		// Invoice admin routes
+		invoiceAdminRoute := apiRouter.Group("/invoice/admin")
+		invoiceAdminRoute.Use(middleware.AdminAuth())
+		{
+			invoiceAdminRoute.GET("", controller.GetAllInvoices)
+			invoiceAdminRoute.GET("/:id/topups", controller.GetInvoiceTopUpsByAdmin)
+			invoiceAdminRoute.PUT("/:id", controller.UpdateInvoice)
+			invoiceAdminRoute.PUT("/:id/issue", controller.IssueInvoice)
+			invoiceAdminRoute.PUT("/:id/reject", controller.RejectInvoice)
+			invoiceAdminRoute.POST("/:id/send", controller.SendInvoiceEmail)
+			invoiceAdminRoute.POST("/upload", controller.UploadInvoiceFile)
+		}
+		financeRoute := apiRouter.Group("/finance")
+		financeRoute.Use(middleware.AdminAuth())
+		{
+			financeRoute.GET("/overview", controller.GetFinanceOverview)
+		}
+		checkinAdminRoute := apiRouter.Group("/checkin/admin")
+		checkinAdminRoute.Use(middleware.RootAuth())
+		{
+			checkinAdminRoute.GET("/records", controller.GetAdminCheckinRecords)
+			checkinAdminRoute.GET("/auto_jobs", controller.GetCheckinAutoJobs)
+			checkinAdminRoute.GET("/auto_jobs/:id", controller.GetCheckinAutoJob)
+			checkinAdminRoute.POST("/auto_jobs", controller.CreateCheckinAutoJob)
+			checkinAdminRoute.POST("/auto_jobs/:id/cancel", controller.CancelCheckinAutoJob)
+		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{
@@ -221,6 +271,12 @@ func SetApiRouter(router *gin.Engine) {
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
 		}
+		paymentNotifyRoute := apiRouter.Group("/payment_notify")
+		paymentNotifyRoute.Use(middleware.RootAuth())
+		{
+			paymentNotifyRoute.PUT("/", controller.UpdatePaymentSuccessNotifySetting)
+			paymentNotifyRoute.POST("/test", controller.TestPaymentSuccessNotify)
+		}
 		channelRoute := apiRouter.Group("/channel")
 		channelRoute.Use(middleware.AdminAuth())
 		{
@@ -264,9 +320,23 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.POST("/upstream_updates/detect", controller.DetectChannelUpstreamModelUpdates)
 			channelRoute.POST("/upstream_updates/detect_all", controller.DetectAllChannelUpstreamModelUpdates)
 		}
+		ecomAgentRoute := apiRouter.Group("/ecomagent")
+		ecomAgentRoute.Use(middleware.RootAuth())
+		{
+			ecomAgentRoute.GET("/accounts", controller.GetEcomAgentAccounts)
+			ecomAgentRoute.GET("/manual_orders", controller.GetEcomAgentManualDeliveryOrders)
+			ecomAgentRoute.POST("/accounts", controller.CreateEcomAgentAccount)
+			ecomAgentRoute.POST("/accounts/:id/edit", controller.GetEcomAgentAccount)
+			ecomAgentRoute.PUT("/accounts/:id", controller.UpdateEcomAgentAccount)
+			ecomAgentRoute.POST("/accounts/:id/sync", controller.SyncEcomAgentAccount)
+			ecomAgentRoute.POST("/accounts/:id/deliver_manual_order", controller.DeliverEcomAgentManualDeliveryOrder)
+			ecomAgentRoute.DELETE("/accounts/:id", controller.DeleteEcomAgentAccount)
+		}
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{
+			tokenRoute.GET("/admin", middleware.AdminAuth(), controller.GetAllTokensByAdmin)
+			tokenRoute.GET("/admin/search", middleware.AdminAuth(), middleware.SearchRateLimit(), controller.SearchTokensByAdmin)
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id", controller.GetToken)

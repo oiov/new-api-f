@@ -17,6 +17,32 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { getCurrencyConfig, renderQuota } from './render';
+
+export function isSubscriptionFixedDeadlineDayPlan(plan) {
+  return (
+    isSubscriptionClaudePlan(plan) &&
+    String(plan?.duration_unit || '') === 'day' &&
+    Number(plan?.duration_value || 0) > 0 &&
+    getSubscriptionResetPeriodValue(plan) === 'never' &&
+    getSubscriptionResetFixedClock(plan) &&
+    getSubscriptionResetFixedSeconds(plan) > 0
+  );
+}
+
+export function isSubscriptionClaudePlan(plan) {
+  const text = [
+    plan?.title,
+    plan?.upgrade_group,
+    plan?.allowed_groups_json,
+    ...(Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return text.includes('claude');
+}
+
 export function formatSubscriptionDuration(plan, t) {
   const unit = plan?.duration_unit || 'month';
   const value = plan?.duration_value || 1;
@@ -37,8 +63,46 @@ export function formatSubscriptionDuration(plan, t) {
   return `${value} ${unitLabels[unit] || unit}`;
 }
 
+export function formatSubscriptionSellingDuration(plan, t) {
+  if (isSubscriptionFixedDeadlineDayPlan(plan)) {
+    const time = formatSubscriptionResetFixedTime(
+      getSubscriptionResetFixedSeconds(plan),
+    );
+    const days = Number(plan?.duration_value || 1);
+    if (days === 1) {
+      return t('购买后至次日 {{time}} 前', { time });
+    }
+    return t('购买后至第 {{days}} 天 {{time}} 前', { days, time });
+  }
+  return formatSubscriptionDuration(plan, t);
+}
+
 export function getSubscriptionResourceType(plan) {
   return plan?.resource_type === 'request_count' ? 'request_count' : 'quota';
+}
+
+export function getSubscriptionResetPeriodValue(plan) {
+  return plan?.reset_period || plan?.quota_reset_period || 'never';
+}
+
+export function getSubscriptionResetFixedClock(plan) {
+  return Boolean(
+    plan?.reset_use_fixed_clock ?? plan?.quota_reset_use_fixed_clock ?? false,
+  );
+}
+
+export function getSubscriptionResetFixedSeconds(plan) {
+  return Number(plan?.reset_fixed_seconds ?? plan?.quota_reset_fixed_seconds ?? 0);
+}
+
+export function getSubscriptionRequestCountPeriodLimit(plan) {
+  const period = getSubscriptionResetPeriodValue(plan);
+  if (period === 'never') return 0;
+  return Number(plan?.request_count_period_total || 0);
+}
+
+export function isSubscriptionResourcePeriodic(plan) {
+  return getSubscriptionResetPeriodValue(plan) !== 'never';
 }
 
 export function isSubscriptionDiscountActive(plan, now = Date.now() / 1000) {
@@ -52,7 +116,10 @@ export function isSubscriptionDiscountActive(plan, now = Date.now() / 1000) {
 }
 
 export function getSubscriptionEffectivePrice(plan, now = Date.now() / 1000) {
-  if (plan?.effective_price_amount !== undefined && plan?.effective_price_amount !== null) {
+  if (
+    plan?.effective_price_amount !== undefined &&
+    plan?.effective_price_amount !== null
+  ) {
     return Number(plan.effective_price_amount || 0);
   }
   return isSubscriptionDiscountActive(plan, now)
@@ -60,10 +127,163 @@ export function getSubscriptionEffectivePrice(plan, now = Date.now() / 1000) {
     : Number(plan?.price_amount || 0);
 }
 
+function getSubscriptionCurrencyStatus() {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  try {
+    return JSON.parse(localStorage.getItem('status') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function convertSubscriptionPrice(amount, sourceCurrency, targetCurrency, rates) {
+  const value = Number(amount || 0);
+  const source = String(sourceCurrency || 'USD').toUpperCase();
+  const target = String(targetCurrency || 'USD').toUpperCase();
+  if (source === target) return value;
+
+  const usdExchangeRate = Number(rates?.usdExchangeRate || 7) || 7;
+  const customRate = Number(rates?.customRate || 1) || 1;
+
+  let usdValue = value;
+  if (source === 'CNY') {
+    usdValue = value / usdExchangeRate;
+  } else if (source === 'CUSTOM') {
+    usdValue = value / customRate;
+  }
+
+  if (target === 'CNY') {
+    return usdValue * usdExchangeRate;
+  }
+  if (target === 'CUSTOM') {
+    return usdValue * customRate;
+  }
+  return usdValue;
+}
+
+export function getSubscriptionPriceDisplay(plan) {
+  const displayConfig = getCurrencyConfig();
+  const status = getSubscriptionCurrencyStatus();
+  const sourceCurrency = String(plan?.currency || 'USD').toUpperCase();
+  const displayCurrency = displayConfig?.type || 'USD';
+  const symbol =
+    displayCurrency === 'CNY'
+      ? '¥'
+      : displayCurrency === 'CUSTOM'
+        ? status?.custom_currency_symbol || displayConfig?.symbol || '¤'
+        : '$';
+  const rates = {
+    usdExchangeRate: status?.usd_exchange_rate || 7,
+    customRate: status?.custom_currency_exchange_rate || 1,
+  };
+
+  return {
+    symbol,
+    currency: displayCurrency,
+    effectivePrice: convertSubscriptionPrice(
+      getSubscriptionEffectivePrice(plan),
+      sourceCurrency,
+      displayCurrency,
+      rates,
+    ),
+    originalPrice: convertSubscriptionPrice(
+      Number(plan?.price_amount || 0),
+      sourceCurrency,
+      displayCurrency,
+      rates,
+    ),
+  };
+}
+
+function getSubscriptionDurationDays(plan) {
+  const unit = String(plan?.duration_unit || 'month');
+  const value = Number(plan?.duration_value || 1);
+  if (unit === 'custom') {
+    const seconds = Number(plan?.custom_seconds || 0);
+    return seconds > 0 ? seconds / 86400 : 0;
+  }
+  if (value <= 0) return 0;
+  const dayMap = {
+    year: 365,
+    month: 30,
+    week: 7,
+    day: 1,
+    hour: 1 / 24,
+  };
+  return value * (dayMap[unit] || 0);
+}
+
+function formatSubscriptionPriceAmount(amount) {
+  return Number(amount || 0).toFixed(Number.isInteger(amount) ? 0 : 2);
+}
+
+export function getSubscriptionDailyPriceDisplay(plan) {
+  const priceDisplay = getSubscriptionPriceDisplay(plan);
+  const durationDays = getSubscriptionDurationDays(plan);
+  if (durationDays <= 0 || priceDisplay.effectivePrice <= 0) {
+    return null;
+  }
+  const dailyPrice = priceDisplay.effectivePrice / durationDays;
+  return {
+    ...priceDisplay,
+    durationDays,
+    dailyPrice,
+    displayDailyPrice: formatSubscriptionPriceAmount(dailyPrice),
+    displayEffectivePrice: formatSubscriptionPriceAmount(
+      priceDisplay.effectivePrice,
+    ),
+    displayOriginalPrice: formatSubscriptionPriceAmount(
+      priceDisplay.originalPrice,
+    ),
+  };
+}
+
+export function isClaudeMonthlySubscriptionPlan(plan) {
+  return (
+    isSubscriptionClaudePlan(plan) &&
+    String(plan?.duration_unit || 'month') === 'month'
+  );
+}
+
+export function getClaudeMonthlyMarketingSubtitle(plan, t) {
+  if (!isClaudeMonthlySubscriptionPlan(plan)) {
+    return '';
+  }
+
+  const priceDisplay = getSubscriptionPriceDisplay(plan);
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const periodTotal = getSubscriptionRequestCountPeriodLimit(plan);
+  const resetPeriod = getSubscriptionResetPeriodValue(plan);
+  const pricePerRequest =
+    usageSummary.total > 0
+      ? Number(priceDisplay.effectivePrice || 0) / usageSummary.total
+      : 0;
+
+  if (
+    resetPeriod === 'daily' &&
+    periodTotal > 0 &&
+    usageSummary.total > 0 &&
+    pricePerRequest > 0
+  ) {
+    return t('{{period}}次/天，月共{{total}}次，每月重置【单次成本 {{price}}】', {
+      period: periodTotal,
+      total: usageSummary.total,
+      price: `${priceDisplay.symbol}${pricePerRequest.toFixed(4)}`,
+    });
+  }
+
+  return '';
+}
+
 export function formatSubscriptionResourceLabel(plan, t) {
-  return getSubscriptionResourceType(plan) === 'request_count'
-    ? t('总次数')
-    : t('总额度');
+  const isRequestCount = getSubscriptionResourceType(plan) === 'request_count';
+  const isPeriodic = isSubscriptionResourcePeriodic(plan);
+  if (isRequestCount) {
+    return isPeriodic ? t('每周期次数') : t('总次数');
+  }
+  return isPeriodic ? t('每周期额度') : t('总额度');
 }
 
 export function getSubscriptionUsageSummary(plan) {
@@ -72,12 +292,20 @@ export function getSubscriptionUsageSummary(plan) {
     const total = Number(plan?.request_count_total || 0);
     const used = Number(plan?.request_count_used || 0);
     const remain = total > 0 ? Math.max(0, total - used) : 0;
+    const periodTotal = getSubscriptionRequestCountPeriodLimit(plan);
+    const periodUsed = Number(plan?.request_count_period_used || 0);
+    const periodRemain =
+      periodTotal > 0 ? Math.max(0, periodTotal - periodUsed) : 0;
     return {
       resourceType,
       total,
       used,
       remain,
       unlimited: total <= 0,
+      periodTotal,
+      periodUsed,
+      periodRemain,
+      periodUnlimited: periodTotal <= 0,
     };
   }
   const total = Number(plan?.amount_total ?? plan?.total_amount ?? 0);
@@ -122,11 +350,12 @@ export function getSubscriptionSaleSummary(plan) {
 }
 
 export function formatSubscriptionResetPeriod(plan, t) {
-  const period = plan?.reset_period || plan?.quota_reset_period || 'never';
+  const period = getSubscriptionResetPeriodValue(plan);
   if (period === 'never') return t('不重置');
   if (period === 'daily') return t('每天');
   if (period === 'weekly') return t('每周');
   if (period === 'monthly') return t('每月');
+  if (period === 'yearly') return t('每年');
   if (period === 'custom') {
     const seconds = Number(
       plan?.reset_custom_seconds ?? plan?.quota_reset_custom_seconds ?? 0,
@@ -137,4 +366,190 @@ export function formatSubscriptionResetPeriod(plan, t) {
     return `${seconds} ${t('秒')}`;
   }
   return t('不重置');
+}
+
+export function formatSubscriptionCustomSeconds(seconds, t) {
+  const value = Number(seconds || 0);
+  if (value >= 86400 && value % 86400 === 0) {
+    return `${Math.floor(value / 86400)} ${t('天')}`;
+  }
+  if (value >= 3600 && value % 3600 === 0) {
+    return `${Math.floor(value / 3600)} ${t('小时')}`;
+  }
+  if (value >= 60 && value % 60 === 0) {
+    return `${Math.floor(value / 60)} ${t('分钟')}`;
+  }
+  return `${value} ${t('秒')}`;
+}
+
+export function formatSubscriptionResetFixedTime(seconds) {
+  const value = Math.max(0, Math.min(Number(seconds || 0), 24 * 3600 - 1));
+  const hour = String(Math.floor(value / 3600)).padStart(2, '0');
+  const minute = String(Math.floor((value % 3600) / 60)).padStart(2, '0');
+  const second = String(value % 60).padStart(2, '0');
+  return `${hour}:${minute}:${second}`;
+}
+
+export function formatSubscriptionResetHint(plan, t) {
+  if (isSubscriptionFixedDeadlineDayPlan(plan)) {
+    return t('不重置');
+  }
+  const period = getSubscriptionResetPeriodValue(plan);
+  if (period === 'never') return t('不重置');
+  const useFixedClock = getSubscriptionResetFixedClock(plan);
+  if (useFixedClock) {
+    const time = formatSubscriptionResetFixedTime(
+      getSubscriptionResetFixedSeconds(plan),
+    );
+    if (period === 'daily') {
+      return t('购买生效后，每天 {{time}} 重置', {
+        time,
+      });
+    }
+    if (period === 'weekly') {
+      return t('购买生效后，每周固定时刻 {{time}} 重置', {
+        time,
+      });
+    }
+    if (period === 'monthly') {
+      return t('购买生效后，每月固定时刻 {{time}} 重置', {
+        time,
+      });
+    }
+    if (period === 'yearly') {
+      return t('购买生效后，每年固定时刻 {{time}} 重置', {
+        time,
+      });
+    }
+  }
+  if (period === 'daily') return t('按购买激活时间每 1 天滚动重置');
+  if (period === 'weekly') return t('按购买激活时间每 7 天滚动重置');
+  if (period === 'monthly') return t('按购买激活时间按月滚动重置');
+  if (period === 'yearly') return t('按购买激活时间按年滚动重置');
+  if (period === 'custom') {
+    return t('按购买激活时间每 {{duration}} 滚动重置', {
+      duration: formatSubscriptionCustomSeconds(
+        plan?.reset_custom_seconds ?? plan?.quota_reset_custom_seconds ?? 0,
+        t,
+      ),
+    });
+  }
+  return `${formatSubscriptionResetPeriod(plan, t)} ${t('滚动重置')}`;
+}
+
+export function getSubscriptionRestrictionSummary(plan) {
+  return {
+    groups: Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : [],
+    models: Array.isArray(plan?.allowed_models) ? plan.allowed_models : [],
+    vendors: Array.isArray(plan?.allowed_vendor_names)
+      ? plan.allowed_vendor_names
+      : [],
+  };
+}
+
+export function getSubscriptionPlanMetricItems(plan, t) {
+  const resourceType = getSubscriptionResourceType(plan);
+  const resetPeriod = getSubscriptionResetPeriodValue(plan);
+  const durationText = formatSubscriptionSellingDuration(plan, t);
+  const resetHintText = formatSubscriptionResetHint(plan, t);
+  const isFixedDeadlineDayPlan = isSubscriptionFixedDeadlineDayPlan(plan);
+
+  if (resourceType === 'request_count') {
+    const periodLimit = Number(plan?.request_count_period_total || 0);
+    const totalLimit = Number(plan?.request_count_total || 0);
+    if (isFixedDeadlineDayPlan) {
+      return [
+        {
+          key: 'lifetime_limit',
+          label: t('有效期内上限'),
+          value: totalLimit > 0 ? `${totalLimit} ${t('次')}` : t('不限'),
+        },
+        {
+          key: 'resource_type',
+          label: t('权益类型'),
+          value: t('按次'),
+        },
+        {
+          key: 'reset_time',
+          label: t('重置规则'),
+          value: resetHintText,
+        },
+        {
+          key: 'duration',
+          label: t('有效期'),
+          value: durationText,
+        },
+      ];
+    }
+    const periodLabel =
+      resetPeriod === 'never'
+        ? t('周期上限')
+        : `${formatSubscriptionResetPeriod(plan, t)}${t('上限')}`;
+    return [
+      {
+        key: 'period_limit',
+        label: periodLabel,
+        value: periodLimit > 0 ? `${periodLimit} ${t('次')}` : t('不限'),
+      },
+      {
+        key: 'total_limit',
+        label: t('总次数上限'),
+        value: totalLimit > 0 ? `${totalLimit} ${t('次')}` : t('不限'),
+      },
+      {
+        key: 'reset_time',
+        label: t('重置规则'),
+        value: resetHintText,
+      },
+      {
+        key: 'duration',
+        label: t('有效期'),
+        value: durationText,
+      },
+    ];
+  }
+
+  const totalAmount = Number(plan?.total_amount ?? plan?.amount_total ?? 0);
+  return [
+    {
+      key: 'quota_limit',
+      label: formatSubscriptionResourceLabel(plan, t),
+      value: totalAmount > 0 ? renderQuota(totalAmount) : t('不限'),
+    },
+    {
+      key: 'resource_type',
+      label: t('权益类型'),
+      value: t('按额度'),
+    },
+    {
+      key: 'reset_time',
+      label: t('重置规则'),
+      value: resetHintText,
+    },
+    {
+      key: 'duration',
+      label: t('有效期'),
+      value: durationText,
+    },
+  ];
+}
+
+export function formatSubscriptionRequestBenefit(plan, t) {
+  const summary = getSubscriptionUsageSummary(plan);
+  if (summary.resourceType !== 'request_count') {
+    return '';
+  }
+  const parts = [];
+  if (!summary.periodUnlimited) {
+    parts.push(
+      `${formatSubscriptionResetPeriod(plan, t)} ${summary.periodTotal} ${t('次')}`,
+    );
+  }
+  if (!summary.unlimited) {
+    parts.push(`${t('总计')} ${summary.total} ${t('次')}`);
+  }
+  if (parts.length === 0) {
+    return t('不限次数');
+  }
+  return parts.join(' · ');
 }

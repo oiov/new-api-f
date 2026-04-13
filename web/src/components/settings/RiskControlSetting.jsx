@@ -427,16 +427,16 @@ const RiskControlSetting = () => {
                             {t('路径')}：{log.method} {log.path}
                           </Text>
                           <Text style={{ display: 'block' }}>
-                            IP：{log.client_ip || '-'}
+                            {t('IP：')}{log.client_ip || '-'}
                           </Text>
                           <Text style={{ display: 'block' }}>
-                            Host：{log.request_host || '-'}
+                            {t('Host：')}{log.request_host || '-'}
                           </Text>
                           <Text style={{ display: 'block' }}>
-                            Origin：{log.origin_host || '-'}
+                            {t('Origin：')}{log.origin_host || '-'}
                           </Text>
                           <Text style={{ display: 'block' }}>
-                            Referer：{log.referer_host || '-'}
+                            {t('Referer：')}{log.referer_host || '-'}
                           </Text>
                           {log.note ? (
                             <Text

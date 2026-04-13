@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import { API, showError, showSuccess } from '../../helpers';
+import { API, buildGroupOptions, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 
@@ -266,7 +266,14 @@ export const useUsersData = () => {
     if (searchKeyword === '' && searchGroup === '') {
       loadUsers(page, pageSize).then();
     } else {
-      searchUsers(page, pageSize, searchKeyword, searchGroup, sortBy, sortOrder).then();
+      searchUsers(
+        page,
+        pageSize,
+        searchKeyword,
+        searchGroup,
+        sortBy,
+        sortOrder,
+      ).then();
     }
   };
 
@@ -301,7 +308,14 @@ export const useUsersData = () => {
     if (searchKeyword === '' && searchGroup === '') {
       await loadUsers(page, pageSize);
     } else {
-      await searchUsers(page, pageSize, searchKeyword, searchGroup, sortBy, sortOrder);
+      await searchUsers(
+        page,
+        pageSize,
+        searchKeyword,
+        searchGroup,
+        sortBy,
+        sortOrder,
+      );
     }
   };
 
@@ -312,12 +326,7 @@ export const useUsersData = () => {
       if (res === undefined) {
         return;
       }
-      setGroupOptions(
-        res.data.data.map((group) => ({
-          label: group,
-          value: group,
-        })),
-      );
+      setGroupOptions(buildGroupOptions(res.data.data));
     } catch (error) {
       showError(error.message);
     }

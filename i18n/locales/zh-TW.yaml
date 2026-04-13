@@ -187,7 +187,7 @@ twofa.code_invalid: "驗證碼或備用碼不正確"
 
 # Rate limit messages
 rate_limit.reached: "您已達到請求數限制：{{.Minutes}}分鐘內最多請求{{.Max}}次"
-rate_limit.total_reached: "https://nbility.dev/ "您已達到總請求數限制：{{.Minutes}}分鐘內最多請求{{.Max}}次，包括失敗次數"
+rate_limit.total_reached: "您已達到總請求數限制：{{.Minutes}}分鐘內最多請求{{.Max}}次，包括失敗次數"
 
 # Setting messages
 setting.invalid_type: "無效的預警類型"
@@ -241,6 +241,9 @@ oauth.trust_level_low: "Linux DO 信任等級未達到管理員設定的最低�
 
 # Model layer error messages
 redeem.failed: "兌換失敗，請稍後重試"
+redeem.invalid_code: "無效的兌換碼"
+redeem.code_used: "該兌換碼已被使用"
+redeem.code_expired: "該兌換碼已過期"
 user.create_default_token_error: "建立預設令牌失敗"
 common.uuid_duplicate: "請重試，系統生成的 UUID 竟然重複了！"
 common.invalid_input: "輸入不合法"

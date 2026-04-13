@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Typography } from '@douyinfe/semi-ui';
+import { useTranslation } from 'react-i18next';
 import {
   Moonshot,
   OpenAI,
@@ -69,6 +70,8 @@ const iconWrapperClassName =
   'w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center';
 
 const ProviderLogos = () => {
+  const { t } = useTranslation();
+
   return (
     <>
       {PROVIDER_ICONS.map((icon, index) => (
@@ -78,7 +81,7 @@ const ProviderLogos = () => {
       ))}
       <div className={iconWrapperClassName}>
         <Typography.Text className='!text-lg sm:!text-xl md:!text-2xl lg:!text-3xl font-bold'>
-          30+
+          {t('30+')}
         </Typography.Text>
       </div>
     </>

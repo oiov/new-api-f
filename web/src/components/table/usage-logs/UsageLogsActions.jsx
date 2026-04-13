@@ -66,7 +66,7 @@ const LogsActions = ({
             }}
             className='!rounded-lg'
           >
-            RPM: {stat.rpm}
+            {t('每分钟请求数')}: {stat.rpm}
           </Tag>
           <Tag
             color='white'
@@ -78,7 +78,7 @@ const LogsActions = ({
             }}
             className='!rounded-lg'
           >
-            TPM: {stat.tpm}
+            {t('每分钟令牌数')}: {stat.tpm}
           </Tag>
         </Space>
       </Skeleton>

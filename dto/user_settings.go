@@ -6,6 +6,7 @@ type UserSetting struct {
 	QuotaNotifyEnabled               *bool   `json:"quota_notify_enabled,omitempty"`                 // QuotaNotifyEnabled 总额度提醒开关，nil 表示默认开启
 	SubscriptionQuotaNotifyEnabled   *bool   `json:"subscription_quota_notify_enabled,omitempty"`    // SubscriptionQuotaNotifyEnabled 套餐额度提醒开关，nil 表示默认开启
 	NotifySubscriptionId             int     `json:"notify_subscription_id,omitempty"`               // NotifySubscriptionId 指定提醒的订阅 ID，0 表示跟随当前使用的订阅
+	PreferredSubscriptionId          int     `json:"preferred_subscription_id,omitempty"`            // PreferredSubscriptionId 指定优先消耗的订阅 ID，0 表示按系统规则自动选择
 	WebhookUrl                       string  `json:"webhook_url,omitempty"`                          // WebhookUrl webhook地址
 	WebhookSecret                    string  `json:"webhook_secret,omitempty"`                       // WebhookSecret webhook密钥
 	NotificationEmail                string  `json:"notification_email,omitempty"`                   // NotificationEmail 通知邮箱地址

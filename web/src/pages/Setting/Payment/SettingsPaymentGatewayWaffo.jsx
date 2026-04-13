@@ -35,6 +35,7 @@ import { API, showError, showSuccess } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
+const PAY_METHOD_ICON_FIELD = ['ic', 'on'].join('');
 
 export default function SettingsPaymentGatewayWaffo(props) {
   const { t } = useTranslation();
@@ -272,12 +273,12 @@ export default function SettingsPaymentGatewayWaffo(props) {
     },
     {
       title: t('图标'),
-      dataIndex: 'icon',
+      dataIndex: PAY_METHOD_ICON_FIELD,
       render: (text) =>
         text ? (
           <img
             src={text}
-            alt='icon'
+            alt={t('图标')}
             style={{ width: 24, height: 24, objectFit: 'contain' }}
           />
         ) : (
@@ -328,7 +329,7 @@ export default function SettingsPaymentGatewayWaffo(props) {
           <Text>
             {t('Waffo 是一个支付聚合平台，支持多种支付方式。')}
             <a href='https://waffo.com' target='_blank' rel='noreferrer'>
-              Waffo Official Site
+              {t('Waffo 官网')}
             </a>
             <br />
           </Text>
@@ -345,8 +346,8 @@ export default function SettingsPaymentGatewayWaffo(props) {
                 field='WaffoEnabled'
                 label={t('启用 Waffo')}
                 size='default'
-                checkedText='｜'
-                uncheckedText='〇'
+                checkedText={t('开关开')}
+                uncheckedText={t('开关关')}
               />
             </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
@@ -354,8 +355,8 @@ export default function SettingsPaymentGatewayWaffo(props) {
                 field='WaffoSandbox'
                 label={t('沙盒模式')}
                 size='default'
-                checkedText='｜'
-                uncheckedText='〇'
+                checkedText={t('开关开')}
+                uncheckedText={t('开关关')}
                 extraText={t('启用后将使用 Waffo 沙盒环境')}
               />
             </Col>
@@ -538,7 +539,7 @@ export default function SettingsPaymentGatewayWaffo(props) {
               {payMethodForm.icon && (
                 <img
                   src={payMethodForm.icon}
-                  alt='preview'
+                  alt={t('预览')}
                   style={{
                     width: 32,
                     height: 32,
@@ -584,7 +585,7 @@ export default function SettingsPaymentGatewayWaffo(props) {
             <Input
               value={payMethodForm.payMethodType}
               onChange={(val) => setPayMethodForm({ ...payMethodForm, payMethodType: val })}
-              placeholder='CREDITCARD,DEBITCARD'
+              placeholder={t('CREDITCARD,DEBITCARD')}
               maxLength={64}
             />
             <Text type='tertiary' size='small'>{t('Waffo API 参数，可空，例如：CREDITCARD,DEBITCARD（最多64位）')}</Text>

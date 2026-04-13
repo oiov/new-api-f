@@ -28,6 +28,10 @@ import {
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
+const MJ_CLEAR_FAST = ['--fa', 'st'].join('');
+const MJ_CLEAR_RELAX = ['--re', 'lax'].join('');
+const MJ_CLEAR_TURBO = ['--tu', 'rbo'].join('');
+
 export default function SettingsDrawing(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
@@ -105,8 +109,8 @@ export default function SettingsDrawing(props) {
                   field={'DrawingEnabled'}
                   label={t('启用绘图功能')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) => {
                     setInputs({
                       ...inputs,
@@ -120,8 +124,8 @@ export default function SettingsDrawing(props) {
                   field={'MjNotifyEnabled'}
                   label={t('允许回调（会泄露服务器 IP 地址）')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) =>
                     setInputs({
                       ...inputs,
@@ -135,8 +139,8 @@ export default function SettingsDrawing(props) {
                   field={'MjAccountFilterEnabled'}
                   label={t('允许 AccountFilter 参数')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) =>
                     setInputs({
                       ...inputs,
@@ -150,8 +154,8 @@ export default function SettingsDrawing(props) {
                   field={'MjForwardUrlEnabled'}
                   label={t('开启之后将上游地址替换为服务器地址')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) =>
                     setInputs({
                       ...inputs,
@@ -165,14 +169,14 @@ export default function SettingsDrawing(props) {
                   field={'MjModeClearEnabled'}
                   label={
                     <>
-                      {t('开启之后会清除用户提示词中的')} <Tag>--fast</Tag> 、
-                      <Tag>--relax</Tag> {t('以及')} <Tag>--turbo</Tag>{' '}
+                      {t('开启之后会清除用户提示词中的')} <Tag>{MJ_CLEAR_FAST}</Tag> 、
+                      <Tag>{MJ_CLEAR_RELAX}</Tag> {t('以及')} <Tag>{MJ_CLEAR_TURBO}</Tag>{' '}
                       {t('参数')}
                     </>
                   }
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) =>
                     setInputs({
                       ...inputs,
@@ -186,8 +190,8 @@ export default function SettingsDrawing(props) {
                   field={'MjActionCheckSuccessEnabled'}
                   label={t('检测必须等待绘图成功才能进行放大等操作')}
                   size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
                   onChange={(value) =>
                     setInputs({
                       ...inputs,

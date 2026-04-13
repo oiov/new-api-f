@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -195,17 +197,38 @@ func sessionCompleted(event stripe.Event) {
 		"currency":     strings.ToUpper(event.GetObjectValue("currency")),
 		"event_type":   string(event.Type),
 	}
-	if err := model.CompleteSubscriptionOrder(referenceId, common.GetJsonString(payload)); err == nil {
+	if completedNow, err := model.CompleteSubscriptionOrderWithResult(referenceId, common.GetJsonString(payload)); err == nil {
+		if completedNow {
+			notifySubscriptionPaymentSuccessAsync(referenceId)
+		}
 		return
 	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
 		log.Println("complete subscription order failed:", err.Error(), referenceId)
 		return
 	}
 
-	err := model.Recharge(referenceId, customerId)
+	completed, err := model.Recharge(referenceId, customerId)
 	if err != nil {
 		log.Println(err.Error(), referenceId)
 		return
+	}
+	if completed {
+		if topUp := model.GetTopUpByTradeNo(referenceId); topUp != nil {
+			service.NotifyPaymentSuccessAsync(service.PaymentSuccessNotification{
+				Category:      "充值",
+				TradeNo:       topUp.TradeNo,
+				UserID:        topUp.UserId,
+				PaymentMethod: topUp.PaymentMethod,
+				Money:         topUp.Money,
+				Quota:         logger.FormatQuota(int(topUp.Money * common.QuotaPerUnit)),
+			})
+			model.NotifyTopUpSuccessToUserAsync(
+				topUp.UserId,
+				topUp.PaymentMethod,
+				topUp.Money,
+				logger.FormatQuota(int(topUp.Money*common.QuotaPerUnit)),
+			)
+		}
 	}
 
 	total, _ := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)

@@ -1,77 +1,608 @@
 <!doctype html>
-<html lang="zh">
+<html lang="zh-CN">
+  <!-- 沉没成本不参与重大决策，已有损失不影响当期决策 -->
+  <!-- https://x.com/xkajon/status/2041223004072628688 -->
+
+  <!-- 现在如果你想坑一个人，就让他去做中转站，这是一定的。你要解决：
+1. 引流问题
+2. 技术问题
+3. 售后问题
+4. 封号问题
+5. 退款问题
+
+这只是我能说出来的 5 个细节，还有更多的细节是那种隐性知识我还没有说出来的。这 5 个问题都够你忙活大半天了。 -->
   <head>
-    <script
-      charset="UTF-8"
-      id="LA_COLLECT"
-      src="https://sdk.51.la/js-sdk-pro.min.js"
-    ></script>
-    <script>
-      if (window.LA && typeof window.LA.init === 'function') {
-        LA.init({
-          id: 'L92d4eR2HMR83TPC',
-          ck: 'L92d4eR2HMR83TPC',
-          autoTrack: true,
-          hashMode: true,
-          screenRecord: true,
-        });
-      }
-    </script>
-    <script
-      src="https://sdk.51.la/perf/js-sdk-perf.min.js"
-      crossorigin="anonymous"
-    ></script>
-    <script>
-      if (window.LingQue && typeof window.LingQue.Monitor === 'function') {
-        new LingQue.Monitor().init({ id: 'L92dGCu3rpzaaztc' });
-      }
-    </script>
+    <!-- <script charset="UTF-8" id="LA_COLLECT" src="https://sdk.51.la/js-sdk-pro.min.js"></script>
+  <script>
+    if (window.LA && typeof window.LA.init === 'function') {
+      LA.init({ id: "L92d4eR2HMR83TPC", ck: "L92d4eR2HMR83TPC", autoTrack: true, hashMode: true, screenRecord: true });
+    }
+  </script>
+  <script src="https://sdk.51.la/perf/js-sdk-perf.min.js" crossorigin="anonymous"></script>
+  <script>
+    if (window.LingQue && typeof window.LingQue.Monitor === 'function') {
+      new LingQue.Monitor().init({ id: "L92dGCu3rpzaaztc" });
+    }
+  </script> -->
 
     <meta charset="utf-8" />
-    <link rel="icon" href="/logo.png" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#f6f9ff" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="format-detection"
+      content="telephone=no, email=no, address=no"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta
       name="keywords"
-      content="AI Coding,Claude订阅,Codex订阅,Claude中转,Codex中转,包月订阅,周卡,天卡,团队订阅,学生订阅"
+      id="meta-keywords"
+      content="Claude API,Claude中转,Anthropic官方通道,企业级Claude API,AI中转服务,智能缓存,企业采购,增值税发票,GPT,Gemini"
     />
     <meta name="robots" content="index,follow" />
     <link rel="canonical" href="https://nbility.dev/" />
+    <link rel="preconnect" href="https://nbility.dev" crossorigin />
+    <link rel="dns-prefetch" href="//nbility.dev" />
     <meta
       name="description"
+      id="meta-description"
       lang="zh"
-      content="NBility AI 提供 Claude、Codex 等 AI Coding 国际中转订阅服务，主打包月订阅，同时支持周卡、天卡，覆盖个人开发者、学生与团队协作的稳定接入需求。"
+      content="Nbility AI 提供企业级 Claude API 官方通道中转，优先提供稳定的 Claude 官方通道接入，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。"
     />
     <meta
       name="description"
       lang="en"
-      content="NBility AI provides Claude and Codex subscription access for AI Coding, with monthly, weekly, and daily plans for developers, students, and teams."
+      content="Nbility AI provides an enterprise Claude API gateway through official Anthropic channels, prioritizing stable Claude access with cache-based cost reduction, enterprise invoice support, and compatibility with common models such as GPT and Gemini."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="NBility AI" />
-    <meta property="og:title" content="AI Coding 国际中转订阅站 | NBility AI" />
+    <meta property="og:site_name" content="Nbility AI" />
+    <meta
+      property="og:title"
+      id="meta-og-title"
+      content="企业级 Claude API 官方通道中转 | Nbility AI"
+    />
     <meta
       property="og:description"
-      content="NBility AI 提供 Claude、Codex 等 AI Coding 国际中转订阅服务，主打包月订阅，同时支持周卡、天卡，覆盖个人开发者、学生与团队协作的稳定接入需求。"
+      id="meta-og-description"
+      content="Nbility AI 提供企业级 Claude API 官方通道中转，优先提供稳定的 Claude 官方通道接入，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。"
     />
     <meta property="og:url" content="https://nbility.dev/" />
-    <meta property="og:image" content="https://nbility.dev/cover-4.webp" />
-    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:image" content="https://nbility.dev/logo.png" />
+    <meta
+      property="og:image:secure_url"
+      content="https://nbility.dev/logo.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="180" />
+    <meta property="og:image:height" content="180" />
+    <meta property="og:image:alt" content="Nbility AI" />
+    <meta property="og:locale" id="meta-og-locale" content="zh_CN" />
+    <meta property="og:locale:alternate" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@nbility" />
     <meta
       name="twitter:title"
-      content="AI Coding 国际中转订阅站 | NBility AI"
+      id="meta-twitter-title"
+      content="企业级 Claude API 官方通道中转 | Nbility AI"
     />
     <meta
       name="twitter:description"
-      content="NBility AI 提供 Claude、Codex 等 AI Coding 国际中转订阅服务，主打包月订阅，同时支持周卡、天卡，覆盖个人开发者、学生与团队协作的稳定接入需求。"
+      id="meta-twitter-description"
+      content="Nbility AI 提供企业级 Claude API 官方通道中转，优先提供稳定的 Claude 官方通道接入，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。"
     />
-    <meta name="twitter:image" content="https://nbility.dev/cover-4.webp" />
+    <meta name="twitter:image" content="https://nbility.dev/logo.png" />
+    <meta
+      itemprop="name"
+      id="meta-itemprop-name"
+      content="企业级 Claude API 官方通道中转 | Nbility AI"
+    />
+    <meta
+      itemprop="description"
+      id="meta-itemprop-description"
+      content="Nbility AI 提供企业级 Claude API 官方通道中转，优先提供稳定的 Claude 官方通道接入，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。"
+    />
+    <meta itemprop="image" content="https://nbility.dev/logo.png" />
     <meta name="generator" content="new-api" />
-    <title>AI Coding 国际中转订阅站 | NBility AI</title>
+    <title id="page-title">企业级 Claude API 官方通道中转 | Nbility AI</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --fx-bg: #eef5ff;
+        --fx-bg-2: #fff7ef;
+        --fx-card: rgba(255, 255, 255, 0.9);
+        --fx-border: rgba(25, 99, 247, 0.08);
+        --fx-text: #111827;
+        --fx-muted: #667085;
+        --fx-primary: #2563eb;
+        --fx-shadow: 0 24px 80px rgba(15, 23, 42, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #root {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+          'Helvetica Neue', sans-serif;
+        color: var(--fx-text);
+        background:
+          radial-gradient(
+            circle at top left,
+            rgba(37, 99, 235, 0.12),
+            transparent 32%
+          ),
+          radial-gradient(
+            circle at top right,
+            rgba(249, 115, 22, 0.12),
+            transparent 28%
+          ),
+          linear-gradient(
+            180deg,
+            var(--fx-bg) 0%,
+            #ffffff 38%,
+            var(--fx-bg-2) 100%
+          );
+        background-attachment: fixed;
+      }
+
+      .fx-shell {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 20px;
+      }
+
+      .fx-loading-card {
+        width: min(100%, 520px);
+        padding: 28px;
+        border-radius: 28px;
+        border: 1px solid var(--fx-border);
+        background: var(--fx-card);
+        box-shadow: var(--fx-shadow);
+        backdrop-filter: blur(16px);
+      }
+
+      .fx-brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 18px;
+      }
+
+      .fx-brand img {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        box-shadow: 0 10px 30px rgba(37, 99, 235, 0.16);
+      }
+
+      .fx-brand-title {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+
+      .fx-brand-subtitle {
+        margin: 4px 0 0;
+        color: var(--fx-muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .fx-loading-headline {
+        margin: 0 0 10px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #1d4ed8;
+      }
+
+      .fx-loading-copy {
+        margin: 0;
+        color: var(--fx-muted);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .fx-loading-bar {
+        position: relative;
+        overflow: hidden;
+        width: 100%;
+        height: 10px;
+        margin-top: 22px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.16);
+      }
+
+      .fx-loading-bar::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        width: 35%;
+        border-radius: inherit;
+        background: linear-gradient(
+          90deg,
+          #60a5fa 0%,
+          #2563eb 55%,
+          #fb923c 100%
+        );
+        animation: fx-loading-slide 1.4s ease-in-out infinite;
+      }
+
+      .fx-loading-tips {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .fx-tip {
+        padding: 12px 14px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        font-size: 12px;
+        color: var(--fx-muted);
+        text-align: center;
+      }
+
+      .fx-noscript {
+        margin-top: 18px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(254, 242, 242, 0.92);
+        border: 1px solid rgba(239, 68, 68, 0.14);
+        color: #991b1b;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      @keyframes fx-loading-slide {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(320%);
+        }
+      }
+
+      @media (max-width: 640px) {
+        .fx-loading-card {
+          padding: 22px;
+          border-radius: 24px;
+        }
+
+        .fx-loading-tips {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Nbility AI",
+        "url": "https://nbility.dev/",
+        "logo": "https://nbility.dev/logo.png",
+        "sameAs": ["https://nbility.dev/contact"]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Nbility AI",
+        "url": "https://nbility.dev/",
+        "inLanguage": ["zh-CN", "en"],
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://nbility.dev/pricing?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      }
+    </script>
+    <script>
+      (function () {
+        var SUPPORTED_LANGUAGES = [
+          'zh-CN',
+          'zh-TW',
+          'en',
+          'fr',
+          'ru',
+          'ja',
+          'vi',
+        ];
+        var OG_LOCALE_MAP = {
+          'zh-CN': 'zh_CN',
+          'zh-TW': 'zh_TW',
+          en: 'en_US',
+          fr: 'fr_FR',
+          ru: 'ru_RU',
+          ja: 'ja_JP',
+          vi: 'vi_VN',
+        };
+        var COPY = {
+          'zh-CN': {
+            title: '企业级 Claude API 官方通道中转 | Nbility AI',
+            description:
+              'Nbility AI 提供企业级 Claude API 官方通道中转，优先提供稳定的 Claude 官方通道接入，不走逆向，支持智能缓存降本、企业采购与正规增值税发票，并兼容 GPT、Gemini 等常用模型。',
+            keywords:
+              'Claude API,Claude中转,Anthropic官方通道,企业级Claude API,AI中转服务,智能缓存,企业采购,增值税发票,GPT,Gemini',
+            subtitle: '稳定接入 Claude、Codex、GPT、Gemini 等常用模型',
+            headline: '正在加载控制台与套餐信息',
+            copy: '页面初始化时会同步站点配置、登录状态与可售套餐。若停留时间过长，请检查网络或稍后刷新重试。',
+            tip1: '官方通道优先',
+            tip2: '企业采购支持',
+            tip3: '订阅与代发放整合',
+            noscriptPrefix:
+              '当前页面依赖 JavaScript 运行。请开启浏览器脚本支持后重试，或直接访问',
+            noscriptLink: '套餐页',
+            noscriptSuffix: '查看可购买内容。',
+          },
+          'zh-TW': {
+            title: '企業級 Claude API 官方通道中轉 | Nbility AI',
+            description:
+              'Nbility AI 提供企業級 Claude API 官方通道中轉，優先提供穩定的 Claude 官方通道接入，不走逆向，支援智慧快取降本、企業採購與正式增值稅發票，並相容 GPT、Gemini 等常用模型。',
+            keywords:
+              'Claude API,Claude中轉,Anthropic官方通道,企業級Claude API,AI中轉服務,智慧快取,企業採購,增值稅發票,GPT,Gemini',
+            subtitle: '穩定接入 Claude、Codex、GPT、Gemini 等常用模型',
+            headline: '正在載入控制台與套餐資訊',
+            copy: '頁面初始化時會同步站點設定、登入狀態與可售套餐。若停留時間過長，請檢查網路或稍後重新整理。',
+            tip1: '官方通道優先',
+            tip2: '支援企業採購',
+            tip3: '訂閱與代發放整合',
+            noscriptPrefix:
+              '目前頁面依賴 JavaScript 執行。請開啟瀏覽器腳本支援後重試，或直接前往',
+            noscriptLink: '套餐頁',
+            noscriptSuffix: '查看可購買內容。',
+          },
+          en: {
+            title: 'Enterprise Claude API via Official Channels | Nbility AI',
+            description:
+              'Nbility AI provides enterprise Claude API access through official channels, prioritizing stable Claude connectivity with cache-based cost reduction, enterprise procurement support, VAT invoices, and compatibility with GPT, Codex, and Gemini.',
+            keywords:
+              'Claude API,Claude gateway,official Anthropic channel,enterprise Claude API,AI gateway,smart cache,enterprise procurement,VAT invoice,GPT,Codex,Gemini',
+            subtitle:
+              'Stable access to Claude, Codex, GPT, Gemini, and other mainstream models',
+            headline: 'Loading console and plan data',
+            copy: 'The page is syncing site settings, sign-in state, and available plans. If it takes too long, check your network and refresh in a moment.',
+            tip1: 'Official channels first',
+            tip2: 'Enterprise procurement',
+            tip3: 'Subscriptions and manual delivery',
+            noscriptPrefix:
+              'This page requires JavaScript. Please enable scripts in your browser, or visit the',
+            noscriptLink: 'pricing page',
+            noscriptSuffix: 'to view available plans.',
+          },
+          fr: {
+            title: 'Claude API entreprise via canaux officiels | Nbility AI',
+            description:
+              'Nbility AI fournit un accès Claude API pour les entreprises via des canaux officiels, avec une connexion stable à Claude, une réduction des coûts par cache intelligent, la prise en charge des achats entreprise, des factures TVA et la compatibilité avec GPT, Codex et Gemini.',
+            keywords:
+              'Claude API,passerelle Claude,canal officiel Anthropic,Claude API entreprise,passerelle IA,cache intelligent,achat entreprise,facture TVA,GPT,Codex,Gemini',
+            subtitle:
+              'Accès stable à Claude, Codex, GPT, Gemini et aux modèles courants',
+            headline: 'Chargement de la console et des offres',
+            copy: 'La page synchronise la configuration du site, l’état de connexion et les offres disponibles. Si cela prend trop de temps, vérifiez votre réseau puis actualisez.',
+            tip1: 'Canaux officiels en priorité',
+            tip2: 'Achats entreprise',
+            tip3: 'Abonnements et livraison manuelle',
+            noscriptPrefix:
+              'Cette page nécessite JavaScript. Activez les scripts dans votre navigateur ou ouvrez la',
+            noscriptLink: 'page des offres',
+            noscriptSuffix: 'pour voir les plans disponibles.',
+          },
+          ru: {
+            title:
+              'Корпоративный Claude API через официальные каналы | Nbility AI',
+            description:
+              'Nbility AI предоставляет корпоративный доступ к Claude API через официальные каналы: стабильное подключение к Claude, снижение затрат за счет умного кэша, поддержка корпоративных закупок, счетов с НДС и совместимость с GPT, Codex и Gemini.',
+            keywords:
+              'Claude API,Claude шлюз,официальный канал Anthropic,корпоративный Claude API,AI шлюз,умный кэш,корпоративные закупки,счет с НДС,GPT,Codex,Gemini',
+            subtitle:
+              'Стабильный доступ к Claude, Codex, GPT, Gemini и другим популярным моделям',
+            headline: 'Загрузка консоли и тарифов',
+            copy: 'Страница синхронизирует настройки сайта, статус входа и доступные тарифы. Если загрузка затянулась, проверьте сеть и обновите страницу позже.',
+            tip1: 'Сначала официальные каналы',
+            tip2: 'Корпоративные закупки',
+            tip3: 'Подписки и ручная выдача',
+            noscriptPrefix:
+              'Для этой страницы нужен JavaScript. Включите выполнение скриптов в браузере или откройте',
+            noscriptLink: 'страницу тарифов',
+            noscriptSuffix: 'чтобы посмотреть доступные предложения.',
+          },
+          ja: {
+            title: '公式チャネル経由の法人向け Claude API | Nbility AI',
+            description:
+              'Nbility AI は公式チャネル経由で法人向け Claude API アクセスを提供し、安定した Claude 接続、キャッシュによるコスト削減、法人調達、適格請求書対応、さらに GPT・Codex・Gemini との互換性を備えています。',
+            keywords:
+              'Claude API,Claude gateway,Anthropic公式チャネル,法人向けClaude API,AIゲートウェイ,スマートキャッシュ,法人調達,適格請求書,GPT,Codex,Gemini',
+            subtitle: 'Claude、Codex、GPT、Gemini など主要モデルへ安定接続',
+            headline: 'コンソールとプラン情報を読み込み中',
+            copy: 'ページ初期化時にサイト設定、ログイン状態、販売中プランを同期します。時間がかかる場合はネットワークを確認してから再読み込みしてください。',
+            tip1: '公式チャネル優先',
+            tip2: '法人調達対応',
+            tip3: 'サブスクと手動配布を統合',
+            noscriptPrefix:
+              'このページの表示には JavaScript が必要です。ブラウザでスクリプトを有効にするか、',
+            noscriptLink: '料金ページ',
+            noscriptSuffix: 'で購入可能なプランをご確認ください。',
+          },
+          vi: {
+            title: 'Claude API doanh nghiệp qua kênh chính thức | Nbility AI',
+            description:
+              'Nbility AI cung cấp truy cập Claude API cho doanh nghiệp qua kênh chính thức, ưu tiên kết nối Claude ổn định, giảm chi phí bằng bộ nhớ đệm thông minh, hỗ trợ mua sắm doanh nghiệp, hóa đơn VAT và tương thích với GPT, Codex, Gemini.',
+            keywords:
+              'Claude API,cổng Claude,kênh Anthropic chính thức,Claude API doanh nghiệp,cổng AI,bộ nhớ đệm thông minh,mua sắm doanh nghiệp,hóa đơn VAT,GPT,Codex,Gemini',
+            subtitle:
+              'Truy cập ổn định tới Claude, Codex, GPT, Gemini và các mô hình phổ biến khác',
+            headline: 'Đang tải bảng điều khiển và gói dịch vụ',
+            copy: 'Trang đang đồng bộ cấu hình hệ thống, trạng thái đăng nhập và các gói đang bán. Nếu chờ quá lâu, hãy kiểm tra mạng rồi tải lại sau.',
+            tip1: 'Ưu tiên kênh chính thức',
+            tip2: 'Hỗ trợ mua sắm doanh nghiệp',
+            tip3: 'Gộp thuê bao và cấp phát thủ công',
+            noscriptPrefix:
+              'Trang này cần JavaScript để hoạt động. Vui lòng bật script trong trình duyệt hoặc truy cập',
+            noscriptLink: 'trang bảng giá',
+            noscriptSuffix: 'để xem các gói hiện có.',
+          },
+        };
+
+        function normalizeLanguage(language) {
+          if (!language) {
+            return 'zh-CN';
+          }
+          var normalized = String(language).trim().replace(/_/g, '-');
+          var lower = normalized.toLowerCase();
+
+          if (
+            lower === 'zh' ||
+            lower === 'zh-cn' ||
+            lower === 'zh-sg' ||
+            lower.indexOf('zh-hans') === 0
+          ) {
+            return 'zh-CN';
+          }
+          if (
+            lower === 'zh-tw' ||
+            lower === 'zh-hk' ||
+            lower === 'zh-mo' ||
+            lower.indexOf('zh-hant') === 0
+          ) {
+            return 'zh-TW';
+          }
+
+          for (var i = 0; i < SUPPORTED_LANGUAGES.length; i += 1) {
+            if (SUPPORTED_LANGUAGES[i].toLowerCase() === lower) {
+              return SUPPORTED_LANGUAGES[i];
+            }
+          }
+
+          return 'zh-CN';
+        }
+
+        function getInitialLanguage() {
+          try {
+            var cached = window.localStorage.getItem('i18nextLng');
+            var normalizedCached = normalizeLanguage(cached);
+            if (normalizedCached) {
+              return normalizedCached;
+            }
+          } catch (_) {}
+          return normalizeLanguage(window.navigator.language);
+        }
+
+        function setNodeText(id, value) {
+          var node = document.getElementById(id);
+          if (node) {
+            node.textContent = value;
+          }
+        }
+
+        function setMetaContent(id, value) {
+          var node = document.getElementById(id);
+          if (node) {
+            node.setAttribute('content', value);
+          }
+        }
+
+        var language = getInitialLanguage();
+        var copy = COPY[language] || COPY['zh-CN'];
+
+        document.documentElement.lang = language;
+        document.title = copy.title;
+
+        setMetaContent('meta-keywords', copy.keywords);
+        setMetaContent('meta-description', copy.description);
+        setMetaContent('meta-og-title', copy.title);
+        setMetaContent('meta-og-description', copy.description);
+        setMetaContent('meta-og-locale', OG_LOCALE_MAP[language] || 'zh_CN');
+        setMetaContent('meta-twitter-title', copy.title);
+        setMetaContent('meta-twitter-description', copy.description);
+        setMetaContent('meta-itemprop-name', copy.title);
+        setMetaContent('meta-itemprop-description', copy.description);
+
+        window.__FX_INDEX_COPY__ = copy;
+      })();
+    </script>
     <!--umami-->
     <!--Google Analytics-->
   </head>
+
+  <body>
+    <div id="root">
+      <div class="fx-shell">
+        <div class="fx-loading-card">
+          <div class="fx-brand">
+            <img src="/logo.png" alt="Nbility AI" />
+            <div>
+              <h1 class="fx-brand-title">Nbility AI</h1>
+              <p class="fx-brand-subtitle" id="fx-brand-subtitle">
+                稳定接入 Claude、Codex、GPT、Gemini 等常用模型
+              </p>
+            </div>
+          </div>
+          <p class="fx-loading-headline" id="fx-loading-headline">
+            正在加载控制台与套餐信息
+          </p>
+          <p class="fx-loading-copy" id="fx-loading-copy">
+            页面初始化时会同步站点配置、登录状态与可售套餐。若停留时间过长，请检查网络或稍后刷新重试。
+          </p>
+          <div class="fx-loading-bar" aria-hidden="true"></div>
+          <div class="fx-loading-tips" aria-hidden="true">
+            <div class="fx-tip" id="fx-tip-1">官方通道优先</div>
+            <div class="fx-tip" id="fx-tip-2">企业采购支持</div>
+            <div class="fx-tip" id="fx-tip-3">订阅与代发放整合</div>
+          </div>
+          <noscript>
+            <div class="fx-noscript" id="fx-noscript">
+              This page requires JavaScript. Please enable scripts in your
+              browser, or visit the
+              <a href="https://nbility.dev/pricing?currency=CNY"
+                >pricing page</a
+              >
+              to view available plans.
+            </div>
+          </noscript>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var copy = window.__FX_INDEX_COPY__;
+        if (!copy) {
+          return;
+        }
+
+        var subtitle = document.getElementById('fx-brand-subtitle');
+        var headline = document.getElementById('fx-loading-headline');
+        var loadingCopy = document.getElementById('fx-loading-copy');
+        var tip1 = document.getElementById('fx-tip-1');
+        var tip2 = document.getElementById('fx-tip-2');
+        var tip3 = document.getElementById('fx-tip-3');
+
+        if (subtitle) subtitle.textContent = copy.subtitle;
+        if (headline) headline.textContent = copy.headline;
+        if (loadingCopy) loadingCopy.textContent = copy.copy;
+        if (tip1) tip1.textContent = copy.tip1;
+        if (tip2) tip2.textContent = copy.tip2;
+        if (tip3) tip3.textContent = copy.tip3;
+      })();
+    </script>
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
 
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

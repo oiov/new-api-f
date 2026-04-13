@@ -64,6 +64,7 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	chatResp.Model = relaycommon.DisplayedResponseModelName(info, chatResp.Model)
 
 	if usage == nil || usage.TotalTokens == 0 {
 		text := service.ExtractOutputTextFromResponses(&responsesResp)
@@ -99,7 +100,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 	responseId := helper.GetResponseID(c)
 	createAt := time.Now().Unix()
-	model := info.UpstreamModelName
+	model := relaycommon.DisplayedResponseModelName(info, info.UpstreamModelName)
 
 	var (
 		usage       = &dto.Usage{}
@@ -311,7 +312,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		case "response.created":
 			if streamResp.Response != nil {
 				if streamResp.Response.Model != "" {
-					model = streamResp.Response.Model
+					model = relaycommon.DisplayedResponseModelName(info, streamResp.Response.Model)
 				}
 				if streamResp.Response.CreatedAt != 0 {
 					createAt = int64(streamResp.Response.CreatedAt)
@@ -436,7 +437,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		case "response.completed":
 			if streamResp.Response != nil {
 				if streamResp.Response.Model != "" {
-					model = streamResp.Response.Model
+					model = relaycommon.DisplayedResponseModelName(info, streamResp.Response.Model)
 				}
 				if streamResp.Response.CreatedAt != 0 {
 					createAt = int64(streamResp.Response.CreatedAt)

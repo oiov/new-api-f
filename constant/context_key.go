@@ -11,14 +11,16 @@ const (
 	ContextKeyRequestStartTime ContextKey = "request_start_time"
 
 	/* token related keys */
-	ContextKeyTokenUnlimited         ContextKey = "token_unlimited_quota"
-	ContextKeyTokenKey               ContextKey = "token_key"
-	ContextKeyTokenId                ContextKey = "token_id"
-	ContextKeyTokenGroup             ContextKey = "token_group"
-	ContextKeyTokenSpecificChannelId ContextKey = "specific_channel_id"
-	ContextKeyTokenModelLimitEnabled ContextKey = "token_model_limit_enabled"
-	ContextKeyTokenModelLimit        ContextKey = "token_model_limit"
-	ContextKeyTokenCrossGroupRetry   ContextKey = "token_cross_group_retry"
+	ContextKeyTokenUnlimited               ContextKey = "token_unlimited_quota"
+	ContextKeyTokenKey                     ContextKey = "token_key"
+	ContextKeyTokenId                      ContextKey = "token_id"
+	ContextKeyTokenGroup                   ContextKey = "token_group"
+	ContextKeyTokenSpecificChannelId       ContextKey = "specific_channel_id"
+	ContextKeyTokenSpecificChannelKeyIndex ContextKey = "specific_channel_key_index"
+	ContextKeyTokenModelLimitEnabled       ContextKey = "token_model_limit_enabled"
+	ContextKeyTokenModelLimit              ContextKey = "token_model_limit"
+	ContextKeyTokenCrossGroupRetry         ContextKey = "token_cross_group_retry"
+	ContextKeyPreferredSubscriptionId      ContextKey = "preferred_subscription_id"
 
 	/* channel related keys */
 	ContextKeyChannelId                ContextKey = "channel_id"

@@ -20,6 +20,8 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   API,
+  buildGroupOptions,
+  renderGroupOption,
   showError,
   showInfo,
   showSuccess,
@@ -184,12 +186,7 @@ const EditTagModal = (props) => {
       if (res === undefined) {
         return;
       }
-      setGroupOptions(
-        res.data.data.map((group) => ({
-          label: group,
-          value: group,
-        })),
-      );
+      setGroupOptions(buildGroupOptions(res.data.data));
     } catch (error) {
       showError(error.message);
     }
@@ -738,6 +735,7 @@ const EditTagModal = (props) => {
                       '请在系统设置页面编辑分组倍率以添加新的分组：',
                     )}
                     optionList={groupOptions}
+                    renderOptionItem={renderGroupOption}
                     style={{ width: '100%' }}
                     onChange={(value) => handleInputChange('groups', value)}
                   />

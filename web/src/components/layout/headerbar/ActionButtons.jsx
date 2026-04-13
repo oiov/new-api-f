@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import NewYearButton from './NewYearButton';
 import NotificationButton from './NotificationButton';
-import ThemeToggle from './ThemeToggle';
+import SiteNotificationButton from './SiteNotificationButton';
 import LanguageSelector from './LanguageSelector';
 import UserArea from './UserArea';
 
@@ -28,11 +28,8 @@ const ActionButtons = ({
   isNewYear,
   unreadCount,
   onNoticeOpen,
-  theme,
-  onThemeToggle,
   currentLang,
   onLanguageChange,
-  languageVersion,
   userState,
   isLoading,
   isMobile,
@@ -41,21 +38,26 @@ const ActionButtons = ({
   navigate,
   t,
 }) => {
+  const siteNotificationUnreadCount = Number(
+    userState?.user?.site_notification_unread_count || 0,
+  );
+
   return (
     <div className='flex items-center gap-2 md:gap-3'>
-      <NewYearButton isNewYear={isNewYear} />
+      <NewYearButton isNewYear={isNewYear} t={t} />
+
+      {userState?.user ? (
+        <SiteNotificationButton
+          unreadCount={siteNotificationUnreadCount}
+          onClick={() => navigate('/console/personal#site-notifications')}
+          t={t}
+        />
+      ) : null}
 
       <NotificationButton
         unreadCount={unreadCount}
         onNoticeOpen={onNoticeOpen}
         t={t}
-      />
-
-      <ThemeToggle
-        theme={theme}
-        onThemeToggle={onThemeToggle}
-        t={t}
-        languageVersion={languageVersion}
       />
 
       <LanguageSelector

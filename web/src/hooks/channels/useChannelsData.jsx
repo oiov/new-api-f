@@ -19,8 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import {
   API,
+  buildGroupOptions,
   showError,
   showInfo,
   showSuccess,
@@ -44,6 +46,10 @@ import { openCodexUsageModal } from '../../components/table/channels/modals/Code
 export const useChannelsData = () => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialKeyword = useMemo(() => {
+    return searchParams.get('keyword') || '';
+  }, []);
 
   // Basic states
   const [channels, setChannels] = useState([]);
@@ -54,6 +60,7 @@ export const useChannelsData = () => {
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [channelCount, setChannelCount] = useState(0);
   const [groupOptions, setGroupOptions] = useState([]);
+  const [urlKeywordProcessed, setUrlKeywordProcessed] = useState(false);
 
   // UI states
   const [showEdit, setShowEdit] = useState(false);
@@ -84,6 +91,7 @@ export const useChannelsData = () => {
   // Type tabs states
   const [activeTypeKey, setActiveTypeKey] = useState('all');
   const [typeCounts, setTypeCounts] = useState({});
+  const [activePackagePoolGroup, setActivePackagePoolGroup] = useState('');
 
   // Model test states
   const [showModelTestModal, setShowModelTestModal] = useState(false);
@@ -130,10 +138,21 @@ export const useChannelsData = () => {
   const [formApi, setFormApi] = useState(null);
 
   const formInitValues = {
-    searchKeyword: '',
+    searchKeyword: initialKeyword,
     searchGroup: '',
     searchModel: '',
   };
+
+  const PACKAGE_POOL_GROUPS = [
+    { value: 'sub_plan_claude_lite', label: 'Claude Lite' },
+    { value: 'sub_plan_claude_lite_day', label: 'Claude Lite Day' },
+    { value: 'sub_plan_claude_mini_plus', label: 'Claude Mini Plus' },
+    { value: 'sub_plan_claude_mini_max', label: 'Claude Mini Max' },
+    { value: 'sub_plan_claude_premium', label: 'Claude Premium' },
+    { value: 'sub_plan_claude_premium_plus', label: 'Claude Premium+' },
+    { value: 'sub_plan_claude_nano_day', label: 'Claude Nano Day' },
+  ];
+  const PACKAGE_POOL_GROUP_VALUES = PACKAGE_POOL_GROUPS.map((item) => item.value);
 
   // Column keys
   const COLUMN_KEYS = {
@@ -145,9 +164,10 @@ export const useChannelsData = () => {
     RESPONSE_TIME: 'response_time',
     BALANCE: 'balance',
     PRIORITY: 'priority',
-      WEIGHT: 'weight',
-      REQUEST_COUNT_TODAY: 'request_count_today',
-      OPERATE: 'operate',
+    WEIGHT: 'weight',
+    REQUEST_COUNT_TODAY: 'request_count_today',
+    REQUEST_LIMIT: 'request_limit',
+    OPERATE: 'operate',
   };
 
   // Initialize from localStorage
@@ -188,6 +208,7 @@ export const useChannelsData = () => {
       [COLUMN_KEYS.PRIORITY]: true,
       [COLUMN_KEYS.WEIGHT]: true,
       [COLUMN_KEYS.REQUEST_COUNT_TODAY]: true,
+      [COLUMN_KEYS.REQUEST_LIMIT]: true,
       [COLUMN_KEYS.OPERATE]: true,
     };
   };
@@ -313,6 +334,22 @@ export const useChannelsData = () => {
         tagChannelDates.request_count_today += Number(
           channels[i].request_count_today || 0,
         );
+        tagChannelDates.used_count =
+          Number(tagChannelDates.used_count || 0) +
+          Number(channels[i].used_count || 0);
+        const childMaxRequestCount = Number(channels[i].max_request_count || 0);
+        if (typeof tagChannelDates.max_request_count === 'undefined') {
+          tagChannelDates.max_request_count = childMaxRequestCount;
+        } else if (
+          Number(tagChannelDates.max_request_count || 0) > 0 &&
+          childMaxRequestCount > 0
+        ) {
+          tagChannelDates.max_request_count =
+            Number(tagChannelDates.max_request_count || 0) +
+            childMaxRequestCount;
+        } else {
+          tagChannelDates.max_request_count = 0;
+        }
       }
     }
     setChannels(channelDates);
@@ -322,40 +359,43 @@ export const useChannelsData = () => {
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
     return {
-      searchKeyword: formValues.searchKeyword || '',
-      searchGroup: formValues.searchGroup || '',
-      searchModel: formValues.searchModel || '',
+      searchKeyword:
+        typeof formValues.searchKeyword === 'string'
+          ? formValues.searchKeyword.trim()
+          : '',
+      searchGroup:
+        typeof formValues.searchGroup === 'string'
+          ? formValues.searchGroup.trim()
+          : '',
+      searchModel:
+        typeof formValues.searchModel === 'string'
+          ? formValues.searchModel.trim()
+          : '',
     };
   };
 
-  // Load channels
-  const loadChannels = async (
+  const syncActivePackagePoolGroup = (groupValue) => {
+    const normalizedGroup =
+      typeof groupValue === 'string' ? groupValue.trim() : '';
+    setActivePackagePoolGroup(
+      PACKAGE_POOL_GROUP_VALUES.includes(normalizedGroup) ? normalizedGroup : '',
+    );
+  };
+
+  const hasSearchFilters = (filters) =>
+    filters.searchKeyword !== '' ||
+    filters.searchGroup !== '' ||
+    filters.searchModel !== '';
+
+  const fetchChannelList = async (
     page,
     pageSize,
     idSort,
     enableTagMode,
     typeKey = activeTypeKey,
-    statusF,
+    statusF = statusFilter,
   ) => {
-    if (statusF === undefined) statusF = statusFilter;
-
-    const { searchKeyword, searchGroup, searchModel } = getFormValues();
-    if (searchKeyword !== '' || searchGroup !== '' || searchModel !== '') {
-      setLoading(true);
-      await searchChannels(
-        enableTagMode,
-        typeKey,
-        statusF,
-        page,
-        pageSize,
-        idSort,
-      );
-      setLoading(false);
-      return;
-    }
-
     const reqId = ++requestCounter.current;
-    setLoading(true);
     const typeParam = typeKey !== 'all' ? `&type=${typeKey}` : '';
     const statusParam = statusF !== 'all' ? `&status=${statusF}` : '';
     const res = await API.get(
@@ -363,7 +403,7 @@ export const useChannelsData = () => {
     );
 
     if (res === undefined || reqId !== requestCounter.current) {
-      return;
+      return false;
     }
 
     const { success, message, data } = res.data;
@@ -378,9 +418,42 @@ export const useChannelsData = () => {
       }
       setChannelFormat(items, enableTagMode);
       setChannelCount(total);
-    } else {
-      showError(message);
+      setActivePage(page);
+      return true;
     }
+
+    showError(message);
+    return false;
+  };
+
+  // Load channels
+  const loadChannels = async (
+    page,
+    pageSize,
+    idSort,
+    enableTagMode,
+    typeKey = activeTypeKey,
+    statusF,
+  ) => {
+    if (statusF === undefined) statusF = statusFilter;
+
+    const { searchKeyword, searchGroup, searchModel } = getFormValues();
+    if (hasSearchFilters({ searchKeyword, searchGroup, searchModel })) {
+      setLoading(true);
+      await searchChannels(
+        enableTagMode,
+        typeKey,
+        statusF,
+        page,
+        pageSize,
+        idSort,
+      );
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    await fetchChannelList(page, pageSize, idSort, enableTagMode, typeKey, statusF);
     setLoading(false);
   };
 
@@ -392,12 +465,14 @@ export const useChannelsData = () => {
     page = 1,
     pageSz = pageSize,
     sortFlag = idSort,
+    filtersOverride = null,
   ) => {
-    const { searchKeyword, searchGroup, searchModel } = getFormValues();
+    const { searchKeyword, searchGroup, searchModel } =
+      filtersOverride || getFormValues();
     setSearching(true);
     try {
-      if (searchKeyword === '' && searchGroup === '' && searchModel === '') {
-        await loadChannels(
+      if (!hasSearchFilters({ searchKeyword, searchGroup, searchModel })) {
+        await fetchChannelList(
           page,
           pageSz,
           sortFlag,
@@ -447,6 +522,71 @@ export const useChannelsData = () => {
         idSort,
       );
     }
+  };
+
+  const applyPackagePoolFilter = async (groupValue) => {
+    if (!formApi) {
+      return;
+    }
+    const nextGroup = String(groupValue || '').trim();
+    const currentFilters = getFormValues();
+    const nextFilters = {
+      ...currentFilters,
+      searchGroup: nextGroup,
+    };
+    formApi.setValue('searchGroup', nextGroup || null);
+    syncActivePackagePoolGroup(nextGroup);
+    setActivePage(1);
+    await searchChannels(
+      enableTagMode,
+      activeTypeKey,
+      statusFilter,
+      1,
+      pageSize,
+      idSort,
+      nextFilters,
+    );
+  };
+
+  const handleSearchGroupChange = async (groupValue) => {
+    if (!formApi) {
+      return;
+    }
+    const nextGroup = String(groupValue || '').trim();
+    const currentFilters = getFormValues();
+    const nextFilters = {
+      ...currentFilters,
+      searchGroup: nextGroup,
+    };
+    syncActivePackagePoolGroup(nextGroup);
+    setActivePage(1);
+    await searchChannels(
+      enableTagMode,
+      activeTypeKey,
+      statusFilter,
+      1,
+      pageSize,
+      idSort,
+      nextFilters,
+    );
+  };
+
+  const resetSearchFilters = async () => {
+    if (formApi) {
+      formApi.reset();
+    }
+    syncActivePackagePoolGroup('');
+    setActivePage(1);
+    setLoading(true);
+    await fetchChannelList(
+      1,
+      pageSize,
+      idSort,
+      enableTagMode,
+      activeTypeKey,
+      statusFilter,
+    );
+    setLoading(false);
   };
 
   const upstreamUpdates = useChannelUpstreamUpdates({ t, refresh });
@@ -574,16 +714,49 @@ export const useChannelsData = () => {
     try {
       let res = await API.get(`/api/group/`);
       if (res === undefined) return;
-      setGroupOptions(
-        res.data.data.map((group) => ({
-          label: group,
-          value: group,
-        })),
-      );
+      setGroupOptions(buildGroupOptions(res.data.data));
     } catch (error) {
       showError(error.message);
     }
   };
+
+  useEffect(() => {
+    syncActivePackagePoolGroup(getFormValues().searchGroup);
+  }, [formApi]);
+
+  useEffect(() => {
+    if (initialKeyword && formApi && !urlKeywordProcessed) {
+      setUrlKeywordProcessed(true);
+      formApi.setValue('searchKeyword', initialKeyword);
+      searchChannels(
+        enableTagMode,
+        activeTypeKey,
+        statusFilter,
+        1,
+        pageSize,
+        idSort,
+        {
+          ...getFormValues(),
+          searchKeyword: initialKeyword,
+        },
+      )
+        .then(() => {
+          setSearchParams({});
+        })
+        .catch((reason) => {
+          showError(reason);
+        });
+    }
+  }, [
+    activeTypeKey,
+    enableTagMode,
+    formApi,
+    idSort,
+    initialKeyword,
+    pageSize,
+    statusFilter,
+    urlKeywordProcessed,
+  ]);
 
   // Copy channel
   const copySelectedChannel = async (record) => {
@@ -733,7 +906,9 @@ export const useChannelsData = () => {
 
   const batchSetChannelModelMapping = async () => {
     if (enableTagMode) {
-      showError(t('标签聚合模式下不支持批量修改模型映射，请先关闭标签聚合模式。'));
+      showError(
+        t('标签聚合模式下不支持批量修改模型映射，请先关闭标签聚合模式。'),
+      );
       return;
     }
     if (selectedChannels.length === 0) {
@@ -1124,7 +1299,9 @@ export const useChannelsData = () => {
       for (let i = 0; i < channelsToTest.length; i += concurrencyLimit) {
         const batch = channelsToTest.slice(i, i + concurrencyLimit);
         const batchResults = await Promise.all(
-          batch.map((channel) => testChannel(channel, '', '', false, { silent: true })),
+          batch.map((channel) =>
+            testChannel(channel, '', '', false, { silent: true }),
+          ),
         );
         batchResults.forEach((result) => {
           if (result?.success) {
@@ -1417,6 +1594,8 @@ export const useChannelsData = () => {
     formApi,
     setFormApi,
     formInitValues,
+    PACKAGE_POOL_GROUPS,
+    activePackagePoolGroup,
 
     // Helpers
     t,
@@ -1426,6 +1605,9 @@ export const useChannelsData = () => {
     loadChannels,
     searchChannels,
     refresh,
+    applyPackagePoolFilter,
+    handleSearchGroupChange,
+    resetSearchFilters,
     manageChannel,
     manageTag,
     handlePageChange,

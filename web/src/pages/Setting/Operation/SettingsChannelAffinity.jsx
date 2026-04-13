@@ -562,7 +562,7 @@ export default function SettingsChannelAffinity(props) {
       render: (_, record) => {
         const name = (record?.name || '').trim();
         if (!name || !record?.include_rule_name) {
-          return <Text type='tertiary'>N/A</Text>;
+          return <Text type='tertiary'>{t('暂无')}</Text>;
         }
         const n = Number(cacheStats?.by_rule_name?.[name] || 0);
         return <Text>{n}</Text>;
@@ -910,7 +910,7 @@ export default function SettingsChannelAffinity(props) {
                   field={KEY_MAX_ENTRIES}
                   label={t('最大条目数')}
                   min={0}
-                  placeholder='例如 100000…'
+                  placeholder={t('例如 100000…')}
                   extraText={
                     <Text type='tertiary' size='small'>
                       {t(
@@ -931,7 +931,7 @@ export default function SettingsChannelAffinity(props) {
                   field={KEY_DEFAULT_TTL}
                   label={t('默认 TTL（秒）')}
                   min={0}
-                  placeholder='例如 3600…'
+                  placeholder={t('例如 3600…')}
                   extraText={
                     <Text type='tertiary' size='small'>
                       {t(

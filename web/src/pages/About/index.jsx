@@ -157,7 +157,7 @@ const About = () => {
           rel='noopener noreferrer'
           className='!text-semi-color-primary'
         >
-          NewAPI
+          {t('NewAPI')}
         </a>{' '}
         {t('© {{currentYear}}', { currentYear })}{' '}
         <a
@@ -166,7 +166,7 @@ const About = () => {
           rel='noopener noreferrer'
           className='!text-semi-color-primary'
         >
-          QuantumNous
+          {t('QuantumNous')}
         </a>{' '}
         {t('| 基于')}{' '}
         <a
@@ -175,16 +175,16 @@ const About = () => {
           rel='noopener noreferrer'
           className='!text-semi-color-primary'
         >
-          One API v0.5.4
+          {t('One API v0.5.4')}
         </a>{' '}
-        © 2023{' '}
+        {t('© 2023')}{' '}
         <a
           href='https://github.com/songquanpeng'
           target='_blank'
           rel='noopener noreferrer'
           className='!text-semi-color-primary'
         >
-          JustSong
+          {t('JustSong')}
         </a>
       </p>
       <p>
@@ -220,7 +220,7 @@ const About = () => {
           src={about}
           enableCache={true}
           cacheKey='public-status-frame'
-          title='About Content Frame'
+          title={t('关于内容框架')}
           onLoad={() => {
             syncIframeState();
           }}

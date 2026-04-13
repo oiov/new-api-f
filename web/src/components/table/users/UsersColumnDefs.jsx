@@ -36,7 +36,10 @@ import {
   renderQuota,
   showError,
   showSuccess,
+  timestamp2string,
 } from '../../../helpers';
+
+const { Text } = Typography;
 
 /**
  * Render user role
@@ -221,7 +224,7 @@ const renderInviteInfo = (text, record, t) => {
             className='!text-xs cursor-pointer'
             onClick={handleCopyAffCode}
           >
-            AFF: {record.aff_code || '-'}
+            {t('邀请返佣码')}: {record.aff_code || '-'}
           </Tag>
         </Tooltip>
         <Tag color='white' shape='circle' className='!text-xs'>
@@ -261,6 +264,7 @@ const renderOperations = (
     showUserHistoryModal,
     resetAffCount,
     setAffCount,
+    sendSiteNotification,
     t,
   },
 ) => {
@@ -306,6 +310,11 @@ const renderOperations = (
       node: 'item',
       name: t('订阅管理'),
       onClick: () => showUserSubscriptionsModal(record),
+    },
+    {
+      node: 'item',
+      name: t('发送站内信'),
+      onClick: () => sendSiteNotification(record),
     },
     {
       node: 'item',
@@ -394,6 +403,7 @@ export const getUsersColumns = ({
   showUserHistoryModal,
   resetAffCount,
   setAffCount,
+  sendSiteNotification,
 }) => {
   return [
     {
@@ -404,6 +414,26 @@ export const getUsersColumns = ({
       title: t('用户名'),
       dataIndex: 'username',
       render: (text, record) => renderUsername(text, record),
+    },
+    {
+      title: t('注册时间'),
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 160,
+      render: (value) => {
+        if (!value) {
+          return <Text type='tertiary'>—</Text>;
+        }
+        return (
+          <Text
+            type='secondary'
+            ellipsis={{ showTooltip: true, tooltipMaxWidth: 200 }}
+            style={{ display: 'block', maxWidth: 150 }}
+          >
+            {timestamp2string(value)}
+          </Text>
+        );
+      },
     },
     {
       title: t('状态'),
@@ -454,6 +484,7 @@ export const getUsersColumns = ({
           showUserHistoryModal,
           resetAffCount,
           setAffCount,
+          sendSiteNotification,
           t,
         }),
     },

@@ -57,17 +57,21 @@ const createDefaultSidebarModulesAdmin = () => ({
     about: true,
     contact: true,
   },
-  admin: {
-    enabled: true,
-    channel: true,
-    models: true,
-    deployment: true,
+    admin: {
+      enabled: true,
+      channel: true,
+      models: true,
+      deployment: true,
     redemption: true,
+    tokenAdmin: true,
     user: true,
-    subscription: true,
-    setting: true,
-    riskControl: true,
-  },
+      subscription: true,
+      setting: true,
+      riskControl: true,
+      invoiceAdmin: true,
+      financeAdmin: true,
+      checkinAdmin: true,
+    },
 });
 
 const normalizeSidebarModulesAdmin = (modules) => {
@@ -275,6 +279,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           title: t('兑换码管理'),
           description: t('兑换码生成管理'),
         },
+        {
+          key: 'tokenAdmin',
+          title: t('管理员令牌'),
+          description: t('查看所有用户令牌'),
+        },
         { key: 'user', title: t('用户管理'), description: t('用户账户管理') },
         {
           key: 'setting',
@@ -285,6 +294,21 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'riskControl',
           title: t('风险封控'),
           description: t('防分发策略与命中记录'),
+        },
+        {
+          key: 'invoiceAdmin',
+          title: t('发票开具'),
+          description: t('查看和处理发票申请'),
+        },
+        {
+          key: 'financeAdmin',
+          title: t('财务中心'),
+          description: t('查看收入、开票与订单分析看板'),
+        },
+        {
+          key: 'checkinAdmin',
+          title: t('签到管理'),
+          description: t('查看全部用户签到记录'),
         },
       ],
     },

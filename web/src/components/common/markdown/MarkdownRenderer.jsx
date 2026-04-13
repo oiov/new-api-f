@@ -151,7 +151,7 @@ export function Mermaid(props) {
   );
 }
 
-function SandboxedHtmlPreview({ code }) {
+function SandboxedHtmlPreview({ code, t }) {
   const iframeRef = useRef(null);
   const [iframeHeight, setIframeHeight] = useState(() => readHtmlPreviewHeight(code));
 
@@ -187,7 +187,7 @@ function SandboxedHtmlPreview({ code }) {
       ref={iframeRef}
       sandbox='allow-same-origin'
       srcDoc={code}
-      title='HTML Preview'
+      title={t('HTML预览')}
       loading='lazy'
       style={{
         width: '100%',
@@ -333,9 +333,9 @@ export function PreCode(props) {
               color: 'var(--semi-color-text-2)',
             }}
           >
-            HTML预览:
+            {t('HTML预览')}:
           </div>
-          <SandboxedHtmlPreview code={htmlCode} />
+          <SandboxedHtmlPreview code={htmlCode} t={t} />
         </div>
       )}
     </>
@@ -711,6 +711,7 @@ export function MarkdownRenderer(props) {
     previousContentLength = 0,
     ...otherProps
   } = props;
+  const { t } = useTranslation();
 
   return (
     <div
@@ -745,7 +746,7 @@ export function MarkdownRenderer(props) {
               animation: 'spin 1s linear infinite',
             }}
           />
-          正在渲染...
+          {t('正在渲染...')}
         </div>
       ) : (
         <MarkdownContent

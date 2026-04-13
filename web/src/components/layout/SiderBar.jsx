@@ -35,8 +35,14 @@ const routerMap = {
   channel: '/console/channel',
   package: '/console/package',
   token: '/console/token',
+  tokenAdmin: '/console/token/admin',
+  ecomagent: '/console/ecomagent',
   redemption: '/console/redemption',
   topup: '/console/topup',
+  invoice: '/console/invoice',
+  invoiceAdmin: '/console/invoice-admin',
+  checkinAdmin: '/console/checkin-admin',
+  financeAdmin: '/console/finance',
   invite: '/console/invite',
   user: '/console/user',
   subscription: '/console/subscription',
@@ -53,6 +59,7 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
+  siteNotifications: '/console/personal#site-notifications',
 };
 
 const SiderBar = ({ onNavigate = () => { } }) => {
@@ -139,6 +146,11 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         to: '/topup',
       },
       {
+        text: t('发票管理'),
+        itemKey: 'invoice',
+        to: '/invoice',
+      },
+      {
         text: t('邀请拉新'),
         itemKey: 'invite',
         to: '/invite',
@@ -147,6 +159,11 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         text: t('个人设置'),
         itemKey: 'personal',
         to: '/personal',
+      },
+      {
+        text: t('站内信'),
+        itemKey: 'siteNotifications',
+        to: '/personal#site-notifications',
       },
     ];
 
@@ -162,7 +179,17 @@ const SiderBar = ({ onNavigate = () => { } }) => {
   const publicItems = useMemo(() => {
     const items = [
       {
-        text: t('状态'),
+        text: t('价格方案'),
+        itemKey: 'pricing',
+        to: '/pricing',
+      },
+      {
+        text: t('开发文档'),
+        itemKey: 'docs',
+        to: '/docs',
+      },
+      {
+        text: t('系统状态'),
         itemKey: 'about',
         to: '/status',
       },
@@ -213,6 +240,18 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {
+        text: t('管理员令牌'),
+        itemKey: 'tokenAdmin',
+        to: '/console/token/admin',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('EcomAgent账户'),
+        itemKey: 'ecomagent',
+        to: '/console/ecomagent',
+        className: isRoot() ? '' : 'tableHiddle',
+      },
+      {
         text: t('用户管理'),
         itemKey: 'user',
         to: '/user',
@@ -229,6 +268,24 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         itemKey: 'riskControl',
         to: '/risk-control',
         className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('发票开具'),
+        itemKey: 'invoiceAdmin',
+        to: '/console/invoice-admin',
+        className: isRoot() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('财务中心'),
+        itemKey: 'financeAdmin',
+        to: '/console/finance',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('签到管理'),
+        itemKey: 'checkinAdmin',
+        to: '/console/checkin-admin',
+        className: isRoot() ? '' : 'tableHiddle',
       },
     ];
 

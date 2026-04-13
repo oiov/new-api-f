@@ -63,13 +63,12 @@ const OAuth2Callback = (props) => {
         const authIntent = localStorage.getItem('oauth_auth_intent');
         localStorage.removeItem('oauth_auth_intent');
         userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
         setUserData(data);
         updateAPI();
         showSuccess(
           authIntent === 'register' ? t('注册成功！') : t('登录成功！'),
         );
-        navigate('/console/package');
+        navigate('/console');
       }
     } catch (error) {
       // 网络错误等可重试

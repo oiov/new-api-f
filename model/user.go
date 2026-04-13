@@ -127,6 +127,8 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	defaultConfig["personal"] = map[string]interface{}{
 		"enabled":  true,
 		"topup":    true,
+		"invoice":  true,
+		"invite":   true,
 		"personal": true,
 	}
 
@@ -134,22 +136,34 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	if userRole == common.RoleAdminUser {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    false, // 管理员不能访问系统设置
+			"enabled":      true,
+			"channel":      true,
+			"subscription": true,
+			"models":       true,
+			"deployment":   true,
+			"redemption":   true,
+			"tokenAdmin":   true,
+			"user":         true,
+			"riskControl":  true,
+			"setting":      false, // 管理员不能访问系统设置
+			"invoiceAdmin": false,
+			"checkinAdmin": false,
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    true,
+			"enabled":      true,
+			"channel":      true,
+			"subscription": true,
+			"models":       true,
+			"deployment":   true,
+			"redemption":   true,
+			"tokenAdmin":   true,
+			"user":         true,
+			"riskControl":  true,
+			"setting":      true,
+			"invoiceAdmin": true,
+			"checkinAdmin": true,
 		}
 	}
 	// 普通用户不包含admin区域
@@ -342,7 +356,7 @@ func SearchUsers(keyword string, group string, startIdx int, num int, sortBy str
 	}()
 
 	// 构建基础查询
-	query := tx.Unscoped().Model(&User{})
+	query := tx.Model(&User{})
 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"

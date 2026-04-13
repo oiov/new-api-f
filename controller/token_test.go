@@ -24,14 +24,18 @@ type tokenAPIResponse struct {
 }
 
 type tokenPageResponse struct {
+	Page  int                 `json:"page"`
+	Total int                 `json:"total"`
 	Items []tokenResponseItem `json:"items"`
 }
 
 type tokenResponseItem struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Key    string `json:"key"`
-	Status int    `json:"status"`
+	ID       int    `json:"id"`
+	UserID   int    `json:"user_id"`
+	Username string `json:"username"`
+	Name     string `json:"name"`
+	Key      string `json:"key"`
+	Status   int    `json:"status"`
 }
 
 type tokenKeyResponse struct {
@@ -54,9 +58,13 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	}
 	model.DB = db
 	model.LOG_DB = db
+	model.InitChannelCache()
 
 	if err := db.AutoMigrate(&model.Token{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
+	}
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		t.Fatalf("failed to migrate user table: %v", err)
 	}
 
 	t.Cleanup(func() {
@@ -93,6 +101,25 @@ func seedTokenWithStatus(t *testing.T, db *gorm.DB, userID int, name string, raw
 func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string) *model.Token {
 	t.Helper()
 	return seedTokenWithStatus(t, db, userID, name, rawKey, common.TokenStatusEnabled)
+}
+
+func seedUser(t *testing.T, db *gorm.DB, userID int, username string, role int) *model.User {
+	t.Helper()
+
+	user := &model.User{
+		Id:          userID,
+		Username:    username,
+		Password:    "password123",
+		DisplayName: username,
+		Role:        role,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		AffCode:     fmt.Sprintf("aff_%d", userID),
+	}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	return user
 }
 
 func newAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (*gin.Context, *httptest.ResponseRecorder) {
@@ -181,6 +208,83 @@ func TestSearchTokensMasksKeyInResponse(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("search response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestSearchTokensSupportsCompositeFilters(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+
+	target := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-key", common.TokenStatusEnabled)
+	target.Group = "claude"
+	target.UnlimitedQuota = false
+	target.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(target).Error; err != nil {
+		t.Fatalf("failed to update target token: %v", err)
+	}
+
+	otherStatus := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-disabled-key", common.TokenStatusDisabled)
+	otherStatus.Group = "claude"
+	otherStatus.UnlimitedQuota = false
+	otherStatus.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(otherStatus).Error; err != nil {
+		t.Fatalf("failed to update status token: %v", err)
+	}
+
+	otherGroup := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-default-key", common.TokenStatusEnabled)
+	otherGroup.Group = "default"
+	otherGroup.UnlimitedQuota = false
+	otherGroup.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(otherGroup).Error; err != nil {
+		t.Fatalf("failed to update group token: %v", err)
+	}
+
+	expiredToken := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-expired-key", common.TokenStatusEnabled)
+	expiredToken.Group = "claude"
+	expiredToken.UnlimitedQuota = false
+	expiredToken.ExpiredTime = common.GetTimestamp() - 3600
+	if err := db.Save(expiredToken).Error; err != nil {
+		t.Fatalf("failed to update expired token: %v", err)
+	}
+
+	unlimitedToken := seedTokenWithStatus(t, db, 1, "claude-status", "claude-status-unlimited-key", common.TokenStatusEnabled)
+	unlimitedToken.Group = "claude"
+	unlimitedToken.UnlimitedQuota = true
+	unlimitedToken.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(unlimitedToken).Error; err != nil {
+		t.Fatalf("failed to update unlimited token: %v", err)
+	}
+
+	otherUser := seedTokenWithStatus(t, db, 2, "claude-status", "other-user-key", common.TokenStatusEnabled)
+	otherUser.Group = "claude"
+	otherUser.UnlimitedQuota = false
+	otherUser.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(otherUser).Error; err != nil {
+		t.Fatalf("failed to update other user token: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/token/search?keyword=claude-status&status=1&group=claude&expired_state=not_expired&unlimited_state=limited&p=1&size=10",
+		nil,
+		1,
+	)
+	SearchTokens(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var page tokenPageResponse
+	if err := common.Unmarshal(response.Data, &page); err != nil {
+		t.Fatalf("failed to decode composite search response: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("expected exactly one composite search result, got total=%d items=%d", page.Total, len(page.Items))
+	}
+	if page.Items[0].ID != target.Id {
+		t.Fatalf("expected target token, got %+v", page.Items[0])
 	}
 }
 
@@ -299,8 +403,10 @@ func TestDeleteInvalidTokenBatchDeletesAllFilteredInvalidTokens(t *testing.T) {
 	seedTokenWithStatus(t, db, 2, "expired-a", "other-user-expired-key", common.TokenStatusExpired)
 
 	body := map[string]any{
-		"keyword": "expired%",
-		"token":   "",
+		"keyword":         "expired%",
+		"token":           "",
+		"group":           "default",
+		"unlimited_state": "limited",
 	}
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/batch/invalid", body, 1)
 	DeleteInvalidTokenBatch(ctx)
@@ -314,20 +420,176 @@ func TestDeleteInvalidTokenBatchDeletesAllFilteredInvalidTokens(t *testing.T) {
 	if err := common.Unmarshal(response.Data, &deletedCount); err != nil {
 		t.Fatalf("failed to decode delete count: %v", err)
 	}
-	if deletedCount != 4 {
-		t.Fatalf("expected 4 deleted tokens, got %d", deletedCount)
+	if deletedCount != 1 {
+		t.Fatalf("expected 1 deleted token, got %d", deletedCount)
 	}
 
 	var remaining []model.Token
 	if err := db.Order("id asc").Find(&remaining).Error; err != nil {
 		t.Fatalf("failed to query remaining tokens: %v", err)
 	}
-	if len(remaining) != 3 {
-		t.Fatalf("expected 3 remaining tokens, got %d", len(remaining))
+	if len(remaining) != 6 {
+		t.Fatalf("expected 6 remaining tokens, got %d", len(remaining))
 	}
 	for _, token := range remaining {
-		if token.UserId == 1 && strings.HasPrefix(token.Name, "expired") {
+		if token.UserId == 1 && token.Name == "expired-d" {
 			t.Fatalf("filtered invalid token should have been deleted: %+v", token)
 		}
+	}
+}
+
+func TestGetAllTokensByAdminReturnsAllUsersWithMaskedKeys(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	admin := seedUser(t, db, 100, "admin", common.RoleAdminUser)
+	userA := seedUser(t, db, 1, "alice", common.RoleCommonUser)
+	userB := seedUser(t, db, 2, "bob", common.RoleCommonUser)
+	tokenA := seedToken(t, db, userA.Id, "alice-token", "alice1234token5678")
+	tokenB := seedToken(t, db, userB.Id, "bob-token", "bob1234token5678")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/admin?p=1&size=10", nil, admin.Id)
+	GetAllTokensByAdmin(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var page tokenPageResponse
+	if err := common.Unmarshal(response.Data, &page); err != nil {
+		t.Fatalf("failed to decode admin token page response: %v", err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("expected total 2, got %d", page.Total)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 tokens, got %d", len(page.Items))
+	}
+	if page.Items[0].Username != userB.Username || page.Items[0].UserID != userB.Id {
+		t.Fatalf("expected newest token to belong to bob, got %+v", page.Items[0])
+	}
+	if page.Items[1].Username != userA.Username || page.Items[1].UserID != userA.Id {
+		t.Fatalf("expected older token to belong to alice, got %+v", page.Items[1])
+	}
+	if page.Items[0].Key != tokenB.GetMaskedKey() || page.Items[1].Key != tokenA.GetMaskedKey() {
+		t.Fatalf("expected masked keys, got %+v", page.Items)
+	}
+	if strings.Contains(recorder.Body.String(), tokenA.Key) || strings.Contains(recorder.Body.String(), tokenB.Key) {
+		t.Fatalf("admin list response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestSearchTokensByAdminSupportsUsernameTokenAndPagination(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	admin := seedUser(t, db, 100, "admin", common.RoleAdminUser)
+	userA := seedUser(t, db, 1, "alice", common.RoleCommonUser)
+	userB := seedUser(t, db, 2, "bob", common.RoleCommonUser)
+	seedToken(t, db, userA.Id, "alice-first", "alice-first-key-1234")
+	target := seedToken(t, db, userA.Id, "alice-second", "alice-second-key-5678")
+	seedToken(t, db, userB.Id, "bob-only", "bob-only-key-9999")
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/token/admin/search?username=alice&token=alice-second-key-5678&p=1&size=1",
+		nil,
+		admin.Id,
+	)
+	SearchTokensByAdmin(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var page tokenPageResponse
+	if err := common.Unmarshal(response.Data, &page); err != nil {
+		t.Fatalf("failed to decode admin search token page response: %v", err)
+	}
+	if page.Page != 1 {
+		t.Fatalf("expected page 1, got %d", page.Page)
+	}
+	if page.Total != 1 {
+		t.Fatalf("expected total 1, got %d", page.Total)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("expected 1 token, got %d", len(page.Items))
+	}
+	if page.Items[0].ID != target.Id || page.Items[0].Username != userA.Username {
+		t.Fatalf("expected alice-second token, got %+v", page.Items[0])
+	}
+	if page.Items[0].Key != target.GetMaskedKey() {
+		t.Fatalf("expected masked key %q, got %q", target.GetMaskedKey(), page.Items[0].Key)
+	}
+	if strings.Contains(recorder.Body.String(), target.Key) {
+		t.Fatalf("admin search response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestSearchTokensByAdminSupportsCompositeFilters(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	admin := seedUser(t, db, 100, "admin", common.RoleAdminUser)
+	userA := seedUser(t, db, 1, "alice", common.RoleCommonUser)
+	userB := seedUser(t, db, 2, "bob", common.RoleCommonUser)
+
+	target := seedTokenWithStatus(t, db, userA.Id, "alpha-token", "alpha-token-key-1234", common.TokenStatusEnabled)
+	target.Group = "vip"
+	target.CreatedTime = 200
+	target.ExpiredTime = common.GetTimestamp() + 3600
+	if err := db.Save(target).Error; err != nil {
+		t.Fatalf("failed to update target token: %v", err)
+	}
+
+	otherStatus := seedTokenWithStatus(t, db, userA.Id, "alpha-token", "alpha-token-key-2222", common.TokenStatusDisabled)
+	otherStatus.Group = "vip"
+	otherStatus.CreatedTime = 200
+	if err := db.Save(otherStatus).Error; err != nil {
+		t.Fatalf("failed to update otherStatus token: %v", err)
+	}
+
+	otherGroup := seedTokenWithStatus(t, db, userA.Id, "alpha-token", "alpha-token-key-3333", common.TokenStatusEnabled)
+	otherGroup.Group = "default"
+	otherGroup.CreatedTime = 200
+	if err := db.Save(otherGroup).Error; err != nil {
+		t.Fatalf("failed to update otherGroup token: %v", err)
+	}
+
+	expiredToken := seedTokenWithStatus(t, db, userA.Id, "alpha-token", "alpha-token-key-4444", common.TokenStatusEnabled)
+	expiredToken.Group = "vip"
+	expiredToken.CreatedTime = 200
+	expiredToken.ExpiredTime = common.GetTimestamp() - 3600
+	if err := db.Save(expiredToken).Error; err != nil {
+		t.Fatalf("failed to update expired token: %v", err)
+	}
+
+	otherUser := seedTokenWithStatus(t, db, userB.Id, "alpha-token", "alpha-token-key-5555", common.TokenStatusEnabled)
+	otherUser.Group = "vip"
+	otherUser.CreatedTime = 200
+	if err := db.Save(otherUser).Error; err != nil {
+		t.Fatalf("failed to update otherUser token: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/token/admin/search?username=alice&token_name=alpha-token&status=1&group=vip&expired_state=not_expired&start_timestamp=150&end_timestamp=250&p=1&size=10",
+		nil,
+		admin.Id,
+	)
+	SearchTokensByAdmin(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var page tokenPageResponse
+	if err := common.Unmarshal(response.Data, &page); err != nil {
+		t.Fatalf("failed to decode composite admin search response: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("expected exactly one composite search result, got total=%d items=%d", page.Total, len(page.Items))
+	}
+	if page.Items[0].ID != target.Id || page.Items[0].Username != userA.Username {
+		t.Fatalf("expected target token, got %+v", page.Items[0])
 	}
 }

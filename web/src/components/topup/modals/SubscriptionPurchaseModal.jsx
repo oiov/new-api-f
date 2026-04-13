@@ -20,27 +20,78 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import {
   Banner,
+  Collapse,
   Modal,
   Typography,
-  Card,
   Button,
   Select,
-  Divider,
-  Tooltip,
+  Tag,
 } from '@douyinfe/semi-ui';
-import { Crown, CalendarClock, Package } from 'lucide-react';
+import { Crown, Package, Sparkles } from 'lucide-react';
 import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
-import { renderQuota } from '../../../helpers';
-import { getCurrencyConfig } from '../../../helpers/render';
 import {
-  formatSubscriptionDuration,
-  formatSubscriptionResetPeriod,
-  getSubscriptionEffectivePrice,
+  formatSubscriptionSellingDuration,
+  getClaudeMonthlyMarketingSubtitle,
+  getSubscriptionDailyPriceDisplay,
+  getSubscriptionPriceDisplay,
+  getSubscriptionResourceType,
+  getSubscriptionUsageSummary,
+  isClaudeMonthlySubscriptionPlan,
+  isSubscriptionClaudePlan,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
+
+function getPlanComputedSubtitle(plan, t, symbol, effectivePrice) {
+  if (!plan) {
+    return t('以套餐配置为准');
+  }
+
+  const claudeMonthlySubtitle = getClaudeMonthlyMarketingSubtitle(plan, t);
+  if (claudeMonthlySubtitle) {
+    return claudeMonthlySubtitle;
+  }
+
+  const resourceType = getSubscriptionResourceType(plan);
+  if (resourceType !== 'request_count') {
+    return plan.subtitle || t('以套餐配置为准');
+  }
+
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const durationText = formatSubscriptionSellingDuration(plan, t);
+  const subtitleParts = [];
+
+  if (!usageSummary.unlimited && usageSummary.total > 0) {
+    subtitleParts.push(
+      t('总计 {{count}} 次', {
+        count: usageSummary.total,
+      }),
+    );
+  }
+
+  subtitleParts.push(
+    t('有效期 {{duration}}', {
+      duration: durationText,
+    }),
+  );
+
+  const pricePerRequest =
+    usageSummary.total > 0
+      ? Number(effectivePrice || 0) / usageSummary.total
+      : 0;
+
+  if (pricePerRequest > 0) {
+    subtitleParts.push(
+      t('折合约 {{price}}/次', {
+        price: `${symbol}${pricePerRequest.toFixed(4)}`,
+      }),
+    );
+  }
+
+  return subtitleParts.join('，');
+}
 
 const SubscriptionPurchaseModal = ({
   t,
@@ -60,14 +111,14 @@ const SubscriptionPurchaseModal = ({
   onPayEpay,
 }) => {
   const plan = selectedPlan?.plan;
-  const totalAmount = Number(plan?.total_amount || 0);
-  const { symbol, rate } = getCurrencyConfig();
-  const price = plan ? getSubscriptionEffectivePrice(plan) : 0;
+  const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
+  const { symbol, effectivePrice, originalPrice } =
+    getSubscriptionPriceDisplay(plan);
   const hasActiveDiscount = isSubscriptionDiscountActive(plan);
-  const convertedPrice = price * rate;
-  const displayPrice = convertedPrice.toFixed(
-    Number.isInteger(convertedPrice) ? 0 : 2,
+  const displayPrice = effectivePrice.toFixed(
+    Number.isInteger(effectivePrice) ? 0 : 2,
   );
+  const computedSubtitle = getPlanComputedSubtitle(plan, t, symbol, effectivePrice);
   // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
   const hasStripe =
     enableStripeTopUp && !!plan?.stripe_price_id && !hasActiveDiscount;
@@ -79,7 +130,59 @@ const SubscriptionPurchaseModal = ({
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
     purchaseLimit > 0 && purchaseCount >= purchaseLimit;
-
+  const isClaudePlan = isSubscriptionClaudePlan(plan);
+  const isClaudeMonthlyPlan = isClaudeMonthlySubscriptionPlan(plan);
+  const isManualDeliveryPlan = plan?.delivery_mode === 'manual_delivery';
+  const noticeItems = [
+    isManualDeliveryPlan
+      ? {
+          key: 'manual_delivery',
+          type: 'info',
+          text: t(
+            '该套餐支付成功后不会自动开通，订单将进入待发放状态；发放完成后可在订阅页查看交付内容。',
+          ),
+        }
+      : null,
+    isClaudePlan && !isManualDeliveryPlan
+      ? {
+          key: 'claude_auto',
+          type: 'warning',
+          text: t('Claude 系列套餐支付成功后自动生效。'),
+        }
+      : null,
+    isClaudeMonthlyPlan
+      ? {
+          key: 'claude_monthly_discount',
+          type: 'success',
+          text: t('当前所有 Claude 系列月卡套餐五折'),
+        }
+      : null,
+    isClaudeMonthlyPlan
+      ? {
+          key: 'claude_monthly',
+          type: 'danger',
+          text: t('Claude 月卡套餐购买后不支持退换；如需体验，建议先购买天卡。'),
+        }
+      : null,
+    hasActiveDiscount
+      ? {
+          key: 'discount_deadline',
+          type: 'success',
+          text:
+            `${t('当前套餐正在限时优惠中，优惠截止时间')}：` +
+            new Date(
+              Number(plan?.discount_deadline || 0) * 1000,
+            ).toLocaleString(),
+        }
+      : null,
+    hasActiveDiscount && !hasEpay && (enableStripeTopUp || enableCreemTopUp)
+      ? {
+          key: 'discount_gateway',
+          type: 'warning',
+          text: t('当前套餐存在限时优惠，当前仅支持易支付购买；请先启用易支付。'),
+        }
+      : null,
+  ].filter(Boolean);
   return (
     <Modal
       title={
@@ -92,124 +195,58 @@ const SubscriptionPurchaseModal = ({
       onCancel={onCancel}
       footer={null}
       size='small'
+      width={420}
       centered
+      className='subscription-purchase-modal'
     >
       {plan ? (
-        <div className='space-y-4 pb-10'>
-          {/* 套餐信息 */}
-          <Card className='!rounded-xl !border-0 bg-slate-50 dark:bg-slate-800'>
-            <div className='space-y-3'>
-              <div className='flex justify-between items-center'>
-                <Text strong className='text-slate-700 dark:text-slate-200'>
-                  {t('套餐名称')}：
-                </Text>
-                <Typography.Text
-                  ellipsis={{ rows: 1, showTooltip: true }}
-                  className='text-slate-900 dark:text-slate-100'
-                  style={{ maxWidth: 200 }}
-                >
-                  {plan.title}
-                </Typography.Text>
+        <div className='subscription-purchase-modal__body'>
+          <section className='subscription-purchase-modal__hero'>
+            <div className='subscription-purchase-modal__hero-main'>
+              <div className='subscription-purchase-modal__eyebrow'>
+                <Tag color='blue' shape='circle'>{t('订阅确认')}</Tag>
+                {isClaudePlan ? (
+                  <Tag color='violet' shape='circle'>{t('Claude 系列')}</Tag>
+                ) : null}
+                {hasActiveDiscount ? (
+                  <Tag color='red' shape='circle' icon={<Sparkles size={12} />}>
+                    {t('限时优惠')}
+                  </Tag>
+                ) : null}
               </div>
-              <div className='flex justify-between items-center'>
-                <Text strong className='text-slate-700 dark:text-slate-200'>
-                  {t('有效期')}：
+              <Typography.Text
+                ellipsis={{ rows: 2, showTooltip: true }}
+                className='subscription-purchase-modal__title'
+              >
+                {plan.title}
+              </Typography.Text>
+              <Text className='subscription-purchase-modal__subtitle' type='secondary'>
+                {computedSubtitle}
+              </Text>
+            </div>
+            <div className='subscription-purchase-modal__price-box'>
+              {hasActiveDiscount ? (
+                <Text type='tertiary' delete className='subscription-purchase-modal__price-original'>
+                  {symbol}
+                  {originalPrice.toFixed(Number.isInteger(originalPrice) ? 0 : 2)}
                 </Text>
-                <div className='flex items-center'>
-                  <CalendarClock size={14} className='mr-1 text-slate-500' />
-                  <Text className='text-slate-900 dark:text-slate-100'>
-                    {formatSubscriptionDuration(plan, t)}
-                  </Text>
-                </div>
-              </div>
-              {formatSubscriptionResetPeriod(plan, t) !== t('不重置') && (
-                <div className='flex justify-between items-center'>
-                  <Text strong className='text-slate-700 dark:text-slate-200'>
-                    {t('重置周期')}：
-                  </Text>
-                  <Text className='text-slate-900 dark:text-slate-100'>
-                    {formatSubscriptionResetPeriod(plan, t)}
-                  </Text>
-                </div>
-              )}
-              <div className='flex justify-between items-center'>
-                <Text strong className='text-slate-700 dark:text-slate-200'>
-                  {t('总额度')}：
-                </Text>
-                <div className='flex items-center'>
-                  <Package size={14} className='mr-1 text-slate-500' />
-                  {totalAmount > 0 ? (
-                    <Tooltip content={`${t('原生额度')}：${totalAmount}`}>
-                      <Text className='text-slate-900 dark:text-slate-100'>
-                        {renderQuota(totalAmount)}
-                      </Text>
-                    </Tooltip>
-                  ) : (
-                    <Text className='text-slate-900 dark:text-slate-100'>
-                      {t('不限')}
-                    </Text>
-                  )}
-                </div>
-              </div>
-              {plan?.upgrade_group ? (
-                <div className='flex justify-between items-center'>
-                  <Text strong className='text-slate-700 dark:text-slate-200'>
-                    {t('升级分组')}：
-                  </Text>
-                  <Text className='text-slate-900 dark:text-slate-100'>
-                    {plan.upgrade_group}
-                  </Text>
-                </div>
               ) : null}
-              <Divider margin={8} />
-              <div className='flex justify-between items-center'>
-                <Text strong className='text-slate-700 dark:text-slate-200'>
-                  {t('应付金额')}：
-                </Text>
-                <div className='text-right'>
-                  {hasActiveDiscount ? (
-                    <Text
-                      type='tertiary'
-                      delete
-                      className='block text-sm'
-                    >
-                      {symbol}
-                      {(Number(plan?.price_amount || 0) * rate).toFixed(
-                        Number.isInteger(Number(plan?.price_amount || 0) * rate)
-                          ? 0
-                          : 2,
-                      )}
-                    </Text>
-                  ) : null}
-                  <Text strong className='text-xl text-purple-600'>
-                    {symbol}
-                    {displayPrice}
-                  </Text>
-                </div>
+              <div className='subscription-purchase-modal__price-current'>
+                <span>{symbol}</span>
+                {isClaudePlan && dailyPriceDisplay
+                  ? dailyPriceDisplay.displayDailyPrice
+                  : displayPrice}
+              </div>
+              <div className='subscription-purchase-modal__price-duration'>
+                {isClaudePlan && dailyPriceDisplay
+                  ? t('约每天成本，合计 {{price}} / {{duration}}', {
+                      price: `${symbol}${displayPrice}`,
+                      duration: formatSubscriptionSellingDuration(plan, t),
+                    })
+                  : formatSubscriptionSellingDuration(plan, t)}
               </div>
             </div>
-          </Card>
-
-          {hasActiveDiscount && (
-            <Banner
-              type='success'
-              description={
-                `${t('当前套餐正在限时优惠中，优惠截止时间')}：` +
-                new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()
-              }
-              className='!rounded-xl'
-              closeIcon={null}
-            />
-          )}
-
-          {hasActiveDiscount && !hasEpay && (enableStripeTopUp || enableCreemTopUp) ? (
-            <Banner
-              type='warning'
-              description={t('当前套餐存在限时优惠，当前仅支持易支付购买；请先启用易支付。')}
-              className='!rounded-xl'
-              closeIcon={null}
-            />
-          ) : null}
+          </section>
 
           {/* 支付方式 */}
           {purchaseLimitReached && (
@@ -221,49 +258,74 @@ const SubscriptionPurchaseModal = ({
             />
           )}
 
-          {hasAnyPayment ? (
-            <div className='space-y-3'>
-              <Text size='small' type='tertiary'>
-                {t('选择支付方式')}：
-              </Text>
+          <Collapse
+            className='subscription-purchase-modal__collapse'
+            defaultActiveKey={[]}
+            keepDOM={false}
+          >
+            {noticeItems.length > 0 ? (
+              <Collapse.Panel header={t('购买须知')} itemKey='notice'>
+                <div className='subscription-purchase-modal__notice-list'>
+                  {noticeItems.map((item) => (
+                    <Banner
+                      key={item.key}
+                      type={item.type}
+                      description={item.text}
+                      className='!rounded-xl'
+                      closeIcon={null}
+                    />
+                  ))}
+                </div>
+              </Collapse.Panel>
+            ) : null}
+          </Collapse>
 
-              {/* Stripe / Creem */}
+          {hasAnyPayment ? (
+            <section className='subscription-purchase-modal__payment'>
+              <div className='subscription-purchase-modal__section-head'>
+                <Text strong>{t('选择支付方式')}</Text>
+                <Text type='tertiary' size='small'>
+                  {isManualDeliveryPlan
+                    ? t('支付后进入待发放状态')
+                    : t('支付后自动开通套餐')}
+                </Text>
+              </div>
+
               {(hasStripe || hasCreem) && (
-                <div className='flex gap-2'>
+                <div className='subscription-purchase-modal__payment-grid'>
                   {hasStripe && (
                     <Button
                       theme='light'
-                      className='flex-1'
+                      className='subscription-purchase-modal__payment-button'
                       icon={<SiStripe size={14} color='#635BFF' />}
                       onClick={onPayStripe}
                       loading={paying}
                       disabled={purchaseLimitReached}
                     >
-                      Stripe
+                      {t('Stripe')}
                     </Button>
                   )}
                   {hasCreem && (
                     <Button
                       theme='light'
-                      className='flex-1'
+                      className='subscription-purchase-modal__payment-button'
                       icon={<IconCreditCard />}
                       onClick={onPayCreem}
                       loading={paying}
                       disabled={purchaseLimitReached}
                     >
-                      Creem
+                      {t('Creem')}
                     </Button>
                   )}
                 </div>
               )}
 
-              {/* 易支付 */}
               {hasEpay && (
-                <div className='flex gap-2'>
+                <div className='subscription-purchase-modal__epay-row'>
                   <Select
                     value={selectedEpayMethod}
                     onChange={setSelectedEpayMethod}
-                    style={{ flex: 1 }}
+                    className='subscription-purchase-modal__epay-select'
                     size='default'
                     placeholder={t('选择支付方式')}
                     optionList={epayMethods.map((m) => ({
@@ -275,6 +337,7 @@ const SubscriptionPurchaseModal = ({
                   <Button
                     theme='solid'
                     type='primary'
+                    className='subscription-purchase-modal__epay-submit'
                     onClick={onPayEpay}
                     loading={paying}
                     disabled={!selectedEpayMethod || purchaseLimitReached}
@@ -283,7 +346,7 @@ const SubscriptionPurchaseModal = ({
                   </Button>
                 </div>
               )}
-            </div>
+            </section>
           ) : (
             <Banner
               type='info'

@@ -25,6 +25,7 @@ const NotificationButton = ({ unreadCount, onNoticeOpen, t }) => {
   const buttonProps = {
     icon: <Bell size={18} />,
     'aria-label': t('系统公告'),
+    title: t('系统公告'),
     onClick: onNoticeOpen,
     theme: 'borderless',
     type: 'tertiary',

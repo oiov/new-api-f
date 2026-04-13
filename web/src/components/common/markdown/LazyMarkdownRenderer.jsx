@@ -18,10 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { Suspense, lazy } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const MarkdownRenderer = lazy(() => import('./MarkdownRenderer'));
 
 function MarkdownFallback() {
+  const { t } = useTranslation();
+
   return (
     <div
       style={{
@@ -42,7 +45,7 @@ function MarkdownFallback() {
           animation: 'spin 1s linear infinite',
         }}
       />
-      正在渲染...
+      {t('正在渲染...')}
     </div>
   );
 }

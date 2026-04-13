@@ -39,6 +39,13 @@ const FooterBar = () => {
   };
 
   const currentYear = new Date().getFullYear();
+  const seoLinks = useMemo(
+    () => [
+      { href: '/rss.xml', label: t('RSS') },
+      { href: '/sitemap.xml', label: t('Sitemap') },
+    ],
+    [t],
+  );
 
   const customFooter = useMemo(
     () => (
@@ -132,7 +139,7 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    One API
+                    {t('One API')}
                   </a>
                   <a
                     href='https://github.com/novicezk/midjourney-proxy'
@@ -140,7 +147,7 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    Midjourney-Proxy
+                    {t('Midjourney-Proxy')}
                   </a>
                   <a
                     href='https://github.com/Calcium-Ion/neko-api-key-tool'
@@ -148,7 +155,7 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    neko-api-key-tool
+                    {t('neko-api-key-tool')}
                   </a>
                 </div>
               </div>
@@ -164,7 +171,7 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    new-api-horizon
+                    {t('new-api-horizon')}
                   </a>
                   <a
                     href='https://github.com/coaidev/coai'
@@ -172,7 +179,7 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    CoAI
+                    {t('CoAI')}
                   </a>
                   <a
                     href='https://www.gpt-load.com/'
@@ -180,7 +187,7 @@ const FooterBar = () => {
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    GPT-Load
+                    {t('GPT-Load')}
                   </a>
                 </div>
               </div>
@@ -189,10 +196,23 @@ const FooterBar = () => {
         )}
 
         <div className='flex flex-col md:flex-row items-center justify-between w-full max-w-[1110px] gap-6'>
-          <div className='flex flex-wrap items-center gap-2'>
+          <div className='flex flex-wrap items-center gap-2 md:gap-4'>
             <Typography.Text className='text-sm !text-semi-color-text-1'>
               © {currentYear} {systemName}. {t('版权所有')}
             </Typography.Text>
+            <div className='flex items-center gap-3 text-sm'>
+              {seoLinks.map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='!text-semi-color-text-1 hover:!text-semi-color-primary transition-colors'
+                >
+                  {item.label}
+                </a>
+              ))}
+            </div>
           </div>
 
           <div className='text-sm'>
@@ -205,7 +225,7 @@ const FooterBar = () => {
               rel='noopener noreferrer'
               className='!text-semi-color-primary font-medium'
             >
-              New API
+              {t('New API')}
             </a>
           </div>
         </div>
@@ -226,7 +246,18 @@ const FooterBar = () => {
             className='custom-footer'
             dangerouslySetInnerHTML={{ __html: footer }}
           ></div>
-          <div className='absolute bottom-2 right-4 text-xs !text-semi-color-text-2 opacity-70'>
+          <div className='absolute bottom-2 right-4 flex items-center gap-3 text-xs !text-semi-color-text-2 opacity-70'>
+            {seoLinks.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                target='_blank'
+                rel='noopener noreferrer'
+                className='!text-semi-color-text-2 hover:!text-semi-color-primary transition-colors'
+              >
+                {item.label}
+              </a>
+            ))}
             <span>{t('设计与开发由')} </span>
             <a
               href='https://github.com/QuantumNous/new-api'
@@ -234,7 +265,7 @@ const FooterBar = () => {
               rel='noopener noreferrer'
               className='!text-semi-color-primary font-medium'
             >
-              New API
+              {t('New API')}
             </a>
           </div>
         </div>

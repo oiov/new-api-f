@@ -45,10 +45,28 @@ import {
 } from 'lucide-react';
 import { IconGift } from '@douyinfe/semi-icons';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
+import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { getCurrencyConfig } from '../../helpers/render';
 
 const { Text } = Typography;
 const { TabPane } = Tabs;
+
+const getPaymentMethodLabel = (payMethod, t) => {
+  switch (payMethod?.type) {
+    case 'alipay':
+      return t('支付宝');
+    case 'wxpay':
+      return t('微信');
+    case 'stripe':
+      return t('Stripe');
+    case 'creem':
+      return t('Creem');
+    case 'waffo':
+      return t('Waffo');
+    default:
+      return payMethod?.name || payMethod?.type || '';
+  }
+};
 
 const RechargeCard = ({
   t,
@@ -93,6 +111,7 @@ const RechargeCard = ({
   cardTitle = null,
   cardDescription = null,
 }) => {
+  const isMobile = useIsMobile();
   const onlineFormApiRef = useRef(null);
   const redeemFormApiRef = useRef(null);
   const showAmountSkeleton = useMinimumLoadingTime(amountLoading);
@@ -331,7 +350,7 @@ const RechargeCard = ({
                                   }
                                   className='!rounded-lg !px-4 !py-2'
                                 >
-                                  {payMethod.name}
+                                  {getPaymentMethodLabel(payMethod, t)}
                                 </Button>
                               );
 
@@ -379,7 +398,7 @@ const RechargeCard = ({
                                 fontWeight: 'normal',
                               }}
                             >
-                              (1 $ = {rate.toFixed(2)} {symbol})
+                              ({t('1 美元 =')} {rate.toFixed(2)} {symbol})
                             </span>
                           );
                         })()}
@@ -658,7 +677,7 @@ const RechargeCard = ({
       <Tabs
         className='topup-recharge-tabs'
         type='line'
-        tabPosition='left'
+        tabPosition={isMobile ? 'top' : 'left'}
         lazyRender
       >
         {!hideOnlineTopupCard && (
