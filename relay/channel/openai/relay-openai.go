@@ -28,13 +28,26 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	}
 
 	if !forceFormat && !thinkToContent {
-		return helper.StringData(c, data)
+		displayModelName := relaycommon.DisplayedResponseModelName(info, info.UpstreamModelName)
+		if displayModelName == "" || displayModelName == info.UpstreamModelName {
+			return helper.StringData(c, data)
+		}
+	}
+
+	if !forceFormat && !thinkToContent {
+		var lastStreamResponse dto.ChatCompletionsStreamResponse
+		if err := common.UnmarshalJsonStr(data, &lastStreamResponse); err != nil {
+			return err
+		}
+		lastStreamResponse.Model = relaycommon.DisplayedResponseModelName(info, lastStreamResponse.Model)
+		return helper.ObjectData(c, lastStreamResponse)
 	}
 
 	var lastStreamResponse dto.ChatCompletionsStreamResponse
 	if err := common.UnmarshalJsonStr(data, &lastStreamResponse); err != nil {
 		return err
 	}
+	lastStreamResponse.Model = relaycommon.DisplayedResponseModelName(info, lastStreamResponse.Model)
 
 	if !thinkToContent {
 		return helper.ObjectData(c, lastStreamResponse)
@@ -224,6 +237,8 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	originalResponseModel := simpleResponse.Model
+	simpleResponse.Model = relaycommon.DisplayedResponseModelName(info, simpleResponse.Model)
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
@@ -262,13 +277,19 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
-		if usageModified {
+		modelModified := simpleResponse.Model != originalResponseModel
+		if usageModified || modelModified {
 			var bodyMap map[string]interface{}
 			err = common.Unmarshal(responseBody, &bodyMap)
 			if err != nil {
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
-			bodyMap["usage"] = simpleResponse.Usage
+			if usageModified {
+				bodyMap["usage"] = simpleResponse.Usage
+			}
+			if modelModified {
+				bodyMap["model"] = simpleResponse.Model
+			}
 			responseBody, _ = common.Marshal(bodyMap)
 		}
 		if forceFormat {

@@ -69,6 +69,7 @@ const createDefaultSidebarModulesAdmin = () => ({
       setting: true,
       riskControl: true,
       invoiceAdmin: true,
+      financeAdmin: true,
       checkinAdmin: true,
     },
 });
@@ -298,6 +299,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'invoiceAdmin',
           title: t('发票开具'),
           description: t('查看和处理发票申请'),
+        },
+        {
+          key: 'financeAdmin',
+          title: t('财务中心'),
+          description: t('查看收入、开票与订单分析看板'),
         },
         {
           key: 'checkinAdmin',

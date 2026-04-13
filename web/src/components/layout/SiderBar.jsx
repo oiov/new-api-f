@@ -42,6 +42,7 @@ const routerMap = {
   invoice: '/console/invoice',
   invoiceAdmin: '/console/invoice-admin',
   checkinAdmin: '/console/checkin-admin',
+  financeAdmin: '/console/finance',
   invite: '/console/invite',
   user: '/console/user',
   subscription: '/console/subscription',
@@ -273,6 +274,12 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         itemKey: 'invoiceAdmin',
         to: '/console/invoice-admin',
         className: isRoot() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('财务中心'),
+        itemKey: 'financeAdmin',
+        to: '/console/finance',
+        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('签到管理'),

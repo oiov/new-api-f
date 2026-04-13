@@ -264,14 +264,16 @@ function getManualDeliveryLogMeta(record) {
 
 function renderModelName(record, copyText, t) {
   let other = getLogOther(record.other);
+  const requestModelName = String(record?.model_name || '').trim();
+  const upstreamModelName = String(other?.upstream_model_name || '').trim();
   let modelMapped =
     other?.is_model_mapped &&
-    other?.upstream_model_name &&
-    other?.upstream_model_name !== '';
+    upstreamModelName !== '' &&
+    upstreamModelName !== requestModelName;
   if (!modelMapped) {
-    return renderModelTag(record.model_name, {
+    return renderModelTag(requestModelName, {
       onClick: (event) => {
-        copyText(event, record.model_name).then((r) => {});
+        copyText(event, requestModelName).then((r) => {});
       },
     });
   } else {
@@ -286,9 +288,9 @@ function renderModelName(record, copyText, t) {
                     <Typography.Text strong style={{ marginRight: 8 }}>
                       {t('请求并计费模型')}:
                     </Typography.Text>
-                    {renderModelTag(record.model_name, {
+                    {renderModelTag(requestModelName, {
                       onClick: (event) => {
-                        copyText(event, record.model_name).then((r) => {});
+                        copyText(event, requestModelName).then((r) => {});
                       },
                     })}
                   </div>
@@ -296,11 +298,9 @@ function renderModelName(record, copyText, t) {
                     <Typography.Text strong style={{ marginRight: 8 }}>
                       {t('实际模型')}:
                     </Typography.Text>
-                    {renderModelTag(other.upstream_model_name, {
+                    {renderModelTag(upstreamModelName, {
                       onClick: (event) => {
-                        copyText(event, other.upstream_model_name).then(
-                          (r) => {},
-                        );
+                        copyText(event, upstreamModelName).then((r) => {});
                       },
                     })}
                   </div>
@@ -310,7 +310,7 @@ function renderModelName(record, copyText, t) {
           >
             {renderModelTag(record.model_name, {
               onClick: (event) => {
-                copyText(event, record.model_name).then((r) => {});
+                copyText(event, requestModelName).then((r) => {});
               },
               suffixIcon: (
                 <Route

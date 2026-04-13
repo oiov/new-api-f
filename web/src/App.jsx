@@ -56,6 +56,7 @@ const CheckinAdminPage = lazy(() => import('./pages/CheckinAdmin'));
 const PackagePage = lazy(() => import('./pages/Package'));
 const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
+const FinancePage = lazy(() => import('./pages/Finance'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Chat2Link = lazy(() => import('./pages/Chat2Link'));
 const Midjourney = lazy(() => import('./pages/Midjourney'));
@@ -417,6 +418,16 @@ function App() {
               <PrivateRoute>
                 <Log />
               </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/finance'
+            element={
+              <AdminRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <FinancePage />
+                </Suspense>
+              </AdminRoute>
             }
           />
           <Route

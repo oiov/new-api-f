@@ -499,18 +499,20 @@ export const useLogsData = () => {
         }
       }
       if (logs[i].type === 2) {
+        const requestModelName = String(logs[i]?.model_name || '').trim();
+        const upstreamModelName = String(other?.upstream_model_name || '').trim();
         let modelMapped =
           other?.is_model_mapped &&
-          other?.upstream_model_name &&
-          other?.upstream_model_name !== '';
+          upstreamModelName !== '' &&
+          upstreamModelName !== requestModelName;
         if (modelMapped) {
           expandDataLocal.push({
             key: t('请求并计费模型'),
-            value: logs[i].model_name,
+            value: requestModelName,
           });
           expandDataLocal.push({
             key: t('实际模型'),
-            value: other.upstream_model_name,
+            value: upstreamModelName,
           });
         }
 

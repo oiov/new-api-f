@@ -209,6 +209,11 @@ func SetApiRouter(router *gin.Engine) {
 			invoiceAdminRoute.POST("/:id/send", controller.SendInvoiceEmail)
 			invoiceAdminRoute.POST("/upload", controller.UploadInvoiceFile)
 		}
+		financeRoute := apiRouter.Group("/finance")
+		financeRoute.Use(middleware.AdminAuth())
+		{
+			financeRoute.GET("/overview", controller.GetFinanceOverview)
+		}
 		checkinAdminRoute := apiRouter.Group("/checkin/admin")
 		checkinAdminRoute.Use(middleware.RootAuth())
 		{

@@ -43,6 +43,7 @@ import {
   BadgeDollarSign,
   BookOpen,
   Mail,
+  Landmark,
 } from 'lucide-react';
 
 export function getLucideIcon(key, selected = false) {
@@ -110,6 +111,8 @@ export function getLucideIcon(key, selected = false) {
       return <BookOpen {...commonProps} color={iconColor} />;
     case 'setting':
       return <Settings {...commonProps} color={iconColor} />;
+    case 'financeAdmin':
+      return <Landmark {...commonProps} color={iconColor} />;
     default:
       return <CircleUser {...commonProps} color={iconColor} />;
   }
