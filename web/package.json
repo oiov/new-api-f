@@ -40,7 +40,8 @@
     "remark-math": "^6.0.0",
     "sse.js": "^2.6.0",
     "unist-util-visit": "^5.0.0",
-    "use-debounce": "^10.0.4"
+    "use-debounce": "^10.0.4",
+    "vercel": "^50.42.0"
   },
   "scripts": {
     "dev": "vite",
