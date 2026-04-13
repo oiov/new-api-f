@@ -24,43 +24,39 @@ import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
 
+const buildPaymentNotifyInputs = (options = {}) => ({
+  'payment_notify_setting.TopUpEnabled': toBoolean(
+    options['payment_notify_setting.TopUpEnabled'],
+  ),
+  'payment_notify_setting.SubscriptionEnabled': toBoolean(
+    options['payment_notify_setting.SubscriptionEnabled'],
+  ),
+  'payment_notify_setting.ServerChanEnabled': toBoolean(
+    options['payment_notify_setting.ServerChanEnabled'] ?? true,
+  ),
+  'payment_notify_setting.ServerChanUID':
+    options['payment_notify_setting.ServerChanUID'] || '',
+  'payment_notify_setting.ServerChanSendKey':
+    options['payment_notify_setting.ServerChanSendKey'] || '',
+  'payment_notify_setting.PushPlusEnabled': toBoolean(
+    options['payment_notify_setting.PushPlusEnabled'],
+  ),
+  'payment_notify_setting.PushPlusToken':
+    options['payment_notify_setting.PushPlusToken'] || '',
+});
+
 export default function SettingsPaymentSuccessNotify(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [clearServerChanSendKey, setClearServerChanSendKey] = useState(false);
   const [clearPushPlusToken, setClearPushPlusToken] = useState(false);
-  const [inputs, setInputs] = useState({
-    'payment_notify_setting.TopUpEnabled': false,
-    'payment_notify_setting.SubscriptionEnabled': false,
-    'payment_notify_setting.ServerChanEnabled': true,
-    'payment_notify_setting.ServerChanUID': '',
-    'payment_notify_setting.ServerChanSendKey': '',
-    'payment_notify_setting.PushPlusEnabled': false,
-    'payment_notify_setting.PushPlusToken': '',
-  });
+  const [inputs, setInputs] = useState(buildPaymentNotifyInputs());
   const formApiRef = useRef(null);
 
   useEffect(() => {
     if (!props.options || !formApiRef.current) return;
-    const currentInputs = {
-      'payment_notify_setting.TopUpEnabled': toBoolean(
-        props.options['payment_notify_setting.TopUpEnabled'],
-      ),
-      'payment_notify_setting.SubscriptionEnabled': toBoolean(
-        props.options['payment_notify_setting.SubscriptionEnabled'],
-      ),
-      'payment_notify_setting.ServerChanEnabled': toBoolean(
-        props.options['payment_notify_setting.ServerChanEnabled'] ?? true,
-      ),
-      'payment_notify_setting.ServerChanUID':
-        props.options['payment_notify_setting.ServerChanUID'] || '',
-      'payment_notify_setting.ServerChanSendKey': '',
-      'payment_notify_setting.PushPlusEnabled': toBoolean(
-        props.options['payment_notify_setting.PushPlusEnabled'],
-      ),
-      'payment_notify_setting.PushPlusToken': '',
-    };
+    const currentInputs = buildPaymentNotifyInputs(props.options);
     setInputs(currentInputs);
     setClearServerChanSendKey(false);
     setClearPushPlusToken(false);
@@ -68,7 +64,7 @@ export default function SettingsPaymentSuccessNotify(props) {
   }, [props.options]);
 
   const handleFormChange = (values) => {
-    setInputs(values);
+    setInputs((prev) => ({ ...prev, ...values }));
   };
 
   const renderSecretStatus = (maskedValue, pendingValue, clearFlag) => {
@@ -94,6 +90,18 @@ export default function SettingsPaymentSuccessNotify(props) {
   const maskedPushPlusToken =
     props.options?.['payment_notify_setting.PushPlusToken'] || '';
 
+  const normalizeSecretValue = (fieldValue, maskedValue, clearFlag) => {
+    if (clearFlag) {
+      return '';
+    }
+    const trimmedValue = String(fieldValue || '').trim();
+    const trimmedMaskedValue = String(maskedValue || '').trim();
+    if (trimmedValue === '' || trimmedValue === trimmedMaskedValue) {
+      return '';
+    }
+    return trimmedValue;
+  };
+
   const submitPaymentNotifySetting = async () => {
     if (
       clearServerChanSendKey &&
@@ -112,14 +120,18 @@ export default function SettingsPaymentSuccessNotify(props) {
           inputs['payment_notify_setting.SubscriptionEnabled'],
         server_chan_enabled: inputs['payment_notify_setting.ServerChanEnabled'],
         server_chan_uid: inputs['payment_notify_setting.ServerChanUID'] || '',
-        server_chan_send_key: clearServerChanSendKey
-          ? ''
-          : inputs['payment_notify_setting.ServerChanSendKey'] || '',
+        server_chan_send_key: normalizeSecretValue(
+          inputs['payment_notify_setting.ServerChanSendKey'],
+          maskedServerChanSendKey,
+          clearServerChanSendKey,
+        ),
         clear_server_chan_send_key: clearServerChanSendKey,
         push_plus_enabled: inputs['payment_notify_setting.PushPlusEnabled'],
-        push_plus_token: clearPushPlusToken
-          ? ''
-          : inputs['payment_notify_setting.PushPlusToken'] || '',
+        push_plus_token: normalizeSecretValue(
+          inputs['payment_notify_setting.PushPlusToken'],
+          maskedPushPlusToken,
+          clearPushPlusToken,
+        ),
         clear_push_plus_token: clearPushPlusToken,
       });
       if (!res?.data?.success) {
@@ -129,6 +141,11 @@ export default function SettingsPaymentSuccessNotify(props) {
       showSuccess(t('更新成功'));
       setClearServerChanSendKey(false);
       setClearPushPlusToken(false);
+      if (res?.data?.data && formApiRef.current) {
+        const nextInputs = buildPaymentNotifyInputs(res.data.data);
+        setInputs(nextInputs);
+        formApiRef.current.setValues(nextInputs);
+      }
       props.refresh?.();
     } catch (error) {
       showError(t('更新失败'));
@@ -148,15 +165,18 @@ export default function SettingsPaymentSuccessNotify(props) {
             inputs['payment_notify_setting.SubscriptionEnabled'],
           server_chan_enabled: inputs['payment_notify_setting.ServerChanEnabled'],
           server_chan_uid: inputs['payment_notify_setting.ServerChanUID'] || '',
-          server_chan_send_key:
-            clearServerChanSendKey
-              ? ''
-              : inputs['payment_notify_setting.ServerChanSendKey'] || '',
+          server_chan_send_key: normalizeSecretValue(
+            inputs['payment_notify_setting.ServerChanSendKey'],
+            maskedServerChanSendKey,
+            clearServerChanSendKey,
+          ),
           clear_server_chan_send_key: clearServerChanSendKey,
           push_plus_enabled: inputs['payment_notify_setting.PushPlusEnabled'],
-          push_plus_token: clearPushPlusToken
-            ? ''
-            : inputs['payment_notify_setting.PushPlusToken'] || '',
+          push_plus_token: normalizeSecretValue(
+            inputs['payment_notify_setting.PushPlusToken'],
+            maskedPushPlusToken,
+            clearPushPlusToken,
+          ),
           clear_push_plus_token: clearPushPlusToken,
         },
         {
@@ -179,6 +199,7 @@ export default function SettingsPaymentSuccessNotify(props) {
     <Spin spinning={loading}>
       <Form
         initValues={inputs}
+        values={inputs}
         onValueChange={handleFormChange}
         getFormApi={(api) => (formApiRef.current = api)}
       >
@@ -241,7 +262,7 @@ export default function SettingsPaymentSuccessNotify(props) {
               <Form.Input
                 field='payment_notify_setting.ServerChanSendKey'
                 label={t('Server酱³ SendKey')}
-                placeholder={t('保存后不回显')}
+                placeholder={t('请输入新的 SendKey，留空则保持已保存值')}
                 type='password'
               />
               {renderSecretStatus(
@@ -262,7 +283,7 @@ export default function SettingsPaymentSuccessNotify(props) {
               <Form.Input
                 field='payment_notify_setting.PushPlusToken'
                 label={t('PushPlus Token')}
-                placeholder={t('保存后不回显')}
+                placeholder={t('请输入新的 Token，留空则保持已保存值')}
                 type='password'
               />
               {renderSecretStatus(

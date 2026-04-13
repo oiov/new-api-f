@@ -84,6 +84,30 @@ func buildPaymentNotifyOptionValues(cfg payment_notify_setting.PaymentNotifySett
 	}
 }
 
+func buildMaskedPaymentNotifyOptionValues(cfg payment_notify_setting.PaymentNotifySetting) map[string]string {
+	values := buildPaymentNotifyOptionValues(cfg)
+	for key, value := range values {
+		switch key {
+		case "payment_notify_setting.ServerChanSendKey", "payment_notify_setting.PushPlusToken":
+			trimmed := strings.TrimSpace(value)
+			if trimmed == "" {
+				values[key] = ""
+			} else {
+				values[key] = controllerMaskSensitiveOptionValue(trimmed)
+			}
+		}
+	}
+	return values
+}
+
+func controllerMaskSensitiveOptionValue(value string) string {
+	runes := []rune(value)
+	if len(runes) <= 8 {
+		return "********"
+	}
+	return string(runes[:4]) + "****" + string(runes[len(runes)-4:])
+}
+
 func UpdatePaymentSuccessNotifySetting(c *gin.Context) {
 	var req PaymentNotifySaveRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
@@ -105,6 +129,7 @@ func UpdatePaymentSuccessNotifySetting(c *gin.Context) {
 
 	common.ApiSuccess(c, gin.H{
 		"message": "支付成功推送设置已更新",
+		"data":    buildMaskedPaymentNotifyOptionValues(cfg),
 	})
 }
 
