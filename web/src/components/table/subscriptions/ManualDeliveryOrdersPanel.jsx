@@ -600,7 +600,8 @@ const ManualDeliveryOrdersPanel = ({ t }) => {
               size='small'
               expandRowByClick
               expandedRowRender={renderExpandedRow}
-              scroll={{ x: 'max-content' }}
+              style={{ width: '100%' }}
+              scroll={isMobile ? { x: 'max-content' } : undefined}
               rowClassName={() => 'manual-delivery-order-row'}
               empty={
                 <Empty

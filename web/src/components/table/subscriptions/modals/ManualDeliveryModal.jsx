@@ -13,6 +13,33 @@ import { API, showError, showSuccess } from '../../../../helpers';
 
 const { Text } = Typography;
 
+function isSensitiveDeliveryField(field) {
+  const key = String(field?.key || '').trim().toLowerCase();
+  const type = String(field?.type || '').trim().toLowerCase();
+  return (
+    type === 'password' ||
+    [
+      'api_key',
+      'access_token',
+      'refresh_token',
+      'provider_token',
+      'token',
+      'key',
+      'secret',
+      'password',
+    ].some((part) => key.includes(part))
+  );
+}
+
+function maskSensitiveValue(value) {
+  const text = String(value || '').trim();
+  if (!text) return '--';
+  if (text.length <= 8) {
+    return '*'.repeat(Math.max(text.length, 6));
+  }
+  return `${text.slice(0, 4)}${'*'.repeat(Math.min(12, text.length - 8))}${text.slice(-4)}`;
+}
+
 const ManualDeliveryModal = ({
   visible,
   onCancel,
@@ -51,6 +78,20 @@ const ManualDeliveryModal = ({
     const planId = record?.order?.plan_id;
     if (!planId) return '';
     return `subscription_plan:${planId}`;
+  }, [record]);
+
+  const deliveryPayloadPreview = useMemo(() => {
+    const payload = Array.isArray(record?.order?.delivery_payload)
+      ? record.order.delivery_payload
+      : [];
+    const meaningfulItems = payload.filter((item) =>
+      String(item?.value || '').trim(),
+    );
+    return meaningfulItems.slice(0, 3).map((item) => ({
+      key: item?.key || '',
+      label: item?.label || item?.key || '--',
+      value: String(item?.value || '').trim(),
+    }));
   }, [record]);
 
   useEffect(() => {
@@ -162,46 +203,83 @@ const ManualDeliveryModal = ({
         </Collapse>
         <Form getFormApi={setFormApi}>
           {deliveryFields.length > 0 ? (
-            <div className='space-y-3'>
-              {deliveryFields.map((field) => (
-                <div key={field.key} className='rounded-xl bg-semi-color-fill-0 p-3'>
-                  <div className='mb-2 flex items-center justify-between'>
-                    <Text strong>{field.label}</Text>
-                    <Space spacing={6}>
-                      {field.required ? <Text type='danger'>{t('必填')}</Text> : null}
-                      {autoFilledFieldKeys.has(field.key) ? (
-                        <Text type='warning'>{t('系统自动填充')}</Text>
-                      ) : null}
-                      {field.copyable ? (
-                        <Text type='tertiary'>{t('用户可复制')}</Text>
-                      ) : null}
-                    </Space>
+            <Collapse keepDOM>
+              <Collapse.Panel
+                header={
+                  <div className='flex min-w-0 items-center justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <Text strong>{t('交付内容')}</Text>
+                      <div className='mt-1 text-xs text-semi-color-text-2'>
+                        {deliveryFields.length} {t('个字段')}
+                        {deliveryPayloadPreview.length > 0
+                          ? ` · ${t('已填写')} ${deliveryPayloadPreview.length} ${t('项')}`
+                          : ''}
+                      </div>
+                    </div>
+                    {deliveryPayloadPreview.length > 0 ? (
+                      <div className='hidden max-w-[55%] flex-wrap gap-1 md:flex'>
+                        {deliveryPayloadPreview.map((item) => (
+                          <Text
+                            key={item.key}
+                            type='tertiary'
+                            size='small'
+                            ellipsis={{ showTooltip: true }}
+                            className='max-w-[180px]'
+                          >
+                            {item.label}：
+                            {isSensitiveDeliveryField(item)
+                              ? maskSensitiveValue(item.value)
+                              : item.value}
+                          </Text>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                  {field.type === 'textarea' ? (
-                    <Form.TextArea
-                      field={field.key}
-                      autosize={{ minRows: 3, maxRows: 6 }}
-                      placeholder={field.placeholder || t('请输入交付内容')}
-                    />
-                  ) : (
-                    <Form.Input
-                      field={field.key}
-                      placeholder={
-                        field.key === 'api_key'
-                          ? t('系统生成的 API Key，仅供查看')
-                          : field.key === 'base_url'
-                            ? t('默认填入当前站点地址，可按需修改')
-                            : field.key === 'usage_query_url'
-                              ? t('默认填入用量查询地址，可按需修改')
-                          : field.placeholder || t('请输入交付内容')
-                      }
-                      mode={field.type === 'password' ? 'password' : 'text'}
-                      disabled={readOnlyAutoFilledFieldKeys.has(field.key)}
-                    />
-                  )}
+                }
+                itemKey='delivery-fields'
+              >
+                <div className='space-y-3'>
+                  {deliveryFields.map((field) => (
+                    <div key={field.key} className='rounded-xl bg-semi-color-fill-0 p-3'>
+                      <div className='mb-2 flex items-center justify-between'>
+                        <Text strong>{field.label}</Text>
+                        <Space spacing={6}>
+                          {field.required ? <Text type='danger'>{t('必填')}</Text> : null}
+                          {autoFilledFieldKeys.has(field.key) ? (
+                            <Text type='warning'>{t('系统自动填充')}</Text>
+                          ) : null}
+                          {field.copyable ? (
+                            <Text type='tertiary'>{t('用户可复制')}</Text>
+                          ) : null}
+                        </Space>
+                      </div>
+                      {field.type === 'textarea' ? (
+                        <Form.TextArea
+                          field={field.key}
+                          autosize={{ minRows: 3, maxRows: 6 }}
+                          placeholder={field.placeholder || t('请输入交付内容')}
+                        />
+                      ) : (
+                        <Form.Input
+                          field={field.key}
+                          placeholder={
+                            field.key === 'api_key'
+                              ? t('系统生成的 API Key，仅供查看')
+                              : field.key === 'base_url'
+                                ? t('默认填入当前站点地址，可按需修改')
+                                : field.key === 'usage_query_url'
+                                  ? t('默认填入用量查询地址，可按需修改')
+                                  : field.placeholder || t('请输入交付内容')
+                          }
+                          mode={isSensitiveDeliveryField(field) ? 'password' : 'text'}
+                          disabled={readOnlyAutoFilledFieldKeys.has(field.key)}
+                        />
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </Collapse.Panel>
+            </Collapse>
           ) : (
             <div className='rounded-xl border border-dashed border-semi-color-border px-4 py-8 text-center text-sm text-semi-color-text-2'>
               {t('当前套餐没有配置交付字段，暂时无法发放')}
