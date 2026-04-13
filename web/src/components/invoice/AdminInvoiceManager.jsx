@@ -46,6 +46,7 @@ import {
   IconEyeOpened,
   IconUpload,
   IconEdit,
+  IconCopy,
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { API, timestamp2string } from '../../helpers';
@@ -66,6 +67,9 @@ const STATUS_CONFIG = {
 
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
 const PDF_EXTENSION = /\.pdf(\?.*)?$/i;
+const ACCEPTED_UPLOAD_EXTENSIONS = /\.(pdf|png|jpe?g|webp)$/i;
+const ACCEPTED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const MAX_UPLOAD_SIZE = 20 * 1024 * 1024;
 
 function resolveUrl(url) {
   if (!url) return url;
@@ -73,6 +77,37 @@ function resolveUrl(url) {
     return url.replace(/^http:/, 'https:');
   }
   return url;
+}
+
+function buildFinanceCopyText(record, t) {
+  return [
+    `${t('公司名')}：${record.title || '—'}`,
+    `${t('税号')}：${record.tax_id || t('无')}`,
+    `${t('开票金额')}：¥${Number(record.amount || 0).toFixed(2)}`,
+  ].join('\n');
+}
+
+function validateInvoiceFile(file, t) {
+  if (!file) {
+    return t('请选择要上传的发票文件');
+  }
+  if (file.size > MAX_UPLOAD_SIZE) {
+    return t('文件大小不能超过 20MB');
+  }
+  const fileName = file.name || '';
+  const fileType = file.type || '';
+  const isAcceptedFile =
+    ACCEPTED_UPLOAD_EXTENSIONS.test(fileName) ||
+    fileType === 'application/pdf' ||
+    ACCEPTED_IMAGE_MIME_TYPES.has(fileType);
+  if (!isAcceptedFile) {
+    return t('仅支持 PDF、PNG、JPG、JPEG、WEBP 文件');
+  }
+  return '';
+}
+
+function inferInvoiceTitleType(record) {
+  return record?.tax_id ? 'enterprise' : 'personal';
 }
 
 const TOPUP_PAGE_SIZE = 10;
@@ -159,6 +194,70 @@ const AdminInvoiceManager = () => {
     }
   };
 
+  const handleCopyFinanceInfo = async (record) => {
+    try {
+      await navigator.clipboard.writeText(buildFinanceCopyText(record, t));
+      Toast.success(t('已复制开票信息给财务'));
+    } catch {
+      Toast.error(t('复制失败，请检查浏览器权限'));
+    }
+  };
+
+  const uploadInvoiceFile = async (file, formApiRef, setUploaded, setIsUploading) => {
+    const validationMessage = validateInvoiceFile(file, t);
+    if (validationMessage) {
+      Toast.error(validationMessage);
+      return false;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await API.post('/api/invoice/admin/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data.success === true) {
+        const url = res.data.data?.url || '';
+        setUploaded(url);
+        formApiRef.current?.setValue('file_url', url);
+        Toast.success(t('文件上传成功'));
+        return true;
+      }
+      Toast.error(res.data.message || t('上传失败'));
+      return false;
+    } catch {
+      Toast.error(t('上传失败，请稍后重试'));
+      return false;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const buildPasteDropZoneProps = (formApiRef, setUploaded, setIsUploading) => ({
+    onPaste: async (e) => {
+      const clipboardItems = Array.from(e.clipboardData?.items || []);
+      const pastedFileItem = clipboardItems.find((item) => item.kind === 'file');
+      const pastedFile = pastedFileItem?.getAsFile();
+      if (!pastedFile) {
+        return;
+      }
+      e.preventDefault();
+      await uploadInvoiceFile(pastedFile, formApiRef, setUploaded, setIsUploading);
+    },
+    onDragOver: (e) => {
+      e.preventDefault();
+    },
+    onDrop: async (e) => {
+      e.preventDefault();
+      const droppedFile = e.dataTransfer?.files?.[0];
+      if (!droppedFile) {
+        return;
+      }
+      await uploadInvoiceFile(droppedFile, formApiRef, setUploaded, setIsUploading);
+    },
+  });
+
   const topupColumns = [
     {
       title: t('充值时间'),
@@ -241,6 +340,13 @@ const AdminInvoiceManager = () => {
   const handleEditSubmit = async () => {
     let values;
     try { values = await editFormApi.current.validate(); } catch { return; }
+    const normalizedTitle = values.title.trim();
+    const normalizedTaxId = (values.tax_id || '').trim();
+    const normalizedEmail = values.email.trim();
+    if (values.title_type === 'enterprise' && !normalizedTaxId) {
+      Toast.error(t('企业抬头必须填写税号'));
+      return;
+    }
     if (values.status === 'rejected' && !values.remark?.trim()) {
       Toast.error(t('拒绝状态时必须填写拒绝原因'));
       return;
@@ -250,9 +356,9 @@ const AdminInvoiceManager = () => {
       const res = await API.put(
         `/api/invoice/admin/${editModal.record.id}`,
         {
-          title: values.title,
-          tax_id: values.tax_id || '',
-          email: values.email,
+          title: normalizedTitle,
+          tax_id: normalizedTaxId,
+          email: normalizedEmail,
           file_url: values.file_url || '',
           remark: values.remark || '',
           status: values.status,
@@ -409,6 +515,15 @@ const AdminInvoiceManager = () => {
               {isMobile ? t('订单') : null}
             </Button>
           </Tooltip>
+          <Tooltip content={t('复制给财务')}>
+            <Button
+              icon={<IconCopy />}
+              size='small'
+              onClick={() => handleCopyFinanceInfo(record)}
+            >
+              {isMobile ? t('复制') : null}
+            </Button>
+          </Tooltip>
           <Tooltip content={t('编辑发票')}>
             <Button
               icon={<IconEdit />}
@@ -529,33 +644,21 @@ const AdminInvoiceManager = () => {
     limit: 1,
     showUploadList: false,
     customRequest: async ({ file, onSuccess, onError }) => {
-      setIsUploading(true);
-      try {
-        const formData = new FormData();
-        formData.append('file', file.fileInstance);
-        const res = await API.post('/api/invoice/admin/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        if (res.data.success === true) {
-          const url = res.data.data?.url || '';
-          setUploaded(url);
-          formApiRef.current?.setValue('file_url', url);
-          Toast.success(t('文件上传成功'));
-          onSuccess();
-        } else {
-          Toast.error(res.data.message || t('上传失败'));
-          onError();
-        }
-      } catch {
-        Toast.error(t('上传失败，请稍后重试'));
+      const success = await uploadInvoiceFile(
+        file.fileInstance,
+        formApiRef,
+        setUploaded,
+        setIsUploading,
+      );
+      if (success) {
+        onSuccess();
+      } else {
         onError();
-      } finally {
-        setIsUploading(false);
       }
     },
     draggable: true,
     dragMainText: t('点击或拖拽发票文件到此区域'),
-    dragSubText: t('支持 PDF、PNG、JPG、WEBP，最大 20MB'),
+    dragSubText: t('支持 PDF、PNG、JPG、WEBP，最大 20MB，也支持直接粘贴截图'),
     style: { width: '100%' },
   });
 
@@ -611,7 +714,19 @@ const AdminInvoiceManager = () => {
             borderRadius: 6,
             fontSize: 13,
           }}>
-            {t('发票抬头')}：{issueModal.record.title}　{t('金额')}：¥{Number(issueModal.record.amount).toFixed(2)}
+            <div>{t('发票抬头')}：{issueModal.record.title}</div>
+            <div>{t('税号')}：{issueModal.record.tax_id || t('无')}</div>
+            <div>{t('金额')}：¥{Number(issueModal.record.amount).toFixed(2)}</div>
+            <div style={{ marginTop: 8 }}>
+              <Button
+                icon={<IconCopy />}
+                size='small'
+                theme='borderless'
+                onClick={() => handleCopyFinanceInfo(issueModal.record)}
+              >
+                {t('复制给财务')}
+              </Button>
+            </div>
           </div>
         )}
         <Form
@@ -624,11 +739,27 @@ const AdminInvoiceManager = () => {
         >
           <div style={{ marginBottom: 16 }}>
             <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 14 }}>{t('上传发票文件')}</div>
-            <Upload {...buildUploadProps(issueFormApi, setUploadedUrl, setUploading)}>
-              <Button icon={<IconUpload />} loading={uploading} disabled={uploading}>
-                {uploading ? t('上传中...') : t('选择文件')}
-              </Button>
-            </Upload>
+            <div
+              {...buildPasteDropZoneProps(issueFormApi, setUploadedUrl, setUploading)}
+              tabIndex={0}
+              style={{ outline: 'none' }}
+            >
+              <Upload {...buildUploadProps(issueFormApi, setUploadedUrl, setUploading)}>
+                <div style={{
+                  border: '1px dashed var(--semi-color-border)',
+                  borderRadius: 8,
+                  padding: '16px 14px',
+                  background: 'var(--semi-color-fill-0)',
+                }}>
+                  <div style={{ marginBottom: 10, color: 'var(--semi-color-text-1)' }}>
+                    {t('拖拽文件到这里、点击选择文件，或直接在此处粘贴截图')}
+                  </div>
+                  <Button icon={<IconUpload />} loading={uploading} disabled={uploading}>
+                    {uploading ? t('上传中...') : t('选择文件')}
+                  </Button>
+                </div>
+              </Upload>
+            </div>
             {uploadedUrl && (
               <div style={{
                 marginTop: 8, padding: '6px 10px',
@@ -674,6 +805,7 @@ const AdminInvoiceManager = () => {
             getFormApi={(api) => (editFormApi.current = api)}
             layout='vertical'
             initValues={{
+              title_type: inferInvoiceTitleType(editModal.record),
               title: editModal.record.title,
               tax_id: editModal.record.tax_id || '',
               email: editModal.record.email,
@@ -682,6 +814,14 @@ const AdminInvoiceManager = () => {
               status: editModal.record.status,
             }}
           >
+            <Form.Select
+              field='title_type'
+              label={t('发票抬头类型')}
+              rules={[{ required: true, message: t('请选择抬头类型') }]}
+            >
+              <Option value='personal'>{t('个人')}</Option>
+              <Option value='enterprise'>{t('企业')}</Option>
+            </Form.Select>
             <Form.Input
               field='title'
               label={t('发票抬头')}
@@ -689,8 +829,8 @@ const AdminInvoiceManager = () => {
             />
             <Form.Input
               field='tax_id'
-              label={t('税号（选填）')}
-              placeholder={t('企业纳税人识别号')}
+              label={t('税号（企业抬头必填）')}
+              placeholder={t('企业抬头请填写税号，个人抬头可留空')}
             />
             <Form.Input
               field='email'
@@ -708,11 +848,27 @@ const AdminInvoiceManager = () => {
             </Form.Select>
             <div style={{ marginBottom: 16 }}>
               <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 14 }}>{t('更换发票文件（选填）')}</div>
-              <Upload {...buildUploadProps(editFormApi, setEditUploadedUrl, setEditUploading)}>
-                <Button icon={<IconUpload />} loading={editUploading} disabled={editUploading}>
-                  {editUploading ? t('上传中...') : t('选择文件')}
-                </Button>
-              </Upload>
+              <div
+                {...buildPasteDropZoneProps(editFormApi, setEditUploadedUrl, setEditUploading)}
+                tabIndex={0}
+                style={{ outline: 'none' }}
+              >
+                <Upload {...buildUploadProps(editFormApi, setEditUploadedUrl, setEditUploading)}>
+                  <div style={{
+                    border: '1px dashed var(--semi-color-border)',
+                    borderRadius: 8,
+                    padding: '16px 14px',
+                    background: 'var(--semi-color-fill-0)',
+                  }}>
+                    <div style={{ marginBottom: 10, color: 'var(--semi-color-text-1)' }}>
+                      {t('拖拽文件到这里、点击选择文件，或直接在此处粘贴截图')}
+                    </div>
+                    <Button icon={<IconUpload />} loading={editUploading} disabled={editUploading}>
+                      {editUploading ? t('上传中...') : t('选择文件')}
+                    </Button>
+                  </div>
+                </Upload>
+              </div>
               {editUploadedUrl && (
                 <div style={{
                   marginTop: 8, padding: '6px 10px',

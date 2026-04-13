@@ -149,20 +149,20 @@ const DefaultNotice = () => {
             }}
           >
             <img
-              src='/server.jpg'
-              alt={t('QQ售后群二维码')}
+              src='/qq_group.jpg'
+              alt={t('QQ群二维码')}
               style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
             />
           </button>
           <div style={{ minWidth: 220 }}>
             <Text strong size='small' style={{ display: 'block', marginBottom: 4 }}>
-              {t('fishxcode 售后群')}
+              {t('fishxcode')}
             </Text>
             <Text size='small' type='secondary' style={{ display: 'block', marginBottom: 6 }}>
               {t('进群请提供订单号，群备注改为站内 ID。')}
             </Text>
             <a
-              href='https://qm.qq.com/q/92haL6QzAY'
+              href='https://qm.qq.com/q/Ce2PaYrbmo'
               target='_blank'
               rel='noreferrer'
               style={{
@@ -172,7 +172,7 @@ const DefaultNotice = () => {
                 marginBottom: 6,
               }}
             >
-              {t('点击链接加入群聊【fishxcode 售后群】')} →
+              {t('点击链接加入群聊【fishxcode】')} →
             </a>
           </div>
         </div>
@@ -205,7 +205,7 @@ const DefaultNotice = () => {
       </Section>
 
       <ImagePreview
-        src='/server.jpg'
+        src='/qq_group.jpg'
         visible={previewVisible}
         onVisibleChange={setPreviewVisible}
       />

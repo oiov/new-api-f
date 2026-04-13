@@ -137,6 +137,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
   const [selectedPlanId, setSelectedPlanId] = useState(null);
 
   const [subs, setSubs] = useState([]);
+  const [preferredSubscriptionId, setPreferredSubscriptionId] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [transferVisible, setTransferVisible] = useState(false);
   const [transferLoading, setTransferLoading] = useState(false);
@@ -212,6 +213,9 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
         const payload = res.data.data;
         const next = Array.isArray(payload) ? payload : payload?.items || [];
         setSubs(next);
+        setPreferredSubscriptionId(
+          Number(Array.isArray(payload) ? 0 : payload?.preferred_subscription_id || 0),
+        );
         setCurrentPage(1);
       } else {
         showError(res.data?.message || t('加载失败'));
@@ -452,8 +456,29 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
       {
         title: t('状态'),
         key: 'status',
-        width: 90,
-        render: (_, record) => renderStatusTag(record?.subscription, t),
+        width: 200,
+        render: (_, record) => {
+          const sub = record?.subscription || {};
+          const isPreferred =
+            Number(sub?.id || 0) === Number(preferredSubscriptionId || 0);
+          return (
+            <Space wrap size={6}>
+              {renderStatusTag(sub, t)}
+              <Tag
+                color={sub?.aggregate_enabled ? 'blue' : 'grey'}
+                shape='circle'
+                size='small'
+              >
+                {sub?.aggregate_enabled ? t('参与聚合') : t('暂停聚合')}
+              </Tag>
+              {isPreferred ? (
+                <Tag color='orange' shape='circle' size='small'>
+                  {t('优先消耗')}
+                </Tag>
+              ) : null}
+            </Space>
+          );
+        },
       },
       {
         title: t('关联充值订单'),
@@ -636,6 +661,52 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
               </Button>
               <Button
                 size='small'
+                theme='light'
+                type={sub?.aggregate_enabled ? 'warning' : 'primary'}
+                disabled={isCancelled}
+                onClick={() =>
+                  operateSubscription(
+                    sub?.id,
+                    sub?.aggregate_enabled
+                      ? 'disable_aggregate_access'
+                      : 'enable_aggregate_access',
+                    sub?.aggregate_enabled
+                      ? t('确认暂停聚合扣费')
+                      : t('确认恢复聚合扣费'),
+                    sub?.aggregate_enabled
+                      ? t('暂停后，该订阅不会继续参与同一 Subscription Access Key 的自动扣费。是否继续？')
+                      : t('恢复后，该订阅会重新参与同一 Subscription Access Key 的自动扣费。是否继续？'),
+                  )
+                }
+              >
+                {sub?.aggregate_enabled ? t('暂停聚合') : t('参与聚合')}
+              </Button>
+              <Button
+                size='small'
+                theme='light'
+                type='primary'
+                disabled={!isActive || isCancelled || !sub?.aggregate_enabled}
+                onClick={() =>
+                  operateSubscription(
+                    sub?.id,
+                    Number(sub?.id || 0) === Number(preferredSubscriptionId || 0)
+                      ? 'clear_preferred'
+                      : 'set_preferred',
+                    Number(sub?.id || 0) === Number(preferredSubscriptionId || 0)
+                      ? t('确认取消优先消耗')
+                      : t('确认设为优先消耗'),
+                    Number(sub?.id || 0) === Number(preferredSubscriptionId || 0)
+                      ? t('取消后将回退到系统自动选择最合适的可用订阅。是否继续？')
+                      : t('设置后，在该订阅仍参与聚合且可用时，系统会优先消耗它。是否继续？'),
+                  )
+                }
+              >
+                {Number(sub?.id || 0) === Number(preferredSubscriptionId || 0)
+                  ? t('取消优先')
+                  : t('设为优先')}
+              </Button>
+              <Button
+                size='small'
                 type='warning'
                 theme='light'
                 disabled={!isActive || isCancelled}
@@ -656,7 +727,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
         },
       },
     ];
-  }, [t, planTitleMap, planMap]);
+  }, [t, planTitleMap, planMap, preferredSubscriptionId]);
 
   return (
     <SideSheet

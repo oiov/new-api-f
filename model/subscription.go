@@ -614,6 +614,7 @@ type UserSubscription struct {
 
 	UpgradeGroup            string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 	PrevUserGroup           string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
+	AggregateEnabled        bool   `json:"aggregate_enabled" gorm:"not null;default:true"`
 	SpecificChannelId       int    `json:"specific_channel_id" gorm:"type:int;not null;default:0"`
 	SpecificChannelKeyIndex int    `json:"specific_channel_key_index" gorm:"type:int;not null;default:-1"`
 
@@ -1777,8 +1778,18 @@ func hasUserSubscriptionRemainingEntitlement(sub *UserSubscription) bool {
 	return sub.AmountUsed < sub.AmountTotal
 }
 
+func isUserSubscriptionAggregateEnabled(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	return sub.AggregateEnabled
+}
+
 func isUserSubscriptionUsableNow(sub *UserSubscription, now int64) bool {
 	if sub == nil {
+		return false
+	}
+	if !isUserSubscriptionAggregateEnabled(sub) {
 		return false
 	}
 	if sub.Status != "active" {
@@ -2526,6 +2537,51 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+func getUserPreferredSubscriptionIdTx(tx *gorm.DB, userId int) (int, error) {
+	if userId <= 0 {
+		return 0, errors.New("invalid userId")
+	}
+	if tx == nil {
+		tx = DB
+	}
+	var user User
+	if err := tx.Select("id", "setting").Where("id = ?", userId).First(&user).Error; err != nil {
+		return 0, err
+	}
+	return user.GetSetting().PreferredSubscriptionId, nil
+}
+
+func setUserPreferredSubscriptionIdTx(tx *gorm.DB, userId int, subscriptionId int) error {
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	if tx == nil {
+		tx = DB
+	}
+	var user User
+	if err := tx.Select("id", "setting").Where("id = ?", userId).First(&user).Error; err != nil {
+		return err
+	}
+	setting := user.GetSetting()
+	setting.PreferredSubscriptionId = subscriptionId
+	user.SetSetting(setting)
+	return tx.Model(&User{}).Where("id = ?", userId).Update("setting", user.Setting).Error
+}
+
+func clearUserPreferredSubscriptionIfMatchesTx(tx *gorm.DB, userId int, subscriptionId int) error {
+	if userId <= 0 || subscriptionId <= 0 {
+		return nil
+	}
+	current, err := getUserPreferredSubscriptionIdTx(tx, userId)
+	if err != nil {
+		return err
+	}
+	if current != subscriptionId {
+		return nil
+	}
+	return setUserPreferredSubscriptionIdTx(tx, userId, 0)
+}
+
 func GetActiveUserSubscriptionGroups(userId int) ([]string, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
@@ -2576,7 +2632,7 @@ func HasUsableUserSubscription(userId int) (bool, error) {
 	}
 	now := common.GetTimestamp()
 	var subs []UserSubscription
-	if err := DB.Select("id, status, end_time, resource_type, request_count_total, request_count_used, request_count_period_total, request_count_period_used, reset_period, amount_total, amount_used").
+	if err := DB.Select("id, status, end_time, resource_type, request_count_total, request_count_used, request_count_period_total, request_count_period_used, reset_period, amount_total, amount_used, aggregate_enabled").
 		Where("user_id = ? AND status = ? AND (end_time = 0 OR end_time > ?)", userId, "active", now).
 		Order("end_time asc, id asc").
 		Find(&subs).Error; err != nil {
@@ -3936,7 +3992,7 @@ func refreshSubscriptionAggregateAccessTokenTx(tx *gorm.DB, token *Token) error 
 	}
 	now := GetDBTimestampWithTx(tx)
 	var subs []UserSubscription
-	if err := tx.Select("allowed_models_json", "end_time", "resource_type", "upgrade_group", "allowed_groups_json", "specific_channel_id").
+	if err := tx.Select("allowed_models_json", "end_time", "resource_type", "upgrade_group", "allowed_groups_json", "specific_channel_id", "aggregate_enabled").
 		Where("user_id = ? AND status = ? AND end_time > ?", token.UserId, "active", now).
 		Order("id asc").
 		Find(&subs).Error; err != nil {
@@ -3947,6 +4003,9 @@ func refreshSubscriptionAggregateAccessTokenTx(tx *gorm.DB, token *Token) error 
 	modelLimitEnabled := true
 	for i := range subs {
 		sub := subs[i]
+		if !isUserSubscriptionAggregateEnabled(&sub) {
+			continue
+		}
 		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
 			continue
 		}
@@ -4142,6 +4201,9 @@ func ensureSubscriptionAggregateAccessTokenForUserTx(tx *gorm.DB, userId int) er
 	needsAggregateToken := false
 	for i := range subs {
 		sub := subs[i]
+		if !isUserSubscriptionAggregateEnabled(&sub) {
+			continue
+		}
 		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
 			continue
 		}
@@ -4990,6 +5052,9 @@ func AdminTransferUserSubscription(userSubscriptionId int, options AdminTransfer
 		sourceUserId = sub.UserId
 		targetUserId = targetUser.Id
 		targetUsername = strings.TrimSpace(targetUser.Username)
+		if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sourceUserId, sub.Id); err != nil {
+			return err
+		}
 
 		sourceAggregateToken, err := getSubscriptionAggregateAccessTokenTx(tx, sourceUserId)
 		if err != nil {
@@ -5165,6 +5230,9 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 		}).Error; err != nil {
 			return err
 		}
+		if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
+			return err
+		}
 		target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, now)
 		if err != nil {
 			return err
@@ -5221,6 +5289,9 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		if err := tx.Where("id = ?", userSubscriptionId).Delete(&UserSubscription{}).Error; err != nil {
 			return err
 		}
+		if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
+			return err
+		}
 		return ensureSubscriptionAggregateAccessTokenForUserTx(tx, userId)
 	})
 	if err != nil {
@@ -5241,6 +5312,10 @@ const (
 	AdminSubscriptionActionExtendDays   = "extend_days"
 	AdminSubscriptionActionReduceDays   = "reduce_days"
 	AdminSubscriptionActionResetUsage   = "reset_usage_now"
+	AdminSubscriptionActionEnableAccess = "enable_aggregate_access"
+	AdminSubscriptionActionDisableAccess = "disable_aggregate_access"
+	AdminSubscriptionActionSetPreferred = "set_preferred"
+	AdminSubscriptionActionClearPreferred = "clear_preferred"
 )
 
 func NormalizeAdminSubscriptionAction(action string) string {
@@ -5255,6 +5330,14 @@ func NormalizeAdminSubscriptionAction(action string) string {
 		return AdminSubscriptionActionReducePeriod
 	case AdminSubscriptionActionResetUsage:
 		return AdminSubscriptionActionResetUsage
+	case AdminSubscriptionActionEnableAccess:
+		return AdminSubscriptionActionEnableAccess
+	case AdminSubscriptionActionDisableAccess:
+		return AdminSubscriptionActionDisableAccess
+	case AdminSubscriptionActionSetPreferred:
+		return AdminSubscriptionActionSetPreferred
+	case AdminSubscriptionActionClearPreferred:
+		return AdminSubscriptionActionClearPreferred
 	default:
 		return ""
 	}
@@ -5382,6 +5465,23 @@ func calcSubscriptionNextResetFromNow(sub *UserSubscription, now int64) int64 {
 	return calcNextResetTime(time.Unix(now, 0), snapshotPlan, sub.EndTime)
 }
 
+func validatePreferredSubscriptionForUserTx(tx *gorm.DB, userId int, sub *UserSubscription) error {
+	if tx == nil || sub == nil {
+		return errors.New("invalid preferred subscription args")
+	}
+	if userId <= 0 || sub.UserId != userId {
+		return errors.New("subscription does not belong to user")
+	}
+	now := GetDBTimestampWithTx(tx)
+	if sub.Status != "active" || (sub.EndTime > 0 && sub.EndTime <= now) {
+		return errors.New("subscription is not active")
+	}
+	if !isUserSubscriptionAggregateEnabled(sub) {
+		return errors.New("subscription is not enabled for aggregate access")
+	}
+	return nil
+}
+
 func AdminOperateUserSubscription(userSubscriptionId int, action string, value int64) (string, error) {
 	if userSubscriptionId <= 0 {
 		return "", errors.New("invalid userSubscriptionId")
@@ -5390,7 +5490,12 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 	if action == "" {
 		return "", errors.New("invalid subscription action")
 	}
-	if action != AdminSubscriptionActionResetUsage && value <= 0 {
+	if action != AdminSubscriptionActionResetUsage &&
+		action != AdminSubscriptionActionEnableAccess &&
+		action != AdminSubscriptionActionDisableAccess &&
+		action != AdminSubscriptionActionSetPreferred &&
+		action != AdminSubscriptionActionClearPreferred &&
+		value <= 0 {
 		value = 1
 	}
 	now := GetDBTimestamp()
@@ -5466,6 +5571,36 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 				sub.NextResetTime = calcSubscriptionNextResetFromNow(&sub, now)
 			}
 			message = "已提前重置当前周期用量"
+		case AdminSubscriptionActionEnableAccess:
+			if sub.AggregateEnabled {
+				message = "该订阅已参与聚合消耗"
+				break
+			}
+			sub.AggregateEnabled = true
+			message = "已启用该订阅的聚合消耗"
+		case AdminSubscriptionActionDisableAccess:
+			if !sub.AggregateEnabled {
+				message = "该订阅已暂停聚合消耗"
+				break
+			}
+			sub.AggregateEnabled = false
+			if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
+				return err
+			}
+			message = "已暂停该订阅的聚合消耗"
+		case AdminSubscriptionActionSetPreferred:
+			if err := validatePreferredSubscriptionForUserTx(tx, sub.UserId, &sub); err != nil {
+				return err
+			}
+			if err := setUserPreferredSubscriptionIdTx(tx, sub.UserId, sub.Id); err != nil {
+				return err
+			}
+			message = "已设为优先消耗订阅"
+		case AdminSubscriptionActionClearPreferred:
+			if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
+				return err
+			}
+			message = "已取消优先消耗订阅"
 		}
 		if err := tx.Save(&sub).Error; err != nil {
 			return err
@@ -5767,6 +5902,9 @@ func GetAggregateSubscriptionRouteForPreferredSubscription(userId int, preferred
 			First(&sub).Error; err != nil {
 			return err
 		}
+		if !isUserSubscriptionAggregateEnabled(&sub) {
+			return errors.New("preferred subscription is not enabled for aggregate access")
+		}
 		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
 			return errors.New("preferred subscription is not request_count")
 		}
@@ -5846,10 +5984,24 @@ func GetPreferredSubscriptionRouteForAggregateToken(userId int, modelName string
 		if len(subs) == 0 {
 			return nil
 		}
+		preferredSubID, err := getUserPreferredSubscriptionIdTx(tx, userId)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if preferredSubID > 0 {
+			preferredDecision, preferredErr := GetAggregateSubscriptionRouteForPreferredSubscription(userId, preferredSubID, modelName)
+			if preferredErr == nil {
+				result = preferredDecision
+				return nil
+			}
+		}
 		resolvedVendorID := getVendorIDByModelNameTx(tx, modelName)
 		var exhaustedCandidate *UserSubscription
 		for i := range subs {
 			sub := subs[i]
+			if !isUserSubscriptionAggregateEnabled(&sub) {
+				continue
+			}
 			if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
 				continue
 			}
@@ -6106,6 +6258,9 @@ func trySelectPreferredUserSubscriptionTx(tx *gorm.DB, requestId string, userId 
 		First(&sub).Error; err != nil {
 		return err
 	}
+	if !isUserSubscriptionAggregateEnabled(&sub) {
+		return errors.New("preferred subscription is not enabled for aggregate access")
+	}
 	if err := tryBackfillUserSubscriptionChannelBindingTx(tx, &sub); err != nil {
 		return err
 	}
@@ -6189,7 +6344,9 @@ func preConsumeUserSubscriptionWithPreference(requestId string, userId int, mode
 			return errors.New("no active subscription")
 		}
 		if preferredSubID > 0 {
-			return trySelectPreferredUserSubscriptionTx(tx, requestId, userId, preferredSubID, modelName, amount, returnValue)
+			if err := trySelectPreferredUserSubscriptionTx(tx, requestId, userId, preferredSubID, modelName, amount, returnValue); err == nil {
+				return nil
+			}
 		}
 		currentUserGroup, err := getUserGroupByIdTx(tx, userId)
 		if err != nil {
@@ -6201,6 +6358,9 @@ func preConsumeUserSubscriptionWithPreference(requestId string, userId int, mode
 		quotaCandidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
 			sub := candidate
+			if !isUserSubscriptionAggregateEnabled(&sub) {
+				continue
+			}
 			if !doesUserSubscriptionMatchGroup(&sub, usingGroup, currentUserGroup) {
 				continue
 			}

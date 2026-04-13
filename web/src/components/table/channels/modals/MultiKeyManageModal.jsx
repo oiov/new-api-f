@@ -655,8 +655,8 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       >
         <Button size='small' theme='borderless' type='tertiary'>
           {accounts.length === 1
-            ? t('查看 EcomAgent 账号')
-            : t('查看 {{count}} 个 EcomAgent 账号', { count: accounts.length })}
+            ? t('查看绑定账户')
+            : t('查看 {{count}} 个绑定账户', { count: accounts.length })}
         </Button>
       </Popover>
     );

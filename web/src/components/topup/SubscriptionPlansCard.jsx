@@ -374,6 +374,7 @@ const SubscriptionPlansCard = ({
   enableStripeTopUp = false,
   enableCreemTopUp = false,
   billingPreference,
+  preferredSubscriptionId = 0,
   onChangeBillingPreference,
   activeSubscriptions = [],
   allSubscriptions = [],
@@ -452,6 +453,10 @@ const SubscriptionPlansCard = ({
   const [globalRangeKey, setGlobalRangeKey] = useState('7d');
   const [opsConsumeSummary, setOpsConsumeSummary] = useState(null);
   const [opsSummaryLoading, setOpsSummaryLoading] = useState(false);
+  const [subscriptionActionLoadingId, setSubscriptionActionLoadingId] =
+    useState(0);
+  const [subscriptionActionLoadingType, setSubscriptionActionLoadingType] =
+    useState('');
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
   const [planViewMode, setPlanViewMode] = useState(initialPlanViewMode);
@@ -551,6 +556,40 @@ const SubscriptionPlansCard = ({
       setRefreshing(false);
     }
   };
+
+  const operateSelfSubscription = useCallback(
+    async (subscriptionId, action, successMessage) => {
+      const nextId = Number(subscriptionId || 0);
+      if (nextId <= 0) {
+        showError(t('订阅信息缺失'));
+        return;
+      }
+      setSubscriptionActionLoadingId(nextId);
+      setSubscriptionActionLoadingType(action);
+      try {
+        const res = await API.post(
+          `/api/subscription/self/subscriptions/${nextId}/action`,
+          {
+            action,
+            value: 1,
+          },
+        );
+        if (res.data?.success) {
+          showSuccess(res.data?.data?.message || successMessage || t('操作成功'));
+          await reloadSubscriptionSelf?.();
+          await loadConversionPreview();
+          return;
+        }
+        showError(res.data?.message || t('操作失败'));
+      } catch (error) {
+        showError(error?.response?.data?.message || t('操作失败'));
+      } finally {
+        setSubscriptionActionLoadingId(0);
+        setSubscriptionActionLoadingType('');
+      }
+    },
+    [loadConversionPreview, reloadSubscriptionSelf, t],
+  );
 
   const loadConversionPreview = async () => {
     if (!showUserSubscriptions) {
@@ -898,6 +937,10 @@ const SubscriptionPlansCard = ({
           key: String(subscription?.id || index),
           state,
           plan: planMap.get(subscription?.plan_id) || null,
+          isAggregateEnabled: Boolean(subscription?.aggregate_enabled),
+          isPreferred:
+            Number(subscription?.id || 0) ===
+            Number(preferredSubscriptionId || 0),
           usageSummary,
           resourceType,
           usageLabel: formatSubscriptionResourceLabel(subscription, t),
@@ -911,7 +954,7 @@ const SubscriptionPlansCard = ({
         (a, b) =>
           (b?.subscription?.end_time || 0) - (a?.subscription?.end_time || 0),
       );
-  }, [allSubscriptions, planMap, planTitleMap, t]);
+  }, [allSubscriptions, planMap, planTitleMap, preferredSubscriptionId, t]);
 
   const normalizedManualDeliveryOrders = useMemo(() => {
     return (manualDeliveryOrders || []).map((item, index) => {
@@ -1785,6 +1828,14 @@ const SubscriptionPlansCard = ({
         label: t('升级分组'),
         value: item.subscription?.upgrade_group || plan?.upgrade_group || '--',
       },
+      {
+        label: t('聚合扣费'),
+        value: item.isAggregateEnabled ? t('参与中') : t('已暂停'),
+      },
+      {
+        label: t('优先消耗'),
+        value: item.isPreferred ? t('是') : t('否'),
+      },
     ];
 
     return (
@@ -1810,19 +1861,68 @@ const SubscriptionPlansCard = ({
               </div>
             </div>
           </div>
-          <Button
-            size='small'
-            type='tertiary'
-            theme='outline'
-            onClick={() =>
-              setConsumeLogsFilter({
-                subscriptionId: item.subscription?.id,
-                planId: item.subscription?.plan_id,
-              })
-            }
-          >
-            {t('查看历史消耗')}
-          </Button>
+          <div className='flex flex-wrap items-center gap-2'>
+            <Button
+              size='small'
+              theme={item.isAggregateEnabled ? 'light' : 'solid'}
+              type={item.isAggregateEnabled ? 'warning' : 'primary'}
+              loading={
+                subscriptionActionLoadingId === item.subscription?.id &&
+                subscriptionActionLoadingType ===
+                  (item.isAggregateEnabled
+                    ? 'disable_aggregate_access'
+                    : 'enable_aggregate_access')
+              }
+              onClick={() =>
+                operateSelfSubscription(
+                  item.subscription?.id,
+                  item.isAggregateEnabled
+                    ? 'disable_aggregate_access'
+                    : 'enable_aggregate_access',
+                  item.isAggregateEnabled
+                    ? t('已暂停该订阅参与聚合扣费')
+                    : t('该订阅已恢复参与聚合扣费'),
+                )
+              }
+            >
+              {item.isAggregateEnabled ? t('暂停聚合') : t('参与聚合')}
+            </Button>
+            <Button
+              size='small'
+              theme={item.isPreferred ? 'light' : 'outline'}
+              type='primary'
+              disabled={!item.isAggregateEnabled || item.state !== 'active'}
+              loading={
+                subscriptionActionLoadingId === item.subscription?.id &&
+                subscriptionActionLoadingType ===
+                  (item.isPreferred ? 'clear_preferred' : 'set_preferred')
+              }
+              onClick={() =>
+                operateSelfSubscription(
+                  item.subscription?.id,
+                  item.isPreferred ? 'clear_preferred' : 'set_preferred',
+                  item.isPreferred
+                    ? t('已取消优先消耗')
+                    : t('已设为优先消耗'),
+                )
+              }
+            >
+              {item.isPreferred ? t('取消优先') : t('设为优先')}
+            </Button>
+            <Button
+              size='small'
+              type='tertiary'
+              theme='outline'
+              onClick={() =>
+                setConsumeLogsFilter({
+                  subscriptionId: item.subscription?.id,
+                  planId: item.subscription?.plan_id,
+                })
+              }
+            >
+              {t('查看历史消耗')}
+            </Button>
+          </div>
         </div>
         {!item.usageSummary.unlimited && (
           <div className='rounded-2xl border border-semi-color-border bg-white px-4 py-3'>
@@ -3490,6 +3590,20 @@ const SubscriptionPlansCard = ({
                               ? t('已作废')
                               : t('已过期')}
                         </Tag>
+                        <Tag
+                          color={item.isAggregateEnabled ? 'blue' : 'grey'}
+                          shape='circle'
+                          size='small'
+                        >
+                          {item.isAggregateEnabled
+                            ? t('参与聚合')
+                            : t('暂停聚合')}
+                        </Tag>
+                        {item.isPreferred ? (
+                          <Tag color='orange' shape='circle' size='small'>
+                            {t('优先消耗')}
+                          </Tag>
+                        ) : null}
                       </div>
                       <div className='mt-1 text-xs text-semi-color-text-2'>
                         {t('订阅')} #{item.subscription?.id || '--'}

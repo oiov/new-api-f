@@ -5,17 +5,18 @@ import {
   Table,
   Checkbox,
   Typography,
-  Tag,
   Toast,
   Spin,
   Banner,
   Input,
+  Select,
 } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { API, timestamp2string } from '../../helpers';
 
 const { Text } = Typography;
+const { Option } = Select;
 const MIN_AMOUNT = 50;
 
 const PAYMENT_METHOD_MAP = {
@@ -33,6 +34,13 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [confirmInvoiceInfo, setConfirmInvoiceInfo] = useState(false);
+  const [formValues, setFormValues] = useState({
+    title_type: 'personal',
+    title: '',
+    tax_id: '',
+    email: '',
+  });
   const formApi = React.useRef(null);
 
   useEffect(() => {
@@ -40,6 +48,8 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
       fetchInvoiceableTopUps();
       setSelectedIds([]);
       setSearchKeyword('');
+      setConfirmInvoiceInfo(false);
+      setFormValues({ title_type: 'personal', title: '', tax_id: '', email: '' });
     }
   }, [visible]);
 
@@ -113,13 +123,26 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
       return;
     }
 
+    if (!confirmInvoiceInfo) {
+      Toast.warning(t('请先二次核对并确认开票信息与税号无误'));
+      return;
+    }
+
+    const normalizedTitle = values.title.trim();
+    const normalizedTaxId = (values.tax_id || '').trim();
+    const normalizedEmail = values.email.trim();
+    if (values.title_type === 'enterprise' && !normalizedTaxId) {
+      Toast.warning(t('企业抬头必须填写税号'));
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await API.post('/api/user/invoice', {
         topup_ids: selectedIds,
-        title: values.title,
-        tax_id: values.tax_id || '',
-        email: values.email,
+        title: normalizedTitle,
+        tax_id: normalizedTaxId,
+        email: normalizedEmail,
       });
       if (res.data.success === true) {
         Toast.success(t('发票申请提交成功'));
@@ -217,7 +240,7 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
             <Banner
               type='warning'
               description={t(
-                '发票最低开票金额为 {{min}} 元，请勾选要开票的充值记录。',
+                '发票最低开票金额为 {{min}} 元，请勾选要开票的充值记录。企业抬头必须填写税号。',
                 { min: MIN_AMOUNT },
               )}
               style={{ marginBottom: 12 }}
@@ -273,7 +296,27 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
           getFormApi={(api) => (formApi.current = api)}
           style={{ marginTop: 20 }}
           layout='vertical'
+          onValueChange={(values) => {
+            setFormValues({
+              title_type: values.title_type || 'personal',
+              title: values.title || '',
+              tax_id: values.tax_id || '',
+              email: values.email || '',
+            });
+            if (confirmInvoiceInfo) {
+              setConfirmInvoiceInfo(false);
+            }
+          }}
         >
+          <Form.Select
+            field='title_type'
+            label={t('发票抬头类型')}
+            initValue='personal'
+            rules={[{ required: true, message: t('请选择抬头类型') }]}
+          >
+            <Option value='personal'>{t('个人')}</Option>
+            <Option value='enterprise'>{t('企业')}</Option>
+          </Form.Select>
           <Form.Input
             field='title'
             label={t('发票抬头')}
@@ -282,7 +325,7 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
           />
           <Form.Input
             field='tax_id'
-            label={t('税号（选填）')}
+            label={t('税号（企业抬头必填）')}
             placeholder={t('企业纳税人识别号，个人开票可不填')}
           />
           <Form.Input
@@ -295,6 +338,41 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
             ]}
           />
         </Form>
+
+        <div
+          style={{
+            marginTop: 16,
+            padding: '12px',
+            background: 'var(--semi-color-warning-light-default)',
+            border: '1px solid var(--semi-color-warning-light-hover)',
+            borderRadius: 6,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>
+            {t('提交前请二次核对开票信息')}
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 10 }}>
+            <div>
+              {t('发票抬头')}：
+              {formValues.title.trim() || t('未填写')}
+            </div>
+            <div>
+              {t('税号')}：
+              {formValues.title_type === 'personal'
+                ? t('个人抬头可不填')
+                : (formValues.tax_id.trim() || t('未填写'))}
+            </div>
+            <div>
+              {t('开票金额')}：¥{selectedAmount.toFixed(2)}
+            </div>
+          </div>
+          <Checkbox
+            checked={confirmInvoiceInfo}
+            onChange={(e) => setConfirmInvoiceInfo(e.target.checked)}
+          >
+            {t('我已二次核对发票抬头、税号和开票金额，确认信息无误')}
+          </Checkbox>
+        </div>
       </Spin>
     </Modal>
   );

@@ -28,9 +28,9 @@ const DEFAULT_CONTACT_CHANNELS_EXAMPLE = JSON.stringify(
       key: 'qq-support-group',
       title: 'QQ售后群',
       subtitle: '用于订单、发放、补单与售后问题处理，建议优先加入',
-      imageSrc: '/server.jpg',
+      imageSrc: '/qq_group.jpg',
       value: 'fishxcode 售后群',
-      actionHref: 'https://qm.qq.com/q/92haL6QzAY',
+      actionHref: 'https://qm.qq.com/q/Ce2PaYrbmo',
       actionLabel: '加入售后群',
       tone: '售后支持',
       i18n: {

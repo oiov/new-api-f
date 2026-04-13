@@ -161,6 +161,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.POST("/self/conversion_campaign/request", controller.CreateSelfServiceSubscriptionConversionRequest)
 			subscriptionRoute.GET("/self/consume_logs", controller.GetSubscriptionSelfConsumeLogs)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
+			subscriptionRoute.POST("/self/subscriptions/:id/action", controller.OperateSelfUserSubscription)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)

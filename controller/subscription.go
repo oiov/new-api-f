@@ -21,7 +21,8 @@ type SubscriptionPlanDTO struct {
 }
 
 type BillingPreferenceRequest struct {
-	BillingPreference string `json:"billing_preference"`
+	BillingPreference      string `json:"billing_preference"`
+	PreferredSubscriptionId int   `json:"preferred_subscription_id"`
 }
 
 func applySubscriptionPlanDisplayFields(plan *model.SubscriptionPlan, now int64) {
@@ -198,6 +199,7 @@ func GetSubscriptionSelf(c *gin.Context) {
 	userId := c.GetInt("id")
 	settingMap, _ := model.GetUserSetting(userId, false)
 	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
+	preferredSubscriptionId := settingMap.PreferredSubscriptionId
 	if err := model.ReconcileActiveUserSubscriptionsByUser(userId); err != nil {
 		common.ApiError(c, err)
 		return
@@ -224,10 +226,11 @@ func GetSubscriptionSelf(c *gin.Context) {
 	}
 
 	common.ApiSuccess(c, gin.H{
-		"billing_preference":     pref,
-		"subscriptions":          activeSubscriptions, // all active subscriptions
-		"all_subscriptions":      allSubscriptions,    // all subscriptions including expired
-		"manual_delivery_orders": manualDeliveryOrders,
+		"billing_preference":       pref,
+		"preferred_subscription_id": preferredSubscriptionId,
+		"subscriptions":            activeSubscriptions, // all active subscriptions
+		"all_subscriptions":        allSubscriptions,    // all subscriptions including expired
+		"manual_delivery_orders":   manualDeliveryOrders,
 	})
 }
 
@@ -472,12 +475,70 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	}
 	current := user.GetSetting()
 	current.BillingPreference = pref
+	if req.PreferredSubscriptionId < 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if req.PreferredSubscriptionId > 0 {
+		sub, err := model.GetUserSubscriptionById(req.PreferredSubscriptionId)
+		if err != nil || sub == nil || sub.UserId != userId {
+			common.ApiErrorMsg(c, "无效的优先订阅")
+			return
+		}
+		if sub.Status != "active" || !sub.AggregateEnabled {
+			common.ApiErrorMsg(c, "该订阅当前不可设为优先消耗")
+			return
+		}
+	}
+	current.PreferredSubscriptionId = req.PreferredSubscriptionId
 	user.SetSetting(current)
 	if err := user.Update(false); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"billing_preference": pref})
+	common.ApiSuccess(c, gin.H{
+		"billing_preference":        pref,
+		"preferred_subscription_id": current.PreferredSubscriptionId,
+	})
+}
+
+func OperateSelfUserSubscription(c *gin.Context) {
+	userId := c.GetInt("id")
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	sub, err := model.GetUserSubscriptionById(subId)
+	if err != nil || sub == nil || sub.UserId != userId {
+		common.ApiErrorMsg(c, "订阅不存在")
+		return
+	}
+	var req AdminUserSubscriptionActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	req.Action = model.NormalizeAdminSubscriptionAction(req.Action)
+	switch req.Action {
+	case model.AdminSubscriptionActionEnableAccess,
+		model.AdminSubscriptionActionDisableAccess,
+		model.AdminSubscriptionActionSetPreferred,
+		model.AdminSubscriptionActionClearPreferred:
+	default:
+		common.ApiErrorMsg(c, "无效的操作")
+		return
+	}
+	msg, err := model.AdminOperateUserSubscription(subId, req.Action, req.Value)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if msg != "" {
+		common.ApiSuccess(c, gin.H{"message": msg})
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 // ---- Admin APIs ----
@@ -868,7 +929,14 @@ func AdminListUserSubscriptions(c *gin.Context) {
 	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(subs)
-	common.ApiSuccess(c, pageInfo)
+	settingMap, _ := model.GetUserSetting(userId, false)
+	common.ApiSuccess(c, gin.H{
+		"page":                      pageInfo.Page,
+		"page_size":                 pageInfo.PageSize,
+		"total":                     pageInfo.Total,
+		"items":                     pageInfo.Items,
+		"preferred_subscription_id": settingMap.PreferredSubscriptionId,
+	})
 }
 
 func AdminListAllUserSubscriptions(c *gin.Context) {

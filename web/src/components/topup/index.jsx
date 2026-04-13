@@ -137,6 +137,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [billingPreference, setBillingPreference] =
     useState('subscription_first');
+  const [preferredSubscriptionId, setPreferredSubscriptionId] = useState(0);
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
   const [manualDeliveryOrders, setManualDeliveryOrders] = useState([]);
@@ -516,6 +517,9 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
       if (res.data?.success) {
         setBillingPreference(
           res.data.data?.billing_preference || 'subscription_first',
+        );
+        setPreferredSubscriptionId(
+          Number(res.data.data?.preferred_subscription_id || 0),
         );
         // Active subscriptions
         const activeSubs = res.data.data?.subscriptions || [];
@@ -990,6 +994,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
               enableStripeTopUp={enableStripeTopUp}
               enableCreemTopUp={enableCreemTopUp}
               billingPreference={billingPreference}
+              preferredSubscriptionId={preferredSubscriptionId}
               onChangeBillingPreference={updateBillingPreference}
               activeSubscriptions={activeSubscriptions}
               allSubscriptions={allSubscriptions}
@@ -1011,8 +1016,9 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             enableOnlineTopUp={enableOnlineTopUp}
             enableStripeTopUp={enableStripeTopUp}
             enableCreemTopUp={enableCreemTopUp}
-            billingPreference={billingPreference}
-            onChangeBillingPreference={updateBillingPreference}
+              billingPreference={billingPreference}
+              preferredSubscriptionId={preferredSubscriptionId}
+              onChangeBillingPreference={updateBillingPreference}
             activeSubscriptions={activeSubscriptions}
             allSubscriptions={allSubscriptions}
             manualDeliveryOrders={manualDeliveryOrders}

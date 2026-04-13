@@ -37,6 +37,7 @@ const SubscriptionPricingTab = ({ onPlansChange, t }) => {
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [billingPreference, setBillingPreference] =
     useState('subscription_first');
+  const [preferredSubscriptionId, setPreferredSubscriptionId] = useState(0);
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
   const [manualDeliveryOrders, setManualDeliveryOrders] = useState([]);
@@ -72,6 +73,7 @@ const SubscriptionPricingTab = ({ onPlansChange, t }) => {
   const getSubscriptionSelf = async () => {
     if (!isLoggedIn) {
       setBillingPreference('subscription_first');
+      setPreferredSubscriptionId(0);
       setActiveSubscriptions([]);
       setAllSubscriptions([]);
       setManualDeliveryOrders([]);
@@ -84,6 +86,9 @@ const SubscriptionPricingTab = ({ onPlansChange, t }) => {
       if (res.data?.success) {
         setBillingPreference(
           res.data.data?.billing_preference || 'subscription_first',
+        );
+        setPreferredSubscriptionId(
+          Number(res.data.data?.preferred_subscription_id || 0),
         );
         setActiveSubscriptions(res.data.data?.subscriptions || []);
         setAllSubscriptions(res.data.data?.all_subscriptions || []);
@@ -190,6 +195,7 @@ const SubscriptionPricingTab = ({ onPlansChange, t }) => {
         enableStripeTopUp={enableStripeTopUp}
         enableCreemTopUp={enableCreemTopUp}
         billingPreference={billingPreference}
+        preferredSubscriptionId={preferredSubscriptionId}
         onChangeBillingPreference={updateBillingPreference}
         activeSubscriptions={activeSubscriptions}
         allSubscriptions={allSubscriptions}
