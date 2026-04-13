@@ -374,6 +374,12 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 				Money:         topUp.Money,
 				Quota:         logger.FormatQuota(int(topUp.Amount) * int(common.QuotaPerUnit)),
 			})
+			model.NotifyTopUpSuccessToUserAsync(
+				topUp.UserId,
+				topUp.PaymentMethod,
+				topUp.Money,
+				logger.FormatQuota(int(topUp.Amount)*int(common.QuotaPerUnit)),
+			)
 		}
 	}
 

@@ -2250,10 +2250,11 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	if upgradeGroup != "" && logUserId > 0 {
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
 	}
-		if logUserId > 0 {
-			msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
-			RecordLog(logUserId, LogTypeTopup, msg)
-		}
+	if logUserId > 0 {
+		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
+		RecordLog(logUserId, LogTypeTopup, msg)
+		NotifySubscriptionPurchaseSuccessToUserAsync(logUserId, logPlanTitle, logMoney, logPaymentMethod)
+	}
 	if logUserId > 0 && createdSub != nil {
 		triggerClaudeSubscriptionActivationProbeAsync(logUserId, createdSub)
 	}
@@ -3501,14 +3502,14 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 		if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", orderId).Updates(updates).Error; err != nil {
 			return err
 		}
-			if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
-				return err
-			}
-			deliveryLogPlanTitle = strings.TrimSpace(result.PlanTitle)
-			deliveryLogTradeNo = strings.TrimSpace(result.TradeNo)
-			deliveryLogAt = result.DeliveredAt
-			return nil
-		})
+		if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
+			return err
+		}
+		deliveryLogPlanTitle = strings.TrimSpace(result.PlanTitle)
+		deliveryLogTradeNo = strings.TrimSpace(result.TradeNo)
+		deliveryLogAt = result.DeliveredAt
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -4383,15 +4384,15 @@ func AdminRejectManualDeliveryOrder(orderId int, adminId int, adminRemark string
 		if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", orderId).Updates(updates).Error; err != nil {
 			return err
 		}
-			if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
-				return err
-			}
-			rejectLogPlanTitle = strings.TrimSpace(result.PlanTitle)
-			rejectLogTradeNo = strings.TrimSpace(result.TradeNo)
-			rejectLogAt = result.DeliveredAt
-			rejectLogRefundToQuota = result.RefundToQuota && result.RefundQuotaAmount > 0
-			if refundQuota > 0 {
-				logType = LogTypeRefund
+		if err := tx.Where("id = ?", orderId).First(&result).Error; err != nil {
+			return err
+		}
+		rejectLogPlanTitle = strings.TrimSpace(result.PlanTitle)
+		rejectLogTradeNo = strings.TrimSpace(result.TradeNo)
+		rejectLogAt = result.DeliveredAt
+		rejectLogRefundToQuota = result.RefundToQuota && result.RefundQuotaAmount > 0
+		if refundQuota > 0 {
+			logType = LogTypeRefund
 			logContent = fmt.Sprintf("管理员拒绝人工发放套餐订单，已返还余额额度: %d", refundQuota)
 		} else if result.RefundToQuota && result.RefundQuotaAmount > 0 {
 			logContent = fmt.Sprintf("管理员更新人工发放套餐订单拒绝原因；该订单已返还余额额度: %d", result.RefundQuotaAmount)

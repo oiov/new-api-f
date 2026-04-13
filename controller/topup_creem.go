@@ -370,6 +370,12 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 			Money:         topUp.Money,
 			Quota:         logger.FormatQuota(int(topUp.Amount)),
 		})
+		model.NotifyTopUpSuccessToUserAsync(
+			topUp.UserId,
+			topUp.PaymentMethod,
+			topUp.Money,
+			logger.FormatQuota(int(topUp.Amount)),
+		)
 	}
 
 	log.Printf("Creem充值成功 - 订单号: %s, 充值额度: %d, 支付金额: %.2f",

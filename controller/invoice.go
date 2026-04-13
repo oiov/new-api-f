@@ -203,6 +203,7 @@ func CreateInvoice(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	model.NotifyInvoiceApplicationCreatedAsync(inv)
 	common.ApiSuccess(c, inv)
 }
 

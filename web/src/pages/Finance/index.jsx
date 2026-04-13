@@ -64,10 +64,11 @@ const CHART_OPTION = {
 };
 
 const formatMoney = (value) => renderQuotaWithAmount(Number(value || 0));
+const EMPTY_PLACEHOLDER = '—';
 
-const formatDateTime = (timestamp) => {
-  if (!timestamp) return '—';
-  return new Date(timestamp * 1000).toLocaleString('zh-CN', {
+const formatDateTime = (timestamp, language) => {
+  if (!timestamp) return EMPTY_PLACEHOLDER;
+  return new Date(timestamp * 1000).toLocaleString(language || 'zh-CN', {
     hour12: false,
   });
 };
@@ -75,7 +76,7 @@ const formatDateTime = (timestamp) => {
 const normalizeName = (name, labelMap) => labelMap[name] || name || '—';
 
 const FinancePage = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [rangeKey, setRangeKey] = useState('30d');
   const [granularity, setGranularity] = useState('day');
   const [loading, setLoading] = useState(false);
@@ -139,6 +140,30 @@ const FinancePage = () => {
     }),
     [t],
   );
+
+  const orderStatusLabels = useMemo(
+    () => ({
+      pending: t('待处理'),
+      success: t('成功'),
+      failed: t('失败'),
+      expired: t('已过期'),
+    }),
+    [t],
+  );
+
+  const formatCount = useMemo(() => {
+    const formatter = new Intl.NumberFormat(i18n.language || 'zh-CN');
+    return (value) => formatter.format(Number(value || 0));
+  }, [i18n.language]);
+
+  const formatMoneyValue = useMemo(() => {
+    return (value) => formatMoney(value);
+  }, []);
+
+  const buildTooltipRow = (key, value) => ({
+    key,
+    value: value || EMPTY_PLACEHOLDER,
+  });
 
   const summaryCards = useMemo(() => {
     const summary = data?.summary || {};
@@ -224,12 +249,40 @@ const FinancePage = () => {
       point: { visible: true },
       smooth: true,
       title: { visible: true, text: t('收入趋势') },
+      tooltip: {
+        dimension: {
+          content: [
+            {
+              key: () => t('时间'),
+              value: (datum) => datum?.label || EMPTY_PLACEHOLDER,
+            },
+            {
+              key: () => t('总收入'),
+              value: (datum) => formatMoneyValue(datum?.revenue_amount),
+            },
+            {
+              key: () => t('开票金额'),
+              value: (datum) => formatMoneyValue(datum?.invoice_amount),
+            },
+            {
+              key: () => t('成功订单'),
+              value: (datum) => formatCount(datum?.order_count),
+            },
+          ],
+        },
+      },
       axes: [
         { orient: 'bottom', label: { visible: true } },
-        { orient: 'left', label: { visible: true } },
+        {
+          orient: 'left',
+          label: {
+            visible: true,
+            formatMethod: (value) => formatMoneyValue(value),
+          },
+        },
       ],
     }),
-    [revenueTrendValues, t],
+    [formatCount, formatMoneyValue, revenueTrendValues, t],
   );
 
   const invoiceTrendSpec = useMemo(
@@ -239,12 +292,36 @@ const FinancePage = () => {
       xField: 'label',
       yField: 'invoice_amount',
       title: { visible: true, text: t('开票金额趋势') },
+      tooltip: {
+        mark: {
+          content: [
+            buildTooltipRow(t('时间'), ''),
+            buildTooltipRow(t('开票金额'), ''),
+          ],
+          updateContent: (items) => {
+            if (!Array.isArray(items) || items.length === 0) {
+              return items;
+            }
+            const datum = items[0]?.datum || {};
+            return [
+              buildTooltipRow(t('时间'), datum.label || EMPTY_PLACEHOLDER),
+              buildTooltipRow(t('开票金额'), formatMoneyValue(datum.invoice_amount)),
+            ];
+          },
+        },
+      },
       axes: [
         { orient: 'bottom', label: { visible: true } },
-        { orient: 'left', label: { visible: true } },
+        {
+          orient: 'left',
+          label: {
+            visible: true,
+            formatMethod: (value) => formatMoneyValue(value),
+          },
+        },
       ],
     }),
-    [revenueTrendValues, t],
+    [formatMoneyValue, revenueTrendValues, t],
   );
 
   const paymentSpec = useMemo(
@@ -258,8 +335,26 @@ const FinancePage = () => {
       title: { visible: true, text: t('支付方式分布') },
       legends: { visible: true, orient: 'left' },
       label: { visible: true },
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: () => t('支付方式'),
+              value: (datum) => datum?.name || EMPTY_PLACEHOLDER,
+            },
+            {
+              key: () => t('金额'),
+              value: (datum) => formatMoneyValue(datum?.value),
+            },
+            {
+              key: () => t('成功订单'),
+              value: (datum) => formatCount(datum?.count),
+            },
+          ],
+        },
+      },
     }),
-    [paymentValues, t],
+    [formatCount, formatMoneyValue, paymentValues, t],
   );
 
   const userRankingSpec = useMemo(
@@ -269,12 +364,36 @@ const FinancePage = () => {
       xField: 'name',
       yField: 'revenue',
       title: { visible: true, text: t('用户收入排行') },
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: () => t('用户'),
+              value: (datum) => datum?.name || EMPTY_PLACEHOLDER,
+            },
+            {
+              key: () => t('总收入'),
+              value: (datum) => formatMoneyValue(datum?.revenue),
+            },
+            {
+              key: () => t('成功订单'),
+              value: (datum) => formatCount(datum?.order_count),
+            },
+          ],
+        },
+      },
       axes: [
         { orient: 'bottom', label: { visible: true, autoRotate: true } },
-        { orient: 'left', label: { visible: true } },
+        {
+          orient: 'left',
+          label: {
+            visible: true,
+            formatMethod: (value) => formatMoneyValue(value),
+          },
+        },
       ],
     }),
-    [topUserValues, t],
+    [formatCount, formatMoneyValue, t, topUserValues],
   );
 
   const invoiceStatusSpec = useMemo(
@@ -284,12 +403,36 @@ const FinancePage = () => {
       xField: 'name',
       yField: 'amount',
       title: { visible: true, text: t('发票状态分布') },
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: () => t('状态'),
+              value: (datum) => datum?.name || EMPTY_PLACEHOLDER,
+            },
+            {
+              key: () => t('金额'),
+              value: (datum) => formatMoneyValue(datum?.amount),
+            },
+            {
+              key: () => t('发票申请数'),
+              value: (datum) => formatCount(datum?.count),
+            },
+          ],
+        },
+      },
       axes: [
         { orient: 'bottom', label: { visible: true } },
-        { orient: 'left', label: { visible: true } },
+        {
+          orient: 'left',
+          label: {
+            visible: true,
+            formatMethod: (value) => formatMoneyValue(value),
+          },
+        },
       ],
     }),
-    [invoiceStatusValues, t],
+    [formatCount, formatMoneyValue, invoiceStatusValues, t],
   );
 
   const columns = useMemo(
@@ -297,7 +440,7 @@ const FinancePage = () => {
       {
         title: t('完成时间'),
         dataIndex: 'complete_time',
-        render: (value) => formatDateTime(value),
+        render: (value) => formatDateTime(value, i18n.language),
       },
       {
         title: t('用户'),
@@ -319,7 +462,7 @@ const FinancePage = () => {
         dataIndex: 'status',
         render: (value) => (
           <Tag color={ORDER_STATUS_COLORS[value] || 'grey'}>
-            {value || '—'}
+            {orderStatusLabels[value] || value || EMPTY_PLACEHOLDER}
           </Tag>
         ),
       },
@@ -328,12 +471,12 @@ const FinancePage = () => {
         dataIndex: 'trade_no',
         render: (value) => (
           <Text copyable ellipsis={{ showTooltip: true }} style={{ maxWidth: 220 }}>
-            {value || '—'}
+            {value || EMPTY_PLACEHOLDER}
           </Text>
         ),
       },
     ],
-    [paymentMethodLabels, t],
+    [i18n.language, orderStatusLabels, paymentMethodLabels, t],
   );
 
   return (

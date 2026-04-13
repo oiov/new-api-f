@@ -749,6 +749,17 @@ const ROUTE_SEO_CONFIGS = [
       }),
   },
   {
+    pattern: '/console/finance',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 财务中心页标题',
+        descriptionKey: 'SEO 财务中心页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
     pattern: '/console/midjourney',
     build: (language, pathname) =>
       buildRouteSeo({
