@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,8 +36,18 @@ type CheckinLeaderboardItem struct {
 	TotalQuota    int64  `json:"total_quota"`
 }
 
+type CheckinTodayRecord struct {
+	DisplayName   string `json:"display_name"`
+	QuotaAwarded  int    `json:"quota_awarded"`
+	CreatedAt     int64  `json:"created_at"`
+	CheckedInAt   string `json:"checked_in_at"`
+	TotalCheckins int64  `json:"total_checkins"`
+	TotalQuota    int64  `json:"total_quota"`
+}
+
 type CheckinLeaderboardPage struct {
 	Items         []CheckinLeaderboardItem `json:"items"`
+	TodayRecords  []CheckinTodayRecord     `json:"today_records"`
 	Total         int64                    `json:"total"`
 	Page          int                      `json:"page"`
 	PageSize      int                      `json:"page_size"`
@@ -168,11 +179,52 @@ func GetCheckinAvailability(now time.Time) (*CheckinAvailability, error) {
 	return availability, nil
 }
 
+func formatCheckinAvailabilitySummary(availability *CheckinAvailability) string {
+	if availability == nil {
+		return ""
+	}
+	weekdayLabels := map[int]string{
+		0: "周日",
+		1: "周一",
+		2: "周二",
+		3: "周三",
+		4: "周四",
+		5: "周五",
+		6: "周六",
+	}
+	parts := make([]string, 0, 3)
+	if len(availability.OpenWeekdays) > 0 {
+		weekdays := make([]string, 0, len(availability.OpenWeekdays))
+		for _, weekday := range availability.OpenWeekdays {
+			if label, ok := weekdayLabels[weekday]; ok {
+				weekdays = append(weekdays, label)
+			}
+		}
+		if len(weekdays) > 0 {
+			parts = append(parts, strings.Join(weekdays, "、"))
+		}
+	}
+	if availability.OpenStartSeconds >= 0 && availability.OpenEndSeconds > 0 {
+		parts = append(parts, operation_setting.FormatCheckinTime(availability.OpenStartSeconds)+"-"+operation_setting.FormatCheckinTime(availability.OpenEndSeconds))
+	}
+	if availability.DailyUserLimit > 0 {
+		parts = append(parts, "每日前 "+strconv.Itoa(availability.DailyUserLimit)+" 人")
+	}
+	return strings.Join(parts, "，")
+}
+
 func buildCheckinUnavailableError(availability *CheckinAvailability) error {
+	schedule := formatCheckinAvailabilitySummary(availability)
 	switch availability.Reason {
 	case "weekday_closed", "time_closed":
-		return errors.New("签到当前仅在指定开放时段内可用")
+		if schedule == "" {
+			return errors.New("签到当前仅在指定开放时段内可用")
+		}
+		return errors.New("签到当前仅在指定开放时段内可用。开放规则：" + schedule)
 	case "daily_limit_reached":
+		if availability != nil && availability.DailyUserLimit > 0 {
+			return errors.New("今日签到名额已满。开放规则：" + schedule)
+		}
 		return errors.New("今日签到名额已满")
 	default:
 		return errors.New("当前暂不可签到")
@@ -382,12 +434,13 @@ func GetCheckinLeaderboard(page int, pageSize int, limit int) (*CheckinLeaderboa
 	}
 
 	pageData := &CheckinLeaderboardPage{
-		Items:      make([]CheckinLeaderboardItem, 0),
-		Total:      total,
-		Page:       page,
-		PageSize:   pageSize,
-		Limit:      limit,
-		TotalUsers: totalUsers,
+		Items:        make([]CheckinLeaderboardItem, 0),
+		TodayRecords: make([]CheckinTodayRecord, 0),
+		Total:        total,
+		Page:         page,
+		PageSize:     pageSize,
+		Limit:        limit,
+		TotalUsers:   totalUsers,
 	}
 
 	if err := baseQuery.Session(&gorm.Session{}).
@@ -407,6 +460,48 @@ func GetCheckinLeaderboard(page int, pageSize int, limit int) (*CheckinLeaderboa
 		Select("COALESCE(SUM(checkins.quota_awarded), 0)").
 		Scan(&pageData.TodayQuota).Error; err != nil {
 		return nil, err
+	}
+
+	type checkinTodayRecordRow struct {
+		DisplayName  string
+		Username     string
+		QuotaAwarded int
+		CreatedAt    int64
+		TotalCheckins int64
+		TotalQuota    int64
+	}
+	todayRows := make([]checkinTodayRecordRow, 0, 20)
+	if err := todayQuery.Session(&gorm.Session{}).
+		Select(
+			"users.display_name AS display_name",
+			"users.username AS username",
+			"checkins.quota_awarded AS quota_awarded",
+			"checkins.created_at AS created_at",
+			"(SELECT COUNT(*) FROM checkins history_checkins WHERE history_checkins.user_id = checkins.user_id) AS total_checkins",
+			"(SELECT COALESCE(SUM(history_checkins.quota_awarded), 0) FROM checkins history_checkins WHERE history_checkins.user_id = checkins.user_id) AS total_quota",
+		).
+		Order("checkins.created_at DESC, checkins.id DESC").
+		Limit(20).
+		Scan(&todayRows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range todayRows {
+		name := strings.TrimSpace(row.DisplayName)
+		if name == "" {
+			name = strings.TrimSpace(row.Username)
+		}
+		checkedInAt := ""
+		if row.CreatedAt > 0 {
+			checkedInAt = time.Unix(row.CreatedAt, 0).In(checkinLocation).Format("15:04:05")
+		}
+		pageData.TodayRecords = append(pageData.TodayRecords, CheckinTodayRecord{
+			DisplayName:  maskCheckinLeaderboardName(name),
+			QuotaAwarded: row.QuotaAwarded,
+			CreatedAt:    row.CreatedAt,
+			CheckedInAt:  checkedInAt,
+			TotalCheckins: row.TotalCheckins,
+			TotalQuota:    row.TotalQuota,
+		})
 	}
 
 	if total == 0 {

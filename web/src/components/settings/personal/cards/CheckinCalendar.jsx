@@ -32,6 +32,8 @@ import {
   TabPane,
   Empty,
   Pagination,
+  Table,
+  Tag,
 } from '@douyinfe/semi-ui';
 import {
   CalendarCheck,
@@ -80,6 +82,22 @@ const formatCheckinTime = (seconds) => {
   return `${hours}:${minutes}`;
 };
 
+const formatCheckinDateTime = (timestamp) => {
+  const value = Number(timestamp || 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '--';
+  }
+  const date = new Date(value * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return '--';
+  }
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${month}-${day} ${hours}:${minutes}`;
+};
+
 const quotaToCNY = (quota) => {
   const value = Number(quota || 0);
   if (!Number.isFinite(value) || value <= 0) {
@@ -95,6 +113,16 @@ const quotaToCNY = (quota) => {
   return `¥${amount.toFixed(4)}`;
 };
 
+const formatLocalMonthKey = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
 const CheckinCalendar = ({
   t,
   status,
@@ -108,6 +136,7 @@ const CheckinCalendar = ({
   const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [todayRecords, setTodayRecords] = useState([]);
   const [leaderboardLimit, setLeaderboardLimit] = useState(100);
   const [leaderboardPage, setLeaderboardPage] = useState(1);
   const [leaderboardPageSize] = useState(10);
@@ -129,7 +158,7 @@ const CheckinCalendar = ({
     },
   });
   const [currentMonth, setCurrentMonth] = useState(
-    new Date().toISOString().slice(0, 7),
+    formatLocalMonthKey(),
   );
   // 初始加载状态，用于避免折叠状态闪烁
   const [initialLoaded, setInitialLoaded] = useState(false);
@@ -205,6 +234,38 @@ const CheckinCalendar = ({
     [leaderboardStats, leaderboardTotal, t],
   );
 
+  const overviewCards = useMemo(
+    () => [
+      {
+        key: 'total_checkins',
+        label: t('累计签到'),
+        value: checkinData.stats?.total_checkins || 0,
+        tone: 'text-green-600',
+        detail: t('全部时间累计签到天数'),
+      },
+      {
+        key: 'month_quota',
+        label: t('本月获得'),
+        value: renderQuota(monthlyQuota, 6),
+        tone: 'text-orange-600',
+        detail: t('当前月份签到奖励汇总'),
+      },
+      {
+        key: 'total_quota',
+        label: t('累计获得'),
+        value: renderQuota(checkinData.stats?.total_quota || 0, 6),
+        tone: 'text-blue-600',
+        detail: t('全部时间累计签到奖励'),
+      },
+    ],
+    [
+      checkinData.stats?.total_checkins,
+      checkinData.stats?.total_quota,
+      monthlyQuota,
+      t,
+    ],
+  );
+
   const checkinScheduleText = useMemo(() => {
     const weekdays = normalizeCheckinWeekdays(
       status?.['checkin_setting.open_weekdays'],
@@ -216,7 +277,6 @@ const CheckinCalendar = ({
       .join('、');
     const startSeconds = Number(status?.['checkin_setting.open_start_seconds']);
     const endSeconds = Number(status?.['checkin_setting.open_end_seconds']);
-    const dailyUserLimit = Number(status?.['checkin_setting.daily_user_limit'] || 0);
     const parts = [];
 
     if (weekdayText) {
@@ -227,9 +287,6 @@ const CheckinCalendar = ({
         `${formatCheckinTime(startSeconds)} - ${formatCheckinTime(endSeconds)}`,
       );
     }
-    if (dailyUserLimit > 0) {
-      parts.push(t('每日前 {{count}} 人可签到', { count: dailyUserLimit }));
-    }
 
     if (!parts.length) {
       return '';
@@ -238,6 +295,80 @@ const CheckinCalendar = ({
       schedule: parts.join(' · '),
     });
   }, [status, t]);
+
+  const availabilityStatusText = useMemo(() => {
+    if (!initialLoaded) {
+      return '';
+    }
+    return checkinData.available_now ? t('可立即签到') : t('当前未开放');
+  }, [checkinData.available_now, initialLoaded, t]);
+
+  const availabilityHintText = useMemo(() => {
+    if (!initialLoaded) {
+      return '';
+    }
+    const parts = [];
+    if (checkinScheduleText) {
+      parts.push(checkinScheduleText);
+    }
+    return parts.join(' · ');
+  }, [
+    checkinScheduleText,
+    initialLoaded,
+    t,
+  ]);
+
+  const todayRecordsColumns = useMemo(
+    () => [
+      {
+        title: t('用户'),
+        dataIndex: 'display_name',
+        render: (text) => (
+          <div className='font-medium text-semi-color-text-0'>
+            {text || t('匿名用户')}
+          </div>
+        ),
+      },
+      {
+        title: t('签到 Token'),
+        dataIndex: 'quota_awarded',
+        width: 160,
+        render: (value) => renderNumber(Number(value || 0)),
+      },
+      {
+        title: t('签到额度'),
+        dataIndex: 'quota_awarded',
+        width: 140,
+        render: (value) => quotaToCNY(value || 0),
+      },
+      {
+        title: t('签到时间'),
+        dataIndex: 'checked_in_at',
+        width: 180,
+        render: (value, record) =>
+          value || formatCheckinDateTime(record?.created_at),
+      },
+      {
+        title: t('历史总签到次数'),
+        dataIndex: 'total_checkins',
+        width: 160,
+        render: (value) => Number(value || 0),
+      },
+      {
+        title: t('历史签到 Token'),
+        dataIndex: 'total_quota',
+        width: 160,
+        render: (value) => renderNumber(Number(value || 0)),
+      },
+      {
+        title: t('历史签到金额'),
+        dataIndex: 'total_quota',
+        width: 160,
+        render: (value) => quotaToCNY(value || 0),
+      },
+    ],
+    [t],
+  );
 
   const fetchCheckinLeaderboard = async (page = leaderboardPage) => {
     setLeaderboardLoading(true);
@@ -255,6 +386,7 @@ const CheckinCalendar = ({
         const nextTotal = Number(data?.total || 0);
         setLeaderboardLimit(Number(data?.limit || 100));
         setLeaderboard(nextItems);
+        setTodayRecords(Array.isArray(data?.today_records) ? data.today_records : []);
         setLeaderboardPage(nextPage);
         setLeaderboardStats({
           today_checkins: Number(data?.today_checkins || 0),
@@ -271,9 +403,11 @@ const CheckinCalendar = ({
         );
       } else {
         showError(message || t('获取签到榜失败'));
+        setTodayRecords([]);
       }
     } catch (error) {
       showError(t('获取签到榜失败'));
+      setTodayRecords([]);
     } finally {
       setLeaderboardLoading(false);
     }
@@ -413,7 +547,7 @@ const CheckinCalendar = ({
 
   // 处理月份变化
   const handleMonthChange = (date) => {
-    const month = date.toISOString().slice(0, 7);
+    const month = formatLocalMonthKey(date);
     setCurrentMonth(month);
   };
 
@@ -534,44 +668,63 @@ const CheckinCalendar = ({
         <div className='mt-4'>
           <Tabs type='line'>
             <TabPane tab={t('签到概览')} itemKey='overview'>
-              <div className='grid grid-cols-3 gap-3 mb-4'>
-                <div className='text-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
-                  <div className='text-xl font-bold text-green-600'>
-                    {checkinData.stats?.total_checkins || 0}
+              <div className='mb-4 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.3fr),minmax(0,0.7fr)]'>
+                <div className='rounded-xl border border-semi-color-border bg-[linear-gradient(135deg,rgba(34,197,94,0.08),rgba(59,130,246,0.03))] p-4'>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <Typography.Text strong>
+                      {t('今日开放状态：{{status}}', {
+                        status: availabilityStatusText || '--',
+                      })}
+                    </Typography.Text>
+                    <Tag
+                      color={checkinData.available_now ? 'green' : 'grey'}
+                      shape='circle'
+                      type='light'
+                    >
+                      {availabilityStatusText || '--'}
+                    </Tag>
                   </div>
-                  <div className='text-xs text-gray-500'>{t('累计签到')}</div>
-                </div>
-                <div className='text-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
-                  <div className='text-xl font-bold text-orange-600'>
-                    {renderQuota(monthlyQuota, 6)}
+                  <div className='mt-2 text-sm text-semi-color-text-1'>
+                    {availabilityHintText || t('每日签到可获得随机额度奖励')}
                   </div>
-                  <div className='text-xs text-gray-500'>{t('本月获得')}</div>
-                </div>
-                <div className='text-center p-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg'>
-                  <div className='text-xl font-bold text-blue-600'>
-                    {renderQuota(checkinData.stats?.total_quota || 0, 6)}
+                  <div className='mt-3 grid grid-cols-2 gap-3 md:grid-cols-3'>
+                    {overviewCards.map((item) => (
+                      <div
+                        key={item.key}
+                        className='rounded-lg border border-semi-color-border bg-semi-color-bg-0 px-3 py-2.5'
+                      >
+                        <div className='text-[12px] text-semi-color-text-2'>
+                          {item.label}
+                        </div>
+                        <div className={`mt-1 text-lg font-semibold ${item.tone}`}>
+                          {item.value}
+                        </div>
+                        <div className='mt-1 text-[11px] text-semi-color-text-2'>
+                          {item.detail}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className='text-xs text-gray-500'>{t('累计获得')}</div>
                 </div>
-              </div>
 
-              <div className='mb-4 grid grid-cols-2 gap-2 lg:grid-cols-4'>
-                {leaderboardSummaryCards.map((item) => (
-                  <div
-                    key={item.key}
-                    className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 px-3 py-2.5'
-                  >
-                    <div className='text-[11px] text-semi-color-text-2'>
-                      {item.label}
+                <div className='grid grid-cols-2 gap-2 lg:grid-cols-2'>
+                  {leaderboardSummaryCards.map((item) => (
+                    <div
+                      key={item.key}
+                      className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 px-3 py-3'
+                    >
+                      <div className='text-[11px] text-semi-color-text-2'>
+                        {item.label}
+                      </div>
+                      <div className={`mt-1 text-base font-semibold ${item.tone}`}>
+                        {item.value}
+                      </div>
+                      <div className='mt-1 text-[11px] text-semi-color-text-2'>
+                        {item.detail}
+                      </div>
                     </div>
-                    <div className={`mt-1 text-sm font-semibold ${item.tone}`}>
-                      {item.value}
-                    </div>
-                    <div className='mt-1 text-[11px] text-semi-color-text-2'>
-                      {item.detail}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
               <Spin spinning={loading}>
@@ -762,6 +915,36 @@ const CheckinCalendar = ({
                 </div>
               </Spin>
             </TabPane>
+            {todayRecords.length > 0 ? (
+              <TabPane tab={t('今日签到')} itemKey='today-records'>
+                <Spin spinning={leaderboardLoading}>
+                  <div className='space-y-3'>
+                    <div className='rounded-xl border border-semi-color-border bg-[linear-gradient(135deg,rgba(34,197,94,0.06),rgba(59,130,246,0.04))] px-3 py-3'>
+                      <div>
+                        <div className='text-[14px] font-semibold text-semi-color-text-0'>
+                          {t('今日签到列表')}
+                        </div>
+                        <div className='mt-1 text-[12px] text-semi-color-text-2'>
+                          {t('最新签到用户与奖励发放情况')}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Card bodyStyle={{ padding: 0 }}>
+                      <Table
+                        columns={todayRecordsColumns}
+                        dataSource={todayRecords}
+                        rowKey={(record, index) =>
+                          `${record?.display_name || 'anonymous'}-${record?.created_at || index}`
+                        }
+                        pagination={false}
+                        size='small'
+                      />
+                    </Card>
+                  </div>
+                </Spin>
+              </TabPane>
+            ) : null}
           </Tabs>
         </div>
       </Collapsible>

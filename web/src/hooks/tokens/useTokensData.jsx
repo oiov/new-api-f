@@ -31,6 +31,23 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { fetchTokenKey as fetchTokenKeyById } from '../../helpers/token';
 
+const SUBSCRIPTION_ACCESS_TOKEN_NAME = 'Subscription Access';
+
+const isProtectedSubscriptionAccessToken = (token) => {
+  if (!token) {
+    return false;
+  }
+  if (Number(token.specific_channel_id || 0) > 0) {
+    return false;
+  }
+  if ((token.name || '').trim() !== SUBSCRIPTION_ACCESS_TOKEN_NAME) {
+    return false;
+  }
+  const expiredTime = Number(token.expired_time ?? -1);
+  const now = Math.floor(Date.now() / 1000);
+  return expiredTime === -1 || expiredTime > now;
+};
+
 export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const { t } = useTranslation();
   const emptyFilters = {
@@ -379,10 +396,15 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Row selection handlers
   const rowSelection = {
+    getCheckboxProps: (record) => ({
+      disabled: isProtectedSubscriptionAccessToken(record),
+    }),
     onSelect: (record, selected) => {},
     onSelectAll: (selected, selectedRows) => {},
     onChange: (selectedRowKeys, selectedRows) => {
-      setSelectedKeys(selectedRows);
+      setSelectedKeys(
+        selectedRows.filter((token) => !isProtectedSubscriptionAccessToken(token)),
+      );
     },
   };
 
@@ -428,13 +450,16 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Batch delete tokens
   const batchDeleteTokens = async () => {
-    if (selectedKeys.length === 0) {
+    const deletableTokens = selectedKeys.filter(
+      (token) => !isProtectedSubscriptionAccessToken(token),
+    );
+    if (deletableTokens.length === 0) {
       showError(t('请先选择要删除的令牌！'));
       return;
     }
     await deleteTokensByIds(
-      selectedKeys.map((token) => token.id),
-      t('已删除 {{count}} 个令牌！', { count: selectedKeys.length }),
+      deletableTokens.map((token) => token.id),
+      t('已删除 {{count}} 个令牌！', { count: deletableTokens.length }),
     );
   };
 

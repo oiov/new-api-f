@@ -193,10 +193,18 @@ export const useModelPricingData = (initialValues = {}) => {
   };
 
   const setModelsFormat = (models, groupRatio, vendorMap) => {
+    const availableGroups = new Set(
+      Object.keys(groupRatio || {}).filter((group) => group !== ''),
+    );
+    const normalizedModels = [];
+
     for (let i = 0; i < models.length; i++) {
       const m = models[i];
       m.key = m.model_name;
       m.group_ratio = groupRatio[m.model_name];
+      m.enable_groups = Array.isArray(m.enable_groups)
+        ? m.enable_groups.filter((group) => availableGroups.has(group))
+        : [];
 
       if (m.vendor_id && vendorMap[m.vendor_id]) {
         const vendor = vendorMap[m.vendor_id];
@@ -204,12 +212,18 @@ export const useModelPricingData = (initialValues = {}) => {
         m.vendor_icon = vendor.icon;
         m.vendor_description = vendor.description;
       }
+
+      if (m.enable_groups.length === 0) {
+        continue;
+      }
+      normalizedModels.push(m);
     }
-    models.sort((a, b) => {
+
+    normalizedModels.sort((a, b) => {
       return a.quota_type - b.quota_type;
     });
 
-    models.sort((a, b) => {
+    normalizedModels.sort((a, b) => {
       if (a.model_name.startsWith('gpt') && !b.model_name.startsWith('gpt')) {
         return -1;
       } else if (
@@ -222,7 +236,7 @@ export const useModelPricingData = (initialValues = {}) => {
       }
     });
 
-    setModels(models);
+    setModels(normalizedModels);
   };
 
   const loadPricing = async () => {

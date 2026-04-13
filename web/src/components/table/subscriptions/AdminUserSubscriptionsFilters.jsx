@@ -23,6 +23,8 @@ import { IconSearch } from '@douyinfe/semi-icons';
 import { DATE_RANGE_PRESETS } from '../../../constants/console.constants';
 import { renderGroupOption } from '../../../helpers';
 
+const MANUAL_SUBMIT_FIELDS = new Set(['subscription_id', 'username']);
+
 const AdminUserSubscriptionsFilters = ({
   formInitValues,
   setFormApi,
@@ -42,6 +44,14 @@ const AdminUserSubscriptionsFilters = ({
     }, 100);
   };
 
+  const handleValueChange = (_, changedValues) => {
+    const changedField = Object.keys(changedValues || {})[0];
+    if (!changedField || MANUAL_SUBMIT_FIELDS.has(changedField)) {
+      return;
+    }
+    searchUserSubscriptions();
+  };
+
   return (
     <Form
       initValues={formInitValues}
@@ -56,6 +66,7 @@ const AdminUserSubscriptionsFilters = ({
       trigger='change'
       stopValidateWithError={false}
       className='w-full'
+      onValueChange={handleValueChange}
     >
       <div className='flex flex-col gap-2 w-full'>
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2 w-full'>

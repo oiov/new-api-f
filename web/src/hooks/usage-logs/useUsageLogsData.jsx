@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@douyinfe/semi-ui';
+import { useNavigate } from 'react-router-dom';
 import {
   API,
   getTodayStartTimestamp,
@@ -43,6 +44,7 @@ import ParamOverrideEntry from '../../components/table/usage-logs/components/Par
 
 export const useLogsData = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   // Define column keys for selection
   const COLUMN_KEYS = {
@@ -816,6 +818,44 @@ export const useLogsData = () => {
     await loadLogs(1, pageSize);
   };
 
+  const applyLogFilter = (patch) => {
+    if (!formApi || !patch) {
+      return;
+    }
+
+    const currentValues = formApi.getValues() || {};
+    formApi.setValues({
+      ...currentValues,
+      ...patch,
+    });
+
+    setTimeout(() => {
+      setActivePage(1);
+      handleEyeClick();
+      loadLogs(1, pageSize).catch((reason) => {
+        showError(reason);
+      });
+    }, 0);
+  };
+
+  const jumpToChannelDetail = (channelId) => {
+    const normalizedChannelId = String(channelId || '').trim();
+    if (!normalizedChannelId) {
+      return;
+    }
+    navigate(`/console/channel?keyword=${encodeURIComponent(normalizedChannelId)}`);
+  };
+
+  const jumpToUserDetail = ({ userId, username }) => {
+    const normalizedUserId = String(userId || '').trim();
+    const normalizedUsername = String(username || '').trim();
+    const keyword = normalizedUserId || normalizedUsername;
+    if (!keyword) {
+      return;
+    }
+    navigate(`/console/user?keyword=${encodeURIComponent(keyword)}`);
+  };
+
   // Copy text function
   const copyText = async (e, text) => {
     e.stopPropagation();
@@ -907,6 +947,9 @@ export const useLogsData = () => {
     handlePageChange,
     handlePageSizeChange,
     refresh,
+    applyLogFilter,
+    jumpToChannelDetail,
+    jumpToUserDetail,
     copyText,
     handleEyeClick,
     setLogsFormat,

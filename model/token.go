@@ -37,6 +37,16 @@ type Token struct {
 
 const SubscriptionAggregateAccessTokenName = "Subscription Access"
 
+func (token *Token) IsActiveSubscriptionAggregateAccessToken(now int64) bool {
+	if token == nil {
+		return false
+	}
+	if !token.IsSubscriptionAggregateAccessToken() {
+		return false
+	}
+	return token.ExpiredTime == -1 || token.ExpiredTime > now
+}
+
 func (token *Token) IsSubscriptionSpecificChannelToken() bool {
 	if token == nil {
 		return false
@@ -646,7 +656,8 @@ func BatchDeleteInvalidTokensByFilter(userId int, filters UserTokenSearchFilters
 	if err != nil {
 		return 0, err
 	}
-	baseQuery = applyInvalidTokenFilter(baseQuery, common.GetTimestamp())
+	now := common.GetTimestamp()
+	baseQuery = applyInvalidTokenFilter(baseQuery, now)
 
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -665,7 +676,14 @@ func BatchDeleteInvalidTokensByFilter(userId int, filters UserTokenSearchFilters
 
 	ids := make([]int, 0, len(tokens))
 	for _, token := range tokens {
+		if token.IsActiveSubscriptionAggregateAccessToken(now) {
+			continue
+		}
 		ids = append(ids, token.Id)
+	}
+	if len(ids) == 0 {
+		tx.Rollback()
+		return 0, nil
 	}
 	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
@@ -678,11 +696,14 @@ func BatchDeleteInvalidTokensByFilter(userId int, filters UserTokenSearchFilters
 	if common.RedisEnabled {
 		gopool.Go(func() {
 			for _, token := range tokens {
+				if token.IsActiveSubscriptionAggregateAccessToken(now) {
+					continue
+				}
 				_ = cacheDeleteToken(token.Key)
 			}
 		})
 	}
-	return len(tokens), nil
+	return len(ids), nil
 }
 
 func ValidateUserToken(key string) (token *Token, err error) {
@@ -885,6 +906,9 @@ func DeleteTokenById(id int, userId int) (err error) {
 	if err != nil {
 		return err
 	}
+	if token.IsActiveSubscriptionAggregateAccessToken(common.GetTimestamp()) {
+		return errors.New("有效期内的 Subscription Access 令牌不可删除")
+	}
 	return token.Delete()
 }
 
@@ -962,6 +986,7 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	}
 
 	tx := DB.Begin()
+	now := common.GetTimestamp()
 
 	var tokens []Token
 	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Find(&tokens).Error; err != nil {
@@ -969,7 +994,19 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 		return 0, err
 	}
 
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+	deletableIDs := make([]int, 0, len(tokens))
+	for _, token := range tokens {
+		if token.IsActiveSubscriptionAggregateAccessToken(now) {
+			continue
+		}
+		deletableIDs = append(deletableIDs, token.Id)
+	}
+	if len(deletableIDs) == 0 {
+		tx.Rollback()
+		return 0, nil
+	}
+
+	if err := tx.Where("user_id = ? AND id IN (?)", userId, deletableIDs).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
@@ -981,10 +1018,13 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	if common.RedisEnabled {
 		gopool.Go(func() {
 			for _, t := range tokens {
+				if t.IsActiveSubscriptionAggregateAccessToken(now) {
+					continue
+				}
 				_ = cacheDeleteToken(t.Key)
 			}
 		})
 	}
 
-	return len(tokens), nil
+	return len(deletableIDs), nil
 }

@@ -351,6 +351,10 @@ func UpdateToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if statusOnly == "" && cleanToken.IsActiveSubscriptionAggregateAccessToken(common.GetTimestamp()) {
+		common.ApiErrorMsg(c, "有效期内的 Subscription Access 令牌不可编辑")
+		return
+	}
 	if token.Status == common.TokenStatusEnabled {
 		if cleanToken.Status == common.TokenStatusExpired && cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
 			common.ApiErrorI18n(c, i18n.MsgTokenExpiredCannotEnable)

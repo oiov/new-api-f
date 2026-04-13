@@ -128,6 +128,29 @@ const featureItems = (t) => [
   },
 ];
 
+const accessModeItems = (t) => [
+  {
+    badge: t('官方 API 直连 · 按量'),
+    title: t('官方直连 Anthropic'),
+    description: t('不降智，不混号'),
+    points: [
+      t('官方链路，更稳更快'),
+      t('不降智，不封号'),
+      t('适合正式项目'),
+    ],
+  },
+  {
+    badge: t('套餐制 · 按次 / 额度'),
+    title: t('套餐制 实惠 便捷'),
+    description: t('先跑起来，再决定是否升级。'),
+    points: [
+      t('门槛更低，买完就能用'),
+      t('便宜量大，长期用更划算'),
+      t('适合长期稳定调用 上限高'),
+    ],
+  },
+];
+
 const subscriptionMarketingItems = (t) => [
   {
     icon: <IconBolt size='large' />,
@@ -149,6 +172,29 @@ const subscriptionMarketingItems = (t) => [
   },
 ];
 
+const testimonialItems = (t) => [
+  {
+    quote: t('以前总要在价格、稳定性和速度之间反复权衡。现在直接按使用阶段选就行，短期需求先买套餐，长期项目直接上官方直连。'),
+    name: 'Lin',
+    role: t('独立开发者'),
+  },
+  {
+    quote: t('对我们这种小团队最重要的不是最低价，而是买完能马上用，出了问题有人处理，后续还能平滑升级。'),
+    name: 'A',
+    role: t('小团队负责人'),
+  },
+  {
+    quote: t('Claude 系列套餐对高频写代码真的很友好，成本更可控；正式项目切到官方链路后，稳定性会明显更舒服。'),
+    name: 'J',
+    role: t('全栈工程师'),
+  },
+  {
+    quote: t('以前最怕买了之后还要自己研究怎么接。现在发放、通知、激活都走完整链路，省掉很多沟通和排查成本。'),
+    name: 'M',
+    role: t('AI 产品经理'),
+  },
+];
+
 const DesktopHomeLanding = ({
   t,
   isMobile,
@@ -163,6 +209,8 @@ const DesktopHomeLanding = ({
   version,
 }) => {
   const [heroReady, setHeroReady] = useState(false);
+  const [modeSpotlight, setModeSpotlight] = useState({ x: 50, y: 50 });
+  const [heroSpotlight, setHeroSpotlight] = useState({ x: 50, y: 50 });
   useEffect(() => {
     const id = setTimeout(() => setHeroReady(true), 50);
     return () => clearTimeout(id);
@@ -176,6 +224,8 @@ const DesktopHomeLanding = ({
   const trustCardItems = trustItems(t);
   const featureCardItems = featureItems(t);
   const hotSubscriptionItems = subscriptionMarketingItems(t);
+  const testimonials = testimonialItems(t);
+  const accessModes = accessModeItems(t);
   const stats = [
     { value: `${count1}%`, label: t('官方 API 通道') },
     { value: `>${count2}%`, label: t('缓存命中率') },
@@ -187,10 +237,148 @@ const DesktopHomeLanding = ({
       ? { animation: `${name} both`, animationDelay: `${delay}s` }
       : { opacity: 0 };
 
+  const updateSpotlight = (event, setter) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    setter({ x, y });
+  };
+
   return (
     <div className='w-full overflow-x-hidden'>
+      <section
+        className='hl-spotlight-surface relative overflow-hidden border-b border-semi-color-border bg-[radial-gradient(circle_at_top_left,rgba(6,182,212,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.9))]'
+        style={{
+          '--hl-mx': `${modeSpotlight.x}%`,
+          '--hl-my': `${modeSpotlight.y}%`,
+        }}
+        onMouseMove={(event) => updateSpotlight(event, setModeSpotlight)}
+        onMouseLeave={() => setModeSpotlight({ x: 50, y: 50 })}
+      >
+        <div className='blur-ball blur-ball-indigo' />
+        <div className='blur-ball blur-ball-teal' />
+        <div className='mx-auto flex w-full max-w-[1280px] flex-col justify-center px-4 pb-12 pt-16 md:px-6 md:pb-14 md:pt-20 lg:px-8 lg:pb-16 lg:pt-24'>
+          <div className='grid gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] lg:items-center'>
+            <div className='relative z-[1]'>
+              <div className='mb-5 flex flex-wrap items-center gap-3'>
+                <a href='#official-direct-section'>
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    className='!rounded-full !px-5'
+                  >
+                    {t('官方 API 直连 · 按量')}
+                  </Button>
+                </a>
+                <a href='#package-mode-section'>
+                  <Button className='!rounded-full !px-5'>
+                    {t('套餐制 · 按次 / 额度')}
+                  </Button>
+                </a>
+              </div>
+
+              <div className='mb-5 flex flex-wrap items-center gap-3'>
+                <Tag color='cyan' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
+                  <span className='hl-pulse-dot' />
+                  {t('官方 API 直连 · 按量')}
+                </Tag>
+                <Tag color='green' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
+                  {t('套餐制 · 按次 / 额度')}
+                </Tag>
+                <Tag color='orange' shape='circle' className='!px-3 !py-1 !text-xs !font-semibold'>
+                  {t('按你的使用阶段选择')}
+                </Tag>
+              </div>
+
+              <Title
+                heading={2}
+                className={`!mb-5 !text-2xl !font-black !leading-[1.05] sm:!text-4xl md:!text-5xl ${isChinese ? 'tracking-[-0.03em]' : ''}`}
+              >
+                <span className='hl-gradient-text'>{t('两种模式，按你的使用阶段选择')}</span>
+              </Title>
+
+              <Paragraph className='!mb-0 max-w-3xl !text-base !leading-7 !text-semi-color-text-1 md:!text-lg'>
+                {t('正式业务更适合官方 API 直连按量；如果想先低成本体验 Claude / Codex，就先买套餐制，按次或按额度使用。')}
+              </Paragraph>
+
+              <div className='mt-6 flex flex-wrap gap-3 text-sm text-semi-color-text-1'>
+                {[
+                  t('官方 API 直连 · 按量'),
+                  t('套餐制 · 按次 / 额度'),
+                  t('更适合长期用'),
+                  t('按次套餐'),
+                ].map((text) => (
+                  <span
+                    key={text}
+                    className='hl-chip-hover inline-flex items-center gap-2 rounded-full border border-semi-color-border bg-white/70 px-3 py-1.5 backdrop-blur dark:bg-white/5'
+                  >
+                    <IconTickCircle className='text-emerald-500' />
+                    {text}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className='relative z-[1]'>
+              <div className='hl-card-hover rounded-[24px] border border-semi-color-border bg-white/85 p-4 shadow-[0_32px_120px_rgba(14,165,233,0.12)] backdrop-blur dark:bg-[#0b1120]/80 sm:rounded-[32px] sm:p-6'>
+                <div className='grid gap-4 lg:grid-cols-2'>
+                  {accessModes.map((item, index) => (
+                    <div
+                      key={item.title}
+                      className={`rounded-[24px] border p-5 ${
+                        index === 0
+                          ? 'border-cyan-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(239,246,255,0.98))]'
+                          : 'border-emerald-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(236,253,245,0.98))]'
+                      }`}
+                    >
+                      <div className='flex items-center justify-between gap-3'>
+                    <Tag
+                      color={index === 0 ? 'cyan' : 'green'}
+                      shape='circle'
+                      className='!px-3 !py-1 !text-xs !font-semibold'
+                    >
+                      {item.badge}
+                    </Tag>
+                  </div>
+                      <Title heading={4} className='!mb-2 !mt-4 !leading-[1.15]'>
+                        {item.title}
+                      </Title>
+                      <Paragraph className='!mb-0 !text-sm !leading-6 !text-semi-color-text-1'>
+                        {item.description}
+                      </Paragraph>
+                      <div className='mt-4 space-y-3'>
+                        {item.points.map((point) => (
+                          <div
+                            key={point}
+                            className='rounded-2xl border border-semi-color-border bg-semi-color-bg-0/80 px-4 py-3'
+                          >
+                            <div className='flex items-start gap-3'>
+                              <IconTickCircle className='mt-0.5 text-emerald-500' />
+                              <span className='text-sm leading-6 text-semi-color-text-1'>{point}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Hero ── */}
-      <section className='relative overflow-hidden border-b border-semi-color-border'>
+      <section
+        id='official-direct-section'
+        className='hl-spotlight-surface relative overflow-hidden border-b border-semi-color-border'
+        style={{
+          '--hl-mx': `${heroSpotlight.x}%`,
+          '--hl-my': `${heroSpotlight.y}%`,
+        }}
+        onMouseMove={(event) => updateSpotlight(event, setHeroSpotlight)}
+        onMouseLeave={() => setHeroSpotlight({ x: 50, y: 50 })}
+      >
         <div className='blur-ball blur-ball-indigo' />
         <div className='blur-ball blur-ball-teal' />
         <div className='mx-auto flex w-full max-w-[1280px] flex-col justify-center px-4 pb-12 pt-16 sm:min-h-[720px] sm:pb-20 sm:pt-24 md:px-6 lg:px-8'>
@@ -269,15 +457,6 @@ const DesktopHomeLanding = ({
                     {t('价格方案')}
                   </Button>
                 </Link>
-                <Link to='/console'>
-                  <Button
-                    size={isMobile ? 'default' : 'large'}
-                    className='!rounded-full !px-7'
-                    icon={<IconBolt />}
-                  >
-                    {t('立即获取 API 地址')}
-                  </Button>
-                </Link>
                 {isDemoSiteMode && version ? (
                   <Button
                     size={isMobile ? 'default' : 'large'}
@@ -333,11 +512,8 @@ const DesktopHomeLanding = ({
                       {t('Base URL')}
                     </Text>
                     <Title heading={4} className='!mb-0 !mt-2'>
-                      {t('保留官方调用方式，快速切到生产环境')}
+                      {t('仅接 Anthropic 官方通道')}
                     </Title>
-                  </div>
-                  <div className='rounded-2xl bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-700 dark:text-cyan-200'>
-                    {t('企业级可用')}
                   </div>
                 </div>
 
@@ -404,7 +580,10 @@ const DesktopHomeLanding = ({
       </section>
 
       {/* ── Subscription marketing ── */}
-      <section className='mx-auto w-full max-w-[1280px] px-4 py-10 md:px-6 md:py-14 lg:px-8'>
+      <section
+        id='package-mode-section'
+        className='mx-auto w-full max-w-[1280px] px-4 py-10 md:px-6 md:py-14 lg:px-8'
+      >
         <div className='overflow-hidden rounded-[28px] border border-semi-color-border bg-[linear-gradient(135deg,rgba(59,130,246,0.06),rgba(16,185,129,0.05)_42%,rgba(255,255,255,0.92))] shadow-[0_24px_80px_rgba(15,23,42,0.06)] backdrop-blur sm:rounded-[32px]'>
           <div className='grid gap-10 p-5 sm:p-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)] lg:items-center'>
             <div className='relative z-[1]'>
@@ -551,26 +730,58 @@ const DesktopHomeLanding = ({
         </div>
       </section>
 
-      {/* ── Feature cards（滚动显示 + 悬停浮起） ── */}
-      <section className='mx-auto w-full max-w-[1280px] px-4 py-10 md:px-6 md:py-16 lg:px-8'>
-        <div ref={featRef} className='grid gap-5 md:grid-cols-3'>
-          {featureCardItems.map((item, i) => (
-            <div
-              key={item.title}
-              className={`hl-card-hover hl-reveal rounded-[20px] border border-semi-color-border bg-semi-color-bg-0 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.05)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.25)] sm:rounded-[28px] sm:p-6 ${featInView ? 'hl-in' : ''}`}
-              style={{ transitionDelay: `${i * 0.12}s` }}
-            >
-              <div className='mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-700 dark:text-cyan-200'>
-                {item.icon}
+      <section className='mx-auto w-full max-w-[1280px] px-4 py-4 md:px-6 md:py-6 lg:px-8'>
+        <div className='rounded-[28px] border border-semi-color-border bg-[linear-gradient(135deg,rgba(6,182,212,0.07),rgba(255,255,255,0.96)_38%,rgba(16,185,129,0.06))] p-5 shadow-[0_20px_64px_rgba(15,23,42,0.05)] sm:rounded-[32px] sm:p-7'>
+          <div className='mx-auto max-w-3xl text-center'>
+            <Text className='!text-xs !font-semibold !uppercase !tracking-[0.24em] !text-cyan-600 dark:!text-cyan-300'>
+              {t('开发者怎么说')}
+            </Text>
+            <Title heading={2} className='!mb-3 !mt-4'>
+              {t('不是功能写得多，而是买完真的更省事')}
+            </Title>
+            <Paragraph className='!mb-0 !text-base !leading-7 !text-semi-color-text-1'>
+              {t('这些反馈，基本就是为什么很多人不再临时按量买，而是直接上 Claude / Codex 套餐或官方直连。')}
+            </Paragraph>
+          </div>
+
+          <div className='mt-5 flex flex-wrap justify-center gap-3 text-sm text-semi-color-text-1'>
+            {[
+              t('买完就能接，不用自己反复试链路'),
+              t('对长期用的人来说，稳定、省时间，比单次便宜更重要'),
+              t('先买套餐跑通，再按需要升级'),
+            ].map((text) => (
+              <span
+                key={text}
+                className='hl-chip-hover inline-flex items-center gap-2 rounded-full border border-semi-color-border bg-white/70 px-3 py-1.5 backdrop-blur dark:bg-white/5'
+              >
+                <IconTickCircle className='text-emerald-500' />
+                {text}
+              </span>
+            ))}
+          </div>
+
+          <div className='mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4'>
+            {testimonials.map((item) => (
+              <div
+                key={item.quote}
+                className='hl-card-hover rounded-[24px] border border-semi-color-border bg-semi-color-bg-0/90 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.05)]'
+              >
+                <div className='text-3xl font-black leading-none text-cyan-500/70'>"</div>
+                <Paragraph className='!mb-0 !mt-3 !text-sm !leading-7 !text-semi-color-text-1'>
+                  {item.quote}
+                </Paragraph>
+                <div className='mt-5 flex items-center gap-3'>
+                  <div className='flex h-11 w-11 items-center justify-center rounded-full bg-cyan-500/10 text-sm font-bold text-cyan-700 dark:text-cyan-200'>
+                    {item.name}
+                  </div>
+                  <div>
+                    <div className='font-semibold text-semi-color-text-0'>{item.name}</div>
+                    <div className='text-sm text-semi-color-text-2'>{item.role}</div>
+                  </div>
+                </div>
               </div>
-              <Title heading={5} className='!mb-2'>
-                {item.title}
-              </Title>
-              <Paragraph className='!mb-0 !text-sm !leading-6 !text-semi-color-text-2'>
-                {item.description}
-              </Paragraph>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 

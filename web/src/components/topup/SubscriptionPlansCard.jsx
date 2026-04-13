@@ -34,6 +34,7 @@ import {
   Select,
   Skeleton,
   Space,
+  Table,
   Tag,
   TabPane,
   Tabs,
@@ -1734,15 +1735,10 @@ const SubscriptionPlansCard = ({
         : usagePercent >= 60
           ? 'var(--semi-color-warning)'
           : 'var(--semi-color-success)';
-
-    const detailItems = [
+    const usageItems = [
       {
         label: t('有效期'),
         value: formatSubscriptionDuration(item.subscription, t),
-      },
-      {
-        label: t('套餐说明'),
-        value: plan?.subtitle || t('暂无说明'),
       },
       {
         label: t('结算资源'),
@@ -1752,6 +1748,8 @@ const SubscriptionPlansCard = ({
         label: t('资源详情'),
         value: getUsageDetailText(item.usageSummary, item.resourceType, t),
       },
+    ];
+    const timeItems = [
       {
         label: t('生效时间'),
         value: formatDateTime(item.subscription?.start_time),
@@ -1773,6 +1771,12 @@ const SubscriptionPlansCard = ({
         label: t('上次重置'),
         value: formatDateTime(item.subscription?.last_reset_time),
       },
+    ];
+    const metaItems = [
+      {
+        label: t('套餐说明'),
+        value: plan?.subtitle || t('暂无说明'),
+      },
       {
         label: t('来源'),
         value: item.subscription?.source || '--',
@@ -1785,7 +1789,27 @@ const SubscriptionPlansCard = ({
 
     return (
       <div className='space-y-4'>
-        <div className='flex justify-end'>
+        <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+          <div className='rounded-2xl border border-semi-color-border bg-white px-4 py-3'>
+            <div className='flex flex-wrap items-end gap-x-6 gap-y-2'>
+              <div>
+                <div className='text-xs font-medium uppercase tracking-[0.12em] text-semi-color-text-2'>
+                  {t('当前可用')}
+                </div>
+                <div className='mt-1 text-2xl font-semibold text-semi-color-text-0'>
+                  {t('剩余')} {getUsageDisplayText(item.usageSummary, item.resourceType, t)}
+                </div>
+              </div>
+              <div>
+                <div className='text-xs font-medium uppercase tracking-[0.12em] text-semi-color-text-2'>
+                  {t('使用进度')}
+                </div>
+                <div className='mt-1 text-lg font-semibold text-semi-color-text-0'>
+                  {item.usageSummary.unlimited ? t('不限') : `${usagePercent}%`}
+                </div>
+              </div>
+            </div>
+          </div>
           <Button
             size='small'
             type='tertiary'
@@ -1801,7 +1825,7 @@ const SubscriptionPlansCard = ({
           </Button>
         </div>
         {!item.usageSummary.unlimited && (
-          <div>
+          <div className='rounded-2xl border border-semi-color-border bg-white px-4 py-3'>
             <div className='mb-2 flex items-center justify-between text-xs text-gray-500'>
               <span>{t('权益使用情况')}</span>
               <span>
@@ -1815,18 +1839,66 @@ const SubscriptionPlansCard = ({
             />
           </div>
         )}
-        <div className='grid grid-cols-1 gap-3 text-sm lg:grid-cols-3'>
-          {detailItems.map((detail) => (
-            <div
-              key={detail.label}
-              className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'
-            >
-              <div className='text-xs text-gray-500'>{detail.label}</div>
-              <div className='mt-1 break-all text-semi-color-text-0'>
-                {detail.value}
+        <div className='rounded-2xl border border-semi-color-border bg-white overflow-hidden'>
+          <Table
+            size='small'
+            pagination={false}
+            dataSource={[
+              {
+                key: 'usage',
+                category: t('使用概览'),
+                summary: `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
+                details: usageItems,
+              },
+              {
+                key: 'time',
+                category: t('时间与重置'),
+                summary: `${t('到期时间')} ${formatDateTime(item.subscription?.end_time)}`,
+                details: timeItems,
+              },
+              {
+                key: 'meta',
+                category: t('套餐信息'),
+                summary: plan?.subtitle || t('暂无说明'),
+                details: metaItems,
+              },
+            ]}
+            expandRowByClick
+            expandedRowRender={(record) => (
+              <div className='grid grid-cols-1 gap-3 p-1 md:grid-cols-2 xl:grid-cols-3'>
+                {record.details.map((detail) => (
+                  <div
+                    key={detail.label}
+                    className='rounded-xl bg-semi-color-fill-0 px-3 py-2.5'
+                  >
+                    <div className='text-xs text-gray-500'>{detail.label}</div>
+                    <div className='mt-1 break-all font-medium text-semi-color-text-0'>
+                      {detail.value}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
+            )}
+            columns={[
+              {
+                title: t('分类'),
+                dataIndex: 'category',
+                width: 180,
+                render: (value) => (
+                  <span className='font-semibold text-semi-color-text-0'>
+                    {value}
+                  </span>
+                ),
+              },
+              {
+                title: t('摘要'),
+                dataIndex: 'summary',
+                render: (value) => (
+                  <span className='text-sm text-semi-color-text-1'>{value}</span>
+                ),
+              },
+            ]}
+          />
         </div>
       </div>
     );
@@ -3270,38 +3342,113 @@ const SubscriptionPlansCard = ({
           <div className='space-y-3'>
             <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
               <div>
-                <Text strong>{t('人工发放订单')}</Text>
-                <div className='mt-1 text-sm text-semi-color-text-2'>
-                  {t('这里会显示待发放或已发放完成的订单内容。')}
-                  <br />
-                  {t(
-                    'Claude 系列人工发放完成后，会自动创建 Subscription Access Key、发送测试消息激活，并通过邮件和站内信通知。',
-                  )}
+                <div className='flex items-center gap-2'>
+                  <Text strong>{t('人工发放订单')}</Text>
+                  <Tag color='blue' shape='circle' size='small'>
+                    {normalizedManualDeliveryOrders.length} {t('个订单')}
+                  </Tag>
+                </div>
+                <div className='mt-3 grid gap-3 md:grid-cols-3'>
+                  <div className='rounded-xl border border-semi-color-border bg-white/80 p-3'>
+                    <Text strong>{t('交付说明')}</Text>
+                    <div className='mt-2 text-sm text-semi-color-text-2'>
+                      <div>{t('这里会显示待发放或已发放完成的订单内容。')}</div>
+                      <div className='mt-1'>
+                        {t(
+                          'Claude 系列人工发放完成后，系统会自动创建 Subscription Access Key、发送测试消息激活，并通过邮件和站内信通知。',
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className='rounded-xl border border-semi-color-border bg-white/80 p-3'>
+                    <Text strong>{t('导入使用')}</Text>
+                    <div className='mt-2 text-sm text-semi-color-text-2'>
+                      <span>{t('收到通知后，可前往')}</span>
+                      <Text
+                        link
+                        className='mx-1'
+                        onClick={() => navigate('/console/token')}
+                      >
+                        {t('令牌管理')}
+                      </Text>
+                      <span>
+                        {t('选择 Subscription Access，使用 CC Switch 一键导入。')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className='rounded-xl border border-red-200 bg-red-50/80 p-3 dark:border-red-500/30 dark:bg-red-500/10'>
+                    <Text strong type='danger'>
+                      {t('安全与限制')}
+                    </Text>
+                    <div className='mt-2 text-sm text-semi-color-text-2'>
+                      <div>{t('请不要在任何地方泄露你的 Key。')}</div>
+                      <div className='mt-1'>{t('该 Key 每分钟最多 10 次请求。')}</div>
+                      <div className='mt-1'>
+                        {t('该 Key 不可删除、不可重置、不可找回，请务必自行妥善保管。')}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <Tag color='blue' shape='circle' size='small'>
-                {normalizedManualDeliveryOrders.length} {t('个订单')}
-              </Tag>
             </div>
-            <Collapse
-              activeKey={expandedManualDeliveryKeys}
-              onChange={setExpandedManualDeliveryKeys}
-              className='overflow-hidden rounded-2xl border border-semi-color-border bg-white/90'
-            >
-              {normalizedManualDeliveryOrders.map((item) => (
-                <Collapse.Panel
-                  key={item.key}
-                  itemKey={item.key}
-                  className='border-b border-semi-color-border last:border-b-0'
-                  header={renderManualDeliveryOrderSummary(
-                    item,
-                    expandedManualDeliveryKeys.includes(item.key),
-                  )}
-                >
-                  {renderManualDeliveryOrderBody(item)}
-                </Collapse.Panel>
-              ))}
-            </Collapse>
+            <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-white/90'>
+              <Table
+                size='small'
+                pagination={false}
+                dataSource={normalizedManualDeliveryOrders}
+                rowKey='key'
+                expandRowByClick
+                expandedRowRender={(item) => renderManualDeliveryOrderBody(item)}
+                columns={[
+                  {
+                    title: t('套餐'),
+                    dataIndex: 'title',
+                    render: (_, item) => (
+                      <div className='min-w-0'>
+                        <div className='flex flex-wrap items-center gap-2'>
+                          <Text strong>{item.title}</Text>
+                          <Tag color={item.statusMeta.color} shape='circle' size='small'>
+                            {item.statusMeta.text}
+                          </Tag>
+                        </div>
+                        <div className='mt-1 text-xs text-semi-color-text-2'>
+                          #{item.order?.id || '--'} · {item.order?.trade_no || '--'}
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    title: t('交付内容'),
+                    dataIndex: 'delivery_count',
+                    width: 140,
+                    render: (_, item) => {
+                      const payload = Array.isArray(item?.order?.delivery_payload)
+                        ? item.order.delivery_payload
+                        : [];
+                      return (
+                        <Tag size='small' color='grey' shape='circle'>
+                          {payload.length} {t('项交付内容')}
+                        </Tag>
+                      );
+                    },
+                  },
+                  {
+                    title: t('支付完成'),
+                    dataIndex: 'complete_time',
+                    width: 200,
+                    render: (_, item) => formatDateTime(item.order?.complete_time),
+                  },
+                  {
+                    title: t('处理时间'),
+                    dataIndex: 'delivered_at',
+                    width: 200,
+                    render: (_, item) => formatDateTime(item.order?.delivered_at),
+                  },
+                ]}
+              />
+            </div>
           </div>
         </Card>
       ) : null}
@@ -3310,20 +3457,70 @@ const SubscriptionPlansCard = ({
 
       {hasAnySubscription ? (
         filteredVisibleSubscriptionItems.length > 0 ? (
-          <Collapse
-            activeKey={expandedSubscriptionKeys}
-            onChange={setExpandedSubscriptionKeys}
-          >
-            {filteredVisibleSubscriptionItems.map((item) => (
-              <Collapse.Panel
-                key={item.key}
-                itemKey={item.key}
-                header={renderSubscriptionHeader(item)}
-              >
-                {renderSubscriptionBody(item)}
-              </Collapse.Panel>
-            ))}
-          </Collapse>
+          <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-white'>
+            <Table
+              size='small'
+              pagination={false}
+              dataSource={filteredVisibleSubscriptionItems}
+              rowKey='key'
+              expandRowByClick
+              expandedRowRender={(item) => renderSubscriptionBody(item)}
+              columns={[
+                {
+                  title: t('套餐'),
+                  dataIndex: 'title',
+                  render: (_, item) => (
+                    <div className='min-w-0'>
+                      <div className='flex flex-wrap items-center gap-2'>
+                        <Text strong>{item.title}</Text>
+                        <Tag
+                          color={
+                            item.state === 'active'
+                              ? 'green'
+                              : item.state === 'cancelled'
+                                ? 'grey'
+                                : 'red'
+                          }
+                          shape='circle'
+                          size='small'
+                        >
+                          {item.state === 'active'
+                            ? t('生效')
+                            : item.state === 'cancelled'
+                              ? t('已作废')
+                              : t('已过期')}
+                        </Tag>
+                      </div>
+                      <div className='mt-1 text-xs text-semi-color-text-2'>
+                        {t('订阅')} #{item.subscription?.id || '--'}
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  title: t('剩余'),
+                  dataIndex: 'usage',
+                  width: 180,
+                  render: (_, item) => getUsageDisplayText(item.usageSummary, item.resourceType, t),
+                },
+                {
+                  title: t('资源类型'),
+                  dataIndex: 'resource_type',
+                  width: 140,
+                  render: (_, item) => item.usageLabel,
+                },
+                {
+                  title: t('到期时间'),
+                  dataIndex: 'end_time',
+                  width: 200,
+                  render: (_, item) =>
+                    item.state === 'active'
+                      ? `${t('还有')} ${item.remainingDays} ${t('天')}`
+                      : formatDateTime(item.subscription?.end_time),
+                },
+              ]}
+            />
+          </div>
         ) : (
           renderSubscriptionEmptyState({
             title:

@@ -1334,6 +1334,7 @@ type KeyStatus struct {
 	BindingCount    int64                                       `json:"binding_count"`
 	BindingGroups   []string                                    `json:"binding_groups,omitempty"`
 	BindingUsers    []model.ActiveSpecificChannelKeyBindingUser `json:"binding_users,omitempty"`
+	EcomAccounts    []model.EcomAgentChannelKeyBindingDetail    `json:"ecom_accounts,omitempty"`
 	LastUsedAt      int64                                       `json:"last_used_at,omitempty"`
 	UsageGroups     []model.ChannelMultiKeyGroupUsage           `json:"usage_groups,omitempty"`
 }
@@ -1485,6 +1486,14 @@ func ManageMultiKeys(c *gin.Context) {
 			})
 			return
 		}
+		ecomBindingMap, err := model.GetEcomAgentChannelKeyBindingMap(channel.Id)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "获取 EcomAgent 绑定信息失败",
+			})
+			return
+		}
 		var unassignedUsage *model.ChannelMultiKeyUsageDetail
 		if usageDetail, ok := usageDetailMap[-1]; ok && (usageDetail.SuccessCount > 0 || usageDetail.UsedQuota > 0) {
 			detailCopy := usageDetail
@@ -1496,6 +1505,9 @@ func ManageMultiKeys(c *gin.Context) {
 				pageKeyStatusList[i].BindingCount = bindingDetail.BindingCount
 				pageKeyStatusList[i].BindingGroups = bindingDetail.BindingGroups
 				pageKeyStatusList[i].BindingUsers = bindingDetail.BindingUsers
+			}
+			if ecomAccounts, ok := ecomBindingMap[pageKeyStatusList[i].Index]; ok {
+				pageKeyStatusList[i].EcomAccounts = ecomAccounts
 			}
 			if usageDetail, ok := usageDetailMap[pageKeyStatusList[i].Index]; ok {
 				if usageDetail.SuccessCount > 0 {

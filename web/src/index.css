@@ -1723,6 +1723,10 @@ html:not(.dark) .blur-ball-teal {
   0%, 100% { transform: translateY(0); }
   50%       { transform: translateY(-22px); }
 }
+@keyframes hl-surface-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(10px, -12px, 0) scale(1.03); }
+}
 
 /* Blur ball float */
 .blur-ball-indigo { animation: hl-float-indigo 9s ease-in-out infinite; }
@@ -1821,6 +1825,56 @@ html:not(.dark) .hl-chip-hover:hover {
 }
 html.dark .hl-chip-hover:hover {
   background-color: rgba(6,182,212,0.1) !important;
+}
+
+.hl-spotlight-surface {
+  position: relative;
+  isolation: isolate;
+  --hl-mx: 50%;
+  --hl-my: 50%;
+}
+
+.hl-spotlight-surface::before,
+.hl-spotlight-surface::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hl-spotlight-surface::before {
+  z-index: 0;
+  opacity: 0.7;
+  background:
+    linear-gradient(115deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.42) 22%, rgba(255,255,255,0) 42%),
+    radial-gradient(circle at 18% 24%, rgba(6,182,212,0.09), transparent 22%),
+    radial-gradient(circle at 78% 18%, rgba(99,102,241,0.08), transparent 24%),
+    radial-gradient(circle at 72% 78%, rgba(16,185,129,0.08), transparent 22%);
+  transform-origin: center;
+  animation: hl-surface-drift 14s ease-in-out infinite;
+}
+
+.hl-spotlight-surface::after {
+  z-index: 0;
+  opacity: 0.95;
+  background:
+    radial-gradient(circle at var(--hl-mx) var(--hl-my), rgba(34,211,238,0.18), transparent 0 18%),
+    radial-gradient(circle at calc(var(--hl-mx) + 12%) calc(var(--hl-my) + 8%), rgba(99,102,241,0.10), transparent 0 16%);
+  transition: background-position 0.18s ease, opacity 0.25s ease;
+}
+
+html.dark .hl-spotlight-surface::before {
+  background:
+    linear-gradient(115deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.05) 22%, rgba(255,255,255,0) 42%),
+    radial-gradient(circle at 18% 24%, rgba(34,211,238,0.10), transparent 22%),
+    radial-gradient(circle at 78% 18%, rgba(129,140,248,0.10), transparent 24%),
+    radial-gradient(circle at 72% 78%, rgba(16,185,129,0.10), transparent 22%);
+}
+
+html.dark .hl-spotlight-surface::after {
+  background:
+    radial-gradient(circle at var(--hl-mx) var(--hl-my), rgba(34,211,238,0.11), transparent 0 20%),
+    radial-gradient(circle at calc(var(--hl-mx) + 12%) calc(var(--hl-my) + 8%), rgba(129,140,248,0.10), transparent 0 16%);
 }
 
 /* ==================== 卡片马卡龙模糊球（类封装） ==================== */

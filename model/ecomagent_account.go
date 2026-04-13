@@ -67,6 +67,21 @@ type EcomAgentAssignedUserInfo struct {
 	SubID    int    `json:"subscription_id"`
 }
 
+type EcomAgentChannelKeyBindingDetail struct {
+	AccountID       int    `json:"account_id"`
+	Email           string `json:"email"`
+	Status          string `json:"status"`
+	Plan            string `json:"plan"`
+	RequestLimit    int64  `json:"request_limit"`
+	UsageRequests   int64  `json:"usage_requests"`
+	AssignedAt      int64  `json:"assigned_at"`
+	UserID          int    `json:"user_id"`
+	Username        string `json:"username"`
+	UserEmail       string `json:"user_email"`
+	OrderID         int    `json:"order_id"`
+	SubscriptionID  int    `json:"subscription_id"`
+}
+
 func (a *EcomAgentAccount) PrepareDefaults() {
 	a.Email = strings.TrimSpace(strings.ToLower(a.Email))
 	a.Password = strings.TrimSpace(a.Password)
@@ -355,6 +370,57 @@ func GetEcomAgentAssignedUserInfoMap(accounts []*EcomAgentAccount) (map[int]*Eco
 		result[account.Id] = info
 	}
 
+	return result, nil
+}
+
+func GetEcomAgentChannelKeyBindingMap(channelId int) (map[int][]EcomAgentChannelKeyBindingDetail, error) {
+	if channelId <= 0 {
+		return map[int][]EcomAgentChannelKeyBindingDetail{}, nil
+	}
+	accounts := make([]*EcomAgentAccount, 0)
+	if err := DB.
+		Where("assigned_channel_id = ? AND assigned_channel_key_index >= 0 AND assignment_status = ?", channelId, "assigned").
+		Order("assigned_channel_key_index asc, id asc").
+		Find(&accounts).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[int][]EcomAgentChannelKeyBindingDetail)
+	if len(accounts) == 0 {
+		return result, nil
+	}
+	assignedUserMap, err := GetEcomAgentAssignedUserInfoMap(accounts)
+	if err != nil {
+		return nil, err
+	}
+	for _, account := range accounts {
+		if account == nil || account.AssignedChannelKeyIndex < 0 {
+			continue
+		}
+		assignedUser := assignedUserMap[account.Id]
+		item := EcomAgentChannelKeyBindingDetail{
+			AccountID:      account.Id,
+			Email:          account.GetDisplayEmail(),
+			Status:         strings.TrimSpace(account.Status),
+			Plan:           strings.TrimSpace(account.Plan),
+			RequestLimit:   account.RequestLimit,
+			UsageRequests:  account.UsageRequests,
+			AssignedAt:     account.AssignedAt,
+			OrderID:        account.AssignedSubscriptionOrderID,
+			SubscriptionID: account.AssignedUserSubscriptionID,
+		}
+		if assignedUser != nil {
+			item.UserID = assignedUser.UserID
+			item.Username = strings.TrimSpace(assignedUser.Username)
+			item.UserEmail = strings.TrimSpace(assignedUser.Email)
+			if item.OrderID <= 0 {
+				item.OrderID = assignedUser.OrderID
+			}
+			if item.SubscriptionID <= 0 {
+				item.SubscriptionID = assignedUser.SubID
+			}
+		}
+		result[account.AssignedChannelKeyIndex] = append(result[account.AssignedChannelKeyIndex], item)
+	}
 	return result, nil
 }
 

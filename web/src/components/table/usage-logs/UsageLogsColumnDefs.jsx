@@ -490,6 +490,9 @@ export const getLogsColumns = ({
   t,
   COLUMN_KEYS,
   copyText,
+  applyLogFilter,
+  jumpToChannelDetail,
+  jumpToUserDetail,
   showUserInfoFunc,
   openChannelAffinityUsageCacheModal,
   isAdminUser,
@@ -500,6 +503,36 @@ export const getLogsColumns = ({
       key: COLUMN_KEYS.TIME,
       title: t('时间'),
       dataIndex: 'timestamp2string',
+      render: (text, record) => {
+        const requestId = record?.request_id || '';
+
+        return (
+          <div
+            style={{
+              display: 'inline-flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 2,
+            }}
+          >
+            <span>{text}</span>
+            {requestId ? (
+              <Typography.Text
+                link
+                size='small'
+                ellipsis={{ showTooltip: true }}
+                style={{ maxWidth: 180 }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  applyLogFilter?.({ request_id: requestId });
+                }}
+              >
+                {requestId}
+              </Typography.Text>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       key: COLUMN_KEYS.CHANNEL,
@@ -542,6 +575,11 @@ export const getLogsColumns = ({
                   <Tag
                     color={colors[parseInt(text) % colors.length]}
                     shape='circle'
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      jumpToChannelDetail?.(text);
+                    }}
+                    style={{ cursor: 'pointer' }}
                   >
                     {text}
                   </Tag>
@@ -613,7 +651,18 @@ export const getLogsColumns = ({
             >
               {typeof text === 'string' && text.slice(0, 1)}
             </Avatar>
-            {text}
+            <Typography.Text
+              link
+              onClick={(event) => {
+                event.stopPropagation();
+                jumpToUserDetail?.({
+                  userId: record.user_id,
+                  username: text,
+                });
+              }}
+            >
+              {text}
+            </Typography.Text>
           </div>
         ) : (
           <></>

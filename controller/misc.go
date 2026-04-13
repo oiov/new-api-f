@@ -46,6 +46,7 @@ func GetStatus(c *gin.Context) {
 
 	passkeySetting := system_setting.GetPasskeySettings()
 	legalSetting := system_setting.GetLegalSettings()
+	checkinSetting := operation_setting.GetCheckinSetting()
 
 	data := gin.H{
 		"version":                     common.Version,
@@ -129,7 +130,11 @@ func GetStatus(c *gin.Context) {
 		"setup":                       constant.Setup,
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
-		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+		"checkin_enabled":             checkinSetting.Enabled,
+		"checkin_setting.open_weekdays": checkinSetting.OpenWeekdays,
+		"checkin_setting.open_start_seconds": checkinSetting.OpenStartSeconds,
+		"checkin_setting.open_end_seconds": checkinSetting.OpenEndSeconds,
+		"checkin_setting.daily_user_limit": checkinSetting.DailyUserLimit,
 		"_qn":                         "new-api",
 	}
 

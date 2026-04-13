@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import {
   API,
   buildGroupOptions,
@@ -45,6 +46,10 @@ import { openCodexUsageModal } from '../../components/table/channels/modals/Code
 export const useChannelsData = () => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialKeyword = useMemo(() => {
+    return searchParams.get('keyword') || '';
+  }, []);
 
   // Basic states
   const [channels, setChannels] = useState([]);
@@ -55,6 +60,7 @@ export const useChannelsData = () => {
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [channelCount, setChannelCount] = useState(0);
   const [groupOptions, setGroupOptions] = useState([]);
+  const [urlKeywordProcessed, setUrlKeywordProcessed] = useState(false);
 
   // UI states
   const [showEdit, setShowEdit] = useState(false);
@@ -132,7 +138,7 @@ export const useChannelsData = () => {
   const [formApi, setFormApi] = useState(null);
 
   const formInitValues = {
-    searchKeyword: '',
+    searchKeyword: initialKeyword,
     searchGroup: '',
     searchModel: '',
   };
@@ -717,6 +723,40 @@ export const useChannelsData = () => {
   useEffect(() => {
     syncActivePackagePoolGroup(getFormValues().searchGroup);
   }, [formApi]);
+
+  useEffect(() => {
+    if (initialKeyword && formApi && !urlKeywordProcessed) {
+      setUrlKeywordProcessed(true);
+      formApi.setValue('searchKeyword', initialKeyword);
+      searchChannels(
+        enableTagMode,
+        activeTypeKey,
+        statusFilter,
+        1,
+        pageSize,
+        idSort,
+        {
+          ...getFormValues(),
+          searchKeyword: initialKeyword,
+        },
+      )
+        .then(() => {
+          setSearchParams({});
+        })
+        .catch((reason) => {
+          showError(reason);
+        });
+    }
+  }, [
+    activeTypeKey,
+    enableTagMode,
+    formApi,
+    idSort,
+    initialKeyword,
+    pageSize,
+    statusFilter,
+    urlKeywordProcessed,
+  ]);
 
   // Copy channel
   const copySelectedChannel = async (record) => {

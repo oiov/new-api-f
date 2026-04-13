@@ -378,7 +378,17 @@ func SyncEcomAgentAccount(c *gin.Context) {
 
 func GetEcomAgentManualDeliveryOrders(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	items, total, err := model.GetAdminManualDeliveryOrders(pageInfo, c.Query("keyword"), c.Query("fulfillment_status"))
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	items, total, err := model.GetAdminManualDeliveryOrders(
+		pageInfo,
+		c.Query("keyword"),
+		c.Query("fulfillment_status"),
+		c.Query("refund_status"),
+		c.Query("time_field"),
+		startTimestamp,
+		endTimestamp,
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return

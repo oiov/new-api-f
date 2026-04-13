@@ -3223,12 +3223,22 @@ func GetAdminUserSubscriptions(
 	return items, total, nil
 }
 
-func GetAdminManualDeliveryOrders(pageInfo *common.PageInfo, keyword string, fulfillmentStatus string) ([]AdminSubscriptionManualDeliverySummary, int64, error) {
+func GetAdminManualDeliveryOrders(
+	pageInfo *common.PageInfo,
+	keyword string,
+	fulfillmentStatus string,
+	refundStatus string,
+	timeField string,
+	startTimestamp int64,
+	endTimestamp int64,
+) ([]AdminSubscriptionManualDeliverySummary, int64, error) {
 	if pageInfo == nil {
 		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
 	}
 	keyword = strings.TrimSpace(keyword)
 	fulfillmentStatus = normalizeSubscriptionFulfillmentStatus(fulfillmentStatus)
+	refundStatus = strings.TrimSpace(refundStatus)
+	timeField = strings.TrimSpace(timeField)
 	baseQuery := DB.Table("subscription_orders").
 		Select("subscription_orders.*, users.username as username, users."+commonGroupCol+" as user_group").
 		Joins("left join users on users.id = subscription_orders.user_id").
@@ -3247,6 +3257,25 @@ func GetAdminManualDeliveryOrders(pageInfo *common.PageInfo, keyword string, ful
 	}
 	if strings.TrimSpace(fulfillmentStatus) != "" && fulfillmentStatus != SubscriptionFulfillmentNotRequired {
 		baseQuery = baseQuery.Where("subscription_orders.fulfillment_status = ?", fulfillmentStatus)
+	}
+	switch refundStatus {
+	case "refunded":
+		baseQuery = baseQuery.Where("subscription_orders.refund_to_quota = ?", true)
+	case "not_refunded":
+		baseQuery = baseQuery.Where("subscription_orders.refund_to_quota = ?", false)
+	}
+	timeColumn := "subscription_orders.complete_time"
+	switch timeField {
+	case "delivered_at":
+		timeColumn = "subscription_orders.delivered_at"
+	case "created_at":
+		timeColumn = "subscription_orders.created_at"
+	}
+	if startTimestamp > 0 {
+		baseQuery = baseQuery.Where(timeColumn+" >= ?", startTimestamp)
+	}
+	if endTimestamp > 0 {
+		baseQuery = baseQuery.Where(timeColumn+" <= ?", endTimestamp)
 	}
 
 	var total int64
@@ -3606,6 +3635,12 @@ func shiftBoundChannelKeyIndexesAfterRemovalTx(tx *gorm.DB, channelId int, remov
 	if err := tx.Model(&Token{}).
 		Where("specific_channel_id = ? AND specific_channel_key_index > ? AND deleted_at IS NULL", channelId, removedIndex).
 		Update("specific_channel_key_index", gorm.Expr("specific_channel_key_index - 1")).Error; err != nil {
+		return err
+	}
+
+	if err := tx.Model(&EcomAgentAccount{}).
+		Where("assigned_channel_id = ? AND assigned_channel_key_index > ?", channelId, removedIndex).
+		Update("assigned_channel_key_index", gorm.Expr("assigned_channel_key_index - 1")).Error; err != nil {
 		return err
 	}
 	return nil

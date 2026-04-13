@@ -314,6 +314,44 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
     }
   };
 
+  const handleSyncEcomAccount = async (accountId, options = {}) => {
+    if (!accountId) {
+      return;
+    }
+    const operationId = `ecom_sync_${accountId}`;
+    setOperationLoading((prev) => ({ ...prev, [operationId]: true }));
+
+    try {
+      const res = await API.post(
+        `/api/ecomagent/accounts/${accountId}/sync${
+          options.forceGenerateKey ? '?force_generate_key=true' : ''
+        }`,
+      );
+
+      if (res.data?.success) {
+        showSuccess(
+          res.data?.message ||
+            (options.forceGenerateKey ? t('API Key 创建完成') : t('同步完成')),
+        );
+      } else {
+        showError(
+          res.data?.message ||
+            (options.forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
+        );
+      }
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          (options.forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
+      );
+    } finally {
+      await loadKeyStatus(currentPage, pageSize, statusFilter);
+      onRefresh && onRefresh();
+      setOperationLoading((prev) => ({ ...prev, [operationId]: false }));
+    }
+  };
+
   // Handle page change
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -540,6 +578,90 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
     );
   };
 
+  const renderEcomAccounts = (accounts = []) => {
+    if (!Array.isArray(accounts) || accounts.length === 0) {
+      return <Text type='quaternary'>-</Text>;
+    }
+    const content = (
+      <div className='flex flex-col gap-2 min-w-[340px] max-w-[460px]'>
+        {accounts.map((item) => (
+          <div
+            key={`ecom-${item.account_id}`}
+            className='rounded-lg border px-3 py-2'
+            style={{ borderColor: 'var(--semi-color-border)' }}
+          >
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex items-center gap-2 flex-wrap'>
+                <Tag size='small' color='orange' shape='circle'>
+                  Ecom #{item.account_id}
+                </Tag>
+                <Text strong>{item.email || t('未绑定邮箱')}</Text>
+              </div>
+              <Tag
+                size='small'
+                color={item.status === 'ready' ? 'green' : 'grey'}
+                shape='circle'
+              >
+                {item.status || t('未知状态')}
+              </Tag>
+            </div>
+            <div className='mt-2 flex flex-wrap gap-2'>
+              {item.user_id > 0 && (
+                <Tag size='small' color='blue' shape='circle'>
+                  UID {item.user_id} {item.username || ''}
+                </Tag>
+              )}
+              {item.subscription_id > 0 && (
+                <Tag size='small' color='cyan' shape='circle'>
+                  Sub #{item.subscription_id}
+                </Tag>
+              )}
+              {item.order_id > 0 && (
+                <Tag size='small' color='white' shape='circle'>
+                  Order #{item.order_id}
+                </Tag>
+              )}
+            </div>
+            <Text size='small' type='secondary' className='mt-2 block'>
+              {t('套餐')}: {item.plan || '-'} / {t('总请求')}: {Number(item.request_limit || 0).toLocaleString()} / {t('已用成功次数')}: {Number(item.usage_requests || 0).toLocaleString()}
+            </Text>
+            {item.assigned_at > 0 && (
+              <Text size='small' type='tertiary' className='mt-1 block'>
+                {t('分配时间：{{time}}', {
+                  time: timestamp2string(item.assigned_at),
+                })}
+              </Text>
+            )}
+            <div className='mt-2 flex items-center gap-2'>
+              <Button
+                size='small'
+                theme='light'
+                loading={!!operationLoading[`ecom_sync_${item.account_id}`]}
+                onClick={() => handleSyncEcomAccount(item.account_id)}
+              >
+                {t('同步')}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+    return (
+      <Popover
+        trigger='click'
+        position='leftTop'
+        content={content}
+        style={{ maxWidth: 480 }}
+      >
+        <Button size='small' theme='borderless' type='tertiary'>
+          {accounts.length === 1
+            ? t('查看 EcomAgent 账号')
+            : t('查看 {{count}} 个 EcomAgent 账号', { count: accounts.length })}
+        </Button>
+      </Popover>
+    );
+  };
+
   // Table columns definition
   const columns = [
     {
@@ -585,6 +707,16 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
             </Tag>
             {renderBindingUsers(users)}
           </Space>
+          {Array.isArray(record.ecom_accounts) && record.ecom_accounts.length > 0 && (
+            <Space spacing={6}>
+              <Tag color='orange' shape='circle' type='ghost'>
+                {t('{{count}} 个 EcomAgent', {
+                  count: Number(record.ecom_accounts.length).toLocaleString(),
+                })}
+              </Tag>
+              {renderEcomAccounts(record.ecom_accounts)}
+            </Space>
+          )}
           <div>{renderGroupTags(record.binding_groups)}</div>
         </div>
       ),

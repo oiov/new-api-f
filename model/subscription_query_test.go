@@ -30,7 +30,7 @@ func withSubscriptionQueryTestDB(t *testing.T, run func()) {
 	LOG_DB = db
 	common.UsingSQLite = true
 
-	require.NoError(t, db.AutoMigrate(&User{}, &Channel{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &SubscriptionPreConsumeRecord{}, &Token{}, &Log{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &Channel{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &SubscriptionPreConsumeRecord{}, &Token{}, &Log{}, &EcomAgentAccount{}))
 
 	t.Cleanup(func() {
 		DB = oldDB
@@ -1265,6 +1265,18 @@ func TestAdminRejectManualDeliveryOrder_ShiftsDeliveredBindingsAfterRemovedPlace
 			CreatedTime:             now,
 			ExpiredTime:             -1,
 		}).Error)
+		require.NoError(t, DB.Create(&EcomAgentAccount{
+			Id:                      31001,
+			Email:                   "shift-binding@example.com",
+			Password:                "password",
+			BaseURL:                 "https://ecomagent.in",
+			SupabaseAuthURL:         "https://example.supabase.co/auth/v1",
+			SupabaseAnonKey:         "anon-key",
+			AssignedChannelID:       8007,
+			AssignedChannelKeyIndex: 2,
+			CreatedTime:             now,
+			UpdatedTime:             now,
+		}).Error)
 
 		_, err = AdminRejectManualDeliveryOrder(order1.Id, 7, "拒绝第一个占位订单", false)
 		require.NoError(t, err)
@@ -1280,6 +1292,10 @@ func TestAdminRejectManualDeliveryOrder_ShiftsDeliveredBindingsAfterRemovedPlace
 		var shiftedToken Token
 		require.NoError(t, DB.Where("id = ?", 30001).First(&shiftedToken).Error)
 		require.Equal(t, 1, shiftedToken.SpecificChannelKeyIndex)
+
+		var shiftedAccount EcomAgentAccount
+		require.NoError(t, DB.Where("id = ?", 31001).First(&shiftedAccount).Error)
+		require.Equal(t, 1, shiftedAccount.AssignedChannelKeyIndex)
 
 		var storedChannel Channel
 		require.NoError(t, DB.Where("id = ?", 8007).First(&storedChannel).Error)
@@ -1340,6 +1356,74 @@ func TestRefreshActiveSubscriptionResetWindows_RecalculatesLegacyWindow(t *testi
 		var cancelledSub UserSubscription
 		require.NoError(t, DB.Where("id = ?", 602).First(&cancelledSub).Error)
 		require.EqualValues(t, startTime+24*3600+8*3600, cancelledSub.NextResetTime)
+	})
+}
+
+func TestGetEcomAgentChannelKeyBindingMap_OnlyReturnsAssignedAccounts(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		require.NoError(t, DB.Create(&User{
+			Id:       88,
+			Username: "ecom_binding_user",
+			AffCode:  "ecom_binding_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                      8801,
+			UserId:                  88,
+			PlanId:                  1,
+			Status:                  "active",
+			StartTime:               now - 60,
+			EndTime:                 now + 3600,
+			SpecificChannelId:       30231,
+			SpecificChannelKeyIndex: 1,
+			CreatedAt:               now,
+			UpdatedAt:               now,
+		}).Error)
+
+		require.NoError(t, DB.Create(&EcomAgentAccount{
+			Id:                         88011,
+			Email:                      "assigned@example.com",
+			Password:                   "password",
+			BaseURL:                    "https://ecomagent.in",
+			SupabaseAuthURL:            "https://example.supabase.co/auth/v1",
+			SupabaseAnonKey:            "anon-key",
+			AssignmentStatus:           "assigned",
+			AssignedChannelID:          30231,
+			AssignedChannelKeyIndex:    1,
+			AssignedUserSubscriptionID: 8801,
+			RequestLimit:               500,
+			UsageRequests:              123,
+			CreatedTime:                now,
+			UpdatedTime:                now,
+		}).Error)
+
+		require.NoError(t, DB.Create(&EcomAgentAccount{
+			Id:                      88012,
+			Email:                   "stale@example.com",
+			Password:                "password",
+			BaseURL:                 "https://ecomagent.in",
+			SupabaseAuthURL:         "https://example.supabase.co/auth/v1",
+			SupabaseAnonKey:         "anon-key",
+			AssignmentStatus:        "unassigned",
+			AssignedChannelID:       30231,
+			AssignedChannelKeyIndex: 1,
+			RequestLimit:            999,
+			UsageRequests:           999,
+			CreatedTime:             now,
+			UpdatedTime:             now,
+		}).Error)
+
+		bindingMap, err := GetEcomAgentChannelKeyBindingMap(30231)
+		require.NoError(t, err)
+		require.Len(t, bindingMap[1], 1)
+		require.Equal(t, 88011, bindingMap[1][0].AccountID)
+		require.EqualValues(t, 500, bindingMap[1][0].RequestLimit)
+		require.EqualValues(t, 123, bindingMap[1][0].UsageRequests)
+		require.Equal(t, 88, bindingMap[1][0].UserID)
+		require.Equal(t, 8801, bindingMap[1][0].SubscriptionID)
 	})
 }
 

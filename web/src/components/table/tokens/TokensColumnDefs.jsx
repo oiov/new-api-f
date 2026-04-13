@@ -55,6 +55,23 @@ const getProgressColor = (pct) => {
   return undefined;
 };
 
+const SUBSCRIPTION_ACCESS_TOKEN_NAME = 'Subscription Access';
+
+const isProtectedSubscriptionAccessToken = (record) => {
+  if (!record) {
+    return false;
+  }
+  if (Number(record.specific_channel_id || 0) > 0) {
+    return false;
+  }
+  if ((record.name || '').trim() !== SUBSCRIPTION_ACCESS_TOKEN_NAME) {
+    return false;
+  }
+  const expiredTime = Number(record.expired_time ?? -1);
+  const now = Math.floor(Date.now() / 1000);
+  return expiredTime === -1 || expiredTime > now;
+};
+
 // Render functions
 function renderTimestamp(timestamp) {
   return <>{timestamp2string(timestamp)}</>;
@@ -333,6 +350,8 @@ const renderOperations = (
   refresh,
   t,
 ) => {
+  const canDelete = !isProtectedSubscriptionAccessToken(record);
+  const canEdit = !isProtectedSubscriptionAccessToken(record);
   let chatsArray = [];
   try {
     const raw = localStorage.getItem('chats');
@@ -407,16 +426,18 @@ const renderOperations = (
         </Button>
       )}
 
-      <Button
-        type='tertiary'
-        size='small'
-        onClick={() => {
-          setEditingToken(record);
-          setShowEdit(true);
-        }}
-      >
-        {t('编辑')}
-      </Button>
+      {canEdit ? (
+        <Button
+          type='tertiary'
+          size='small'
+          onClick={() => {
+            setEditingToken(record);
+            setShowEdit(true);
+          }}
+        >
+          {t('编辑')}
+        </Button>
+      ) : null}
 
       <Button
         type='tertiary'
@@ -428,24 +449,26 @@ const renderOperations = (
         {t('导入')}
       </Button>
 
-      <Button
-        type='danger'
-        size='small'
-        onClick={() => {
-          Modal.confirm({
-            title: t('确定是否要删除此令牌？'),
-            content: t('此修改将不可逆'),
-            onOk: () => {
-              (async () => {
-                await manageToken(record.id, 'delete', record);
-                await refresh();
-              })();
-            },
-          });
-        }}
-      >
-        {t('删除')}
-      </Button>
+      {canDelete ? (
+        <Button
+          type='danger'
+          size='small'
+          onClick={() => {
+            Modal.confirm({
+              title: t('确定是否要删除此令牌？'),
+              content: t('此修改将不可逆'),
+              onOk: () => {
+                (async () => {
+                  await manageToken(record.id, 'delete', record);
+                  await refresh();
+                })();
+              },
+            });
+          }}
+        >
+          {t('删除')}
+        </Button>
+      ) : null}
     </Space>
   );
 };

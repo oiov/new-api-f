@@ -34,6 +34,23 @@ import CardTable from '../../common/ui/CardTable';
 
 const { Text } = Typography;
 
+function formatDateRange(sub, t) {
+  if (!sub) return '-';
+  const start = formatTs(sub?.start_time);
+  const end = formatTs(sub?.end_time);
+  if (start === '-' && end === '-') return '-';
+  return (
+    <div className='space-y-1 text-xs text-gray-600'>
+      <div>
+        {t('开始')} · {start}
+      </div>
+      <div>
+        {t('结束')} · {end}
+      </div>
+    </div>
+  );
+}
+
 function renderUsageBlock(sub, t) {
   const blocks = [];
   const usage = getSubscriptionUsageSummary(sub);
@@ -165,75 +182,125 @@ const AdminUserSubscriptionsTable = ({
   openConsumeLogs,
   t,
 }) => {
+  const renderExpandedDetails = (record) => {
+    const sub = record?.subscription;
+    const refundOrder = record?.refund_order;
+    const aggregateToken = record?.aggregate_access_token;
+    const planTitle =
+      planTitleMap.get(sub?.plan_id) || (sub?.plan_id ? `#${sub.plan_id}` : '-');
+
+    return (
+      <div className='grid gap-3 p-2 lg:grid-cols-3'>
+        <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'>
+          <div className='mb-2 text-xs font-medium text-semi-color-text-2'>
+            {t('订阅信息')}
+          </div>
+          <div className='space-y-1 text-xs text-gray-600'>
+            <div>
+              {t('套餐')}：{planTitle}
+            </div>
+            <div>
+              {t('来源')}：{renderSourceTag(sub?.source, t)}
+            </div>
+            <div>
+              {t('配置分组')}：{record?.user_group ? renderGroup(record.user_group) : '-'}
+            </div>
+            <div>
+              {t('升级分组')}：{sub?.upgrade_group ? renderGroup(sub.upgrade_group) : '-'}
+            </div>
+            <div>
+              {t('重置规则')}：{formatSubscriptionResetPeriod(sub, t)}
+            </div>
+          </div>
+        </div>
+
+        <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'>
+          <div className='mb-2 text-xs font-medium text-semi-color-text-2'>
+            {t('订单与绑定')}
+          </div>
+          <div className='space-y-1 text-xs text-gray-600'>
+            <div>
+              {t('支付单')} #{refundOrder?.order_id || '-'}
+            </div>
+            <div className='break-all'>{refundOrder?.trade_no || '-'}</div>
+            <div>
+              {t('充值单')} #{refundOrder?.topup_id || '-'} · {t('实付金额')}{' '}
+              {renderQuotaWithAmount(Number(refundOrder?.money || 0))}
+            </div>
+            <div>
+              {t('渠道')} #{sub?.specific_channel_id || '-'}
+              {sub?.specific_channel_id > 0
+                ? ` · Key #${Number(sub?.specific_channel_key_index ?? -1) >= 0 ? sub?.specific_channel_key_index : 0}`
+                : ''}
+            </div>
+            <div>
+              {t('聚合访问 Key')}：{aggregateToken?.key_preview || t('未生成')}
+            </div>
+            {aggregateToken?.token_id ? (
+              <div className='flex items-center gap-2 flex-wrap'>
+                <Tag size='small' color='white'>
+                  #{aggregateToken.token_id}
+                </Tag>
+                {renderAccessTokenStatus(aggregateToken?.status, t)}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'>
+          <div className='mb-2 text-xs font-medium text-semi-color-text-2'>
+            {t('资源与时间')}
+          </div>
+          <div className='space-y-1 text-xs text-gray-600'>
+            <div>{renderUsageBlock(sub, t)}</div>
+            <div>
+              {t('资源类型')}：{formatSubscriptionResourceLabel(sub, t)}
+            </div>
+            <div>{formatDateRange(sub, t)}</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const columns = useMemo(
     () => [
       {
         title: t('ID'),
         dataIndex: ['subscription', 'id'],
-        width: 70,
+        width: 72,
       },
       {
         title: t('用户'),
         width: 180,
         render: (_, record) => (
-          <div>
-            <div className='font-medium'>{record?.username || '-'}</div>
-            <Text type='tertiary' size='small'>
+          <div className='min-w-0'>
+            <div className='truncate font-medium'>{record?.username || '-'}</div>
+            <Text type='tertiary' size='small' className='block truncate'>
               #{record?.subscription?.user_id || '-'}
+              {record?.user_group ? ` · ${record.user_group}` : ''}
             </Text>
           </div>
         ),
       },
       {
-        title: t('配置分组'),
-        dataIndex: 'user_group',
-        width: 120,
-        render: (text) =>
-          text ? renderGroup(text) : <Tag size='small'>-</Tag>,
-      },
-      {
         title: t('套餐'),
-        width: 180,
+        width: 220,
         render: (_, record) => {
           const sub = record?.subscription;
           const title =
             planTitleMap.get(sub?.plan_id) ||
             (sub?.plan_id ? `#${sub.plan_id}` : '-');
           return (
-            <div>
-              <div>{title}</div>
-              <Text type='tertiary' size='small'>
-                {sub?.upgrade_group ? renderGroup(sub.upgrade_group) : '-'}
-              </Text>
-            </div>
-          );
-        },
-      },
-      {
-        title: t('来源'),
-        width: 120,
-        render: (_, record) => renderSourceTag(record?.subscription?.source, t),
-      },
-      {
-        title: t('关联充值订单'),
-        width: 260,
-        render: (_, record) => {
-          const refundOrder = record?.refund_order;
-          if (!refundOrder?.trade_no) {
-            return <Text type='tertiary' size='small'>-</Text>;
-          }
-          return (
-            <div className='text-xs text-gray-600 space-y-1'>
-              <div>
-                {t('支付单')} #{refundOrder.order_id || '-'}
-              </div>
-              <div className='break-all'>{refundOrder.trade_no}</div>
-              <div>
-                {t('充值单')} #{refundOrder.topup_id || '-'} ·{' '}
-                {t('实付金额')} {renderQuotaWithAmount(Number(refundOrder.money || 0))}
-              </div>
-              <div>
-                {t('支付方式')} {refundOrder.payment_method || '-'}
+            <div className='min-w-0'>
+              <div className='truncate'>{title}</div>
+              <div className='mt-1 flex items-center gap-1 flex-wrap'>
+                {renderSourceTag(sub?.source, t)}
+                {sub?.upgrade_group ? (
+                  <Tag size='small' color='white'>
+                    {sub.upgrade_group}
+                  </Tag>
+                ) : null}
               </div>
             </div>
           );
@@ -241,73 +308,40 @@ const AdminUserSubscriptionsTable = ({
       },
       {
         title: t('资源'),
-        width: 170,
+        width: 180,
         render: (_, record) => {
           const sub = record?.subscription;
-          return (
-            <div className='text-xs text-gray-600'>
-              {renderUsageBlock(sub, t)}
-            </div>
-          );
-        },
-      },
-      {
-        title: t('订阅绑定'),
-        width: 260,
-        render: (_, record) => {
-          const sub = record?.subscription;
-          const aggregateToken = record?.aggregate_access_token;
           return (
             <div className='text-xs text-gray-600 space-y-1'>
-              <div>
-                {t('渠道')} #{sub?.specific_channel_id || '-'}
-                {sub?.specific_channel_id > 0
-                  ? ` · Key #${Number(sub?.specific_channel_key_index ?? -1) >= 0 ? sub?.specific_channel_key_index : 0}`
-                  : ''}
-              </div>
-              <div>
-                {t('聚合访问 Key')}:{' '}
-                {aggregateToken?.key_preview || t('未生成')}
-              </div>
-              {aggregateToken?.token_id ? (
-                <div className='flex items-center gap-2 flex-wrap'>
-                  <Tag size='small' color='white'>
-                    #{aggregateToken.token_id}
-                  </Tag>
-                  {renderAccessTokenStatus(aggregateToken?.status, t)}
-                </div>
-              ) : null}
+              <div>{renderUsageBlock(sub, t)}</div>
+              <div>{formatSubscriptionResourceLabel(sub, t)}</div>
             </div>
           );
         },
-      },
-      {
-        title: t('重置规则'),
-        width: 120,
-        render: (_, record) =>
-          formatSubscriptionResetPeriod(record?.subscription, t),
       },
       {
         title: t('有效期'),
-        width: 220,
+        width: 200,
         render: (_, record) => {
           const sub = record?.subscription;
-          return (
-            <div className='text-xs text-gray-600'>
-              <div>{formatTs(sub?.start_time)}</div>
-              <div>{formatTs(sub?.end_time)}</div>
-            </div>
-          );
+          return formatDateRange(sub, t);
         },
       },
       {
         title: t('状态'),
-        width: 100,
-        render: (_, record) => renderStatusTag(record?.subscription, t),
+        width: 96,
+        render: (_, record) => (
+          <div className='space-y-1'>
+            {renderStatusTag(record?.subscription, t)}
+            {record?.aggregate_access_token?.token_id ? (
+              renderAccessTokenStatus(record?.aggregate_access_token?.status, t)
+            ) : null}
+          </div>
+        ),
       },
       {
         title: t('操作'),
-        width: 120,
+        width: 100,
         render: (_, record) => (
           <Button
             theme='borderless'
@@ -341,6 +375,7 @@ const AdminUserSubscriptionsTable = ({
       rowKey={(row) => row?.subscription?.id}
       pagination={false}
       hidePagination={true}
+      expandedRowRender={renderExpandedDetails}
       scroll={{ x: 'max-content' }}
       empty={
         <Empty
@@ -352,7 +387,7 @@ const AdminUserSubscriptionsTable = ({
           style={{ padding: 30 }}
         />
       }
-      size='middle'
+      size='small'
     />
   );
 };
