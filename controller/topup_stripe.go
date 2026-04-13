@@ -197,7 +197,10 @@ func sessionCompleted(event stripe.Event) {
 		"currency":     strings.ToUpper(event.GetObjectValue("currency")),
 		"event_type":   string(event.Type),
 	}
-	if err := model.CompleteSubscriptionOrder(referenceId, common.GetJsonString(payload)); err == nil {
+	if completedNow, err := model.CompleteSubscriptionOrderWithResult(referenceId, common.GetJsonString(payload)); err == nil {
+		if completedNow {
+			notifySubscriptionPaymentSuccessAsync(referenceId)
+		}
 		return
 	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
 		log.Println("complete subscription order failed:", err.Error(), referenceId)

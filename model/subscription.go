@@ -2151,10 +2151,11 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	return sub, nil
 }
 
-// Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
-func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
+// CompleteSubscriptionOrderWithResult completes a subscription order and reports whether this call
+// transitioned the order from pending to success.
+func CompleteSubscriptionOrderWithResult(tradeNo string, providerPayload string) (bool, error) {
 	if tradeNo == "" {
-		return errors.New("tradeNo is empty")
+		return false, errors.New("tradeNo is empty")
 	}
 	refCol := "`trade_no`"
 	if common.UsingPostgreSQL {
@@ -2250,7 +2251,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if upgradeGroup != "" && logUserId > 0 {
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
@@ -2266,7 +2267,13 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	if refreshChannelCache {
 		InitChannelCache()
 	}
-	return nil
+	return logUserId > 0, nil
+}
+
+// Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
+func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
+	_, err := CompleteSubscriptionOrderWithResult(tradeNo, providerPayload)
+	return err
 }
 
 func SyncActiveSubscriptionsForPlanTx(tx *gorm.DB, planId int) error {

@@ -211,7 +211,11 @@ func buildPaymentSuccessMarkdown(notification PaymentSuccessNotification, uid st
 		fmt.Sprintf("- 支付金额：%.2f", notification.Money),
 	}
 	if quota := strings.TrimSpace(notification.Quota); quota != "" {
-		lines = append(lines, fmt.Sprintf("- 充值额度：%s", quota))
+		label := "充值额度"
+		if category == "套餐购买" {
+			label = "套餐"
+		}
+		lines = append(lines, fmt.Sprintf("- %s：%s", label, quota))
 	}
 	if uid = strings.TrimSpace(uid); uid != "" {
 		lines = append(lines, "", fmt.Sprintf("> 推送 UID: %s", uid))
