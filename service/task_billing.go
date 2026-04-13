@@ -44,7 +44,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 	if info.IsModelMapped {
 		other["is_model_mapped"] = true
-		other["upstream_model_name"] = info.UpstreamModelName
+		other["upstream_model_name"] = displayedUpstreamModelName(info.OriginModelName, info.UpstreamModelName)
 	}
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
@@ -206,7 +206,7 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	props := task.Properties
 	if props.UpstreamModelName != "" && props.UpstreamModelName != props.OriginModelName {
 		other["is_model_mapped"] = true
-		other["upstream_model_name"] = props.UpstreamModelName
+		other["upstream_model_name"] = displayedUpstreamModelName(props.OriginModelName, props.UpstreamModelName)
 	}
 	return other
 }

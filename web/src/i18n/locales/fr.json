@@ -5157,5 +5157,7 @@
   "请输入新的 Token，留空则保持已保存值": "Saisissez un nouveau jeton, ou laissez vide pour conserver la valeur enregistrée.",
   "复制失败": "Copy failed",
   "获取签到记录失败": "Failed to load check-in records",
+  "上游模型名跟随请求模型展示": "Afficher le modèle amont comme le modèle demandé",
+  "开启后，日志中的 upstream_model_name 将展示为用户请求的模型名，用于避免上游模型漂移直接暴露给终端用户。": "Une fois activé, upstream_model_name dans les journaux affichera le nom du modèle demandé par l'utilisateur afin d'éviter d'exposer directement la dérive du modèle amont aux utilisateurs finaux.",
   "en-CA": "en-CA"
 }

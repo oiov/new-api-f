@@ -48,6 +48,7 @@ export default function SettingsLog(props) {
     LogConsumeEnabled: false,
     ErrorLogDisplayEnabled: true,
     ErrorDetailsEnabled: true,
+    UpstreamModelNameAlignedToRequestEnabled: true,
     historyTimestamp: dayjs().subtract(1, 'month').toDate(),
   });
   const refForm = useRef();
@@ -260,6 +261,28 @@ export default function SettingsLog(props) {
                   style={{ display: 'block', marginTop: 4 }}
                 >
                   {t('关闭后不记录错误日志，前端仅返回通用错误文案，用户侧日志也不展示错误日志')}
+                </Text>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'UpstreamModelNameAlignedToRequestEnabled'}
+                  label={t('上游模型名跟随请求模型展示')}
+                  size='default'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      UpstreamModelNameAlignedToRequestEnabled: value,
+                    });
+                  }}
+                />
+                <Text
+                  type='tertiary'
+                  size='small'
+                  style={{ display: 'block', marginTop: 4 }}
+                >
+                  {t('开启后，日志中的 upstream_model_name 将展示为用户请求的模型名，用于避免上游模型漂移直接暴露给终端用户。')}
                 </Text>
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>

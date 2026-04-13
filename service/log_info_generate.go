@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,15 @@ func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other
 	}
 }
 
+func displayedUpstreamModelName(originModelName, upstreamModelName string) string {
+	originModelName = strings.TrimSpace(originModelName)
+	upstreamModelName = strings.TrimSpace(upstreamModelName)
+	if operation_setting.UpstreamModelNameAlignedToRequestEnabled && originModelName != "" {
+		return originModelName
+	}
+	return upstreamModelName
+}
+
 func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, modelRatio, groupRatio, completionRatio float64,
 	cacheTokens int, cacheRatio float64, modelPrice float64, userGroupRatio float64) map[string]interface{} {
 	other := make(map[string]interface{})
@@ -47,7 +57,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	}
 	if relayInfo.IsModelMapped {
 		other["is_model_mapped"] = true
-		other["upstream_model_name"] = relayInfo.UpstreamModelName
+		other["upstream_model_name"] = displayedUpstreamModelName(relayInfo.OriginModelName, relayInfo.UpstreamModelName)
 	}
 
 	isSystemPromptOverwritten := common.GetContextKeyBool(ctx, constant.ContextKeySystemPromptOverride)

@@ -5667,5 +5667,7 @@
   "请输入新的 Token，留空则保持已保存值": "Nhập token mới hoặc để trống để giữ giá trị đã lưu.",
   "复制失败": "Copy failed",
   "获取签到记录失败": "Failed to load check-in records",
+  "上游模型名跟随请求模型展示": "Hiển thị upstream model theo model đã yêu cầu",
+  "开启后，日志中的 upstream_model_name 将展示为用户请求的模型名，用于避免上游模型漂移直接暴露给终端用户。": "Khi bật, upstream_model_name trong nhật ký sẽ hiển thị theo tên model mà người dùng yêu cầu để tránh làm lộ trực tiếp hiện tượng lệch model upstream cho người dùng cuối.",
   "en-CA": "en-CA"
 }

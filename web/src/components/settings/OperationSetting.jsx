@@ -73,6 +73,7 @@ const OperationSetting = () => {
     LogConsumeEnabled: false,
     ErrorLogDisplayEnabled: true,
     ErrorDetailsEnabled: true,
+    UpstreamModelNameAlignedToRequestEnabled: true,
 
     /* 监控设置 */
     ChannelDisableThreshold: 0,
