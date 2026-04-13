@@ -189,6 +189,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.POST("/migrations/execute", controller.AdminExecuteSubscriptionMigration)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/action", controller.AdminOperateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
+			subscriptionAdminRoute.POST("/user_subscriptions/:id/transfer", controller.AdminTransferUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
 		}
 

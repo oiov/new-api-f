@@ -17,9 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
+  Checkbox,
   Empty,
   Modal,
   Select,
@@ -114,8 +115,20 @@ function getPlanPeriodLabel(source, t) {
   return `${value}${t('个月')}`;
 }
 
+function buildUserOption(item) {
+  if (!item?.id) return null;
+  const username = item?.username || '-';
+  const email = item?.email ? ` · ${item.email}` : '';
+  return {
+    label: `${username} (#${item.id})${email}`,
+    value: item.id,
+    raw: item,
+  };
+}
+
 const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
   const isMobile = useIsMobile();
+  const searchTimerRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [plansLoading, setPlansLoading] = useState(false);
@@ -125,6 +138,14 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
 
   const [subs, setSubs] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [transferVisible, setTransferVisible] = useState(false);
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferUserSearchLoading, setTransferUserSearchLoading] =
+    useState(false);
+  const [transferSubscription, setTransferSubscription] = useState(null);
+  const [transferTargetUserId, setTransferTargetUserId] = useState(null);
+  const [transferUserOptions, setTransferUserOptions] = useState([]);
+  const [reactivateOnTransfer, setReactivateOnTransfer] = useState(false);
   const pageSize = 10;
 
   const planTitleMap = useMemo(() => {
@@ -210,8 +231,108 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
     loadUserSubscriptions();
   }, [visible]);
 
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, []);
+
   const handlePageChange = (page) => {
     setCurrentPage(page);
+  };
+
+  const loadTransferUserOptions = async (keyword = '') => {
+    setTransferUserSearchLoading(true);
+    try {
+      const res = await API.get('/api/user/search', {
+        params: {
+          keyword: String(keyword || '').trim() || undefined,
+          page: 1,
+          page_size: 12,
+        },
+      });
+      if (res.data?.success) {
+        const items = res.data?.data?.items || [];
+        setTransferUserOptions(
+          items.map(buildUserOption).filter(Boolean),
+        );
+      } else {
+        showError(res.data?.message || t('搜索用户失败'));
+      }
+    } catch (e) {
+      showError(e?.response?.data?.message || t('搜索用户失败'));
+    } finally {
+      setTransferUserSearchLoading(false);
+    }
+  };
+
+  const handleSearchTransferUsers = (keyword) => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+    searchTimerRef.current = setTimeout(() => {
+      loadTransferUserOptions(keyword);
+    }, 300);
+  };
+
+  const closeTransferModal = () => {
+    setTransferVisible(false);
+    setTransferLoading(false);
+    setTransferSubscription(null);
+    setTransferTargetUserId(null);
+    setTransferUserOptions([]);
+    setReactivateOnTransfer(false);
+  };
+
+  const openTransferModal = (sub) => {
+    setTransferSubscription(sub || null);
+    setTransferTargetUserId(null);
+    setTransferUserOptions([]);
+    setReactivateOnTransfer((sub?.status || '') === 'cancelled');
+    setTransferVisible(true);
+    loadTransferUserOptions('');
+  };
+
+  const submitTransferSubscription = async () => {
+    const subId = Number(transferSubscription?.id || 0);
+    const targetUserId = Number(transferTargetUserId || 0);
+    if (subId <= 0) {
+      showError(t('订阅信息缺失'));
+      return;
+    }
+    if (targetUserId <= 0) {
+      showError(t('请选择目标用户'));
+      return;
+    }
+    if (targetUserId === Number(transferSubscription?.user_id || 0)) {
+      showError(t('不能转移给当前用户'));
+      return;
+    }
+    setTransferLoading(true);
+    try {
+      const res = await API.post(
+        `/api/subscription/admin/user_subscriptions/${subId}/transfer`,
+        {
+          target_user_id: targetUserId,
+          reactivate: reactivateOnTransfer,
+        },
+      );
+      if (res.data?.success) {
+        const msg = res.data?.data?.message;
+        showSuccess(msg ? msg : t('转移成功'));
+        closeTransferModal();
+        await loadUserSubscriptions();
+        onSuccess?.();
+      } else {
+        showError(res.data?.message || t('转移失败'));
+      }
+    } catch (e) {
+      showError(e?.response?.data?.message || t('转移失败'));
+    } finally {
+      setTransferLoading(false);
+    }
   };
 
   const createSubscription = async () => {
@@ -250,7 +371,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
   const invalidateSubscription = (subId) => {
     Modal.confirm({
       title: t('确认作废'),
-      content: t('作废后该订阅将立即失效，历史记录不受影响。是否继续？'),
+      content: t('作废后该订阅将立即失效；若该订阅占用了人工发放位置，系统会同步释放该位置供后续重新发放。历史记录不受影响。是否继续？'),
       centered: true,
       onOk: async () => {
         try {
@@ -522,6 +643,14 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
               >
                 {t('作废')}
               </Button>
+              <Button
+                size='small'
+                theme='light'
+                type='primary'
+                onClick={() => openTransferModal(sub)}
+              >
+                {t('转移')}
+              </Button>
             </Space>
           );
         },
@@ -606,6 +735,58 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
           size='middle'
         />
       </div>
+      <Modal
+        title={t('确认转移订阅')}
+        visible={transferVisible}
+        onCancel={closeTransferModal}
+        onOk={submitTransferSubscription}
+        okText={t('确认转移')}
+        confirmLoading={transferLoading}
+        centered
+      >
+        <div className='space-y-4'>
+          <div className='rounded-xl border border-dashed border-semi-color-border bg-semi-color-fill-0 p-3'>
+            <div className='text-sm font-medium text-semi-color-text-0'>
+              {t('保留当前订阅 ID 与消耗历史，仅转移使用权')}
+            </div>
+            <div className='mt-1 text-xs text-semi-color-text-2'>
+              {t(
+                '转移后，该订阅的使用权与 Subscription Access 令牌归属将切换到目标用户；历史消耗记录会一并迁移到目标用户视角，且不会覆盖目标用户当前主分组。是否继续？',
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className='mb-1 text-sm font-medium text-semi-color-text-0'>
+              {t('转移给其他用户')}
+            </div>
+            <Select
+              filter={false}
+              remote
+              loading={transferUserSearchLoading}
+              optionList={transferUserOptions}
+              value={transferTargetUserId}
+              onSearch={handleSearchTransferUsers}
+              onDropdownVisibleChange={(dropdownVisible) => {
+                if (dropdownVisible && !transferUserOptions.length) {
+                  loadTransferUserOptions('');
+                }
+              }}
+              onChange={(value) => setTransferTargetUserId(value || null)}
+              placeholder={t('搜索目标用户 ID / 用户名 / 邮箱')}
+              autoClearSearchValue={false}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <Checkbox
+            checked={reactivateOnTransfer}
+            onChange={(e) => setReactivateOnTransfer(Boolean(e?.target?.checked))}
+          >
+            {t('若订阅已作废，则按原自然有效期恢复为生效状态')}
+          </Checkbox>
+        </div>
+      </Modal>
     </SideSheet>
   );
 };

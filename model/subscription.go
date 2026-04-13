@@ -713,6 +713,11 @@ type SubscriptionMigrationExecutionResult struct {
 	Items        []SubscriptionMigrationExecutionItem `json:"items"`
 }
 
+type AdminTransferUserSubscriptionOptions struct {
+	TargetUserId int  `json:"target_user_id"`
+	Reactivate   bool `json:"reactivate"`
+}
+
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	if plan == nil {
 		return 0, errors.New("plan is nil")
@@ -4774,6 +4779,346 @@ func ExecuteSubscriptionMigration(filter SubscriptionMigrationFilter) (*Subscrip
 	return result, nil
 }
 
+func transferSubscriptionConsumeLogsOwner(tx *gorm.DB, subscriptionId int, sourceUserId int, targetUserId int, targetUsername string) (int64, error) {
+	if subscriptionId <= 0 || sourceUserId <= 0 || targetUserId <= 0 || sourceUserId == targetUserId {
+		return 0, nil
+	}
+	logDB := LOG_DB
+	if logDB == nil || logDB == DB {
+		logDB = tx
+	}
+	if logDB == nil {
+		return 0, errors.New("log db is nil")
+	}
+	query := logDB.Model(&Log{}).
+		Where("type = ? AND user_id = ?", LogTypeConsume, sourceUserId).
+		Where("other LIKE ?", `%"billing_source":"subscription"%`)
+	query = applySubscriptionJSONIdFilter(query, "subscription_id", subscriptionId)
+
+	updates := map[string]any{
+		"user_id": targetUserId,
+	}
+	if strings.TrimSpace(targetUsername) != "" {
+		updates["username"] = strings.TrimSpace(targetUsername)
+	}
+	result := query.Updates(updates)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+func getSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var token Token
+	err := tx.Where("user_id = ? AND name = ? AND deleted_at IS NULL", userId, SubscriptionAggregateAccessTokenName).
+		Order("id asc").
+		First(&token).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
+func normalizeSubscriptionAccessTokenKey(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "sk-")
+	return strings.TrimSpace(raw)
+}
+
+func getDeliveredSubscriptionAccessTokenTx(tx *gorm.DB, sub *UserSubscription) (*Token, error) {
+	if tx == nil || sub == nil || sub.SourceOrderId <= 0 {
+		return nil, nil
+	}
+	var order SubscriptionOrder
+	if err := tx.Select("id", "delivery_payload_json").Where("id = ?", sub.SourceOrderId).First(&order).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	payload := decodeSubscriptionDeliveryPayload(order.DeliveryPayloadJSON)
+	apiKey := normalizeSubscriptionAccessTokenKey(getSubscriptionDeliveryPayloadValue(payload, "api_key"))
+	if apiKey == "" {
+		return nil, nil
+	}
+	var token Token
+	err := tx.Where("key = ? AND deleted_at IS NULL", apiKey).First(&token).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &token, nil
+}
+
+func hasOtherActiveAggregateEligibleSubscriptionsTx(tx *gorm.DB, userId int, excludeSubscriptionId int, now int64) (bool, error) {
+	if tx == nil {
+		return false, errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return false, errors.New("invalid userId")
+	}
+	var subs []UserSubscription
+	if err := tx.Select("id", "resource_type", "upgrade_group", "allowed_groups_json", "end_time", "status").
+		Where("user_id = ? AND status = ? AND end_time > ? AND id <> ?", userId, "active", now, excludeSubscriptionId).
+		Find(&subs).Error; err != nil {
+		return false, err
+	}
+	for i := range subs {
+		sub := subs[i]
+		if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+			continue
+		}
+		if getUserSubscriptionRouteGroup(&sub) == "" {
+			continue
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func syncTransferredSubscriptionOrderAccessTokenTx(tx *gorm.DB, sub *UserSubscription, targetToken *Token) error {
+	if tx == nil || sub == nil || sub.SourceOrderId <= 0 || targetToken == nil || targetToken.Id <= 0 {
+		return nil
+	}
+	var order SubscriptionOrder
+	if err := tx.Select("id", "plan_delivery_field_schema_json", "delivery_payload_json").
+		Where("id = ?", sub.SourceOrderId).
+		First(&order).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	payload := decodeSubscriptionDeliveryPayload(order.DeliveryPayloadJSON)
+	if len(payload) == 0 && strings.TrimSpace(order.PlanDeliveryFieldSchemaJSON) == "" {
+		return nil
+	}
+	schema := decodeSubscriptionDeliveryFields(order.PlanDeliveryFieldSchemaJSON)
+	if len(schema) == 0 {
+		schema = buildSubscriptionDeliveryFieldsFromPayload(payload)
+	}
+	if len(schema) == 0 {
+		return nil
+	}
+	nextPayload := upsertSubscriptionDeliveryPayloadValue(payload, schema, "api_key", "sk-"+targetToken.Key)
+	if len(nextPayload) == 0 {
+		return nil
+	}
+	payloadJSON, err := encodeSubscriptionDeliveryPayload(nextPayload)
+	if err != nil {
+		return err
+	}
+	return tx.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Updates(map[string]any{
+		"delivery_payload_json": payloadJSON,
+	}).Error
+}
+
+func restoreTransferredSubscriptionState(sub *UserSubscription, now int64) (int64, error) {
+	if sub == nil {
+		return 0, errors.New("subscription is nil")
+	}
+	planSnapshot := subscriptionDurationSnapshotToPlan(sub)
+	if planSnapshot == nil {
+		return 0, errors.New("invalid subscription duration snapshot")
+	}
+	restoredEndTime, err := calcPlanEndTime(time.Unix(sub.StartTime, 0), planSnapshot)
+	if err != nil {
+		return 0, err
+	}
+	if restoredEndTime <= now {
+		return 0, errors.New("该订阅自然有效期已过，无法重新激活")
+	}
+	sub.Status = "active"
+	sub.EndTime = restoredEndTime
+	recalculateSubscriptionResetWindow(sub, now)
+	return restoredEndTime, nil
+}
+
+func AdminTransferUserSubscription(userSubscriptionId int, options AdminTransferUserSubscriptionOptions) (string, error) {
+	if userSubscriptionId <= 0 {
+		return "", errors.New("invalid userSubscriptionId")
+	}
+	if options.TargetUserId <= 0 {
+		return "", errors.New("invalid targetUserId")
+	}
+
+	now := common.GetTimestamp()
+	sourceCacheGroup := ""
+	var sourceUserId int
+	var targetUserId int
+	var targetUsername string
+	var movedLogCount int64
+	var reactivated bool
+	var transferredSub *UserSubscription
+	preservedToken := false
+	externalLogTransfer := LOG_DB != nil && LOG_DB != DB
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", userSubscriptionId).
+			First(&sub).Error; err != nil {
+			return err
+		}
+		if sub.UserId == options.TargetUserId {
+			return errors.New("不能转移给当前用户")
+		}
+
+		var targetUser User
+		if err := tx.Select("id", "username").Where("id = ?", options.TargetUserId).First(&targetUser).Error; err != nil {
+			return err
+		}
+
+		sourceUserId = sub.UserId
+		targetUserId = targetUser.Id
+		targetUsername = strings.TrimSpace(targetUser.Username)
+
+		sourceAggregateToken, err := getSubscriptionAggregateAccessTokenTx(tx, sourceUserId)
+		if err != nil {
+			return err
+		}
+		targetAggregateToken, err := getSubscriptionAggregateAccessTokenTx(tx, targetUserId)
+		if err != nil {
+			return err
+		}
+		deliveredAccessToken, err := getDeliveredSubscriptionAccessTokenTx(tx, &sub)
+		if err != nil {
+			return err
+		}
+
+		sourceView := sub
+		downgradedGroup, err := downgradeUserGroupForSubscriptionTx(tx, &sourceView, now)
+		if err != nil {
+			return err
+		}
+		if downgradedGroup != "" {
+			sourceCacheGroup = downgradedGroup
+		}
+
+		updates := map[string]any{
+			"user_id":         targetUserId,
+			"prev_user_group": "",
+			"updated_at":      now,
+		}
+		sub.UserId = targetUserId
+		sub.PrevUserGroup = ""
+
+		if options.Reactivate {
+			restoredEndTime, err := restoreTransferredSubscriptionState(&sub, now)
+			if err != nil {
+				return err
+			}
+			updates["status"] = sub.Status
+			updates["end_time"] = restoredEndTime
+			updates["last_reset_time"] = sub.LastResetTime
+			updates["next_reset_time"] = sub.NextResetTime
+			reactivated = true
+		}
+
+		if err := tx.Model(&UserSubscription{}).
+			Where("id = ?", sub.Id).
+			Updates(updates).Error; err != nil {
+			return err
+		}
+
+		if deliveredAccessToken != nil &&
+			sourceAggregateToken != nil &&
+			deliveredAccessToken.Id == sourceAggregateToken.Id &&
+			targetAggregateToken == nil {
+			hasOtherSubs, err := hasOtherActiveAggregateEligibleSubscriptionsTx(tx, sourceUserId, sub.Id, now)
+			if err != nil {
+				return err
+			}
+			if !hasOtherSubs {
+				if err := tx.Model(&Token{}).
+					Where("id = ?", deliveredAccessToken.Id).
+					Updates(map[string]any{
+						"user_id": targetUserId,
+					}).Error; err != nil {
+					return err
+				}
+				preservedToken = true
+			}
+		}
+
+		if !externalLogTransfer {
+			if moved, err := transferSubscriptionConsumeLogsOwner(tx, sub.Id, sourceUserId, targetUserId, targetUsername); err != nil {
+				return err
+			} else {
+				movedLogCount = moved
+			}
+		}
+
+		if err := ensureSubscriptionAggregateAccessTokenForUserTx(tx, sourceUserId); err != nil {
+			return err
+		}
+		if err := ensureSubscriptionAggregateAccessTokenForUserTx(tx, targetUserId); err != nil {
+			return err
+		}
+		targetAggregateToken, err = getSubscriptionAggregateAccessTokenTx(tx, targetUserId)
+		if err != nil {
+			return err
+		}
+		if err := syncTransferredSubscriptionOrderAccessTokenTx(tx, &sub, targetAggregateToken); err != nil {
+			return err
+		}
+
+		subCopy := sub
+		transferredSub = &subCopy
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if sourceCacheGroup != "" && sourceUserId > 0 {
+		_ = UpdateUserGroupCache(sourceUserId, sourceCacheGroup)
+	}
+	logTransferWarning := ""
+	if externalLogTransfer {
+		moved, logErr := transferSubscriptionConsumeLogsOwner(nil, userSubscriptionId, sourceUserId, targetUserId, targetUsername)
+		if logErr != nil {
+			logTransferWarning = fmt.Sprintf("历史消耗日志迁移失败：%s", logErr.Error())
+		} else {
+			movedLogCount = moved
+		}
+	}
+	if reactivated && transferredSub != nil {
+		triggerClaudeSubscriptionActivationProbeAsync(targetUserId, transferredSub)
+	}
+
+	msgParts := []string{
+		fmt.Sprintf("订阅已转移给用户 #%d", targetUserId),
+	}
+	if reactivated {
+		msgParts = append(msgParts, "并已按原自然有效期恢复生效")
+	}
+	if movedLogCount > 0 {
+		msgParts = append(msgParts, fmt.Sprintf("已迁移 %d 条历史消耗日志归属", movedLogCount))
+	}
+	if sourceCacheGroup != "" {
+		msgParts = append(msgParts, fmt.Sprintf("原用户分组已回退到 %s", sourceCacheGroup))
+	}
+	if preservedToken {
+		msgParts = append(msgParts, "已保留原 Subscription Access Key 不变")
+	}
+	if logTransferWarning != "" {
+		msgParts = append(msgParts, logTransferWarning)
+	}
+	return strings.Join(msgParts, "；"), nil
+}
+
 // AdminInvalidateUserSubscription marks a user subscription as cancelled and ends it immediately.
 func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	if userSubscriptionId <= 0 {
@@ -4782,6 +5127,7 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	now := common.GetTimestamp()
 	cacheGroup := ""
 	downgradeGroup := ""
+	releasedManualSlot := false
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
@@ -4790,10 +5136,25 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 			return err
 		}
 		userId = sub.UserId
+		if sub.SourceOrderId > 0 {
+			var order SubscriptionOrder
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+				Where("id = ?", sub.SourceOrderId).
+				First(&order).Error; err != nil {
+				return err
+			}
+			released, err := releaseReservedChannelSlotTx(tx, &order)
+			if err != nil {
+				return err
+			}
+			releasedManualSlot = released
+		}
 		if err := tx.Model(&sub).Updates(map[string]interface{}{
-			"status":     "cancelled",
-			"end_time":   now,
-			"updated_at": now,
+			"status":                     "cancelled",
+			"end_time":                   now,
+			"updated_at":                 now,
+			"specific_channel_id":        0,
+			"specific_channel_key_index": -1,
 		}).Error; err != nil {
 			return err
 		}
@@ -4813,8 +5174,15 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	if cacheGroup != "" && userId > 0 {
 		_ = UpdateUserGroupCache(userId, cacheGroup)
 	}
+	msgParts := make([]string, 0, 2)
+	if releasedManualSlot {
+		msgParts = append(msgParts, "订阅已作废，并已释放人工发放位置")
+	}
 	if downgradeGroup != "" {
-		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
+		msgParts = append(msgParts, fmt.Sprintf("用户分组将回退到 %s", downgradeGroup))
+	}
+	if len(msgParts) > 0 {
+		return strings.Join(msgParts, "；"), nil
 	}
 	return "", nil
 }

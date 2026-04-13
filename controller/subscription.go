@@ -955,6 +955,11 @@ type AdminUserSubscriptionActionRequest struct {
 	Value  int64  `json:"value"`
 }
 
+type AdminTransferUserSubscriptionRequest struct {
+	TargetUserId int  `json:"target_user_id"`
+	Reactivate   bool `json:"reactivate"`
+}
+
 // AdminCreateUserSubscription creates a new user subscription from a plan (no payment).
 func AdminCreateUserSubscription(c *gin.Context) {
 	userId, _ := strconv.Atoi(c.Param("id"))
@@ -1065,6 +1070,32 @@ func AdminInvalidateUserSubscription(c *gin.Context) {
 		return
 	}
 	msg, err := model.AdminInvalidateUserSubscription(subId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if msg != "" {
+		common.ApiSuccess(c, gin.H{"message": msg})
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminTransferUserSubscription(c *gin.Context) {
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req AdminTransferUserSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TargetUserId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	msg, err := model.AdminTransferUserSubscription(subId, model.AdminTransferUserSubscriptionOptions{
+		TargetUserId: req.TargetUserId,
+		Reactivate:   req.Reactivate,
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
