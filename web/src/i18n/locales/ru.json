@@ -834,7 +834,7 @@
     "例如：email": "напр.: email",
     "例如：example.com": "например: example.com",
     "例如：nbility.com, *.nbility.dev": "例如：nbility.com, *.nbility.dev",
-    "例如：github / si:google / https://example.com/logo.png / 🐱": "напр.: github / si:google / https://example.com/logo.png / 🐱",
+    "例如：github / si:google / https://example.com/logo.svg / 🐱": "напр.: github / si:google / https://example.com/logo.svg / 🐱",
     "例如：GitHub Enterprise": "напр.: GitHub Enterprise",
     "例如：github-enterprise": "напр.: github-enterprise",
     "例如：gpt-4.1-nano,regex:^claude-.*$,regex:^sora-.*$": "例如：gpt-4.1-nano,regex:^claude-.*$,regex:^sora-.*$",

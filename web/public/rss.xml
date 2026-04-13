@@ -9,7 +9,7 @@
     <ttl>300</ttl>
     <atom:link href="https://nbility.dev/rss.xml" rel="self" type="application/rss+xml" />
     <image>
-      <url>https://nbility.dev/logo.png</url>
+      <url>https://nbility.dev/logo.svg</url>
       <title>Nbility AI</title>
       <link>https://nbility.dev/</link>
     </image>

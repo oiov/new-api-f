@@ -301,7 +301,7 @@ export function buildRssXml(plans = []) {
     <ttl>300</ttl>
     <atom:link href="${SITE_URL}/rss.xml" rel="self" type="application/rss+xml" />
     <image>
-      <url>${SITE_URL}/logo.png</url>
+      <url>${SITE_URL}/logo.svg</url>
       <title>Nbility AI</title>
       <link>${SITE_URL}/</link>
     </image>${staticItems.join('')}${planItems.join('')}

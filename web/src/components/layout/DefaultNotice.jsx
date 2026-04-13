@@ -199,7 +199,7 @@ const DefaultNotice = () => {
             }}
           >
             <img
-              src='/qq_group.jpg'
+              src='/qq_group.png'
               alt={t('QQ群二维码')}
               style={{
                 display: 'block',
@@ -268,7 +268,7 @@ const DefaultNotice = () => {
       </Section>
 
       <ImagePreview
-        src='/qq_group.jpg'
+        src='/qq_group.png'
         visible={previewVisible}
         onVisibleChange={setPreviewVisible}
       />

@@ -39,30 +39,30 @@ import './index.css';
 
 const { Title, Text } = Typography;
 const WECHAT_ID = 'oiovdev';
-const WECHAT_QR_IMAGE = `/oiovdev.jpg`;
+const WECHAT_QR_IMAGE = `/oiovdev.png`;
 const DEFAULT_CONTACT_CARDS = [
-  {
-    key: 'qq-support-group',
-    title: 'QQ售后群',
-    subtitle:
-      '用于订单、发放、补单与售后问题处理，进群请提供订单号，群备注改为站内 ID',
-    imageSrc: '/qq_group.jpg',
-    imageAlt: 'QQ售后群二维码',
-    value: 'nbility 售后群',
-    actionHref: 'https://qm.qq.com/q/XTxYUh2vOC',
-    actionLabel: '加入售后群',
-    tone: '售后支持',
-  },
+  // {
+  //   key: 'qq-support-group',
+  //   title: 'QQ售后群',
+  //   subtitle:
+  //     '用于订单、发放、补单与售后问题处理，进群请提供订单号，群备注改为站内 ID',
+  //   imageSrc: '/qq_group.png',
+  //   imageAlt: 'QQ售后群二维码',
+  //   value: 'nbility 售后群',
+  //   actionHref: 'https://qm.qq.com/q/XTxYUh2vOC',
+  //   actionLabel: '加入售后群',
+  //   tone: '售后支持',
+  // },
   {
     key: 'qq-group',
     title: 'QQ群',
     subtitle: '用于问题答疑解决，适合群内交流与经验分享',
-    imageSrc: '/qq_group.jpg',
+    imageSrc: '/qq_group.ong',
     imageAlt: 'QQ群二维码',
-    value: '373865837',
+    value: '634323049',
     actionHref: 'https://qm.qq.com/q/XTxYUh2vOC',
     actionLabel: '加入QQ群',
-    copyValue: '373865837',
+    copyValue: '634323049',
     tone: '热门社区',
   },
   {

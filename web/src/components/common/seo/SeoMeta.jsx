@@ -4,9 +4,9 @@ import { useLocation } from 'react-router-dom';
 const SITE_URL = (
   import.meta.env.VITE_PUBLIC_SITE_URL || 'https://nbility.dev'
 ).replace(/\/$/, '');
-const DEFAULT_OG_IMAGE = '/logo.png';
-const DEFAULT_SITE_ICON = '/favicon.ico';
-const DEFAULT_TOUCH_ICON = '/logo.png';
+const DEFAULT_OG_IMAGE = '/logo.svg';
+const DEFAULT_SITE_ICON = '/logo.svg';
+const DEFAULT_TOUCH_ICON = '/logo.svg';
 
 function getImageMeta(imageUrl) {
   const pathname = new URL(imageUrl).pathname.toLowerCase();

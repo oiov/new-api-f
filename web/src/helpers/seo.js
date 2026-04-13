@@ -22,7 +22,7 @@ const SEO_LOCALES = {
 };
 
 function getDefaultImage(language) {
-  return `${SITE_URL}/logo.png`;
+  return `${SITE_URL}/logo.svg`;
 }
 
 function isChineseLanguage(language) {
@@ -148,8 +148,8 @@ export function buildOrganizationJsonLd() {
     '@type': 'Organization',
     name: SITE_NAME,
     url: SITE_URL,
-    logo: `${SITE_URL}/logo.png`,
-    image: `${SITE_URL}/logo.png`,
+    logo: `${SITE_URL}/logo.svg`,
+    image: `${SITE_URL}/logo.svg`,
     contactPoint: [
       {
         '@type': 'ContactPoint',

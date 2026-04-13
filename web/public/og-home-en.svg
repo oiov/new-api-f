@@ -21,7 +21,7 @@
 
   <g>
     <rect x="88" y="80" width="220" height="54" rx="27" fill="#FFFFFF" fill-opacity="0.82" stroke="#D9E3F0"/>
-    <image href="/logo.png" x="104" y="91" width="32" height="32"/>
+    <image href="/logo.svg" x="104" y="91" width="32" height="32"/>
     <text x="148" y="113" fill="#1F2329" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="800">Nbility</text>
   </g>
 

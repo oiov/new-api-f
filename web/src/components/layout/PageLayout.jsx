@@ -44,8 +44,8 @@ const STATUS_CACHE_MAX_AGE = 5 * 60 * 1000;
 const SITE_URL = (
   import.meta.env.VITE_PUBLIC_SITE_URL || 'https://nbility.dev'
 ).replace(/\/$/, '');
-const DEFAULT_PUBLIC_ICON = `${SITE_URL}/favicon.ico`;
-const DEFAULT_PUBLIC_TOUCH_ICON = `${SITE_URL}/logo.png`;
+const DEFAULT_PUBLIC_ICON = `${SITE_URL}/logo.svg`;
+const DEFAULT_PUBLIC_TOUCH_ICON = `${SITE_URL}/logo.svg`;
 
 const PageLayout = () => {
   const [userState, userDispatch] = useContext(UserContext);

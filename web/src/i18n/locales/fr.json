@@ -824,7 +824,7 @@
     "例如：email": "ex. : email",
     "例如：example.com": "ex: example.com",
     "例如：nbility.com, *.nbility.dev": "例如：nbility.com, *.nbility.dev",
-    "例如：github / si:google / https://example.com/logo.png / 🐱": "ex. : github / si:google / https://example.com/logo.png / 🐱",
+    "例如：github / si:google / https://example.com/logo.svg / 🐱": "ex. : github / si:google / https://example.com/logo.svg / 🐱",
     "例如：GitHub Enterprise": "ex. : GitHub Enterprise",
     "例如：github-enterprise": "ex. : github-enterprise",
     "例如：gpt-4.1-nano,regex:^claude-.*$,regex:^sora-.*$": "例如：gpt-4.1-nano,regex:^claude-.*$,regex:^sora-.*$",

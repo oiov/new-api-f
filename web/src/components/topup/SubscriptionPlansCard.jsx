@@ -556,6 +556,28 @@ const SubscriptionPlansCard = ({
     setPaying(false);
   };
 
+  const loadConversionPreview = useCallback(async () => {
+    if (!showUserSubscriptions) {
+      setConversionPreview(null);
+      return;
+    }
+    setConversionLoading(true);
+    try {
+      const res = await API.get('/api/subscription/self/conversion_campaign', {
+        skipErrorHandler: true,
+      });
+      if (res.data?.success) {
+        setConversionPreview(res.data.data || null);
+      } else {
+        setConversionPreview(null);
+      }
+    } catch {
+      setConversionPreview(null);
+    } finally {
+      setConversionLoading(false);
+    }
+  }, [showUserSubscriptions]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
@@ -601,28 +623,6 @@ const SubscriptionPlansCard = ({
     },
     [loadConversionPreview, reloadSubscriptionSelf, t],
   );
-
-  const loadConversionPreview = async () => {
-    if (!showUserSubscriptions) {
-      setConversionPreview(null);
-      return;
-    }
-    setConversionLoading(true);
-    try {
-      const res = await API.get('/api/subscription/self/conversion_campaign', {
-        skipErrorHandler: true,
-      });
-      if (res.data?.success) {
-        setConversionPreview(res.data.data || null);
-      } else {
-        setConversionPreview(null);
-      }
-    } catch {
-      setConversionPreview(null);
-    } finally {
-      setConversionLoading(false);
-    }
-  };
 
   const loadOpsConsumeSummary = useCallback(async () => {
     if (!showUserSubscriptions) {
