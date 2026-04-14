@@ -3,7 +3,6 @@ package model
 import (
 	"errors"
 	"math/rand"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -226,9 +225,6 @@ func formatCheckinAvailabilitySummary(availability *CheckinAvailability) string 
 	if availability.OpenStartSeconds >= 0 && availability.OpenEndSeconds > 0 {
 		parts = append(parts, operation_setting.FormatCheckinTime(availability.OpenStartSeconds)+"-"+operation_setting.FormatCheckinTime(availability.OpenEndSeconds))
 	}
-	if availability.DailyUserLimit > 0 {
-		parts = append(parts, "每日前 "+strconv.Itoa(availability.DailyUserLimit)+" 人")
-	}
 	return strings.Join(parts, "，")
 }
 
@@ -241,10 +237,7 @@ func buildCheckinUnavailableError(availability *CheckinAvailability) error {
 		}
 		return errors.New("签到当前仅在指定开放时段内可用。开放规则：" + schedule)
 	case "daily_limit_reached":
-		if availability != nil && availability.DailyUserLimit > 0 {
-			return errors.New("今日签到名额已满。开放规则：" + schedule)
-		}
-		return errors.New("今日签到名额已满")
+		return errors.New("今日签到已结束，请明日再试")
 	default:
 		return errors.New("当前暂不可签到")
 	}

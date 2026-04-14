@@ -20,25 +20,26 @@ const (
 const MinInvoiceAmount = 50.0
 
 type Invoice struct {
-	Id         int     `json:"id" gorm:"primaryKey;autoIncrement"`
-	UserId     int     `json:"user_id" gorm:"index;not null"`
-	Username   string  `json:"username,omitempty" gorm:"-"`
-	Title      string  `json:"title" gorm:"type:varchar(200);not null"`        // 发票抬头
-	TaxId      string  `json:"tax_id" gorm:"type:varchar(100)"`                // 税号（企业填写）
-	Email      string  `json:"email" gorm:"type:varchar(200);not null"`        // 接收邮箱
-	Amount     float64 `json:"amount" gorm:"not null"`                         // 发票总金额（元）
-	TopUpIds   string  `json:"topup_ids" gorm:"type:text;not null"`            // 关联充值ID（逗号分隔）
-	Status     string  `json:"status" gorm:"type:varchar(20);default:pending"` // 状态
-	FileUrl    string  `json:"file_url,omitempty" gorm:"type:text"`            // 发票文件URL
-	Remark     string  `json:"remark,omitempty" gorm:"type:text"`              // 备注/拒绝原因
-	CreateTime int64   `json:"create_time"`
-	UpdateTime int64   `json:"update_time"`
+	Id             int     `json:"id" gorm:"primaryKey;autoIncrement"`
+	UserId         int     `json:"user_id" gorm:"index;not null"`
+	Username       string  `json:"username,omitempty" gorm:"-"`
+	Title          string  `json:"title" gorm:"type:varchar(200);not null"`        // 发票抬头
+	TaxId          string  `json:"tax_id" gorm:"type:varchar(100)"`                // 税号（企业填写）
+	CompanyInfoURL string  `json:"company_info_url" gorm:"type:text"`              // 企业信息地址（天眼查）
+	Email          string  `json:"email" gorm:"type:varchar(200);not null"`        // 接收邮箱
+	Amount         float64 `json:"amount" gorm:"not null"`                         // 发票总金额（元）
+	TopUpIds       string  `json:"topup_ids" gorm:"type:text;not null"`            // 关联充值ID（逗号分隔）
+	Status         string  `json:"status" gorm:"type:varchar(20);default:pending"` // 状态
+	FileUrl        string  `json:"file_url,omitempty" gorm:"type:text"`            // 发票文件URL
+	Remark         string  `json:"remark,omitempty" gorm:"type:text"`              // 备注/拒绝原因
+	CreateTime     int64   `json:"create_time"`
+	UpdateTime     int64   `json:"update_time"`
 }
 
 type InvoiceAdminFilters struct {
-	UserId   int
-	Status   string
-	Keyword  string
+	UserId  int
+	Status  string
+	Keyword string
 }
 
 // Insert 创建发票申请（同时标记关联充值记录为已开票）
@@ -140,7 +141,10 @@ func GetAllInvoices(pageInfo *common.PageInfo, filters InvoiceAdminFilters) ([]*
 	}
 	if kw := strings.TrimSpace(filters.Keyword); kw != "" {
 		like := "%%" + kw + "%%"
-		query = query.Where("invoices.title LIKE ? OR users.username LIKE ? OR invoices.email LIKE ?", like, like, like)
+		query = query.Where(
+			"invoices.title LIKE ? OR invoices.tax_id LIKE ? OR invoices.company_info_url LIKE ? OR users.username LIKE ? OR invoices.email LIKE ?",
+			like, like, like, like, like,
+		)
 	}
 
 	countQuery := DB.Model(&Invoice{})

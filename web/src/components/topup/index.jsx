@@ -913,7 +913,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
 
   return (
     <div
-      className='w-full max-w-7xl mx-auto relative min-h-screen lg:min-h-0 px-2'
+      className='w-full relative min-h-screen lg:min-h-0 px-2'
       style={{ paddingTop: publicTopPadding }}
     >
       {/* 划转模态框 */}

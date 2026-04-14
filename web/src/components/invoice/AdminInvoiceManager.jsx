@@ -70,6 +70,8 @@ const PDF_EXTENSION = /\.pdf(\?.*)?$/i;
 const ACCEPTED_UPLOAD_EXTENSIONS = /\.(pdf|png|jpe?g|webp)$/i;
 const ACCEPTED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_UPLOAD_SIZE = 20 * 1024 * 1024;
+const TYANCHA_COMPANY_URL_PATTERN =
+  /^https:\/\/www\.tianyancha\.com\/company\/\d+\/?$/;
 
 function resolveUrl(url) {
   if (!url) return url;
@@ -83,6 +85,7 @@ function buildFinanceCopyText(record, t) {
   return [
     `${t('公司名')}：${record.title || '—'}`,
     `${t('税号')}：${record.tax_id || t('无')}`,
+    `${t('天眼查企业信息地址')}：${record.company_info_url || t('无')}`,
     `${t('开票金额')}：¥${Number(record.amount || 0).toFixed(2)}`,
   ].join('\n');
 }
@@ -108,6 +111,10 @@ function validateInvoiceFile(file, t) {
 
 function inferInvoiceTitleType(record) {
   return record?.tax_id ? 'enterprise' : 'personal';
+}
+
+function isValidTianyanchaCompanyUrl(url) {
+  return TYANCHA_COMPANY_URL_PATTERN.test((url || '').trim());
 }
 
 const TOPUP_PAGE_SIZE = 10;
@@ -339,12 +346,25 @@ const AdminInvoiceManager = () => {
 
   const handleEditSubmit = async () => {
     let values;
-    try { values = await editFormApi.current.validate(); } catch { return; }
+    try {
+      values = await editFormApi.current.validate();
+    } catch {
+      return;
+    }
     const normalizedTitle = values.title.trim();
     const normalizedTaxId = (values.tax_id || '').trim();
+    const normalizedCompanyInfoUrl = (values.company_info_url || '').trim();
     const normalizedEmail = values.email.trim();
     if (values.title_type === 'enterprise' && !normalizedTaxId) {
       Toast.error(t('企业抬头必须填写税号'));
+      return;
+    }
+    if (!normalizedCompanyInfoUrl) {
+      Toast.error(t('请输入天眼查企业信息地址'));
+      return;
+    }
+    if (!isValidTianyanchaCompanyUrl(normalizedCompanyInfoUrl)) {
+      Toast.error(t('请输入有效的天眼查企业信息地址'));
       return;
     }
     if (values.status === 'rejected' && !values.remark?.trim()) {
@@ -353,17 +373,15 @@ const AdminInvoiceManager = () => {
     }
     setEditSubmitting(true);
     try {
-      const res = await API.put(
-        `/api/invoice/admin/${editModal.record.id}`,
-        {
-          title: normalizedTitle,
-          tax_id: normalizedTaxId,
-          email: normalizedEmail,
-          file_url: values.file_url || '',
-          remark: values.remark || '',
-          status: values.status,
-        },
-      );
+      const res = await API.put(`/api/invoice/admin/${editModal.record.id}`, {
+        title: normalizedTitle,
+        tax_id: normalizedTaxId,
+        company_info_url: normalizedCompanyInfoUrl,
+        email: normalizedEmail,
+        file_url: values.file_url || '',
+        remark: values.remark || '',
+        status: values.status,
+      });
       if (res.data.success === true) {
         Toast.success(t('发票信息已更新'));
         setEditModal({ visible: false, record: null });
@@ -468,16 +486,43 @@ const AdminInvoiceManager = () => {
       dataIndex: 'tax_id',
       key: 'tax_id',
       width: 160,
-      render: (v) => v
-        ? <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 156 }}>{v}</Text>
-        : <Text type='tertiary'>—</Text>,
+      render: (v) =>
+        v ? (
+          <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 156 }}>
+            {v}
+          </Text>
+        ) : (
+          <Text type='tertiary'>—</Text>
+        ),
+    },
+    {
+      title: t('天眼查企业信息地址'),
+      dataIndex: 'company_info_url',
+      key: 'company_info_url',
+      width: 220,
+      render: (v) =>
+        v ? (
+          <Text
+            ellipsis={{ showTooltip: true }}
+            style={{ maxWidth: 210, display: 'block' }}
+            copyable
+          >
+            {v}
+          </Text>
+        ) : (
+          <Text type='tertiary'>—</Text>
+        ),
     },
     {
       title: t('金额（元）'),
       dataIndex: 'amount',
       key: 'amount',
       width: 100,
-      render: (v) => <span style={{ whiteSpace: 'nowrap' }}><Text strong>¥{Number(v).toFixed(2)}</Text></span>,
+      render: (v) => (
+        <span style={{ whiteSpace: 'nowrap' }}>
+          <Text strong>¥{Number(v).toFixed(2)}</Text>
+        </span>
+      ),
     },
     {
       title: t('邮箱'),
@@ -610,7 +655,7 @@ const AdminInvoiceManager = () => {
     <div className='flex gap-2 flex-wrap'>
       <Input
         prefix={<IconSearch />}
-        placeholder={t('搜索抬头/用户名/邮箱')}
+        placeholder={t('搜索抬头/税号/企业信息地址/用户名/邮箱')}
         value={keyword}
         onChange={setKeyword}
         style={{ width: 240 }}
@@ -706,29 +751,32 @@ const AdminInvoiceManager = () => {
         confirmLoading={issueSubmitting}
         width={560}
       >
-        {issueModal.record && (
-          <div style={{
-            marginBottom: 16,
-            padding: '10px 12px',
-            background: 'var(--semi-color-info-light-default)',
-            borderRadius: 6,
-            fontSize: 13,
-          }}>
-            <div>{t('发票抬头')}：{issueModal.record.title}</div>
-            <div>{t('税号')}：{issueModal.record.tax_id || t('无')}</div>
-            <div>{t('金额')}：¥{Number(issueModal.record.amount).toFixed(2)}</div>
-            <div style={{ marginTop: 8 }}>
-              <Button
-                icon={<IconCopy />}
-                size='small'
-                theme='borderless'
-                onClick={() => handleCopyFinanceInfo(issueModal.record)}
-              >
-                {t('复制给财务')}
-              </Button>
-            </div>
-          </div>
-        )}
+	        {issueModal.record && (
+	          <div style={{
+	            marginBottom: 16,
+	            padding: '10px 12px',
+	            background: 'var(--semi-color-info-light-default)',
+	            borderRadius: 6,
+	            fontSize: 13,
+	          }}>
+	            <div>{t('发票抬头')}：{issueModal.record.title}</div>
+	            <div>{t('税号')}：{issueModal.record.tax_id || t('无')}</div>
+	            <div>
+	              {t('天眼查企业信息地址')}：{issueModal.record.company_info_url || t('无')}
+	            </div>
+	            <div>{t('金额')}：¥{Number(issueModal.record.amount).toFixed(2)}</div>
+	            <div style={{ marginTop: 8 }}>
+	              <Button
+	                icon={<IconCopy />}
+	                size='small'
+	                theme='borderless'
+	                onClick={() => handleCopyFinanceInfo(issueModal.record)}
+	              >
+	                {t('复制给财务')}
+	              </Button>
+	            </div>
+	          </div>
+	        )}
         <Form
           getFormApi={(api) => (issueFormApi.current = api)}
           layout='vertical'
@@ -804,16 +852,17 @@ const AdminInvoiceManager = () => {
           <Form
             getFormApi={(api) => (editFormApi.current = api)}
             layout='vertical'
-            initValues={{
-              title_type: inferInvoiceTitleType(editModal.record),
-              title: editModal.record.title,
-              tax_id: editModal.record.tax_id || '',
-              email: editModal.record.email,
-              file_url: editModal.record.file_url || '',
-              remark: editModal.record.remark || '',
-              status: editModal.record.status,
-            }}
-          >
+	            initValues={{
+	              title_type: inferInvoiceTitleType(editModal.record),
+	              title: editModal.record.title,
+	              tax_id: editModal.record.tax_id || '',
+	              company_info_url: editModal.record.company_info_url || '',
+	              email: editModal.record.email,
+	              file_url: editModal.record.file_url || '',
+	              remark: editModal.record.remark || '',
+	              status: editModal.record.status,
+	            }}
+	          >
             <Form.Select
               field='title_type'
               label={t('发票抬头类型')}
@@ -827,17 +876,30 @@ const AdminInvoiceManager = () => {
               label={t('发票抬头')}
               rules={[{ required: true, message: t('请填写发票抬头') }]}
             />
-            <Form.Input
-              field='tax_id'
-              label={t('税号（企业抬头必填）')}
-              placeholder={t('企业抬头请填写税号，个人抬头可留空')}
-            />
-            <Form.Input
-              field='email'
-              label={t('接收邮箱')}
-              rules={[
-                { required: true, message: t('请填写邮箱') },
-                { type: 'email', message: t('请输入有效邮箱') },
+	            <Form.Input
+	              field='tax_id'
+	              label={t('税号（企业抬头必填）')}
+	              placeholder={t('企业抬头请填写税号，个人抬头可留空')}
+	              rules={[{ required: true, message: t('企业抬头必须填写税号') }]}
+	            />
+	            <Form.Input
+	              field='company_info_url'
+	              label={t('天眼查企业信息地址')}
+	              placeholder={t('例如 https://www.tianyancha.com/company/4902352402')}
+	              rules={[
+	                { required: true, message: t('请输入天眼查企业信息地址') },
+	                {
+	                  validator: (rule, value) => isValidTianyanchaCompanyUrl(value),
+	                  message: t('请输入有效的天眼查企业信息地址'),
+	                },
+	              ]}
+	            />
+	            <Form.Input
+	              field='email'
+	              label={t('接收邮箱')}
+	              rules={[
+	                { required: true, message: t('请填写邮箱') },
+	                { type: 'email', message: t('请输入有效邮箱') },
               ]}
             />
             <Form.Select field='status' label={t('状态')}>

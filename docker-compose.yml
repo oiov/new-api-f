@@ -15,25 +15,6 @@
 version: '3.4' # For compatibility with older Docker versions
 
 services:
-  web-next:
-    build:
-      context: ./web-next
-      dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://new-api:3000}
-        - NEXT_PUBLIC_SITE_NAME=${NEXT_PUBLIC_SITE_NAME:-New API}
-        - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-}
-    container_name: web-next
-    restart: always
-    ports:
-      - "3001:3001"
-    environment:
-      - TZ=Asia/Shanghai
-    depends_on:
-      - new-api
-    networks:
-      - new-api-network
-
   new-api:
     image: calciumion/new-api:latest
     container_name: new-api

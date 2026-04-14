@@ -215,21 +215,21 @@ const CheckinCalendar = ({
         key: 'today_quota',
         label: t('今日发放'),
         value: quotaToCNY(leaderboardStats?.today_quota || 0),
-        tone: 'text-sky-600',
+        tone: 'text-semi-color-text-0',
         detail: `${renderNumber(Number(leaderboardStats?.today_quota || 0))} ${t('原始 Token')}`,
       },
       {
         key: 'total_users',
         label: t('累计签到人数'),
         value: Number(leaderboardStats?.total_users || 0),
-        tone: 'text-violet-600',
+        tone: 'text-semi-color-text-0',
         detail: t('覆盖全部签到用户'),
       },
       {
         key: 'total_quota',
         label: t('累计发放'),
         value: quotaToCNY(leaderboardStats?.total_quota || 0),
-        tone: 'text-amber-600',
+        tone: 'text-semi-color-text-0',
         detail: `${renderNumber(Number(leaderboardStats?.total_quota || 0))} ${t('原始 Token')}`,
       },
     ],
@@ -319,6 +319,38 @@ const CheckinCalendar = ({
     initialLoaded,
     t,
   ]);
+
+  const actionButtonText = !initialLoaded
+    ? t('加载中...')
+    : checkinData.stats?.checked_in_today
+      ? t('今日已签到')
+      : t('立即签到');
+
+  const statusBadgeText = !initialLoaded
+    ? t('状态加载中')
+    : checkinData.stats?.checked_in_today
+      ? t('今日已完成')
+      : availabilityStatusText || t('待签到');
+
+  const statusBadgeClass = !initialLoaded
+    ? 'border-slate-200 bg-slate-50 text-slate-500'
+    : checkinData.stats?.checked_in_today
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : checkinData.available_now
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        : 'border-slate-200 bg-slate-50 text-slate-600';
+
+  const headerSummaryText = !initialLoaded
+    ? t('正在加载签到状态...')
+    : checkinData.stats?.checked_in_today
+      ? t('今日已签到，累计签到') +
+        ` ${checkinData.stats?.total_checkins || 0} ` +
+        t('天')
+      : t('每日签到可获得随机额度奖励');
+
+  const actionHelperText = checkinData.stats?.checked_in_today
+    ? t('明天开放后可继续签到')
+    : availabilityHintText || t('签到奖励将直接添加到您的账户余额');
 
   const todayRecordsColumns = useMemo(
     () => [
@@ -558,7 +590,9 @@ const CheckinCalendar = ({
   };
 
   return (
-    <Card className={`!rounded-2xl ${className}`.trim()}>
+    <Card
+      className={`overflow-hidden border border-semi-color-border/80 !rounded-[28px] bg-white shadow-[0_20px_70px_rgba(15,23,42,0.05)] ${className}`.trim()}
+    >
       <Modal
         title={t('安全验证')}
         visible={turnstileModalVisible}
@@ -583,122 +617,183 @@ const CheckinCalendar = ({
         </div>
       </Modal>
 
-      {/* 卡片头部 */}
-      <div className='flex items-center justify-between gap-3'>
-        <div
-          className='flex items-center flex-1 cursor-pointer'
-          onClick={() => setIsCollapsed(!isCollapsed)}
-        >
-          <Avatar size='small' color='green' className='mr-3 shadow-md'>
-            <CalendarCheck size={16} />
-          </Avatar>
-          <div className='flex-1'>
-            <div className='flex items-center gap-2'>
-              <Typography.Text className='text-lg font-medium'>
-                {t('每日签到')}
-              </Typography.Text>
-              {isCollapsed ? (
-                <ChevronDown size={16} className='text-gray-400' />
-              ) : (
-                <ChevronUp size={16} className='text-gray-400' />
-              )}
-            </div>
-            <div className='text-xs text-gray-500 dark:text-gray-400'>
-              {!initialLoaded
-                ? t('正在加载签到状态...')
-                : checkinData.stats?.checked_in_today
-                  ? t('今日已签到，累计签到') +
-                    ` ${checkinData.stats?.total_checkins || 0} ` +
-                    t('天')
-                  : t('每日签到可获得随机额度奖励')}
-            </div>
-            {checkinScheduleText ? (
-              <div className='mt-1 text-xs text-emerald-600 dark:text-emerald-400'>
-                {checkinScheduleText}
+      <div className='rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-4 md:p-6'>
+        <div className='flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between'>
+          <div
+            className='min-w-0 flex-1 cursor-pointer rounded-[22px] border border-white/80 bg-white/90 p-4 backdrop-blur-sm transition-colors hover:bg-white md:p-5'
+            onClick={() => setIsCollapsed(!isCollapsed)}
+          >
+            <div className='flex items-start gap-4'>
+              <div className='flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-[0_12px_30px_rgba(15,23,42,0.18)]'>
+                <CalendarCheck size={20} />
               </div>
-            ) : null}
+              <div className='min-w-0 flex-1'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Typography.Text className='text-[22px] font-semibold tracking-[-0.02em] text-semi-color-text-0'>
+                    {t('每日签到')}
+                  </Typography.Text>
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusBadgeClass}`}
+                    aria-live='polite'
+                  >
+                    {statusBadgeText}
+                  </span>
+                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500'>
+                    {formatLocalMonthKey().replace('-', '.')}
+                  </span>
+                </div>
+                <div className='mt-2 text-sm leading-6 text-semi-color-text-1'>
+                  {headerSummaryText}
+                </div>
+                {checkinScheduleText ? (
+                  <div className='mt-3 inline-flex max-w-full items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600'>
+                    <span className='truncate'>{checkinScheduleText}</span>
+                  </div>
+                ) : null}
+                <div className='mt-4 flex flex-wrap items-center gap-2 text-xs text-semi-color-text-2'>
+                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5'>
+                    {t('累计签到')} {checkinData.stats?.total_checkins || 0} {t('天')}
+                  </span>
+                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5'>
+                    {t('本月获得')} {renderQuota(monthlyQuota, 6)}
+                  </span>
+                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5'>
+                    {t('累计获得')} {renderQuota(checkinData.stats?.total_quota || 0, 6)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className='flex w-full shrink-0 flex-col gap-3 xl:w-[320px]'>
+            <div className='rounded-[22px] border border-slate-200/80 bg-white p-4 shadow-sm md:p-5'>
+              <div className='flex items-center justify-between gap-3'>
+                <div>
+                  <div className='text-sm font-semibold text-semi-color-text-0'>
+                    {t('今日操作')}
+                  </div>
+                  <div className='mt-1 text-xs leading-5 text-semi-color-text-2'>
+                    {actionHelperText}
+                  </div>
+                </div>
+                {isCollapsed ? (
+                  <ChevronDown size={16} className='text-slate-400' />
+                ) : (
+                  <ChevronUp size={16} className='text-slate-400' />
+                )}
+              </div>
+              <Button
+                type='primary'
+                theme='solid'
+                block
+                size='large'
+                icon={<Gift size={16} />}
+                onClick={() => doCheckin()}
+                loading={checkinLoading || !initialLoaded}
+                disabled={!initialLoaded || checkinData.stats?.checked_in_today}
+                className='mt-4 !h-11 !rounded-xl !border-emerald-500 !bg-emerald-500 hover:!bg-emerald-600'
+              >
+                {actionButtonText}
+              </Button>
+            </div>
           </div>
         </div>
-        <Button
-          type='primary'
-          theme='solid'
-          icon={<Gift size={16} />}
-          onClick={() => doCheckin()}
-          loading={checkinLoading || !initialLoaded}
-          disabled={!initialLoaded || checkinData.stats?.checked_in_today}
-          className='!bg-green-600 hover:!bg-green-700'
-        >
-          {!initialLoaded
-            ? t('加载中...')
-            : checkinData.stats?.checked_in_today
-              ? t('今日已签到')
-              : t('立即签到')}
-        </Button>
-      </div>
 
-      <div className='mt-3 rounded-2xl border border-amber-200/70 bg-[linear-gradient(135deg,rgba(251,191,36,0.12),rgba(255,255,255,0.96))] px-3 py-3 shadow-sm dark:border-amber-400/20 dark:bg-[linear-gradient(135deg,rgba(251,191,36,0.12),rgba(17,24,39,0.95))]'>
-        <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-          <div className='min-w-0'>
-            <div className='flex flex-wrap items-center gap-2'>
-              <span className='inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300'>
-                <Sparkles size={12} />
-                {t('低价 Claude Codex 套餐')}
-              </span>
-              <span className='text-[11px] font-medium text-rose-500'>
-                {t('限时优惠')}
-              </span>
-            </div>
-            <div className='mt-2 text-sm text-semi-color-text-0'>
-              {t('限时优惠进行中，想先体验可以先看天卡和轻量套餐。')}
+        <div className='mt-4 rounded-[22px] border border-emerald-200/80 bg-[linear-gradient(90deg,rgba(236,253,245,0.98),rgba(255,255,255,0.96),rgba(239,246,255,0.96))] p-4 shadow-sm md:mt-5 md:p-5'>
+          <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
+            <div className='min-w-0 flex-1'>
+              <div className='flex flex-wrap items-center gap-2'>
+                <span className='inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm'>
+                  <Sparkles size={12} />
+                  {t('低价 Claude Codex 套餐')}
+                </span>
+                <span className='inline-flex items-center rounded-full border border-emerald-200 bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-emerald-700'>
+                  {t('限时优惠')}
+                </span>
+              </div>
+              <div className='mt-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+                <div className='min-w-0'>
+                  <div className='text-base font-semibold leading-6 text-semi-color-text-0 md:text-lg'>
+                    {t('Claude / Codex 套餐当前5折热销中')}
+                  </div>
+                  <div className='mt-1 text-sm leading-6 text-semi-color-text-1'>
+                    {t('天卡、Lite 和轻量方案更适合先试再升级，成本更低，开通更快。')}
+                  </div>
+                </div>
+                <div className='flex shrink-0 items-center gap-3 rounded-2xl border border-white/70 bg-white/70 px-4 py-3 backdrop-blur-sm'>
+                  <div className='hidden h-10 w-px bg-slate-200 lg:block' />
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    icon={<ArrowUpRight size={14} />}
+                    iconPosition='right'
+                    onClick={openPricingPage}
+                    className='!h-11 !rounded-xl !border-emerald-600 !bg-emerald-600 !px-4 hover:!bg-emerald-700'
+                  >
+                    {t('查看低价套餐')}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
-          <Button
-            theme='solid'
-            type='primary'
-            icon={<ArrowUpRight size={14} />}
-            iconPosition='right'
-            onClick={openPricingPage}
-            className='!bg-amber-500 hover:!bg-amber-600 !border-amber-500'
-          >
-            {t('去看看套餐')}
-          </Button>
         </div>
       </div>
 
       {/* 可折叠内容 */}
       <Collapsible isOpen={isCollapsed === false} keepDOM>
-        <div className='mt-5 md:mt-6'>
+        <div className='mt-6 rounded-[26px] border border-semi-color-border/80 bg-white p-3 shadow-[0_12px_40px_rgba(15,23,42,0.04)] md:p-4'>
           <Tabs type='line'>
             <TabPane tab={t('签到概览')} itemKey='overview'>
-              <div className='mb-5 grid grid-cols-1 gap-4 md:mb-6 md:gap-5 lg:grid-cols-[minmax(0,1.3fr),minmax(0,0.7fr)]'>
-                <div className='rounded-2xl border border-semi-color-border bg-[linear-gradient(135deg,rgba(34,197,94,0.08),rgba(59,130,246,0.03))] p-4 md:p-5'>
-                  <div className='flex flex-wrap items-center gap-2.5'>
-                    <Typography.Text strong>
-                      {t('今日开放状态：{{status}}', {
-                        status: availabilityStatusText || '--',
-                      })}
-                    </Typography.Text>
-                    <Tag
-                      color={checkinData.available_now ? 'green' : 'grey'}
-                      shape='circle'
-                      type='light'
-                    >
-                      {availabilityStatusText || '--'}
-                    </Tag>
+              <div className='pt-5 md:pt-6'>
+                <div className='mb-5 grid grid-cols-1 gap-4 md:mb-6 md:gap-5 lg:grid-cols-[minmax(0,1.35fr),minmax(0,0.65fr)]'>
+                  <div className='rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-4 md:p-5'>
+                    <div className='flex flex-wrap items-center gap-2.5'>
+                      <Typography.Text strong>
+                        {t('今日开放状态：{{status}}', {
+                          status: availabilityStatusText || '--',
+                        })}
+                      </Typography.Text>
+                      <Tag
+                        color={checkinData.available_now ? 'green' : 'grey'}
+                        shape='circle'
+                        type='light'
+                      >
+                        {availabilityStatusText || '--'}
+                      </Tag>
+                    </div>
+                    <div className='mt-3 text-sm leading-6 text-semi-color-text-1'>
+                      {availabilityHintText || t('每日签到可获得随机额度奖励')}
+                    </div>
+                    <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:mt-5 md:grid-cols-3 md:gap-4'>
+                      {overviewCards.map((item) => (
+                        <div
+                          key={item.key}
+                          className='rounded-2xl border border-slate-200/80 bg-white px-4 py-4 shadow-sm'
+                        >
+                          <div className='text-[12px] text-semi-color-text-2'>
+                            {item.label}
+                          </div>
+                          <div className={`mt-1.5 text-lg font-semibold ${item.tone}`}>
+                            {item.value}
+                          </div>
+                          <div className='mt-1.5 text-[11px] leading-5 text-semi-color-text-2'>
+                            {item.detail}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className='mt-3 text-sm leading-6 text-semi-color-text-1'>
-                    {availabilityHintText || t('每日签到可获得随机额度奖励')}
-                  </div>
-                  <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:mt-5 md:grid-cols-3 md:gap-4'>
-                    {overviewCards.map((item) => (
+
+                  <div className='grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-2'>
+                    {leaderboardSummaryCards.map((item) => (
                       <div
                         key={item.key}
-                        className='rounded-xl border border-semi-color-border bg-semi-color-bg-0 px-4 py-3.5'
+                        className='rounded-[22px] border border-slate-200/80 bg-slate-50/90 px-4 py-4'
                       >
-                        <div className='text-[12px] text-semi-color-text-2'>
+                        <div className='text-[11px] text-semi-color-text-2'>
                           {item.label}
                         </div>
-                        <div className={`mt-1.5 text-lg font-semibold ${item.tone}`}>
+                        <div className={`mt-1.5 text-base font-semibold ${item.tone}`}>
                           {item.value}
                         </div>
                         <div className='mt-1.5 text-[11px] leading-5 text-semi-color-text-2'>
@@ -709,29 +804,9 @@ const CheckinCalendar = ({
                   </div>
                 </div>
 
-                <div className='grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-2'>
-                  {leaderboardSummaryCards.map((item) => (
-                    <div
-                      key={item.key}
-                      className='rounded-2xl border border-semi-color-border bg-semi-color-fill-0 px-4 py-4'
-                    >
-                      <div className='text-[11px] text-semi-color-text-2'>
-                        {item.label}
-                      </div>
-                      <div className={`mt-1.5 text-base font-semibold ${item.tone}`}>
-                        {item.value}
-                      </div>
-                      <div className='mt-1.5 text-[11px] leading-5 text-semi-color-text-2'>
-                        {item.detail}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <Spin spinning={loading}>
-                <div className='checkin-calendar overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-bg-0 shadow-sm'>
-                  <style>{`
+                <Spin spinning={loading}>
+                  <div className='checkin-calendar overflow-hidden rounded-[24px] border border-semi-color-border/80 bg-semi-color-bg-0 shadow-sm'>
+                    <style>{`
                   .checkin-calendar .semi-calendar {
                     font-size: 13px;
                   }
@@ -778,173 +853,181 @@ const CheckinCalendar = ({
                     justify-content: center;
                   }
                 `}</style>
-                  <Calendar
-                    mode='month'
-                    onChange={handleMonthChange}
-                    dateGridRender={(dateString, date) => dateRender(dateString)}
-                  />
-                </div>
-              </Spin>
+                    <Calendar
+                      mode='month'
+                      onChange={handleMonthChange}
+                      dateGridRender={(dateString, date) => dateRender(dateString)}
+                    />
+                  </div>
+                </Spin>
 
-              <div className='mt-4 rounded-xl bg-slate-50 p-4 dark:bg-slate-800 md:mt-5'>
-                <Typography.Text type='tertiary' className='text-xs'>
-                  <ul className='list-disc list-inside space-y-1 leading-6'>
-                    <li>{t('每日签到可获得随机额度奖励')}</li>
-                    <li>{t('签到奖励将直接添加到您的账户余额')}</li>
-                    <li>{t('每日仅可签到一次，请勿重复签到')}</li>
-                  </ul>
-                </Typography.Text>
+                <div className='mt-4 rounded-[22px] border border-slate-200/80 bg-slate-50/90 p-4 md:mt-5'>
+                  <Typography.Text type='tertiary' className='text-xs'>
+                    <ul className='list-disc list-inside space-y-1 leading-6'>
+                      <li>{t('每日签到可获得随机额度奖励')}</li>
+                      <li>{t('签到奖励将直接添加到您的账户余额')}</li>
+                      <li>{t('每日仅可签到一次，请勿重复签到')}</li>
+                    </ul>
+                  </Typography.Text>
+                </div>
               </div>
             </TabPane>
             <TabPane tab={t('签到榜')} itemKey='leaderboard'>
-              <Spin spinning={leaderboardLoading}>
-                <div className='space-y-4 md:space-y-5'>
-                  <div className='rounded-2xl border border-semi-color-border bg-[linear-gradient(135deg,rgba(16,185,129,0.06),rgba(59,130,246,0.04))] px-4 py-4 md:px-5'>
-                    <div className='flex flex-wrap items-start justify-between gap-3'>
-                      <div className='min-w-0'>
-                        <div className='text-[13px] font-semibold leading-none text-semi-color-text-0'>
-                          {t('签到达人榜')}
+              <div className='pt-5 md:pt-6'>
+                <Spin spinning={leaderboardLoading}>
+                  <div className='space-y-4 md:space-y-5'>
+                    <div className='rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] px-4 py-4 md:px-5'>
+                      <div className='flex flex-wrap items-start justify-between gap-3'>
+                        <div className='min-w-0'>
+                          <div className='text-[13px] font-semibold leading-none text-semi-color-text-0'>
+                            {t('签到达人榜')}
+                          </div>
+                          <div className='mt-1 text-[11px] text-semi-color-text-2'>
+                            {t('仅展示前 {{count}} 位', { count: leaderboardLimit })}
+                          </div>
                         </div>
-                        <div className='mt-1 text-[11px] text-semi-color-text-2'>
-                          {t('仅展示前 {{count}} 位', { count: leaderboardLimit })}
-                        </div>
-                      </div>
-                      <div className='rounded-xl bg-white/70 px-3 py-2 text-right shadow-sm dark:bg-black/10'>
-                        <div className='text-[11px] text-semi-color-text-2'>
-                          {leaderboardTotal > 0
-                            ? t('当前展示第 {{start}} - {{end}} 位，共 {{total}} 位', {
-                                start: leaderboardRange.start,
-                                end: leaderboardRange.end,
-                                total:
-                                  leaderboardTotal > 0
-                                    ? leaderboardTotal
-                                    : leaderboardRange.end,
-                              })
-                            : t('暂无排行榜数据')}
+                        <div className='rounded-xl bg-white/70 px-3 py-2 text-right shadow-sm dark:bg-black/10'>
+                          <div className='text-[11px] text-semi-color-text-2'>
+                            {leaderboardTotal > 0
+                              ? t('当前展示第 {{start}} - {{end}} 位，共 {{total}} 位', {
+                                  start: leaderboardRange.start,
+                                  end: leaderboardRange.end,
+                                  total:
+                                    leaderboardTotal > 0
+                                      ? leaderboardTotal
+                                      : leaderboardRange.end,
+                                })
+                              : t('暂无排行榜数据')}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                  <div className='grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4'>
-                    {leaderboardSummaryCards.map((item) => (
-                      <div
-                        key={`leaderboard-${item.key}`}
-                        className='rounded-2xl border border-semi-color-border bg-semi-color-fill-0 px-4 py-3.5'
-                      >
-                        <div className='text-[11px] text-semi-color-text-2'>
-                          {item.label}
+                    <div className='grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4'>
+                      {leaderboardSummaryCards.map((item) => (
+                        <div
+                          key={`leaderboard-${item.key}`}
+                          className='rounded-[22px] border border-slate-200/80 bg-slate-50/90 px-4 py-3.5'
+                        >
+                          <div className='text-[11px] text-semi-color-text-2'>
+                            {item.label}
+                          </div>
+                          <div className={`mt-1.5 text-sm font-semibold ${item.tone}`}>
+                            {item.value}
+                          </div>
+                          <div className='mt-1.5 text-[11px] leading-5 text-semi-color-text-2'>
+                            {item.detail}
+                          </div>
                         </div>
-                        <div className={`mt-1.5 text-sm font-semibold ${item.tone}`}>
-                          {item.value}
-                        </div>
-                        <div className='mt-1.5 text-[11px] leading-5 text-semi-color-text-2'>
-                          {item.detail}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {leaderboard.length > 0 ? (
-                    <>
-                      <div className='space-y-3'>
-                        {leaderboard.map((item, index) => {
-                          const rank =
-                            (leaderboardPage - 1) * leaderboardPageSize + index + 1;
-                          const isTopThree = rank <= 3;
-                          return (
-                            <div
-                              key={`${item.display_name || 'anonymous'}-${rank}`}
-                              className={`rounded-2xl border px-4 py-3.5 transition-colors hover:bg-semi-color-fill-1 md:px-5 md:py-4 ${
-                                isTopThree
-                                  ? 'border-emerald-200 bg-[linear-gradient(135deg,rgba(16,185,129,0.06),rgba(255,255,255,0.96))]'
-                                  : 'border-semi-color-border bg-semi-color-fill-0'
-                              }`}
-                            >
-                              <div className='grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-3'>
-                                <div
-                                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
-                                    isTopThree
-                                      ? 'bg-emerald-500 text-white shadow-sm'
-                                      : 'bg-semi-color-fill-1 text-semi-color-text-0'
-                                  }`}
-                                >
-                                  {rank}
-                                </div>
-                                <div className='min-w-0'>
-                                  <div className='truncate text-[13px] font-semibold leading-none text-semi-color-text-0'>
-                                    {item.display_name || t('匿名用户')}
+                      ))}
+                    </div>
+                    {leaderboard.length > 0 ? (
+                      <>
+                        <div className='space-y-3'>
+                          {leaderboard.map((item, index) => {
+                            const rank =
+                              (leaderboardPage - 1) * leaderboardPageSize + index + 1;
+                            const isTopThree = rank <= 3;
+                            return (
+                              <div
+                                key={`${item.display_name || 'anonymous'}-${rank}`}
+                                className={`rounded-[22px] border px-4 py-3.5 transition-colors hover:bg-semi-color-fill-1 md:px-5 md:py-4 ${
+                                  isTopThree
+                                    ? 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.92),rgba(255,255,255,0.98))]'
+                                    : 'border-slate-200/80 bg-slate-50/75'
+                                }`}
+                              >
+                                <div className='grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-3'>
+                                  <div
+                                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
+                                      isTopThree
+                                        ? 'bg-emerald-500 text-white shadow-sm'
+                                        : 'bg-semi-color-fill-1 text-semi-color-text-0'
+                                    }`}
+                                  >
+                                    {rank}
                                   </div>
-                                  <div className='mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-semi-color-text-2'>
-                                    <span className='rounded-full bg-semi-color-fill-1 px-2 py-0.5 leading-none'>
-                                      {t('累计签到')} {item.total_checkins || 0} {t('天')}
-                                    </span>
+                                  <div className='min-w-0'>
+                                    <div className='truncate text-[13px] font-semibold leading-none text-semi-color-text-0'>
+                                      {item.display_name || t('匿名用户')}
+                                    </div>
+                                    <div className='mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-semi-color-text-2'>
+                                      <span className='rounded-full bg-semi-color-fill-1 px-2 py-0.5 leading-none'>
+                                        {t('累计签到')} {item.total_checkins || 0} {t('天')}
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
-                                <div className='text-right'>
-                                  <div className='text-[11px] text-semi-color-text-2'>
-                                    {t('累计获得')}
-                                  </div>
-                                  <div className='mt-1 inline-flex rounded-full bg-semi-color-fill-1 px-2.5 py-1 text-[12px] font-semibold leading-none text-semi-color-text-0'>
-                                    {renderQuota(item.total_quota || 0, 6)}
+                                  <div className='text-right'>
+                                    <div className='text-[11px] text-semi-color-text-2'>
+                                      {t('累计获得')}
+                                    </div>
+                                    <div className='mt-1 inline-flex rounded-full bg-semi-color-fill-1 px-2.5 py-1 text-[12px] font-semibold leading-none text-semi-color-text-0'>
+                                      {renderQuota(item.total_quota || 0, 6)}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {leaderboardTotal > leaderboardPageSize ? (
-                        <div className='flex justify-center border-t border-semi-color-border pt-4'>
-                          <Pagination
-                            currentPage={leaderboardPage}
-                            pageSize={leaderboardPageSize}
-                            total={leaderboardTotal}
-                            showSizeChanger={false}
-                            size='small'
-                            onPageChange={(page) => setLeaderboardPage(page)}
-                          />
+                            );
+                          })}
                         </div>
-                      ) : null}
-                    </>
-                  ) : (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      title={t('暂无排行榜数据')}
-                      description={t('当站内出现签到数据后，将展示前 {{count}} 名用户', {
-                        count: leaderboardLimit,
-                      })}
-                    />
-                  )}
-                </div>
-              </Spin>
+                        {leaderboardTotal > leaderboardPageSize ? (
+                          <div className='flex justify-center border-t border-semi-color-border/70 pt-4'>
+                            <Pagination
+                              currentPage={leaderboardPage}
+                              pageSize={leaderboardPageSize}
+                              total={leaderboardTotal}
+                              showSizeChanger={false}
+                              size='small'
+                              onPageChange={(page) => setLeaderboardPage(page)}
+                            />
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        title={t('暂无排行榜数据')}
+                        description={t('当站内出现签到数据后，将展示前 {{count}} 名用户', {
+                          count: leaderboardLimit,
+                        })}
+                      />
+                    )}
+                  </div>
+                </Spin>
+              </div>
             </TabPane>
             {todayRecords.length > 0 ? (
               <TabPane tab={t('今日签到')} itemKey='today-records'>
-                <Spin spinning={leaderboardLoading}>
-                  <div className='space-y-4 md:space-y-5'>
-                    <div className='rounded-2xl border border-semi-color-border bg-[linear-gradient(135deg,rgba(34,197,94,0.06),rgba(59,130,246,0.04))] px-4 py-4 md:px-5'>
-                      <div>
-                        <div className='text-[14px] font-semibold text-semi-color-text-0'>
-                          {t('今日签到列表')}
-                        </div>
-                        <div className='mt-1 text-[12px] text-semi-color-text-2'>
-                          {t('最新签到用户与奖励发放情况')}
+                <div className='pt-5 md:pt-6'>
+                  <Spin spinning={leaderboardLoading}>
+                    <div className='space-y-4 md:space-y-5'>
+                      <div className='rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] px-4 py-4 md:px-5'>
+                        <div>
+                          <div className='text-[14px] font-semibold text-semi-color-text-0'>
+                            {t('今日签到列表')}
+                          </div>
+                          <div className='mt-1 text-[12px] text-semi-color-text-2'>
+                            {t('最新签到用户与奖励发放情况')}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <Card bodyStyle={{ padding: 0 }} className='overflow-hidden rounded-2xl'>
-                      <Table
-                        columns={todayRecordsColumns}
-                        dataSource={todayRecords}
-                        rowKey={(record, index) =>
-                          `${record?.display_name || 'anonymous'}-${record?.created_at || index}`
-                        }
-                        pagination={false}
-                        size='small'
-                      />
-                    </Card>
-                  </div>
-                </Spin>
+                      <Card
+                        bodyStyle={{ padding: 0 }}
+                        className='overflow-hidden rounded-[24px] border border-semi-color-border/80 shadow-sm'
+                      >
+                        <Table
+                          columns={todayRecordsColumns}
+                          dataSource={todayRecords}
+                          rowKey={(record, index) =>
+                            `${record?.display_name || 'anonymous'}-${record?.created_at || index}`
+                          }
+                          pagination={false}
+                          size='small'
+                        />
+                      </Card>
+                    </div>
+                  </Spin>
+                </div>
               </TabPane>
             ) : null}
           </Tabs>

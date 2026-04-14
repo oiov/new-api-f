@@ -23,6 +23,7 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import { normalizeLanguage, supportedLanguages } from './language';
 
 const FALLBACK_LANGUAGE = 'zh-CN';
+const DEV_LOCALE_CACHE_DISABLED = Boolean(import.meta.env?.DEV);
 const localeLoaders = {
   en: () => import('./locales/en.json'),
   fr: () => import('./locales/fr.json'),
@@ -67,7 +68,7 @@ async function loadLanguageResource(language) {
     ? normalizedLanguage
     : FALLBACK_LANGUAGE;
 
-  if (loadedLanguages.has(targetLanguage)) {
+  if (!DEV_LOCALE_CACHE_DISABLED && loadedLanguages.has(targetLanguage)) {
     return targetLanguage;
   }
 
@@ -76,6 +77,12 @@ async function loadLanguageResource(language) {
   const resource = unwrapLocaleModule(module);
 
   if (i18n.isInitialized) {
+    if (
+      DEV_LOCALE_CACHE_DISABLED &&
+      i18n.hasResourceBundle(targetLanguage, 'translation')
+    ) {
+      i18n.removeResourceBundle(targetLanguage, 'translation');
+    }
     i18n.addResourceBundle(targetLanguage, 'translation', resource, true, true);
   }
 
@@ -131,5 +138,44 @@ export const initI18n = (async () => {
 
   return i18n;
 })();
+
+if (import.meta.hot) {
+  import.meta.hot.accept(
+    [
+      './locales/en.json',
+      './locales/fr.json',
+      './locales/zh-CN.json',
+      './locales/zh-TW.json',
+      './locales/ru.json',
+      './locales/ja.json',
+      './locales/vi.json',
+    ],
+    (modules) => {
+      const languageModulePairs = [
+        ['en', modules?.[0]],
+        ['fr', modules?.[1]],
+        ['zh-CN', modules?.[2]],
+        ['zh-TW', modules?.[3]],
+        ['ru', modules?.[4]],
+        ['ja', modules?.[5]],
+        ['vi', modules?.[6]],
+      ];
+
+      for (const [language, module] of languageModulePairs) {
+        const resource = unwrapLocaleModule(module);
+        if (!resource || typeof resource !== 'object') {
+          continue;
+        }
+        if (i18n.hasResourceBundle(language, 'translation')) {
+          i18n.removeResourceBundle(language, 'translation');
+        }
+        i18n.addResourceBundle(language, 'translation', resource, true, true);
+        loadedLanguages.add(language);
+      }
+
+      i18n.emit('languageChanged', i18n.language);
+    },
+  );
+}
 
 export default i18n;

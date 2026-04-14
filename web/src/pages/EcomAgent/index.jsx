@@ -1276,13 +1276,13 @@ const EcomAgentPage = () => {
     try {
       const res = await API.delete(`/api/ecomagent/accounts/${record.id}`);
       if (res.data.success) {
-        showSuccess(t('删除成功'));
+        showSuccess(t('移除成功'));
         await loadAccounts();
       } else {
-        showError(res.data.message || t('删除失败'));
+        showError(res.data.message || t('移除失败'));
       }
     } catch (error) {
-      showError(error?.message || t('删除失败'));
+      showError(error?.message || t('移除失败'));
     }
   };
 
@@ -1371,9 +1371,16 @@ const EcomAgentPage = () => {
 
   const confirmDelete = (record) => {
     Modal.confirm({
-      title: t('确认删除'),
-      content: renderEmail(record?.email),
-      okText: t('确认删除'),
+      title: t('确认移除'),
+      content: (
+        <div className='flex flex-col gap-1'>
+          <Text strong>{renderEmail(record?.email)}</Text>
+          <Text type='secondary' size='small'>
+            {t('将从列表移除并保留数据（软删除）。')}
+          </Text>
+        </div>
+      ),
+      okText: t('确认移除'),
       cancelText: t('取消'),
       okButtonProps: { color: 'red' },
       onOk: () => handleDelete(record),
@@ -1451,15 +1458,25 @@ const EcomAgentPage = () => {
         setSelectedRowKeys([]);
       }
       if (failed > 0) {
-        showError(t('批量删除完成，成功 {{success}} 个，失败 {{failed}} 个。', { success, failed }));
+        showError(
+          t('批量移除完成，成功 {{success}} 个，失败 {{failed}} 个。', {
+            success,
+            failed,
+          }),
+        );
         renderBatchFailureDialog({
-          title: t('批量删除失败详情'),
+          title: t('批量移除失败详情'),
           messages: failureMessages,
           t,
           handleCopy,
         });
       } else {
-        showSuccess(t('批量删除完成，成功 {{success}} 个，失败 {{failed}} 个。', { success, failed }));
+        showSuccess(
+          t('批量移除完成，成功 {{success}} 个，失败 {{failed}} 个。', {
+            success,
+            failed,
+          }),
+        );
       }
       await loadAccounts();
     } finally {
@@ -2778,12 +2795,12 @@ const EcomAgentPage = () => {
                         </Button>
                       </Popconfirm>
                       <Popconfirm
-                        title={t('确认删除')}
+                        title={t('确认移除')}
                         content={t(
-                          '确定要删除选中的 {{count}} 项吗？此操作不可逆。',
+                          '确定要将选中的 {{count}} 项从列表移除吗？数据将保留（软删除）。',
                           { count: selectedRowKeys.length },
                         )}
-                        okText={t('确认删除')}
+                        okText={t('确认移除')}
                         cancelText={t('取消')}
                         onConfirm={handleBatchDelete}
                       >
@@ -2792,7 +2809,7 @@ const EcomAgentPage = () => {
                           loading={batchDeleting}
                           disabled={batchSyncing}
                         >
-                          {t('批量删除')} ({selectedRowKeys.length})
+                          {t('批量移除')} ({selectedRowKeys.length})
                         </Button>
                       </Popconfirm>
                       <Button
