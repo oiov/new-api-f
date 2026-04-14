@@ -585,7 +585,7 @@ export const getTokensColumns = ({
         const loading = Boolean(testingTokenIds?.[record?.id]);
         return (
           <Tooltip
-            content={t('发起一次最小 /v1/messages 测试，可能产生实际调用与计费')}
+            content={t('同时测试 /v1/messages（Claude）与 /v1/responses（Codex），可能产生实际调用与计费')}
           >
             <Button
               size='small'

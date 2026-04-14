@@ -338,6 +338,7 @@ func SetApiRouter(router *gin.Engine) {
 				tokenRoute.GET("/admin", middleware.AdminAuth(), controller.GetAllTokensByAdmin)
 				tokenRoute.GET("/admin/search", middleware.AdminAuth(), middleware.SearchRateLimit(), controller.SearchTokensByAdmin)
 				tokenRoute.POST("/admin/:id/test", middleware.AdminAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.TestTokenByAdmin)
+				tokenRoute.POST("/admin/batch/group", middleware.AdminAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.SecureVerificationRequired(), controller.UpdateTokenGroupBatchByAdmin)
 				tokenRoute.GET("/", controller.GetAllTokens)
 				tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 				tokenRoute.GET("/:id", controller.GetToken)

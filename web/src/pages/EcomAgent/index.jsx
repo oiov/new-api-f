@@ -132,6 +132,16 @@ const DEFAULT_LIST_FILTERS = {
   apiKeyFilter: 'present',
 };
 
+const CLEARED_LIST_FILTERS = {
+  keyword: '',
+  planFilter: '',
+  statusFilter: '',
+  assignmentStatusFilter: '',
+  channelBindingFilter: '',
+  orderBindingFilter: '',
+  apiKeyFilter: '',
+};
+
 function normalizePlanValue(value) {
   return String(value || '')
     .trim()
@@ -1201,6 +1211,15 @@ const EcomAgentPage = () => {
     orderBindingFilter !== DEFAULT_LIST_FILTERS.orderBindingFilter ||
     apiKeyFilter !== DEFAULT_LIST_FILTERS.apiKeyFilter;
 
+  const isClearedFilters =
+    keyword.trim() === CLEARED_LIST_FILTERS.keyword &&
+    planFilter === CLEARED_LIST_FILTERS.planFilter &&
+    statusFilter === CLEARED_LIST_FILTERS.statusFilter &&
+    assignmentStatusFilter === CLEARED_LIST_FILTERS.assignmentStatusFilter &&
+    channelBindingFilter === CLEARED_LIST_FILTERS.channelBindingFilter &&
+    orderBindingFilter === CLEARED_LIST_FILTERS.orderBindingFilter &&
+    apiKeyFilter === CLEARED_LIST_FILTERS.apiKeyFilter;
+
   const resetFilters = () => {
     setKeyword(DEFAULT_LIST_FILTERS.keyword);
     setPlanFilter(DEFAULT_LIST_FILTERS.planFilter);
@@ -1209,6 +1228,17 @@ const EcomAgentPage = () => {
     setChannelBindingFilter(DEFAULT_LIST_FILTERS.channelBindingFilter);
     setOrderBindingFilter(DEFAULT_LIST_FILTERS.orderBindingFilter);
     setApiKeyFilter(DEFAULT_LIST_FILTERS.apiKeyFilter);
+    setCurrentPage(1);
+  };
+
+  const clearFilters = () => {
+    setKeyword(CLEARED_LIST_FILTERS.keyword);
+    setPlanFilter(CLEARED_LIST_FILTERS.planFilter);
+    setStatusFilter(CLEARED_LIST_FILTERS.statusFilter);
+    setAssignmentStatusFilter(CLEARED_LIST_FILTERS.assignmentStatusFilter);
+    setChannelBindingFilter(CLEARED_LIST_FILTERS.channelBindingFilter);
+    setOrderBindingFilter(CLEARED_LIST_FILTERS.orderBindingFilter);
+    setApiKeyFilter(CLEARED_LIST_FILTERS.apiKeyFilter);
     setCurrentPage(1);
   };
 
@@ -2999,7 +3029,12 @@ const EcomAgentPage = () => {
                   />
                   {hasActiveFilters ? (
                     <Button type='tertiary' onClick={resetFilters}>
-                      {t('重置筛选')}
+                      {t('恢复默认查询条件')}
+                    </Button>
+                  ) : null}
+                  {!isClearedFilters ? (
+                    <Button type='tertiary' onClick={clearFilters}>
+                      {t('清空查询条件')}
                     </Button>
                   ) : null}
                   {filteredAccounts.length > 0 ? (
