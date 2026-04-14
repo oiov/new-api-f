@@ -47,6 +47,7 @@ func GetStatus(c *gin.Context) {
 	passkeySetting := system_setting.GetPasskeySettings()
 	legalSetting := system_setting.GetLegalSettings()
 	checkinSetting := operation_setting.GetCheckinSetting()
+	activityLotterySetting := operation_setting.GetActivityLotterySetting()
 
 	data := gin.H{
 		"version":                     common.Version,
@@ -112,30 +113,46 @@ func GetStatus(c *gin.Context) {
 		"faq_enabled":           cs.FAQEnabled,
 		"contact_channels":      console_setting.GetContactChannels(),
 
+		// 控制台购买引导横幅
+		"subscription_promo_enabled":     cs.SubscriptionPromoEnabled,
+		"subscription_promo_badge_left":  cs.SubscriptionPromoBadgeLeft,
+		"subscription_promo_badge_right": cs.SubscriptionPromoBadgeRight,
+		"subscription_promo_title":       cs.SubscriptionPromoTitle,
+		"subscription_promo_subtitle":    cs.SubscriptionPromoSubtitle,
+		"subscription_promo_button_text": cs.SubscriptionPromoButtonText,
+		"subscription_promo_button_link": cs.SubscriptionPromoButtonLink,
+
 		// 模块管理配置
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
 		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
 
-		"oidc_enabled":                       system_setting.IsOIDCLoginEnabled(),
-		"oidc_register_enabled":              system_setting.IsOIDCRegisterEnabled(),
-		"oidc_client_id":                     system_setting.GetOIDCSettings().ClientId,
-		"oidc_authorization_endpoint":        system_setting.GetOIDCSettings().AuthorizationEndpoint,
-		"passkey_login":                      passkeySetting.Enabled,
-		"passkey_display_name":               passkeySetting.RPDisplayName,
-		"passkey_rp_id":                      passkeySetting.RPID,
-		"passkey_origins":                    passkeySetting.Origins,
-		"passkey_allow_insecure":             passkeySetting.AllowInsecureOrigin,
-		"passkey_user_verification":          passkeySetting.UserVerification,
-		"passkey_attachment":                 passkeySetting.AttachmentPreference,
-		"setup":                              constant.Setup,
-		"user_agreement_enabled":             legalSetting.UserAgreement != "",
-		"privacy_policy_enabled":             legalSetting.PrivacyPolicy != "",
-		"checkin_enabled":                    checkinSetting.Enabled,
-		"checkin_setting.open_weekdays":      checkinSetting.OpenWeekdays,
-		"checkin_setting.open_start_seconds": checkinSetting.OpenStartSeconds,
-		"checkin_setting.open_end_seconds":   checkinSetting.OpenEndSeconds,
-		"checkin_setting.daily_user_limit":   checkinSetting.DailyUserLimit,
-		"_qn":                                "new-api",
+		"oidc_enabled":                                  system_setting.IsOIDCLoginEnabled(),
+		"oidc_register_enabled":                         system_setting.IsOIDCRegisterEnabled(),
+		"oidc_client_id":                                system_setting.GetOIDCSettings().ClientId,
+		"oidc_authorization_endpoint":                   system_setting.GetOIDCSettings().AuthorizationEndpoint,
+		"passkey_login":                                 passkeySetting.Enabled,
+		"passkey_display_name":                          passkeySetting.RPDisplayName,
+		"passkey_rp_id":                                 passkeySetting.RPID,
+		"passkey_origins":                               passkeySetting.Origins,
+		"passkey_allow_insecure":                        passkeySetting.AllowInsecureOrigin,
+		"passkey_user_verification":                     passkeySetting.UserVerification,
+		"passkey_attachment":                            passkeySetting.AttachmentPreference,
+		"setup":                                         constant.Setup,
+		"user_agreement_enabled":                        legalSetting.UserAgreement != "",
+		"privacy_policy_enabled":                        legalSetting.PrivacyPolicy != "",
+		"checkin_enabled":                               checkinSetting.Enabled,
+		"activity_lottery_enabled":                      activityLotterySetting.Enabled,
+		"activity_lottery_auto_draw_enabled":            activityLotterySetting.AutoDrawEnabled,
+		"activity_lottery_default_min_participants":     activityLotterySetting.DefaultMinParticipants,
+		"activity_lottery_default_winner_count":         activityLotterySetting.DefaultWinnerCount,
+		"activity_lottery_join_sources":                 activityLotterySetting.JoinSources,
+		"activity_lottery_join_topup_min_money":         activityLotterySetting.JoinTopupMinMoney,
+		"activity_lottery_join_daily_consume_min_money": activityLotterySetting.JoinDailyConsumeMinMoney,
+		"checkin_setting.open_weekdays":                 checkinSetting.OpenWeekdays,
+		"checkin_setting.open_start_seconds":            checkinSetting.OpenStartSeconds,
+		"checkin_setting.open_end_seconds":              checkinSetting.OpenEndSeconds,
+		"checkin_setting.daily_user_limit":              checkinSetting.DailyUserLimit,
+		"_qn":                                           "new-api",
 	}
 
 	if rawDefaults := strings.TrimSpace(common.OptionMap["console_setting.ccswitch_defaults"]); rawDefaults != "" {

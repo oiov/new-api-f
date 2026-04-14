@@ -112,8 +112,11 @@ const Dashboard = () => {
     },
   );
   const faqData = statusState?.status?.faq || [];
-  const shouldShowCheckin =
-    !!userState?.user && !!statusState?.status?.checkin_enabled;
+  const subscriptionPromoEnabled =
+    statusState?.status?.subscription_promo_enabled === undefined
+      ? true
+      : !!statusState?.status?.subscription_promo_enabled;
+  const shouldShowSubscriptionPromo = !!userState?.user && subscriptionPromoEnabled;
   const turnstileEnabled = !!statusState?.status?.turnstile_check;
   const turnstileSiteKey = statusState?.status?.turnstile_site_key || '';
 
@@ -154,14 +157,15 @@ const Dashboard = () => {
         t={dashboardData.t}
       />
 
-      {shouldShowCheckin && (
+      {shouldShowSubscriptionPromo && (
         <div className='mb-4'>
           <CheckinCalendar
             t={dashboardData.t}
             status={statusState?.status}
             turnstileEnabled={turnstileEnabled}
             turnstileSiteKey={turnstileSiteKey}
-            className='border border-semi-color-border shadow-sm'
+            mode='promo'
+            className='px-0'
           />
         </div>
       )}

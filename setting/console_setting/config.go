@@ -12,6 +12,15 @@ type ConsoleSetting struct {
 	UptimeKumaEnabled    bool   `json:"uptime_kuma_enabled"`   // 是否启用 Uptime Kuma 面板
 	AnnouncementsEnabled bool   `json:"announcements_enabled"` // 是否启用系统公告面板
 	FAQEnabled           bool   `json:"faq_enabled"`           // 是否启用常见问答面板
+
+	// 控制台购买引导横幅（用于 /console 首页等位置）
+	SubscriptionPromoEnabled    bool   `json:"subscription_promo_enabled"`     // 是否启用购买引导横幅
+	SubscriptionPromoBadgeLeft  string `json:"subscription_promo_badge_left"`  // 左侧徽标文案
+	SubscriptionPromoBadgeRight string `json:"subscription_promo_badge_right"` // 右侧徽标文案
+	SubscriptionPromoTitle      string `json:"subscription_promo_title"`       // 主标题
+	SubscriptionPromoSubtitle   string `json:"subscription_promo_subtitle"`    // 副标题/说明
+	SubscriptionPromoButtonText string `json:"subscription_promo_button_text"` // 按钮文案
+	SubscriptionPromoButtonLink string `json:"subscription_promo_button_link"` // 按钮跳转链接（支持 /path 或 https://）
 }
 
 // 默认配置
@@ -25,6 +34,14 @@ var defaultConsoleSetting = ConsoleSetting{
 	UptimeKumaEnabled:    true,
 	AnnouncementsEnabled: true,
 	FAQEnabled:           true,
+
+	SubscriptionPromoEnabled:    true,
+	SubscriptionPromoBadgeLeft:  "",
+	SubscriptionPromoBadgeRight: "",
+	SubscriptionPromoTitle:      "",
+	SubscriptionPromoSubtitle:   "",
+	SubscriptionPromoButtonText: "",
+	SubscriptionPromoButtonLink: "",
 }
 
 // 全局实例

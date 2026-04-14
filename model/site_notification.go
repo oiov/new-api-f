@@ -55,6 +55,19 @@ func CreateSiteNotification(notification *SiteNotification) error {
 	return DB.Create(notification).Error
 }
 
+func CreateSiteNotificationTx(tx *gorm.DB, notification *SiteNotification) error {
+	if notification == nil {
+		return nil
+	}
+	if tx == nil {
+		return CreateSiteNotification(notification)
+	}
+	notification.Title = strings.TrimSpace(notification.Title)
+	notification.Content = strings.TrimSpace(notification.Content)
+	notification.Level = normalizeSiteNotificationLevel(notification.Level)
+	return tx.Create(notification).Error
+}
+
 func GetUserSiteNotifications(userId int, pageInfo *common.PageInfo, unreadOnly bool) ([]*SiteNotification, int64, error) {
 	var notifications []*SiteNotification
 	var total int64

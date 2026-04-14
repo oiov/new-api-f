@@ -44,6 +44,8 @@ import {
   BookOpen,
   Mail,
   Landmark,
+  CalendarCheck,
+  Gift,
 } from 'lucide-react';
 
 export function getLucideIcon(key, selected = false) {
@@ -101,6 +103,10 @@ export function getLucideIcon(key, selected = false) {
       return <CalendarClock {...commonProps} color={iconColor} />;
     case 'checkinAdmin':
       return <CalendarClock {...commonProps} color={iconColor} />;
+    case 'checkinLottery':
+      return <CalendarCheck {...commonProps} color={iconColor} />;
+    case 'activityLottery':
+      return <Gift {...commonProps} color={iconColor} />;
     case 'about':
       return <Activity {...commonProps} color={iconColor} />;
     case 'contact':

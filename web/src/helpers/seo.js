@@ -7,11 +7,9 @@ import zhCNLocale from '../i18n/locales/zh-CN.json';
 import zhTWLocale from '../i18n/locales/zh-TW.json';
 import { normalizeLanguage } from '../i18n/language';
 
-const SITE_URL =
-  (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://fishxcode.com').replace(
-    /\/$/,
-    '',
-  );
+const SITE_URL = (
+  import.meta.env.VITE_PUBLIC_SITE_URL || 'https://fishxcode.com'
+).replace(/\/$/, '');
 const SITE_NAME = 'FishXCode AI';
 const SEO_LOCALES = {
   en: enLocale.translation,
@@ -242,14 +240,18 @@ function inferPlanSeries(plan) {
     plan?.upgrade_group,
     ...(Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : []),
     ...(Array.isArray(plan?.allowed_models) ? plan.allowed_models : []),
-    ...(Array.isArray(plan?.allowed_vendor_names) ? plan.allowed_vendor_names : []),
+    ...(Array.isArray(plan?.allowed_vendor_names)
+      ? plan.allowed_vendor_names
+      : []),
   ]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
 
   const isClaude =
-    text.includes('claude') || text.includes('anthropic') || text.includes('cc-');
+    text.includes('claude') ||
+    text.includes('anthropic') ||
+    text.includes('cc-');
   const isCodex =
     text.includes('codex') ||
     text.includes('openai') ||
@@ -273,7 +275,9 @@ function getPlanSeoDescription(plan, language) {
   const models = uniqueValues(plan?.allowed_models, 3);
   const vendors = uniqueValues(plan?.allowed_vendor_names, 2);
   const modelText =
-    models.length > 0 ? models.join(' / ') : getSeoMessage(language, 'SEO 多模型');
+    models.length > 0
+      ? models.join(' / ')
+      : getSeoMessage(language, 'SEO 多模型');
   const vendorText =
     vendors.length > 0
       ? vendors.join(' / ')
@@ -312,7 +316,10 @@ function buildSubscriptionListJsonLd(language, plans = []) {
 
 function buildSubscriptionPlanJsonLd(language, plan) {
   const price = Number(
-    plan?.effective_price_amount ?? plan?.discount_price_amount ?? plan?.price_amount ?? 0,
+    plan?.effective_price_amount ??
+      plan?.discount_price_amount ??
+      plan?.price_amount ??
+      0,
   );
   const currency = String(plan?.currency || 'USD').toUpperCase();
   const description = getPlanSeoDescription(plan, language);
@@ -359,7 +366,10 @@ export function getSubscriptionPlansSeo(language, rawPlans = [], options = {}) {
     sort = 'recommended',
     view = 'card',
   } = options;
-  const availableSeries = uniqueValues(plans.map((plan) => inferPlanSeries(plan)), 3);
+  const availableSeries = uniqueValues(
+    plans.map((plan) => inferPlanSeries(plan)),
+    3,
+  );
   const models = uniqueValues(
     plans.flatMap((plan) =>
       Array.isArray(plan?.allowed_models) ? plan.allowed_models : [],
@@ -381,10 +391,15 @@ export function getSubscriptionPlansSeo(language, rawPlans = [], options = {}) {
   };
   const availableSeriesText =
     joinSeoList(language, availableSeries) ||
-    getSeoMessage(language, zh ? 'SEO Claude Codex 系列' : 'SEO Claude 与 Codex 系列');
-  const modelText = joinSeoList(language, models) || getSeoMessage(language, 'SEO 多模型');
+    getSeoMessage(
+      language,
+      zh ? 'SEO Claude Codex 系列' : 'SEO Claude 与 Codex 系列',
+    );
+  const modelText =
+    joinSeoList(language, models) || getSeoMessage(language, 'SEO 多模型');
   const currentSeriesText = seriesMap[currentSeries] || seriesMap.all;
-  const currentSortText = sortMap[options.sort || 'recommended'] || sortMap.recommended;
+  const currentSortText =
+    sortMap[options.sort || 'recommended'] || sortMap.recommended;
   const currentViewText = getSeoMessage(
     language,
     view === 'table' ? 'SEO 列表视图' : 'SEO 卡片视图',
@@ -444,7 +459,8 @@ export function getSubscriptionPlanSeo(language, rawPlan) {
       models:
         joinSeoList(language, models) || getSeoMessage(language, 'SEO 多模型'),
       groups:
-        joinSeoList(language, groups) || getSeoMessage(language, 'SEO 全部系列'),
+        joinSeoList(language, groups) ||
+        getSeoMessage(language, 'SEO 全部系列'),
     },
     jsonLd: buildSubscriptionPlanJsonLd(language, plan),
   });
@@ -727,6 +743,28 @@ const ROUTE_SEO_CONFIGS = [
       }),
   },
   {
+    pattern: '/console/checkin-lottery',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 签到管理页标题',
+        descriptionKey: 'SEO 签到管理页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/activity-lottery',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 活动抽奖页标题',
+        descriptionKey: 'SEO 活动抽奖页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
     pattern: '/console/invite',
     build: (language, pathname) =>
       buildRouteSeo({
@@ -902,7 +940,8 @@ export function getRouteSeo(language, pathname) {
   if (pathname === '/contact') return getContactSeo(language);
   if (pathname === '/docs') return getDocsSeo(language);
   if (pathname === '/privacy-policy') return getPolicySeo(language, 'privacy');
-  if (pathname === '/user-agreement') return getPolicySeo(language, 'agreement');
+  if (pathname === '/user-agreement')
+    return getPolicySeo(language, 'agreement');
   if (pathname === '/login') return getAuthSeo(language, 'login');
   if (pathname === '/register') return getAuthSeo(language, 'register');
   if (pathname === '/reset') return getAuthSeo(language, 'reset');

@@ -1,8 +1,9 @@
 package model
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strings"
 	"time"
 
@@ -162,7 +163,7 @@ func buildCheckinAutoJobItems(jobID int, targetDate string, windowStartSeconds i
 	for _, userID := range userIDs {
 		scheduledAt := startUnix
 		if endUnix > startUnix {
-			scheduledAt = startUnix + int64(rand.Intn(int(endUnix-startUnix)+1))
+			scheduledAt = startUnix + int64(secureRandIntn(int(endUnix-startUnix)+1))
 		}
 		item := &CheckinAutoJobItem{
 			JobID:       jobID,
@@ -175,6 +176,17 @@ func buildCheckinAutoJobItems(jobID int, targetDate string, windowStartSeconds i
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+func secureRandIntn(maxExclusive int) int {
+	if maxExclusive <= 1 {
+		return 0
+	}
+	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(maxExclusive)))
+	if err != nil {
+		return int(time.Now().UnixNano() % int64(maxExclusive))
+	}
+	return int(nBig.Int64())
 }
 
 func CreateCheckinAutoJob(req *CheckinAutoJobCreateRequest) (*CheckinAutoJobWithItems, error) {

@@ -80,7 +80,12 @@ const PageLayout = () => {
     location.pathname !== '/console/playground' &&
     location.pathname !== '/console/models';
 
-  const enablePageScrollRoutes = ['/console/topup', '/console/package', '/console/invoice'];
+  const enablePageScrollRoutes = [
+    '/console/topup',
+    '/console/package',
+    '/console/invoice',
+    '/console/activity-lottery',
+  ];
   const shouldEnablePageScroll = enablePageScrollRoutes.includes(location.pathname);
 
   const isConsoleRoute = location.pathname.startsWith('/console');

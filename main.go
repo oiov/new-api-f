@@ -118,6 +118,9 @@ func main() {
 	// Check-in auto job task
 	service.StartCheckinAutoJobTask()
 
+	// Activity lottery task (auto finalize)
+	service.StartActivityLotteryTask()
+
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)

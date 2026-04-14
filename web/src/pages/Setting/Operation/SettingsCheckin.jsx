@@ -70,6 +70,8 @@ export default function SettingsCheckin(props) {
     'checkin_setting.open_start_seconds': 28800,
     'checkin_setting.open_end_seconds': 43200,
     'checkin_setting.daily_user_limit': 20,
+    'activity_lottery_setting.enabled': false,
+    'activity_lottery_setting.auto_draw_enabled': true,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -196,7 +198,9 @@ export default function SettingsCheckin(props) {
                   field={'checkin_setting.leaderboard_limit'}
                   label={t('签到榜展示条数')}
                   placeholder={t('对外展示签到榜的最大人数')}
-                  onChange={handleFieldChange('checkin_setting.leaderboard_limit')}
+                  onChange={handleFieldChange(
+                    'checkin_setting.leaderboard_limit',
+                  )}
                   min={1}
                   max={1000}
                   disabled={!inputs['checkin_setting.enabled']}
@@ -222,7 +226,9 @@ export default function SettingsCheckin(props) {
                   label={t('开放开始时间')}
                   placeholder={t('选择开始时间')}
                   optionList={CHECKIN_TIME_OPTIONS}
-                  onChange={handleFieldChange('checkin_setting.open_start_seconds')}
+                  onChange={handleFieldChange(
+                    'checkin_setting.open_start_seconds',
+                  )}
                   disabled={!inputs['checkin_setting.enabled']}
                 />
               </Col>
@@ -232,7 +238,9 @@ export default function SettingsCheckin(props) {
                   label={t('开放结束时间')}
                   placeholder={t('选择结束时间')}
                   optionList={CHECKIN_TIME_OPTIONS}
-                  onChange={handleFieldChange('checkin_setting.open_end_seconds')}
+                  onChange={handleFieldChange(
+                    'checkin_setting.open_end_seconds',
+                  )}
                   disabled={!inputs['checkin_setting.enabled']}
                 />
               </Col>
@@ -242,19 +250,57 @@ export default function SettingsCheckin(props) {
                   label={t('每日签到人数上限')}
                   placeholder={t('0 表示不限')}
                   extraText={t('例如设置 20 表示每天仅前 20 人可签到')}
-                  onChange={handleFieldChange('checkin_setting.daily_user_limit')}
+                  onChange={handleFieldChange(
+                    'checkin_setting.daily_user_limit',
+                  )}
                   min={0}
                   disabled={!inputs['checkin_setting.enabled']}
                 />
               </Col>
             </Row>
-            <Row>
-              <Button size='default' onClick={onSubmit}>
-                {t('保存签到设置')}
-              </Button>
+          </Form.Section>
+
+          <Form.Section text={t('活动抽奖设置')}>
+            <Typography.Text
+              type='tertiary'
+              style={{ marginBottom: 16, display: 'block' }}
+            >
+              {t(
+                '这里仅控制活动抽奖总开关与自动开奖；每一期的奖品、参与动作和门槛请在“活动抽奖管理”中单独配置。',
+              )}
+            </Typography.Text>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'activity_lottery_setting.enabled'}
+                  label={t('启用活动抽奖')}
+                  size='default'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
+                  onChange={handleFieldChange(
+                    'activity_lottery_setting.enabled',
+                  )}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'activity_lottery_setting.auto_draw_enabled'}
+                  label={t('启用自动开奖')}
+                  size='default'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
+                  onChange={handleFieldChange(
+                    'activity_lottery_setting.auto_draw_enabled',
+                  )}
+                  disabled={!inputs['activity_lottery_setting.enabled']}
+                />
+              </Col>
             </Row>
           </Form.Section>
         </Form>
+        <Button size='default' onClick={onSubmit}>
+          {t('保存设置')}
+        </Button>
       </Spin>
     </>
   );

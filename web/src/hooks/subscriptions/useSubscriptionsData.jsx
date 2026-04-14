@@ -29,7 +29,8 @@ import {
 
 const PLAN_FILTER_INIT_VALUES = {
   keyword: '',
-  enabled: 'enabled',
+  // Admin: show all plans by default (including disabled) to avoid confusion
+  enabled: '',
   resource_type: '',
   quota_reset_period: '',
   upgrade_group: '',

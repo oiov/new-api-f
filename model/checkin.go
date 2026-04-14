@@ -1,8 +1,9 @@
 package model
 
 import (
+	"crypto/rand"
 	"errors"
-	"math/rand"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -291,7 +292,7 @@ func UserCheckinWithOptions(userId int, opts UserCheckinOptions) (*Checkin, erro
 	// 计算随机额度奖励
 	quotaAwarded := setting.MinQuota
 	if setting.MaxQuota > setting.MinQuota {
-		quotaAwarded = setting.MinQuota + rand.Intn(setting.MaxQuota-setting.MinQuota+1)
+		quotaAwarded = setting.MinQuota + secureRandInt(setting.MaxQuota-setting.MinQuota+1)
 	}
 
 	checkin := &Checkin{
@@ -301,14 +302,39 @@ func UserCheckinWithOptions(userId int, opts UserCheckinOptions) (*Checkin, erro
 		CreatedAt:    now.Unix(),
 	}
 
+	var record *Checkin
 	// 根据数据库类型选择不同的策略
 	if common.UsingSQLite {
 		// SQLite 不支持嵌套事务，使用顺序操作 + 手动回滚
-		return userCheckinWithoutTransaction(checkin, userId, quotaAwarded)
+		record, err = userCheckinWithoutTransaction(checkin, userId, quotaAwarded)
+	} else {
+		// MySQL 和 PostgreSQL 支持事务，使用事务保证原子性
+		record, err = userCheckinWithTransaction(checkin, userId, quotaAwarded)
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	// MySQL 和 PostgreSQL 支持事务，使用事务保证原子性
-	return userCheckinWithTransaction(checkin, userId, quotaAwarded)
+	// 签到抽奖报名不影响签到主流程（失败不回滚）
+	if strings.TrimSpace(opts.Source) != "auto_job" {
+		go func() {
+			// 可选参与动作：签到参与活动抽奖
+			_ = EnsureActivityLotteryEntry(userId, "checkin", now)
+		}()
+	}
+
+	return record, nil
+}
+
+func secureRandInt(maxExclusive int) int {
+	if maxExclusive <= 1 {
+		return 0
+	}
+	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(maxExclusive)))
+	if err != nil {
+		return int(time.Now().UnixNano() % int64(maxExclusive))
+	}
+	return int(nBig.Int64())
 }
 
 // userCheckinWithTransaction 使用事务执行签到（适用于 MySQL 和 PostgreSQL）
