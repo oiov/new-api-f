@@ -116,26 +116,33 @@ func GetStatus(c *gin.Context) {
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
 		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
 
-		"oidc_enabled":                system_setting.IsOIDCLoginEnabled(),
-		"oidc_register_enabled":       system_setting.IsOIDCRegisterEnabled(),
-		"oidc_client_id":              system_setting.GetOIDCSettings().ClientId,
-		"oidc_authorization_endpoint": system_setting.GetOIDCSettings().AuthorizationEndpoint,
-		"passkey_login":               passkeySetting.Enabled,
-		"passkey_display_name":        passkeySetting.RPDisplayName,
-		"passkey_rp_id":               passkeySetting.RPID,
-		"passkey_origins":             passkeySetting.Origins,
-		"passkey_allow_insecure":      passkeySetting.AllowInsecureOrigin,
-		"passkey_user_verification":   passkeySetting.UserVerification,
-		"passkey_attachment":          passkeySetting.AttachmentPreference,
-		"setup":                       constant.Setup,
-		"user_agreement_enabled":      legalSetting.UserAgreement != "",
-		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
-		"checkin_enabled":             checkinSetting.Enabled,
-		"checkin_setting.open_weekdays": checkinSetting.OpenWeekdays,
+		"oidc_enabled":                       system_setting.IsOIDCLoginEnabled(),
+		"oidc_register_enabled":              system_setting.IsOIDCRegisterEnabled(),
+		"oidc_client_id":                     system_setting.GetOIDCSettings().ClientId,
+		"oidc_authorization_endpoint":        system_setting.GetOIDCSettings().AuthorizationEndpoint,
+		"passkey_login":                      passkeySetting.Enabled,
+		"passkey_display_name":               passkeySetting.RPDisplayName,
+		"passkey_rp_id":                      passkeySetting.RPID,
+		"passkey_origins":                    passkeySetting.Origins,
+		"passkey_allow_insecure":             passkeySetting.AllowInsecureOrigin,
+		"passkey_user_verification":          passkeySetting.UserVerification,
+		"passkey_attachment":                 passkeySetting.AttachmentPreference,
+		"setup":                              constant.Setup,
+		"user_agreement_enabled":             legalSetting.UserAgreement != "",
+		"privacy_policy_enabled":             legalSetting.PrivacyPolicy != "",
+		"checkin_enabled":                    checkinSetting.Enabled,
+		"checkin_setting.open_weekdays":      checkinSetting.OpenWeekdays,
 		"checkin_setting.open_start_seconds": checkinSetting.OpenStartSeconds,
-		"checkin_setting.open_end_seconds": checkinSetting.OpenEndSeconds,
-		"checkin_setting.daily_user_limit": checkinSetting.DailyUserLimit,
-		"_qn":                         "new-api",
+		"checkin_setting.open_end_seconds":   checkinSetting.OpenEndSeconds,
+		"checkin_setting.daily_user_limit":   checkinSetting.DailyUserLimit,
+		"_qn":                                "new-api",
+	}
+
+	if rawDefaults := strings.TrimSpace(common.OptionMap["console_setting.ccswitch_defaults"]); rawDefaults != "" {
+		var payload any
+		if err := common.UnmarshalJsonStr(rawDefaults, &payload); err == nil {
+			data["ccswitch_defaults"] = payload
+		}
 	}
 
 	// 根据启用状态注入可选内容

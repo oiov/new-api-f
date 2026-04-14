@@ -81,6 +81,16 @@ type CheckinAutoJobCreateRequest struct {
 	UserIDs             []int  `json:"user_ids"`
 }
 
+type CheckinAutoJobUpdateRequest struct {
+	Name                string `json:"name"`
+	Enabled             *bool  `json:"enabled"`
+	TargetDate          string `json:"target_date"`
+	WindowStartSeconds  int    `json:"window_start_seconds"`
+	WindowEndSeconds    int    `json:"window_end_seconds"`
+	RandomWindowSeconds int    `json:"random_window_seconds"`
+	UserIDs             []int  `json:"user_ids"`
+}
+
 func formatCheckinDate(now time.Time) string {
 	return now.In(checkinLocation).Format("2006-01-02")
 }
@@ -355,6 +365,134 @@ func ResetStaleRunningCheckinAutoJobItems(expireBefore int64, nowUnix int64) (in
 			"updated_at":    nowUnix,
 		})
 	return result.RowsAffected, result.Error
+}
+
+func UpdateCheckinAutoJob(jobID int, req *CheckinAutoJobUpdateRequest) (*CheckinAutoJobWithItems, error) {
+	if jobID <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if req == nil {
+		return nil, fmt.Errorf("请求不能为空")
+	}
+
+	job := &CheckinAutoJob{}
+	if err := DB.First(job, jobID).Error; err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(job.Status) != CheckinAutoJobStatusScheduled {
+		return nil, fmt.Errorf("仅支持修改待执行任务")
+	}
+
+	targetDate := strings.TrimSpace(req.TargetDate)
+	repeatDaily := false
+	if targetDate == "" {
+		repeatDaily = true
+		targetDate = formatCheckinDate(checkinNow())
+	}
+
+	userIDs := normalizeCheckinAutoJobUserIDs(req.UserIDs)
+	if len(userIDs) == 0 {
+		return nil, fmt.Errorf("至少需要一个用户")
+	}
+	var userCount int64
+	if err := DB.Model(&User{}).Where("id IN ?", userIDs).Count(&userCount).Error; err != nil {
+		return nil, err
+	}
+	if userCount != int64(len(userIDs)) {
+		return nil, fmt.Errorf("用户列表中包含不存在的用户")
+	}
+
+	if req.WindowStartSeconds < 0 || req.WindowStartSeconds >= 24*3600 {
+		return nil, fmt.Errorf("签到开始时间必须在 0 到 86399 秒之间")
+	}
+	if req.WindowEndSeconds < 0 || req.WindowEndSeconds >= 24*3600 {
+		return nil, fmt.Errorf("签到结束时间必须在 0 到 86399 秒之间")
+	}
+	if req.WindowEndSeconds < req.WindowStartSeconds {
+		return nil, fmt.Errorf("签到结束时间不能早于开始时间")
+	}
+	if req.RandomWindowSeconds < 0 {
+		return nil, fmt.Errorf("随机签到窗口不能小于 0")
+	}
+
+	enabled := job.Enabled
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+
+	userIDsJSONBytes, err := common.Marshal(userIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	nowUnix := checkinNow().Unix()
+	updateJob := &CheckinAutoJob{
+		Id:                  jobID,
+		Name:                strings.TrimSpace(req.Name),
+		Enabled:             enabled,
+		RepeatDaily:         repeatDaily,
+		TargetDate:          targetDate,
+		WindowStartSeconds:  req.WindowStartSeconds,
+		WindowEndSeconds:    req.WindowEndSeconds,
+		RandomWindowSeconds: req.RandomWindowSeconds,
+		UserIdsJSON:         string(userIDsJSONBytes),
+		Status:              CheckinAutoJobStatusScheduled,
+		ItemCount:           len(userIDs),
+		SuccessCount:        0,
+		FailedCount:         0,
+		SkippedCount:        0,
+		CancelledCount:      0,
+		LastError:           "",
+		UpdatedAt:           nowUnix,
+	}
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&CheckinAutoJob{}).
+			Where("id = ? AND status = ?", jobID, CheckinAutoJobStatusScheduled).
+			Updates(map[string]any{
+				"name":                  updateJob.Name,
+				"enabled":               updateJob.Enabled,
+				"repeat_daily":          updateJob.RepeatDaily,
+				"target_date":           updateJob.TargetDate,
+				"window_start_seconds":  updateJob.WindowStartSeconds,
+				"window_end_seconds":    updateJob.WindowEndSeconds,
+				"random_window_seconds": updateJob.RandomWindowSeconds,
+				"user_ids_json":         updateJob.UserIdsJSON,
+				"status":                CheckinAutoJobStatusScheduled,
+				"item_count":            updateJob.ItemCount,
+				"success_count":         0,
+				"failed_count":          0,
+				"skipped_count":         0,
+				"cancelled_count":       0,
+				"last_error":            "",
+				"updated_at":            nowUnix,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("任务状态已变更，请刷新后重试")
+		}
+
+		if err := tx.Where("job_id = ?", jobID).Delete(&CheckinAutoJobItem{}).Error; err != nil {
+			return err
+		}
+		items, err := buildCheckinAutoJobItems(jobID, targetDate, req.WindowStartSeconds, req.WindowEndSeconds, req.RandomWindowSeconds, userIDs, nowUnix)
+		if err != nil {
+			return err
+		}
+		if len(items) > 0 {
+			if err := tx.Create(&items).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return GetCheckinAutoJobDetail(jobID)
 }
 
 func parseCheckinAutoJobUserIDs(raw string) ([]int, error) {

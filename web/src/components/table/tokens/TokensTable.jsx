@@ -55,6 +55,8 @@ const TokensTable = (tokensData) => {
     showTestColumn,
     testingTokenIds,
     testToken,
+    showLastTestColumn,
+    lastTestResultsById,
     forceFullWidth,
   } = tokensData;
 
@@ -78,6 +80,8 @@ const TokensTable = (tokensData) => {
       showTestColumn,
       testingTokenIds,
       testToken,
+      showLastTestColumn,
+      lastTestResultsById,
     });
   }, [
     t,
@@ -97,17 +101,17 @@ const TokensTable = (tokensData) => {
     showTestColumn,
     testingTokenIds,
     testToken,
+    showLastTestColumn,
+    lastTestResultsById,
   ]);
 
   // Handle compact mode by removing fixed positioning
   const tableColumns = useMemo(() => {
     return compactMode
       ? columns.map((col) => {
-          if (col.dataIndex === 'operate') {
-            const { fixed, ...rest } = col;
-            return rest;
-          }
-          return col;
+          if (!col?.fixed) return col;
+          const { fixed, ...rest } = col;
+          return rest;
         })
       : columns;
   }, [compactMode, columns]);

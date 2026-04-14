@@ -269,10 +269,8 @@ const CheckinAdminPage = () => {
 
   const [createVisible, setCreateVisible] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    ...DEFAULT_CREATE_FORM,
-    targetDate: formatDateInput(),
-  });
+  const [editingJob, setEditingJob] = useState(null);
+  const [createForm, setCreateForm] = useState(DEFAULT_CREATE_FORM);
   const [userSearchLoading, setUserSearchLoading] = useState(false);
   const [userSearchOptions, setUserSearchOptions] = useState([]);
   const [selectedUserOptionMap, setSelectedUserOptionMap] = useState({});
@@ -404,6 +402,7 @@ const CheckinAdminPage = () => {
   );
 
   const handleOpenCreateModal = () => {
+    setEditingJob(null);
     setCreateForm({
       ...DEFAULT_CREATE_FORM,
       targetDate: '',
@@ -411,6 +410,38 @@ const CheckinAdminPage = () => {
     setUserSearchOptions([]);
     setSelectedUserOptionMap({});
     setSelectedUserPreviewOpen(false);
+    setCreateVisible(true);
+    loadUserOptions('');
+  };
+
+  const handleOpenEditModal = (record) => {
+    if (!record?.id) return;
+    if (String(record?.status || '').trim() !== 'scheduled') {
+      showInfo(t('仅支持修改待执行任务'));
+      return;
+    }
+
+    const userIds = safeParseUserIds(record?.user_ids_json);
+    setSelectedUserOptionMap(() => {
+      const next = {};
+      userIds.forEach((id) => {
+        next[id] = { value: id, label: `#${id}` };
+      });
+      return next;
+    });
+    setUserSearchOptions([]);
+    setSelectedUserPreviewOpen(false);
+    setEditingJob(record);
+    setCreateForm({
+      ...DEFAULT_CREATE_FORM,
+      name: record?.name || '',
+      targetDate: record?.repeat_daily ? '' : record?.target_date || '',
+      windowStartTime: formatSeconds(record?.window_start_seconds).slice(0, 5),
+      windowEndTime: formatSeconds(record?.window_end_seconds).slice(0, 5),
+      randomWindowMinutes: Number(record?.random_window_seconds || 0) / 60,
+      userIds,
+      manualUserIds: '',
+    });
     setCreateVisible(true);
     loadUserOptions('');
   };
@@ -429,6 +460,49 @@ const CheckinAdminPage = () => {
     },
     [],
   );
+
+  const handleUpdateJob = async () => {
+    const targetDate = String(createForm.targetDate || '').trim();
+    const windowStartSeconds = parseTimeToSeconds(createForm.windowStartTime);
+    const windowEndSeconds = parseTimeToSeconds(createForm.windowEndTime);
+    if (!editingJob?.id) {
+      showError(t('任务信息缺失'));
+      return;
+    }
+    if (windowStartSeconds === null || windowEndSeconds === null) {
+      showInfo(t('请输入正确的时间格式'));
+      return;
+    }
+    const mergedUserIds = mergeSelectedUserIds(createForm);
+    if (!mergedUserIds.length) {
+      showInfo(t('请至少选择一个用户'));
+      return;
+    }
+    setCreateSubmitting(true);
+    try {
+      const res = await API.put(`/api/checkin/admin/auto_jobs/${editingJob.id}`, {
+        name: createForm.name?.trim() || '',
+        enabled: Boolean(editingJob?.enabled),
+        target_date: targetDate || '',
+        window_start_seconds: windowStartSeconds,
+        window_end_seconds: windowEndSeconds,
+        random_window_seconds: Number(createForm.randomWindowMinutes || 0) * 60,
+        user_ids: mergedUserIds,
+      });
+      if (res.data?.success) {
+        showSuccess(t('更新成功'));
+        setCreateVisible(false);
+        setEditingJob(null);
+        await loadJobs();
+      } else {
+        showError(res.data?.message || t('更新失败'));
+      }
+    } catch (error) {
+      showError(error?.response?.data?.message || t('更新失败'));
+    } finally {
+      setCreateSubmitting(false);
+    }
+  };
 
   const handleCreateJob = async () => {
     const targetDate = String(createForm.targetDate || '').trim();
@@ -770,6 +844,11 @@ const CheckinAdminPage = () => {
             >
               {t('详情')}
             </Button>
+            {String(record?.status || '').trim() === 'scheduled' ? (
+              <Button theme='light' size='small' onClick={() => handleOpenEditModal(record)}>
+                {t('修改')}
+              </Button>
+            ) : null}
             {record?.status !== 'cancelled' && record?.status !== 'completed' ? (
               <Button
                 theme='light'
@@ -1185,11 +1264,14 @@ const CheckinAdminPage = () => {
       </Tabs>
 
       <Modal
-        title={t('创建自动签到任务')}
+        title={editingJob?.id ? t('修改自动签到任务') : t('创建自动签到任务')}
         visible={createVisible}
-        onCancel={() => setCreateVisible(false)}
-        onOk={handleCreateJob}
-        okText={t('创建任务')}
+        onCancel={() => {
+          setCreateVisible(false);
+          setEditingJob(null);
+        }}
+        onOk={editingJob?.id ? handleUpdateJob : handleCreateJob}
+        okText={editingJob?.id ? t('保存') : t('创建任务')}
         cancelText={t('取消')}
         confirmLoading={createSubmitting}
         width={760}

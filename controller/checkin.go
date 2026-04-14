@@ -24,6 +24,16 @@ type CreateCheckinAutoJobRequest struct {
 	UserIDs             []int  `json:"user_ids"`
 }
 
+type UpdateCheckinAutoJobRequest struct {
+	Name                string `json:"name"`
+	Enabled             *bool  `json:"enabled"`
+	TargetDate          string `json:"target_date"`
+	WindowStartSeconds  int    `json:"window_start_seconds"`
+	WindowEndSeconds    int    `json:"window_end_seconds"`
+	RandomWindowSeconds int    `json:"random_window_seconds"`
+	UserIDs             []int  `json:"user_ids"`
+}
+
 // GetCheckinStatus 获取用户签到状态和历史记录
 func GetCheckinStatus(c *gin.Context) {
 	setting := operation_setting.GetCheckinSetting()
@@ -140,6 +150,35 @@ func CreateCheckinAutoJob(c *gin.Context) {
 		return
 	}
 	result, err := model.CreateCheckinAutoJob(&model.CheckinAutoJobCreateRequest{
+		Name:                strings.TrimSpace(req.Name),
+		Enabled:             req.Enabled,
+		TargetDate:          strings.TrimSpace(req.TargetDate),
+		WindowStartSeconds:  req.WindowStartSeconds,
+		WindowEndSeconds:    req.WindowEndSeconds,
+		RandomWindowSeconds: req.RandomWindowSeconds,
+		UserIDs:             req.UserIDs,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func UpdateCheckinAutoJob(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "无效的任务ID")
+		return
+	}
+
+	req := UpdateCheckinAutoJobRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	result, err := model.UpdateCheckinAutoJob(id, &model.CheckinAutoJobUpdateRequest{
 		Name:                strings.TrimSpace(req.Name),
 		Enabled:             req.Enabled,
 		TargetDate:          strings.TrimSpace(req.TargetDate),

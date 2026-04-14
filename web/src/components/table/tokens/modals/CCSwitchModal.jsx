@@ -88,6 +88,54 @@ function getServerAddress() {
   return window.location.origin;
 }
 
+function getCCSwitchDefaultsFromStatus() {
+  try {
+    const raw = localStorage.getItem('status');
+    if (!raw) return null;
+    const status = JSON.parse(raw);
+    return status?.ccswitch_defaults || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function normalizeCCSwitchDefaults(raw) {
+  const payload = raw && typeof raw === 'object' ? raw : null;
+  const root =
+    payload?.apps && typeof payload.apps === 'object' ? payload.apps : payload;
+
+  const normalizeApp = (value) => {
+    const obj = value && typeof value === 'object' ? value : {};
+    const defaultName =
+      String(obj.defaultName || obj.default_name || '').trim() || '';
+    const defaultModels =
+      obj.defaultModels && typeof obj.defaultModels === 'object'
+        ? obj.defaultModels
+        : obj.default_models && typeof obj.default_models === 'object'
+          ? obj.default_models
+          : {};
+    const recommendedModelsRaw =
+      obj.recommendedModels || obj.recommended_models || [];
+    const recommendedModels = Array.from(
+      new Set(
+        (Array.isArray(recommendedModelsRaw) ? recommendedModelsRaw : [])
+          .map((item) => String(item || '').trim())
+          .filter(Boolean),
+      ),
+    );
+    return {
+      defaultName,
+      defaultModels,
+      recommendedModels,
+    };
+  };
+
+  return {
+    claude: normalizeApp(root?.claude),
+    codex: normalizeApp(root?.codex),
+  };
+}
+
 function inferAppFromGroup(group) {
   const normalizedGroup = String(group || '')
     .trim()
@@ -215,10 +263,54 @@ export default function CCSwitchModal({
 }) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const normalizedDefaults = useMemo(
+    () => normalizeCCSwitchDefaults(getCCSwitchDefaultsFromStatus()),
+    [],
+  );
   const inferredApp = useMemo(
     () => inferAppFromGroup(tokenRecord?.group),
     [tokenRecord?.group],
   );
+  const effectiveAppConfigs = useMemo(() => {
+    return {
+      claude: {
+        ...APP_CONFIGS.claude,
+        defaultName:
+          normalizedDefaults?.claude?.defaultName || APP_CONFIGS.claude.defaultName,
+      },
+      codex: {
+        ...APP_CONFIGS.codex,
+        defaultName:
+          normalizedDefaults?.codex?.defaultName || APP_CONFIGS.codex.defaultName,
+      },
+    };
+  }, [normalizedDefaults]);
+  const effectiveDefaultModels = useMemo(() => {
+    return {
+      claude: {
+        ...DEFAULT_MODELS.claude,
+        ...(normalizedDefaults?.claude?.defaultModels || {}),
+      },
+      codex: {
+        ...DEFAULT_MODELS.codex,
+        ...(normalizedDefaults?.codex?.defaultModels || {}),
+      },
+    };
+  }, [normalizedDefaults]);
+  const effectiveRecommendedModels = useMemo(() => {
+    const claude = [
+      ...(normalizedDefaults?.claude?.recommendedModels || []),
+      ...(RECOMMENDED_MODELS.claude || []),
+    ];
+    const codex = [
+      ...(normalizedDefaults?.codex?.recommendedModels || []),
+      ...(RECOMMENDED_MODELS.codex || []),
+    ];
+    return {
+      claude: Array.from(new Set(claude.filter(Boolean))),
+      codex: Array.from(new Set(codex.filter(Boolean))),
+    };
+  }, [normalizedDefaults]);
   const [app, setApp] = useState(inferredApp || 'claude');
   const [name, setName] = useState(APP_CONFIGS.claude.defaultName);
   const [models, setModels] = useState(DEFAULT_MODELS.claude);
@@ -227,17 +319,19 @@ export default function CCSwitchModal({
   const [testingModelKey, setTestingModelKey] = useState('');
   const [serverAddress, setServerAddress] = useState('');
 
-  const currentConfig = APP_CONFIGS[app] || APP_CONFIGS.claude;
-  const currentDefaults = DEFAULT_MODELS[app] || DEFAULT_MODELS.claude;
-  const recommendedModels = RECOMMENDED_MODELS[app] || [];
+  const currentConfig = effectiveAppConfigs[app] || effectiveAppConfigs.claude;
+  const currentDefaults = effectiveDefaultModels[app] || effectiveDefaultModels.claude;
+  const recommendedModels = effectiveRecommendedModels[app] || [];
   const mergedModelOptions = useMemo(() => {
     const existingValues = new Set(
       (modelOptions || []).map((item) => item?.value).filter(Boolean),
     );
     const nextOptions = [...(modelOptions || [])];
     [
-      ...Object.values(DEFAULT_MODELS).flatMap((value) => Object.values(value)),
-      ...Object.values(RECOMMENDED_MODELS).flatMap((value) => value),
+      ...Object.values(effectiveDefaultModels).flatMap((value) =>
+        Object.values(value || {}),
+      ),
+      ...Object.values(effectiveRecommendedModels).flatMap((value) => value || []),
     ]
       .forEach((model) => {
         if (!existingValues.has(model)) {
@@ -249,27 +343,27 @@ export default function CCSwitchModal({
         }
       });
     return nextOptions;
-  }, [modelOptions]);
+  }, [effectiveDefaultModels, effectiveRecommendedModels, modelOptions]);
 
   useEffect(() => {
     if (visible) {
       const nextApp = inferredApp || 'claude';
       setApp(nextApp);
-      setModels(DEFAULT_MODELS[nextApp] || DEFAULT_MODELS.claude);
+      setModels(effectiveDefaultModels[nextApp] || effectiveDefaultModels.claude);
       setServerAddress(getServerAddress().replace(/\/$/, ''));
       setName(
         buildProviderName(
           tokenRecord?.group,
-          APP_CONFIGS[nextApp].defaultName,
+          effectiveAppConfigs[nextApp]?.defaultName || effectiveAppConfigs.claude.defaultName,
         ),
       );
     }
-  }, [visible, inferredApp, tokenRecord]);
+  }, [visible, inferredApp, tokenRecord, effectiveAppConfigs, effectiveDefaultModels]);
 
   const handleAppChange = (val) => {
     setApp(val);
-    setName(buildProviderName(tokenRecord?.group, APP_CONFIGS[val].defaultName));
-    setModels(DEFAULT_MODELS[val] || {});
+    setName(buildProviderName(tokenRecord?.group, effectiveAppConfigs[val]?.defaultName || APP_CONFIGS[val].defaultName));
+    setModels(effectiveDefaultModels[val] || {});
   };
 
   const handleModelChange = (field, value) => {

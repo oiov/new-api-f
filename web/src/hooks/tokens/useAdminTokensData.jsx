@@ -40,6 +40,7 @@ export const useAdminTokensData = () => {
   const [resolvedTokenKeys] = useState({});
   const [loadingTokenKeys] = useState({});
   const [testingTokenIds, setTestingTokenIds] = useState({});
+  const [lastTestResultsById, setLastTestResultsById] = useState({});
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [appliedFilters, setAppliedFilters] = useState({
     username: '',
@@ -251,10 +252,29 @@ export const useAdminTokensData = () => {
       const { success, message, data } = res.data || {};
       if (!success) {
         showError(message || t('测试失败'));
+        setLastTestResultsById((prev) => ({
+          ...prev,
+          [tokenId]: {
+            at: Date.now(),
+            ok: false,
+            error: message || t('测试失败'),
+            results: [],
+          },
+        }));
         return;
       }
 
       const results = Array.isArray(data?.results) ? data.results : [];
+      const allOk = results.length > 0 && results.every((item) => item?.ok);
+      setLastTestResultsById((prev) => ({
+        ...prev,
+        [tokenId]: {
+          at: Date.now(),
+          ok: allOk,
+          error: '',
+          results,
+        },
+      }));
 
       Modal.info({
         title: t('令牌测试结果'),
@@ -334,13 +354,34 @@ export const useAdminTokensData = () => {
             max_tokens: 16,
           });
           if (res?.data?.success) {
-            results.push({ token_id: current, ...res.data.data });
+            const payload = res.data.data || {};
+            results.push({ token_id: current, ...payload });
+            const list = Array.isArray(payload?.results) ? payload.results : [];
+            const allOk = list.length > 0 && list.every((item) => item?.ok);
+            setLastTestResultsById((prev) => ({
+              ...prev,
+              [current]: {
+                at: Date.now(),
+                ok: allOk,
+                error: '',
+                results: list,
+              },
+            }));
           } else {
             results.push({
               token_id: current,
               results: [],
               error: res?.data?.message || t('测试失败'),
             });
+            setLastTestResultsById((prev) => ({
+              ...prev,
+              [current]: {
+                at: Date.now(),
+                ok: false,
+                error: res?.data?.message || t('测试失败'),
+                results: [],
+              },
+            }));
           }
         } catch (error) {
           results.push({
@@ -348,6 +389,15 @@ export const useAdminTokensData = () => {
             results: [],
             error: error?.message || t('测试失败'),
           });
+          setLastTestResultsById((prev) => ({
+            ...prev,
+            [current]: {
+              at: Date.now(),
+              ok: false,
+              error: error?.message || t('测试失败'),
+              results: [],
+            },
+          }));
         } finally {
           setTestingTokenIds((prev) => ({ ...prev, [current]: false }));
         }
@@ -471,6 +521,7 @@ export const useAdminTokensData = () => {
     setSelectedRowKeys,
     rowSelection,
     testingTokenIds,
+    lastTestResultsById,
     testToken,
     batchTestTokens,
     batchUpdateGroup,

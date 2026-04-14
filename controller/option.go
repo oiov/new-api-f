@@ -342,6 +342,25 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "console_setting.ccswitch_defaults":
+		trimmed := strings.TrimSpace(option.Value.(string))
+		if trimmed != "" {
+			var payload any
+			if err = common.UnmarshalJsonStr(trimmed, &payload); err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "CCSwitch 默认参数必须是合法 JSON",
+				})
+				return
+			}
+			if _, ok := payload.(map[string]any); !ok {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "CCSwitch 默认参数 JSON 顶层必须是对象",
+				})
+				return
+			}
+		}
 	case "SelfServiceSubscriptionConversionCampaign":
 		err = model.ValidateSelfServiceSubscriptionConversionCampaign(option.Value.(string))
 		if err != nil {
