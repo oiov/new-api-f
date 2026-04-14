@@ -406,7 +406,7 @@ const CheckinAdminPage = () => {
   const handleOpenCreateModal = () => {
     setCreateForm({
       ...DEFAULT_CREATE_FORM,
-      targetDate: formatDateInput(),
+      targetDate: '',
     });
     setUserSearchOptions([]);
     setSelectedUserOptionMap({});
@@ -434,10 +434,6 @@ const CheckinAdminPage = () => {
     const targetDate = String(createForm.targetDate || '').trim();
     const windowStartSeconds = parseTimeToSeconds(createForm.windowStartTime);
     const windowEndSeconds = parseTimeToSeconds(createForm.windowEndTime);
-    if (!targetDate) {
-      showInfo(t('请输入目标日期'));
-      return;
-    }
     if (windowStartSeconds === null || windowEndSeconds === null) {
       showInfo(t('请输入正确的时间格式'));
       return;
@@ -451,7 +447,7 @@ const CheckinAdminPage = () => {
     try {
       const res = await API.post('/api/checkin/admin/auto_jobs', {
         name: createForm.name?.trim() || '',
-        target_date: targetDate,
+        target_date: targetDate || '',
         window_start_seconds: windowStartSeconds,
         window_end_seconds: windowEndSeconds,
         random_window_seconds: Number(createForm.randomWindowMinutes || 0) * 60,
@@ -703,8 +699,8 @@ const CheckinAdminPage = () => {
         key: 'target_date',
         width: 120,
         render: (_, record) => (
-          <Tag color='blue' shape='circle'>
-            {record?.target_date || '-'}
+          <Tag color={record?.repeat_daily ? 'green' : 'blue'} shape='circle'>
+            {record?.repeat_daily ? t('每天') : record?.target_date || '-'}
           </Tag>
         ),
       },
@@ -1220,7 +1216,7 @@ const CheckinAdminPage = () => {
               onChange={(value) =>
                 setCreateForm((prev) => ({ ...prev, targetDate: value }))
               }
-              placeholder='YYYY-MM-DD'
+              placeholder={t('可选，留空表示每天')}
             />
           </div>
           <div>
@@ -1284,7 +1280,7 @@ const CheckinAdminPage = () => {
           </div>
           <Select
             multiple
-            filter={false}
+            filter
             remote
             value={createForm.userIds}
             loading={userSearchLoading}

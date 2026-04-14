@@ -29,6 +29,7 @@ type CheckinAutoJob struct {
 	Id                   int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	Name                 string `json:"name" gorm:"type:varchar(128);not null;default:''"`
 	Enabled              bool   `json:"enabled" gorm:"not null;default:true;index"`
+	RepeatDaily          bool   `json:"repeat_daily" gorm:"not null;default:false;index"`
 	TargetDate           string `json:"target_date" gorm:"type:varchar(10);not null;index"`
 	WindowStartSeconds   int    `json:"window_start_seconds" gorm:"not null;default:0"`
 	WindowEndSeconds     int    `json:"window_end_seconds" gorm:"not null;default:0"`
@@ -78,6 +79,10 @@ type CheckinAutoJobCreateRequest struct {
 	WindowEndSeconds    int    `json:"window_end_seconds"`
 	RandomWindowSeconds int    `json:"random_window_seconds"`
 	UserIDs             []int  `json:"user_ids"`
+}
+
+func formatCheckinDate(now time.Time) string {
+	return now.In(checkinLocation).Format("2006-01-02")
 }
 
 func (CheckinAutoJob) TableName() string {
@@ -166,6 +171,14 @@ func CreateCheckinAutoJob(req *CheckinAutoJobCreateRequest) (*CheckinAutoJobWith
 	if req == nil {
 		return nil, fmt.Errorf("请求不能为空")
 	}
+
+	targetDate := strings.TrimSpace(req.TargetDate)
+	repeatDaily := false
+	if targetDate == "" {
+		repeatDaily = true
+		targetDate = formatCheckinDate(checkinNow())
+	}
+
 	userIDs := normalizeCheckinAutoJobUserIDs(req.UserIDs)
 	if len(userIDs) == 0 {
 		return nil, fmt.Errorf("至少需要一个用户")
@@ -201,7 +214,8 @@ func CreateCheckinAutoJob(req *CheckinAutoJobCreateRequest) (*CheckinAutoJobWith
 	job := &CheckinAutoJob{
 		Name:                 strings.TrimSpace(req.Name),
 		Enabled:              enabled,
-		TargetDate:           strings.TrimSpace(req.TargetDate),
+		RepeatDaily:          repeatDaily,
+		TargetDate:           targetDate,
 		WindowStartSeconds:   req.WindowStartSeconds,
 		WindowEndSeconds:     req.WindowEndSeconds,
 		RandomWindowSeconds:  req.RandomWindowSeconds,
@@ -343,10 +357,88 @@ func ResetStaleRunningCheckinAutoJobItems(expireBefore int64, nowUnix int64) (in
 	return result.RowsAffected, result.Error
 }
 
+func parseCheckinAutoJobUserIDs(raw string) ([]int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []int{}, nil
+	}
+	var ids []int
+	if err := common.UnmarshalJsonStr(raw, &ids); err != nil {
+		return nil, err
+	}
+	return normalizeCheckinAutoJobUserIDs(ids), nil
+}
+
+func refreshRepeatDailyCheckinAutoJobs(nowUnix int64) {
+	today := formatCheckinDate(time.Unix(nowUnix, 0))
+
+	jobs := make([]*CheckinAutoJob, 0)
+	err := DB.Model(&CheckinAutoJob{}).
+		Where("enabled = ?", true).
+		Where("repeat_daily = ?", true).
+		Where("target_date <> ?", today).
+		Where("status IN ?", []string{CheckinAutoJobStatusScheduled, CheckinAutoJobStatusRunning, CheckinAutoJobStatusPartial}).
+		Find(&jobs).Error
+	if err != nil || len(jobs) == 0 {
+		return
+	}
+
+	for _, job := range jobs {
+		if job == nil || job.Id <= 0 {
+			continue
+		}
+
+		_ = DB.Transaction(func(tx *gorm.DB) error {
+			update := tx.Model(&CheckinAutoJob{}).
+				Where("id = ? AND repeat_daily = ? AND target_date <> ?", job.Id, true, today).
+				Updates(map[string]any{
+					"target_date":     today,
+					"status":          CheckinAutoJobStatusScheduled,
+					"success_count":   0,
+					"failed_count":    0,
+					"skipped_count":   0,
+					"cancelled_count": 0,
+					"last_error":      "",
+					"updated_at":      nowUnix,
+				})
+			if update.Error != nil {
+				return update.Error
+			}
+			if update.RowsAffected == 0 {
+				return nil
+			}
+
+			userIDs, err := parseCheckinAutoJobUserIDs(job.UserIdsJSON)
+			if err != nil {
+				return err
+			}
+			if len(userIDs) == 0 {
+				return fmt.Errorf("用户列表为空")
+			}
+
+			if err := tx.Where("job_id = ?", job.Id).Delete(&CheckinAutoJobItem{}).Error; err != nil {
+				return err
+			}
+			items, err := buildCheckinAutoJobItems(job.Id, today, job.WindowStartSeconds, job.WindowEndSeconds, job.RandomWindowSeconds, userIDs, nowUnix)
+			if err != nil {
+				return err
+			}
+			if len(items) > 0 {
+				if err := tx.Create(&items).Error; err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+	}
+}
+
 func ListDueCheckinAutoJobItems(nowUnix int64, limit int) ([]*CheckinAutoJobItem, error) {
 	if limit <= 0 {
 		limit = 100
 	}
+	refreshRepeatDailyCheckinAutoJobs(nowUnix)
 	items := make([]*CheckinAutoJobItem, 0, limit)
 	err := DB.Model(&CheckinAutoJobItem{}).
 		Joins("JOIN checkin_auto_jobs ON checkin_auto_jobs.id = checkin_auto_job_items.job_id").
