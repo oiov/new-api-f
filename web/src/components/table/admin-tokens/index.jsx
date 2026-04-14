@@ -54,6 +54,7 @@ const AdminTokensPage = () => {
   return (
     <CardPro
       type='type1'
+      className='w-full'
       descriptionArea={
         <AdminTokensDescription
           compactMode={tokensData.compactMode}
@@ -96,6 +97,10 @@ const AdminTokensPage = () => {
         showUsernameColumn={true}
         allowSensitiveActions={false}
         readonly={true}
+        showTestColumn={true}
+        testingTokenIds={tokensData.testingTokenIds}
+        testToken={tokensData.testToken}
+        forceFullWidth={true}
       />
     </CardPro>
   );

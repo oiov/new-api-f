@@ -488,6 +488,9 @@ export const getTokensColumns = ({
   showUsernameColumn = false,
   allowSensitiveActions = true,
   readonly = false,
+  showTestColumn = false,
+  testingTokenIds = {},
+  testToken,
 }) => {
   const columns = [
     {
@@ -571,6 +574,36 @@ export const getTokensColumns = ({
         ),
     },
   ];
+
+  if (showTestColumn) {
+    columns.push({
+      title: t('测试'),
+      key: 'test',
+      fixed: 'right',
+      width: 90,
+      render: (text, record) => {
+        const loading = Boolean(testingTokenIds?.[record?.id]);
+        return (
+          <Tooltip
+            content={t('发起一次最小 /v1/messages 测试，可能产生实际调用与计费')}
+          >
+            <Button
+              size='small'
+              theme='solid'
+              type='primary'
+              loading={loading}
+              onClick={async (e) => {
+                e.stopPropagation();
+                await testToken?.(record);
+              }}
+            >
+              {t('测试')}
+            </Button>
+          </Tooltip>
+        );
+      },
+    });
+  }
 
   if (showUsernameColumn) {
     columns.unshift({

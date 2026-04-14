@@ -659,6 +659,93 @@ const EcomAgentPage = () => {
   const [maskMode, setMaskMode] = useState(true);
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageSize = 10;
+  const [syncCheckById, setSyncCheckById] = useState({});
+
+  const updateSyncCheckState = (id, patch) => {
+    if (!id) return;
+    setSyncCheckById((prev) => ({
+      ...prev,
+      [id]: {
+        ...(prev[id] || {}),
+        ...patch,
+      },
+    }));
+  };
+
+  const clearSyncCheckStateIfOutdated = (record) => {
+    if (!record?.id) return;
+    const local = syncCheckById[record.id];
+    if (!local) return;
+    const serverTs = Number(record.last_sync_at || 0) || 0;
+    const localTs = Number(local.checkedAt || 0) || 0;
+    if (serverTs <= 0) return;
+    // If server has newer sync timestamp, prefer server state to avoid stale local overrides.
+    if (serverTs >= localTs) {
+      setSyncCheckById((prev) => {
+        if (!prev[record.id]) return prev;
+        const next = { ...prev };
+        delete next[record.id];
+        return next;
+      });
+    }
+  };
+
+  const getDerivedSyncCheckState = (record) => {
+    const id = record?.id;
+    if (!id) {
+      return {
+        status: 'idle',
+        checkedAt: 0,
+        startedAt: 0,
+        message: '',
+      };
+    }
+    const local = syncCheckById[id];
+    if (local) {
+      return local;
+    }
+    const lastSyncAt = Number(record?.last_sync_at || 0) || 0;
+    if (syncingId === id) {
+      return {
+        status: 'running',
+        startedAt: Math.floor(Date.now() / 1000),
+        checkedAt: lastSyncAt,
+        message: '',
+      };
+    }
+    if (lastSyncAt > 0) {
+      const lastError = String(record?.last_error || '').trim();
+      return {
+        status: lastError ? 'failed' : 'success',
+        checkedAt: lastSyncAt,
+        startedAt: 0,
+        message: lastError,
+      };
+    }
+    return {
+      status: 'idle',
+      checkedAt: 0,
+      startedAt: 0,
+      message: '',
+    };
+  };
+
+  const runWithConcurrency = async (items, concurrency, task) => {
+    // Avoid Array.shift() O(n) behavior on large batches.
+    let cursor = 0;
+    const workers = new Array(Math.max(1, concurrency)).fill(null).map(async () => {
+      while (true) {
+        const idx = cursor;
+        cursor += 1;
+        if (idx >= items.length) return;
+        const item = items[idx];
+        if (item === undefined) continue;
+        // eslint-disable-next-line no-await-in-loop
+        await task(item);
+      }
+    });
+    await Promise.all(workers);
+  };
 
   const renderEmail = (value) => {
     const text = String(value || '').trim();
@@ -709,6 +796,8 @@ const EcomAgentPage = () => {
       const res = await API.get('/api/ecomagent/accounts');
       if (res.data.success) {
         const nextAccounts = res.data.data || [];
+        // Ensure local "check state" doesn't mask newer server sync results.
+        nextAccounts.forEach(clearSyncCheckStateIfOutdated);
         setAccounts(nextAccounts);
         if (detailRecord?.id) {
           const nextDetail = nextAccounts.find(
@@ -1244,6 +1333,12 @@ const EcomAgentPage = () => {
   const handleSync = async (record, options = {}) => {
     const { silent = false, forceGenerateKey = false } = options;
     setSyncingId(record.id);
+    updateSyncCheckState(record.id, {
+      status: 'running',
+      startedAt: Math.floor(Date.now() / 1000),
+      checkedAt: 0,
+      message: '',
+    });
     try {
       const res = await API.post(
         `/api/ecomagent/accounts/${record.id}/sync${
@@ -1251,21 +1346,40 @@ const EcomAgentPage = () => {
         }`,
       );
       if (res.data.success) {
+        updateSyncCheckState(record.id, {
+          status: 'success',
+          checkedAt: Math.floor(Date.now() / 1000),
+          startedAt: 0,
+          message: forceGenerateKey ? t('API Key 创建完成') : t('同步完成'),
+        });
         if (!silent) {
           showSuccess(forceGenerateKey ? t('API Key 创建完成') : t('同步完成'));
         }
       } else {
-        showError(
+        const msg =
           res.data.message ||
-            (forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
-        );
+          (forceGenerateKey ? t('API Key 创建失败') : t('同步失败'));
+        updateSyncCheckState(record.id, {
+          status: 'failed',
+          checkedAt: Math.floor(Date.now() / 1000),
+          startedAt: 0,
+          message: msg,
+        });
+        showError(msg);
       }
       await loadAccounts();
     } catch (error) {
-      showError(
+      const msg =
+        error?.response?.data?.message ||
         error?.message ||
-          (forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
-      );
+        (forceGenerateKey ? t('API Key 创建失败') : t('同步失败'));
+      updateSyncCheckState(record.id, {
+        status: 'failed',
+        checkedAt: Math.floor(Date.now() / 1000),
+        startedAt: 0,
+        message: msg,
+      });
+      showError(msg);
       await loadAccounts();
     } finally {
       setSyncingId(null);
@@ -1392,22 +1506,59 @@ const EcomAgentPage = () => {
     setBatchSyncing(true);
     try {
       const recordsById = new Map(accounts.map((account) => [account.id, account]));
-      const results = await Promise.all(
-        selectedRowKeys.map(async (id) => {
+
+      const resultsById = new Map();
+      selectedRowKeys.forEach((id) => {
+        updateSyncCheckState(id, {
+          status: 'running',
+          startedAt: Math.floor(Date.now() / 1000),
+          checkedAt: 0,
+          message: '',
+        });
+      });
+
+      // Concurrency-limited to reduce 429 rate limit bursts.
+      await runWithConcurrency(
+        selectedRowKeys,
+        2,
+        async (id) => {
           try {
             const value = await API.post(`/api/ecomagent/accounts/${id}/sync`);
-            return { id, status: 'fulfilled', value };
+            resultsById.set(id, { id, status: 'fulfilled', value });
+            if (value?.data?.success) {
+              updateSyncCheckState(id, {
+                status: 'success',
+                checkedAt: Math.floor(Date.now() / 1000),
+                startedAt: 0,
+                message: t('同步完成'),
+              });
+            } else {
+              updateSyncCheckState(id, {
+                status: 'failed',
+                checkedAt: Math.floor(Date.now() / 1000),
+                startedAt: 0,
+                message: value?.data?.message || t('同步失败'),
+              });
+            }
           } catch (reason) {
-            return { id, status: 'rejected', reason };
+            resultsById.set(id, { id, status: 'rejected', reason });
+            updateSyncCheckState(id, {
+              status: 'failed',
+              checkedAt: Math.floor(Date.now() / 1000),
+              startedAt: 0,
+              message: reason?.response?.data?.message || reason?.message || t('同步失败'),
+            });
           }
-        }),
+        },
       );
-      const success = results.filter(
-        (item) => item.status === 'fulfilled' && item.value?.data?.success,
-      ).length;
-      const failed = results.length - success;
+
+      const orderedResults = selectedRowKeys
+        .map((id) => resultsById.get(id))
+        .filter(Boolean);
+      const success = orderedResults.filter((item) => item.value?.data?.success).length;
+      const failed = orderedResults.length - success;
       const failureMessages = getBatchFailureMessages(
-        results,
+        orderedResults,
         recordsById,
         t,
         renderEmail,
@@ -1560,6 +1711,91 @@ const EcomAgentPage = () => {
         ),
       },
       {
+        title: t('检测状态'),
+        dataIndex: 'last_sync_at',
+        width: isMobile ? 120 : 140,
+        render: (_, record) => {
+          const state = getDerivedSyncCheckState(record);
+          const status = state?.status || 'idle';
+          if (status === 'running') {
+            return (
+              <Tag color='blue' size='small'>
+                {t('检测中')}
+              </Tag>
+            );
+          }
+          if (status === 'success') {
+            return (
+              <Tag color='green' size='small'>
+                {t('成功')}
+              </Tag>
+            );
+          }
+          if (status === 'failed') {
+            return (
+              <Tag color='red' size='small'>
+                {t('失败')}
+              </Tag>
+            );
+          }
+          return (
+            <Text size='small' type='tertiary'>
+              {t('未检测')}
+            </Text>
+          );
+        },
+      },
+      {
+        title: t('上次检测时间'),
+        dataIndex: 'last_sync_at',
+        width: isMobile ? 160 : 180,
+        render: (_, record) => {
+          const state = getDerivedSyncCheckState(record);
+          const ts = Number(state?.checkedAt || 0) || Number(state?.startedAt || 0) || 0;
+          return (
+            <Text size='small' type='tertiary'>
+              {formatTs(ts)}
+            </Text>
+          );
+        },
+      },
+      {
+        title: t('检测结果'),
+        dataIndex: 'last_error',
+        width: isMobile ? 220 : 320,
+        render: (_, record) => {
+          const state = getDerivedSyncCheckState(record);
+          const status = state?.status || 'idle';
+          const message =
+            String(state?.message || '').trim() ||
+            (status === 'success' ? t('同步完成') : '');
+          if (status === 'idle') {
+            return (
+              <Text size='small' type='tertiary'>
+                -
+              </Text>
+            );
+          }
+          if (status === 'running') {
+            return (
+              <Text size='small' type='tertiary' ellipsis={{ showTooltip: true }}>
+                {t('检测中')}
+              </Text>
+            );
+          }
+          return (
+            <Text
+              size='small'
+              type={status === 'failed' ? 'danger' : 'tertiary'}
+              ellipsis={{ showTooltip: true }}
+              style={{ maxWidth: isMobile ? 180 : 280 }}
+            >
+              {message || '-'}
+            </Text>
+          );
+        },
+      },
+      {
         title: t('操作'),
         dataIndex: 'id',
         width: isMobile ? 250 : 300,
@@ -1657,7 +1893,7 @@ const EcomAgentPage = () => {
         ),
       },
     ],
-    [isMobile, maskMode, syncingId, t],
+    [isMobile, maskMode, syncingId, syncCheckById, t],
   );
 
   const paginatedAccounts = useMemo(() => {

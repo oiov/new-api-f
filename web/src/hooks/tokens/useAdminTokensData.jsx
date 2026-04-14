@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Modal } from '@douyinfe/semi-ui';
 import { API, buildGroupOptions, showError } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
@@ -38,6 +39,7 @@ export const useAdminTokensData = () => {
   const [showKeys] = useState({});
   const [resolvedTokenKeys] = useState({});
   const [loadingTokenKeys] = useState({});
+  const [testingTokenIds, setTestingTokenIds] = useState({});
   const [appliedFilters, setAppliedFilters] = useState({
     username: '',
     token_name: '',
@@ -223,6 +225,50 @@ export const useAdminTokensData = () => {
     return {};
   };
 
+  const testToken = async (record) => {
+    const tokenId = record?.id;
+    if (!tokenId) return;
+
+    setTestingTokenIds((prev) => ({ ...prev, [tokenId]: true }));
+    try {
+      const res = await API.post(`/api/token/admin/${tokenId}/test`, {
+        model: 'claude-opus-4-6',
+        max_tokens: 16,
+      });
+      const { success, message, data } = res.data || {};
+      if (!success) {
+        showError(message || t('测试失败'));
+        return;
+      }
+
+      Modal.info({
+        title: t('令牌测试结果'),
+        size: 'small',
+        content: (
+          <div className='flex flex-col gap-1'>
+            <div>
+              {t('用户')}: {record.username || '-'} ({t('用户 ID')}: {record.user_id})
+            </div>
+            <div>
+              {t('令牌')}: {record.name || '-'} ({t('令牌 ID')}: {tokenId})
+            </div>
+            <div>
+              HTTP: {data?.http_code} / ok: {data?.ok ? '1' : '0'}
+            </div>
+            {data?.x_oneapi_request_id ? (
+              <div>x-oneapi-request-id: {data.x_oneapi_request_id}</div>
+            ) : null}
+            {data?.error_type ? <div>error.type: {data.error_type}</div> : null}
+          </div>
+        ),
+      });
+    } catch (error) {
+      showError(error?.message || t('测试失败'));
+    } finally {
+      setTestingTokenIds((prev) => ({ ...prev, [tokenId]: false }));
+    }
+  };
+
   useEffect(() => {
     loadGroups().then();
     loadTokens(1).catch((error) => {
@@ -249,6 +295,8 @@ export const useAdminTokensData = () => {
     handlePageChange,
     handlePageSizeChange,
     handleRow,
+    testingTokenIds,
+    testToken,
     t,
   };
 };

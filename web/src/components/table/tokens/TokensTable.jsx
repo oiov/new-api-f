@@ -52,6 +52,10 @@ const TokensTable = (tokensData) => {
     showUsernameColumn,
     allowSensitiveActions,
     readonly,
+    showTestColumn,
+    testingTokenIds,
+    testToken,
+    forceFullWidth,
   } = tokensData;
 
   // Get all columns
@@ -71,6 +75,9 @@ const TokensTable = (tokensData) => {
       showUsernameColumn,
       allowSensitiveActions,
       readonly,
+      showTestColumn,
+      testingTokenIds,
+      testToken,
     });
   }, [
     t,
@@ -87,6 +94,9 @@ const TokensTable = (tokensData) => {
     showUsernameColumn,
     allowSensitiveActions,
     readonly,
+    showTestColumn,
+    testingTokenIds,
+    testToken,
   ]);
 
   // Handle compact mode by removing fixed positioning
@@ -106,7 +116,11 @@ const TokensTable = (tokensData) => {
     <CardTable
       columns={tableColumns}
       dataSource={tokens}
-      scroll={compactMode ? undefined : { x: 'max-content' }}
+      scroll={
+        compactMode
+          ? undefined
+          : { x: forceFullWidth ? '100%' : 'max-content' }
+      }
       pagination={{
         currentPage: activePage,
         pageSize: pageSize,
