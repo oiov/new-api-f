@@ -35,6 +35,7 @@ type tokenResponseItem struct {
 	Username string `json:"username"`
 	Name     string `json:"name"`
 	Key      string `json:"key"`
+	Source   string `json:"source"`
 	Status   int    `json:"status"`
 }
 
@@ -65,6 +66,9 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	}
 	if err := db.AutoMigrate(&model.User{}); err != nil {
 		t.Fatalf("failed to migrate user table: %v", err)
+	}
+	if err := db.AutoMigrate(&model.Log{}); err != nil {
+		t.Fatalf("failed to migrate log table: %v", err)
 	}
 
 	t.Cleanup(func() {
@@ -285,6 +289,48 @@ func TestSearchTokensSupportsCompositeFilters(t *testing.T) {
 	}
 	if page.Items[0].ID != target.Id {
 		t.Fatalf("expected target token, got %+v", page.Items[0])
+	}
+}
+
+func TestRotateTokenByAdmin_UsesStableTokenSource(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "admin", common.RoleRootUser)
+	seedUser(t, db, 2, "sub-user", common.RoleCommonUser)
+
+	token := seedToken(t, db, 2, model.SubscriptionAggregateAccessTokenName, "rotate-source-key-0001")
+	token.Source = model.TokenSourceSubscriptionAggregateAccess
+	if err := db.Save(token).Error; err != nil {
+		t.Fatalf("failed to update token source: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPost,
+		fmt.Sprintf("/api/token/admin/%d/rotate", token.Id),
+		map[string]any{"notify_user": false},
+		1,
+	)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+
+	RotateTokenByAdmin(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var data map[string]any
+	if err := common.Unmarshal(response.Data, &data); err != nil {
+		t.Fatalf("failed to decode rotate response: %v", err)
+	}
+	if data["action_label"] != "重新签发" {
+		t.Fatalf("expected action label reissue, got %#v", data["action_label"])
+	}
+	if data["token_source"] != "subscription_delivery" {
+		t.Fatalf("expected token source subscription_delivery, got %#v", data["token_source"])
+	}
+	if data["is_system_issued"] != true {
+		t.Fatalf("expected system issued token, got %#v", data["is_system_issued"])
 	}
 }
 

@@ -248,36 +248,26 @@ func RotateTokenByAdmin(c *gin.Context) {
 		notifyUser = *req.NotifyUser
 	}
 
-	notifySent := false
-	notifyError := ""
+	siteNotifySent := false
+	siteNotifyError := ""
+	eventSent := false
+	eventError := ""
 	if notifyUser && token.UserId > 0 {
 		user, userErr := model.GetUserById(token.UserId, false)
 		if userErr != nil {
-			notifyError = userErr.Error()
+			siteNotifyError = userErr.Error()
+			eventError = userErr.Error()
 		} else {
-			title := "管理员已重置你的 API 令牌"
-			content := fmt.Sprintf(
-				"你的令牌 <strong>%s</strong> 已被管理员重置，旧令牌已立即失效。请前往令牌页面获取并替换新的令牌。",
-				strings.TrimSpace(token.Name),
-			)
-			level := "warning"
-			if isSubscriptionDeliveryToken {
-				title = "管理员已重新签发你的 Subscription Access 令牌"
-				content = "你的 Subscription Access 令牌已被管理员重新签发，旧令牌已立即失效。请前往订阅页面查看并复制新的访问令牌。"
-				level = "success"
-			}
-			if _, sendErr := service.SendSiteNotificationToUser(
+			notifyResult := service.SendTokenRotationNotification(
 				user,
 				c.GetInt("id"),
-				title,
-				content,
-				level,
-				false,
-			); sendErr != nil {
-				notifyError = sendErr.Error()
-			} else {
-				notifySent = true
-			}
+				strings.TrimSpace(token.Name),
+				isSubscriptionDeliveryToken,
+			)
+			siteNotifySent = notifyResult.SiteSent
+			siteNotifyError = notifyResult.SiteError
+			eventSent = notifyResult.EventSent
+			eventError = notifyResult.EventError
 		}
 	}
 
@@ -288,20 +278,30 @@ func RotateTokenByAdmin(c *gin.Context) {
 		tokenSource = "subscription_delivery"
 	}
 	model.RecordLog(token.UserId, model.LogTypeSystem, fmt.Sprintf("管理员%s：%s", actionName, strings.TrimSpace(token.Name)))
+	model.RecordLog(c.GetInt("id"), model.LogTypeManage, fmt.Sprintf("管理员%s用户 %d 的令牌：%s (#%d)", actionName, token.UserId, strings.TrimSpace(token.Name), token.Id))
+
+	notifyError := strings.TrimSpace(siteNotifyError)
+	if notifyError == "" {
+		notifyError = strings.TrimSpace(eventError)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"token_id":         token.Id,
-			"user_id":          token.UserId,
-			"token_name":       token.Name,
-			"token_key":        "sk-" + newKey,
-			"token_source":     tokenSource,
-			"notify_sent":      notifySent,
-			"notify_error":     notifyError,
-			"action_label":     actionName,
-			"is_system_issued": isSubscriptionDeliveryToken,
+			"token_id":          token.Id,
+			"user_id":           token.UserId,
+			"token_name":        token.Name,
+			"token_key":         "sk-" + newKey,
+			"token_source":      tokenSource,
+			"notify_sent":       siteNotifySent || eventSent,
+			"notify_error":      notifyError,
+			"site_notify_sent":  siteNotifySent,
+			"site_notify_error": siteNotifyError,
+			"event_sent":        eventSent,
+			"event_error":       eventError,
+			"action_label":      actionName,
+			"is_system_issued":  isSubscriptionDeliveryToken,
 		},
 	})
 }

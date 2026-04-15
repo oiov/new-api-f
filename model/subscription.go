@@ -4161,6 +4161,12 @@ func getOrCreateSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*To
 		Order("id asc").
 		First(&token).Error
 	if err == nil {
+		if normalizeTokenSource(token.Source) != TokenSourceSubscriptionAggregateAccess {
+			if updateErr := tx.Model(&Token{}).Where("id = ?", token.Id).Update("source", TokenSourceSubscriptionAggregateAccess).Error; updateErr != nil {
+				return nil, updateErr
+			}
+			token.Source = TokenSourceSubscriptionAggregateAccess
+		}
 		return &token, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -4174,6 +4180,7 @@ func getOrCreateSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*To
 		UserId:                  userId,
 		Name:                    SubscriptionAggregateAccessTokenName,
 		Key:                     key,
+		Source:                  TokenSourceSubscriptionAggregateAccess,
 		Status:                  common.TokenStatusEnabled,
 		CreatedTime:             common.GetTimestamp(),
 		AccessedTime:            common.GetTimestamp(),
@@ -4207,6 +4214,7 @@ func disableSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token,
 		return nil, err
 	}
 	updates := map[string]any{
+		"source":                     TokenSourceSubscriptionAggregateAccess,
 		"status":                     common.TokenStatusDisabled,
 		"expired_time":               common.GetTimestamp(),
 		"model_limits_enabled":       false,
@@ -4218,6 +4226,7 @@ func disableSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token,
 		return nil, err
 	}
 	token.Status = common.TokenStatusDisabled
+	token.Source = TokenSourceSubscriptionAggregateAccess
 	token.ExpiredTime = updates["expired_time"].(int64)
 	token.ModelLimitsEnabled = false
 	token.ModelLimits = ""
@@ -4285,6 +4294,7 @@ func refreshSubscriptionAggregateAccessTokenTx(tx *gorm.DB, token *Token) error 
 		return nil
 	}
 	updates := map[string]any{
+		"source":                     TokenSourceSubscriptionAggregateAccess,
 		"status":                     common.TokenStatusEnabled,
 		"expired_time":               latestExpiredTime,
 		"unlimited_quota":            true,
@@ -4308,6 +4318,7 @@ func refreshSubscriptionAggregateAccessTokenTx(tx *gorm.DB, token *Token) error 
 		return err
 	}
 	token.Status = common.TokenStatusEnabled
+	token.Source = TokenSourceSubscriptionAggregateAccess
 	token.ExpiredTime = latestExpiredTime
 	token.UnlimitedQuota = true
 	token.Group = "default"

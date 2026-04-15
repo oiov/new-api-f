@@ -17,6 +17,7 @@ type Token struct {
 	UserId                  int            `json:"user_id" gorm:"index"`
 	Username                string         `json:"username,omitempty" gorm:"column:username;->;-:migration"`
 	Key                     string         `json:"key" gorm:"type:char(48);uniqueIndex"`
+	Source                  string         `json:"source" gorm:"type:varchar(64);not null;default:'';index"`
 	SpecificChannelId       int            `json:"specific_channel_id" gorm:"type:int;not null;default:0"`
 	SpecificChannelKeyIndex int            `json:"specific_channel_key_index" gorm:"type:int;not null;default:-1"`
 	Status                  int            `json:"status" gorm:"default:1"`
@@ -37,6 +38,58 @@ type Token struct {
 
 const SubscriptionAggregateAccessTokenName = "Subscription Access"
 
+const (
+	TokenSourceUserCreated                 = "user_created"
+	TokenSourceSubscriptionAggregateAccess = "subscription_aggregate_access"
+	TokenSourceSubscriptionSpecificChannel = "subscription_specific_channel"
+)
+
+func normalizeTokenSource(source string) string {
+	switch strings.TrimSpace(source) {
+	case TokenSourceSubscriptionAggregateAccess:
+		return TokenSourceSubscriptionAggregateAccess
+	case TokenSourceSubscriptionSpecificChannel:
+		return TokenSourceSubscriptionSpecificChannel
+	case TokenSourceUserCreated:
+		return TokenSourceUserCreated
+	default:
+		return ""
+	}
+}
+
+func (token *Token) legacySubscriptionAggregateAccessToken() bool {
+	if token == nil {
+		return false
+	}
+	return token.SpecificChannelId <= 0 && strings.TrimSpace(token.Name) == SubscriptionAggregateAccessTokenName
+}
+
+func (token *Token) legacySubscriptionSpecificChannelToken() bool {
+	if token == nil {
+		return false
+	}
+	if token.SpecificChannelId <= 0 {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(token.Group), "sub_plan_")
+}
+
+func (token *Token) GetEffectiveSource() string {
+	if token == nil {
+		return TokenSourceUserCreated
+	}
+	if source := normalizeTokenSource(token.Source); source != "" {
+		return source
+	}
+	if token.legacySubscriptionAggregateAccessToken() {
+		return TokenSourceSubscriptionAggregateAccess
+	}
+	if token.legacySubscriptionSpecificChannelToken() {
+		return TokenSourceSubscriptionSpecificChannel
+	}
+	return TokenSourceUserCreated
+}
+
 func (token *Token) IsActiveSubscriptionAggregateAccessToken(now int64) bool {
 	if token == nil {
 		return false
@@ -51,17 +104,20 @@ func (token *Token) IsSubscriptionSpecificChannelToken() bool {
 	if token == nil {
 		return false
 	}
-	if token.SpecificChannelId <= 0 {
-		return false
+	if token.GetEffectiveSource() == TokenSourceSubscriptionSpecificChannel {
+		return true
 	}
-	return strings.HasPrefix(strings.TrimSpace(token.Group), "sub_plan_")
+	return token.legacySubscriptionSpecificChannelToken()
 }
 
 func (token *Token) IsSubscriptionAggregateAccessToken() bool {
 	if token == nil {
 		return false
 	}
-	return token.SpecificChannelId <= 0 && strings.TrimSpace(token.Name) == SubscriptionAggregateAccessTokenName
+	if token.GetEffectiveSource() != TokenSourceSubscriptionAggregateAccess {
+		return false
+	}
+	return token.SpecificChannelId <= 0
 }
 
 type AdminTokenSearchFilters struct {

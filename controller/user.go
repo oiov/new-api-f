@@ -226,6 +226,7 @@ func Register(c *gin.Context) {
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
 			Name:               cleanUser.Username + "的初始令牌",
 			Key:                key,
+			Source:             model.TokenSourceUserCreated,
 			CreatedTime:        common.GetTimestamp(),
 			AccessedTime:       common.GetTimestamp(),
 			ExpiredTime:        -1,     // 永不过期

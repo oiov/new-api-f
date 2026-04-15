@@ -61,6 +61,11 @@ const isProtectedSubscriptionAccessToken = (record) => {
   if (!record) {
     return false;
   }
+  if (String(record.source || '').trim() === 'subscription_aggregate_access') {
+    const expiredTime = Number(record.expired_time ?? -1);
+    const now = Math.floor(Date.now() / 1000);
+    return expiredTime === -1 || expiredTime > now;
+  }
   if (Number(record.specific_channel_id || 0) > 0) {
     return false;
   }
@@ -615,22 +620,20 @@ export const getTokensColumns = ({
 
         const summaryParts = [];
         if (claude) {
-          summaryParts.push(
-            `C:${claude.http_code}${claude.ok ? '✓' : '✗'}`,
-          );
+          summaryParts.push(`C:${claude.http_code}${claude.ok ? '✓' : '✗'}`);
         }
         if (responses) {
           summaryParts.push(
             `R:${responses.http_code}${responses.ok ? '✓' : '✗'}`,
           );
         }
-        const summary = summaryParts.join(' / ') || (info?.error ? t('失败') : t('无结果'));
+        const summary =
+          summaryParts.join(' / ') || (info?.error ? t('失败') : t('无结果'));
 
         const content = (
           <div className='flex flex-col gap-1 text-sm'>
             <div>
-              {t('时间')}:{' '}
-              {info?.at ? new Date(info.at).toLocaleString() : '-'}
+              {t('时间')}: {info?.at ? new Date(info.at).toLocaleString() : '-'}
             </div>
             {info?.error ? (
               <div className='text-[var(--semi-color-danger)]'>
@@ -639,9 +642,11 @@ export const getTokensColumns = ({
             ) : null}
             {list.map((item) => (
               <div key={`${tokenId}-${item.kind}-${item.path}`}>
-                {(item.kind || '-').toUpperCase()} {item.path} · {item.model} · {t('HTTP')}{' '}
-                {item.http_code} · {t('通过')}:{item.ok ? '1' : '0'}
-                {item.x_oneapi_request_id ? ` · ${t('请求 ID')}: ${item.x_oneapi_request_id}` : ''}
+                {(item.kind || '-').toUpperCase()} {item.path} · {item.model} ·{' '}
+                {t('HTTP')} {item.http_code} · {t('通过')}:{item.ok ? '1' : '0'}
+                {item.x_oneapi_request_id
+                  ? ` · ${t('请求 ID')}: ${item.x_oneapi_request_id}`
+                  : ''}
               </div>
             ))}
           </div>
@@ -668,7 +673,9 @@ export const getTokensColumns = ({
         const loading = Boolean(testingTokenIds?.[record?.id]);
         return (
           <Tooltip
-            content={t('同时测试 /v1/messages（Claude）与 /v1/responses（Codex），可能产生实际调用与计费')}
+            content={t(
+              '同时测试 /v1/messages（Claude）与 /v1/responses（Codex），可能产生实际调用与计费',
+            )}
           >
             <Button
               size='small'

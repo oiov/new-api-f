@@ -94,6 +94,7 @@ func TestAdminBindSubscriptionWithResult_ProvisionAggregateAccess(t *testing.T) 
 		var aggregateToken Token
 		require.NoError(t, DB.Where("user_id = ? AND name = ?", 1001, SubscriptionAggregateAccessTokenName).First(&aggregateToken).Error)
 		require.Equal(t, common.TokenStatusEnabled, aggregateToken.Status)
+		require.Equal(t, TokenSourceSubscriptionAggregateAccess, aggregateToken.Source)
 		require.Equal(t, -1, aggregateToken.SpecificChannelKeyIndex)
 		require.Equal(t, 0, aggregateToken.SpecificChannelId)
 		require.True(t, aggregateToken.ModelLimitsEnabled)
@@ -129,6 +130,7 @@ func TestEnsureSubscriptionAggregateAccessTokenForUser_DisablesStaleToken(t *tes
 		token, err := EnsureSubscriptionAggregateAccessTokenForUser(1002)
 		require.NoError(t, err)
 		require.NotNil(t, token)
+		require.Equal(t, TokenSourceSubscriptionAggregateAccess, token.Source)
 		require.Equal(t, common.TokenStatusDisabled, token.Status)
 		require.False(t, token.ModelLimitsEnabled)
 		require.Empty(t, token.ModelLimits)
@@ -136,6 +138,7 @@ func TestEnsureSubscriptionAggregateAccessTokenForUser_DisablesStaleToken(t *tes
 		var dbToken Token
 		require.NoError(t, DB.Where("user_id = ? AND name = ?", 1002, SubscriptionAggregateAccessTokenName).First(&dbToken).Error)
 		require.Equal(t, common.TokenStatusDisabled, dbToken.Status)
+		require.Equal(t, TokenSourceSubscriptionAggregateAccess, dbToken.Source)
 		require.False(t, dbToken.ModelLimitsEnabled)
 		require.Empty(t, dbToken.ModelLimits)
 	})

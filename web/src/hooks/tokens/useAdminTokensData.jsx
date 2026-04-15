@@ -290,7 +290,8 @@ export const useAdminTokensData = () => {
         content: (
           <div className='flex flex-col gap-1'>
             <div>
-              {t('用户')}: {record.username || '-'} ({t('用户 ID')}: {record.user_id})
+              {t('用户')}: {record.username || '-'} ({t('用户 ID')}:{' '}
+              {record.user_id})
             </div>
             <div>
               {t('令牌')}: {record.name || '-'} ({t('令牌 ID')}: {tokenId})
@@ -313,7 +314,8 @@ export const useAdminTokensData = () => {
                       {t('模型')}: {item.model || '-'}
                     </div>
                     <div>
-                      {t('HTTP')}: {item.http_code} / {t('通过')}: {item.ok ? '1' : '0'}
+                      {t('HTTP')}: {item.http_code} / {t('通过')}:{' '}
+                      {item.ok ? '1' : '0'}
                     </div>
                     {item.x_oneapi_request_id ? (
                       <div>
@@ -458,8 +460,8 @@ export const useAdminTokensData = () => {
                           key={`${item.token_id}-${r.kind || ''}-${r.path || ''}`}
                           className='text-sm'
                         >
-                          {(r.kind || '-').toUpperCase()} {r.path} · {t('HTTP')} {r.http_code}{' '}
-                          · {t('通过')}:{r.ok ? '1' : '0'}{' '}
+                          {(r.kind || '-').toUpperCase()} {r.path} · {t('HTTP')}{' '}
+                          {r.http_code} · {t('通过')}:{r.ok ? '1' : '0'}{' '}
                           {r.x_oneapi_request_id
                             ? `· ${t('请求 ID')}: ${r.x_oneapi_request_id}`
                             : ''}
@@ -492,7 +494,11 @@ export const useAdminTokensData = () => {
         group: group || '',
       });
       if (res?.data?.success) {
-        showSuccess(t('已更新 {{count}} 个令牌分组', { count: res.data.data?.updated || 0 }));
+        showSuccess(
+          t('已更新 {{count}} 个令牌分组', {
+            count: res.data.data?.updated || 0,
+          }),
+        );
         await loadTokens(1, pageSize);
         setSelectedRowKeys([]);
       } else {
@@ -517,9 +523,11 @@ export const useAdminTokensData = () => {
       showError(t('无效的令牌'));
       return;
     }
+    const source = String(record?.source || '').trim();
     const isSystemIssued =
-      Number(record?.specific_channel_id || 0) <= 0 &&
-      String(record?.name || '').trim() === subscriptionAccessTokenName;
+      source === 'subscription_aggregate_access' ||
+      (Number(record?.specific_channel_id || 0) <= 0 &&
+        String(record?.name || '').trim() === subscriptionAccessTokenName);
     const actionLabel = isSystemIssued ? t('重新签发') : t('重置令牌');
 
     Modal.confirm({
@@ -530,7 +538,9 @@ export const useAdminTokensData = () => {
         ? t(
             '重新签发后，旧的 Subscription Access 令牌会立即失效，用户需要到订阅页面复制新的令牌。',
           )
-        : t('重置后，旧令牌会立即失效，但额度、分组、模型权限与渠道绑定保持不变。'),
+        : t(
+            '重置后，旧令牌会立即失效，但额度、分组、模型权限与渠道绑定保持不变。',
+          ),
       okText: actionLabel,
       cancelText: t('取消'),
       onOk: async () => {
@@ -553,21 +563,26 @@ export const useAdminTokensData = () => {
                   {t('旧令牌已立即失效，请尽快复制并发送新的令牌。')}
                 </div>
                 <div className='text-sm'>
-                  {t('用户')}: {record?.username || '-'} ({t('用户 ID')}: {record?.user_id || '-'})
+                  {t('用户')}: {record?.username || '-'} ({t('用户 ID')}:{' '}
+                  {record?.user_id || '-'})
                 </div>
                 <div className='text-sm'>
                   {t('令牌')}: {record?.name || '-'} ({t('令牌 ID')}: {tokenId})
                 </div>
-                <TextArea value={tokenKey} readOnly autosize={{ minRows: 2, maxRows: 4 }} />
+                <TextArea
+                  value={tokenKey}
+                  readOnly
+                  autosize={{ minRows: 2, maxRows: 4 }}
+                />
                 <div className='flex items-center justify-between gap-3 flex-wrap'>
                   <Text type='secondary'>
-                    {data?.notify_sent
-                      ? t('已向用户发送站内通知')
+                    {data?.site_notify_sent || data?.event_sent
+                      ? t('已触发用户通知事件')
                       : data?.notify_error
-                        ? t('用户通知发送失败：{{message}}', {
+                        ? t('用户通知触发失败：{{message}}', {
                             message: data.notify_error,
                           })
-                        : t('未向用户发送通知')}
+                        : t('未触发用户通知事件')}
                   </Text>
                   <Button
                     theme='solid'

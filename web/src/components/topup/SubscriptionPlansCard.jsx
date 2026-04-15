@@ -545,208 +545,6 @@ const SubscriptionPlansCard = ({
     navigate(getSubscriptionPlanDetailPath(planId));
   };
 
-  const getRecommendedDayPassCount = useCallback((item) => {
-    const remain = Number(item?.usageSummary?.remain || 0);
-    if (remain <= 0) {
-      return 0;
-    }
-    const periodTotal = Number(item?.subscription?.request_count_period_total || 0);
-    if (periodTotal > 0) {
-      return Math.min(remain, periodTotal);
-    }
-    const total = Number(item?.subscription?.request_count_total || 0);
-    const durationValue = Math.max(
-      1,
-      Number(item?.subscription?.duration_value || 1),
-    );
-    const averagePerDay =
-      total > 0 ? Math.max(1, Math.ceil(total / (30 * durationValue))) : 0;
-    if (averagePerDay > 0) {
-      return Math.min(remain, averagePerDay);
-    }
-    return remain;
-  }, []);
-
-  const canGenerateDayPass = useCallback(
-    (item) => {
-      if (!item || item.state !== 'active') return false;
-      if (item.isDerivedDayPass) return false;
-      if (item.resourceType !== 'request_count') return false;
-      if (String(item?.subscription?.duration_unit || '') !== 'month') return false;
-      if (Number(item?.usageSummary?.remain || 0) <= 0) return false;
-      if (activeDayPassPlanMap.has(Number(item?.subscription?.id || 0))) return false;
-      return !activeDerivedDayPassParentIds.has(Number(item?.subscription?.id || 0));
-    },
-    [activeDayPassPlanMap, activeDerivedDayPassParentIds],
-  );
-
-  const openCreateDayPass = useCallback(
-    (item) => {
-      if (!canGenerateDayPass(item)) {
-        showError(t('当前订阅暂不支持生成天卡'));
-        return;
-      }
-      setSelectedDayPassSource(item);
-      setDayPassRequestCount(getRecommendedDayPassCount(item));
-      setDayPassModalVisible(true);
-    },
-    [canGenerateDayPass, getRecommendedDayPassCount, t],
-  );
-
-  const handleCreateDayPass = useCallback(async () => {
-    const subscriptionId = Number(selectedDayPassSource?.subscription?.id || 0);
-    const requestCount = Number(dayPassRequestCount || 0);
-    if (subscriptionId <= 0 || requestCount <= 0) {
-      showError(t('请填写有效的转出次数'));
-      return;
-    }
-    setCreatingDayPass(true);
-    try {
-      const res = await API.post(
-        `/api/subscription/self/subscriptions/${subscriptionId}/day_pass`,
-        {
-          request_count: requestCount,
-        },
-      );
-      if (res.data?.success) {
-        showSuccess(t('天卡已生成'));
-        setDayPassModalVisible(false);
-        setSelectedDayPassSource(null);
-        setDayPassRequestCount(0);
-        await reloadSubscriptionSelf?.();
-      } else {
-        showError(res.data?.message || t('生成天卡失败'));
-      }
-    } catch (error) {
-      showError(error?.response?.data?.message || error?.message || t('生成天卡失败'));
-    } finally {
-      setCreatingDayPass(false);
-    }
-  }, [dayPassRequestCount, reloadSubscriptionSelf, selectedDayPassSource, t]);
-
-  const closeDayPassModal = useCallback(() => {
-    if (creatingDayPass) {
-      return;
-    }
-    setDayPassModalVisible(false);
-    setSelectedDayPassSource(null);
-    setDayPassRequestCount(0);
-  }, [creatingDayPass]);
-
-  const getRecommendedDayPassPlanDays = useCallback(
-    (item, perDayCount) => {
-      const remain = Number(item?.usageSummary?.remain || 0);
-      const remainingDays = Math.max(1, Number(item?.remainingDays || 1));
-      const normalizedPerDayCount = Math.max(1, Number(perDayCount || 1));
-      const maxByCount = Math.max(
-        1,
-        Math.floor(remain / normalizedPerDayCount) || 1,
-      );
-      return Math.max(1, Math.min(remainingDays, 7, maxByCount));
-    },
-    [],
-  );
-
-  const openCreateDayPassPlan = useCallback(
-    (item) => {
-      if (!canGenerateDayPass(item)) {
-        showError(t('当前订阅暂不支持创建拆分计划'));
-        return;
-      }
-      const perDayCount = Math.max(
-        1,
-        Number(getRecommendedDayPassCount(item) || 1),
-      );
-      setSelectedDayPassPlanSource(item);
-      setDayPassPlanRequestCount(perDayCount);
-      setDayPassPlanTotalDays(getRecommendedDayPassPlanDays(item, perDayCount));
-      setDayPassPlanModalVisible(true);
-    },
-    [canGenerateDayPass, getRecommendedDayPassCount, getRecommendedDayPassPlanDays, t],
-  );
-
-  const closeDayPassPlanModal = useCallback(() => {
-    if (creatingDayPassPlan) {
-      return;
-    }
-    setDayPassPlanModalVisible(false);
-    setSelectedDayPassPlanSource(null);
-    setDayPassPlanTotalDays(0);
-    setDayPassPlanRequestCount(0);
-  }, [creatingDayPassPlan]);
-
-  const handleCreateDayPassPlan = useCallback(async () => {
-    const subscriptionId = Number(selectedDayPassPlanSource?.subscription?.id || 0);
-    const totalDays = Number(dayPassPlanTotalDays || 0);
-    const requestCountPerDay = Number(dayPassPlanRequestCount || 0);
-    if (subscriptionId <= 0 || totalDays <= 0 || requestCountPerDay <= 0) {
-      showError(t('请填写有效的拆分计划'));
-      return;
-    }
-    setCreatingDayPassPlan(true);
-    try {
-      const res = await API.post(
-        `/api/subscription/self/subscriptions/${subscriptionId}/day_pass_plan`,
-        {
-          total_days: totalDays,
-          request_count_per_day: requestCountPerDay,
-        },
-      );
-      if (res.data?.success) {
-        showSuccess(t('拆分计划已创建'));
-        closeDayPassPlanModal();
-        await reloadSubscriptionSelf?.();
-      } else {
-        showError(res.data?.message || t('创建拆分计划失败'));
-      }
-    } catch (error) {
-      showError(
-        error?.response?.data?.message ||
-          error?.message ||
-          t('创建拆分计划失败'),
-      );
-    } finally {
-      setCreatingDayPassPlan(false);
-    }
-  }, [
-    closeDayPassPlanModal,
-    dayPassPlanRequestCount,
-    dayPassPlanTotalDays,
-    reloadSubscriptionSelf,
-    selectedDayPassPlanSource,
-    t,
-  ]);
-
-  const handleCancelDayPassPlan = useCallback(
-    async (planId) => {
-      const normalizedPlanId = Number(planId || 0);
-      if (normalizedPlanId <= 0) {
-        return;
-      }
-      setCancellingDayPassPlanId(normalizedPlanId);
-      try {
-        const res = await API.post(
-          `/api/subscription/self/day_pass_plans/${normalizedPlanId}/cancel`,
-        );
-        if (res.data?.success) {
-          showSuccess(t('拆分计划已取消'));
-          await reloadSubscriptionSelf?.();
-        } else {
-          showError(res.data?.message || t('取消拆分计划失败'));
-        }
-      } catch (error) {
-        showError(
-          error?.response?.data?.message ||
-            error?.message ||
-            t('取消拆分计划失败'),
-        );
-      } finally {
-        setCancellingDayPassPlanId(0);
-      }
-    },
-    [reloadSubscriptionSelf, t],
-  );
-
   const copyRestrictionValue = async (event, value) => {
     event.stopPropagation();
     if (!value) {
@@ -1232,6 +1030,208 @@ const SubscriptionPlansCard = ({
     });
     return map;
   }, [normalizedDayPassPlans]);
+
+  const getRecommendedDayPassCount = useCallback((item) => {
+    const remain = Number(item?.usageSummary?.remain || 0);
+    if (remain <= 0) {
+      return 0;
+    }
+    const periodTotal = Number(item?.subscription?.request_count_period_total || 0);
+    if (periodTotal > 0) {
+      return Math.min(remain, periodTotal);
+    }
+    const total = Number(item?.subscription?.request_count_total || 0);
+    const durationValue = Math.max(
+      1,
+      Number(item?.subscription?.duration_value || 1),
+    );
+    const averagePerDay =
+      total > 0 ? Math.max(1, Math.ceil(total / (30 * durationValue))) : 0;
+    if (averagePerDay > 0) {
+      return Math.min(remain, averagePerDay);
+    }
+    return remain;
+  }, []);
+
+  const canGenerateDayPass = useCallback(
+    (item) => {
+      if (!item || item.state !== 'active') return false;
+      if (item.isDerivedDayPass) return false;
+      if (item.resourceType !== 'request_count') return false;
+      if (String(item?.subscription?.duration_unit || '') !== 'month') return false;
+      if (Number(item?.usageSummary?.remain || 0) <= 0) return false;
+      if (activeDayPassPlanMap.has(Number(item?.subscription?.id || 0))) return false;
+      return !activeDerivedDayPassParentIds.has(Number(item?.subscription?.id || 0));
+    },
+    [activeDayPassPlanMap, activeDerivedDayPassParentIds],
+  );
+
+  const openCreateDayPass = useCallback(
+    (item) => {
+      if (!canGenerateDayPass(item)) {
+        showError(t('当前订阅暂不支持生成天卡'));
+        return;
+      }
+      setSelectedDayPassSource(item);
+      setDayPassRequestCount(getRecommendedDayPassCount(item));
+      setDayPassModalVisible(true);
+    },
+    [canGenerateDayPass, getRecommendedDayPassCount, t],
+  );
+
+  const handleCreateDayPass = useCallback(async () => {
+    const subscriptionId = Number(selectedDayPassSource?.subscription?.id || 0);
+    const requestCount = Number(dayPassRequestCount || 0);
+    if (subscriptionId <= 0 || requestCount <= 0) {
+      showError(t('请填写有效的转出次数'));
+      return;
+    }
+    setCreatingDayPass(true);
+    try {
+      const res = await API.post(
+        `/api/subscription/self/subscriptions/${subscriptionId}/day_pass`,
+        {
+          request_count: requestCount,
+        },
+      );
+      if (res.data?.success) {
+        showSuccess(t('天卡已生成'));
+        setDayPassModalVisible(false);
+        setSelectedDayPassSource(null);
+        setDayPassRequestCount(0);
+        await reloadSubscriptionSelf?.();
+      } else {
+        showError(res.data?.message || t('生成天卡失败'));
+      }
+    } catch (error) {
+      showError(error?.response?.data?.message || error?.message || t('生成天卡失败'));
+    } finally {
+      setCreatingDayPass(false);
+    }
+  }, [dayPassRequestCount, reloadSubscriptionSelf, selectedDayPassSource, t]);
+
+  const closeDayPassModal = useCallback(() => {
+    if (creatingDayPass) {
+      return;
+    }
+    setDayPassModalVisible(false);
+    setSelectedDayPassSource(null);
+    setDayPassRequestCount(0);
+  }, [creatingDayPass]);
+
+  const getRecommendedDayPassPlanDays = useCallback(
+    (item, perDayCount) => {
+      const remain = Number(item?.usageSummary?.remain || 0);
+      const remainingDays = Math.max(1, Number(item?.remainingDays || 1));
+      const normalizedPerDayCount = Math.max(1, Number(perDayCount || 1));
+      const maxByCount = Math.max(
+        1,
+        Math.floor(remain / normalizedPerDayCount) || 1,
+      );
+      return Math.max(1, Math.min(remainingDays, 7, maxByCount));
+    },
+    [],
+  );
+
+  const openCreateDayPassPlan = useCallback(
+    (item) => {
+      if (!canGenerateDayPass(item)) {
+        showError(t('当前订阅暂不支持创建拆分计划'));
+        return;
+      }
+      const perDayCount = Math.max(
+        1,
+        Number(getRecommendedDayPassCount(item) || 1),
+      );
+      setSelectedDayPassPlanSource(item);
+      setDayPassPlanRequestCount(perDayCount);
+      setDayPassPlanTotalDays(getRecommendedDayPassPlanDays(item, perDayCount));
+      setDayPassPlanModalVisible(true);
+    },
+    [canGenerateDayPass, getRecommendedDayPassCount, getRecommendedDayPassPlanDays, t],
+  );
+
+  const closeDayPassPlanModal = useCallback(() => {
+    if (creatingDayPassPlan) {
+      return;
+    }
+    setDayPassPlanModalVisible(false);
+    setSelectedDayPassPlanSource(null);
+    setDayPassPlanTotalDays(0);
+    setDayPassPlanRequestCount(0);
+  }, [creatingDayPassPlan]);
+
+  const handleCreateDayPassPlan = useCallback(async () => {
+    const subscriptionId = Number(selectedDayPassPlanSource?.subscription?.id || 0);
+    const totalDays = Number(dayPassPlanTotalDays || 0);
+    const requestCountPerDay = Number(dayPassPlanRequestCount || 0);
+    if (subscriptionId <= 0 || totalDays <= 0 || requestCountPerDay <= 0) {
+      showError(t('请填写有效的拆分计划'));
+      return;
+    }
+    setCreatingDayPassPlan(true);
+    try {
+      const res = await API.post(
+        `/api/subscription/self/subscriptions/${subscriptionId}/day_pass_plan`,
+        {
+          total_days: totalDays,
+          request_count_per_day: requestCountPerDay,
+        },
+      );
+      if (res.data?.success) {
+        showSuccess(t('拆分计划已创建'));
+        closeDayPassPlanModal();
+        await reloadSubscriptionSelf?.();
+      } else {
+        showError(res.data?.message || t('创建拆分计划失败'));
+      }
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          t('创建拆分计划失败'),
+      );
+    } finally {
+      setCreatingDayPassPlan(false);
+    }
+  }, [
+    closeDayPassPlanModal,
+    dayPassPlanRequestCount,
+    dayPassPlanTotalDays,
+    reloadSubscriptionSelf,
+    selectedDayPassPlanSource,
+    t,
+  ]);
+
+  const handleCancelDayPassPlan = useCallback(
+    async (planId) => {
+      const normalizedPlanId = Number(planId || 0);
+      if (normalizedPlanId <= 0) {
+        return;
+      }
+      setCancellingDayPassPlanId(normalizedPlanId);
+      try {
+        const res = await API.post(
+          `/api/subscription/self/day_pass_plans/${normalizedPlanId}/cancel`,
+        );
+        if (res.data?.success) {
+          showSuccess(t('拆分计划已取消'));
+          await reloadSubscriptionSelf?.();
+        } else {
+          showError(res.data?.message || t('取消拆分计划失败'));
+        }
+      } catch (error) {
+        showError(
+          error?.response?.data?.message ||
+            error?.message ||
+            t('取消拆分计划失败'),
+        );
+      } finally {
+        setCancellingDayPassPlanId(0);
+      }
+    },
+    [reloadSubscriptionSelf, t],
+  );
 
   const normalizedManualDeliveryOrders = useMemo(() => {
     return (manualDeliveryOrders || []).map((item, index) => {
