@@ -1324,7 +1324,8 @@ const CheckinAdminPage = () => {
         title: t('错误信息'),
         dataIndex: 'error_message',
         key: 'error_message',
-        render: (_, record) => record?.error_message || '-',
+        width: 220,
+        render: (_, record) => renderEllipsisText(record?.error_message, 190),
       },
     ],
     [t],
@@ -1486,18 +1487,23 @@ const CheckinAdminPage = () => {
       {
         title: t('用户信息'),
         key: 'user',
+        width: 260,
         render: (_, record) => (
           <div>
             <div className='font-medium text-semi-color-text-0'>
-              {record?.display_name || record?.username || '-'}
+              {renderEllipsisText(
+                record?.display_name || record?.username || '-',
+                220,
+              )}
             </div>
             <div className='text-xs text-semi-color-text-2'>
               #{record?.user_id || '-'}
-              {record?.username ? ` · ${record.username}` : ''}
+              {record?.username ? ' · ' : ''}
+              {record?.username ? renderEllipsisText(record.username, 180) : ''}
             </div>
             {record?.email ? (
               <div className='text-xs text-semi-color-text-2'>
-                {record.email}
+                {renderEllipsisText(record.email, 220)}
               </div>
             ) : null}
           </div>
