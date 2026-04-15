@@ -29,6 +29,7 @@ import {
 import { Key, Shield } from 'lucide-react';
 import CardPro from '../../common/ui/CardPro';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
+import SecureVerificationModal from '../../common/modals/SecureVerificationModal';
 import TokensTable from '../tokens/TokensTable';
 import AdminTokensFilters from './AdminTokensFilters';
 import { useAdminTokensData } from '../../../hooks/tokens/useAdminTokensData';
@@ -97,9 +98,12 @@ const AdminTokensBatchActions = ({
       content: (
         <div className='flex flex-col gap-2'>
           <div className='text-sm text-[var(--semi-color-text-2)]'>
-            {t('将对选中的 {{count}} 个令牌更新分组字段。该操作可能影响模型可用性与分发策略。', {
-              count: selectedCount,
-            })}
+            {t(
+              '将对选中的 {{count}} 个令牌更新分组字段。该操作可能影响模型可用性与分发策略。',
+              {
+                count: selectedCount,
+              },
+            )}
           </div>
           <Select
             placeholder={t('请选择分组')}
@@ -184,11 +188,17 @@ const AdminTokensPage = () => {
         return;
       }
       const items = Array.isArray(res.data.data) ? res.data.data : [];
-      const found = items.find((item) => item?.key === CCSWITCH_DEFAULTS_OPTION_KEY);
+      const found = items.find(
+        (item) => item?.key === CCSWITCH_DEFAULTS_OPTION_KEY,
+      );
       const value = String(found?.value || '').trim();
       setCCSwitchDefaultsJson(value || builtinDefaultsText);
     } catch (error) {
-      showError(error?.response?.data?.message || error?.message || tokensData.t('加载配置失败'));
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          tokensData.t('加载配置失败'),
+      );
     } finally {
       setCCSwitchDefaultsLoading(false);
     }
@@ -221,7 +231,11 @@ const AdminTokensPage = () => {
         showError(res?.data?.message || tokensData.t('保存失败'));
       }
     } catch (error) {
-      showError(error?.response?.data?.message || error?.message || tokensData.t('保存失败'));
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          tokensData.t('保存失败'),
+      );
     } finally {
       setCCSwitchDefaultsSaving(false);
     }
@@ -242,7 +256,9 @@ const AdminTokensPage = () => {
         <div className='flex flex-col gap-3 w-full'>
           <div className='flex items-center text-[var(--semi-color-text-2)] text-sm gap-2 w-full'>
             <Key size={14} />
-            <span>{tokensData.t('查看所有用户令牌的状态、额度和使用情况')}</span>
+            <span>
+              {tokensData.t('查看所有用户令牌的状态、额度和使用情况')}
+            </span>
           </div>
 
           <AdminTokensFilters
@@ -306,6 +322,18 @@ const AdminTokensPage = () => {
         forceFullWidth={true}
       />
 
+      <SecureVerificationModal
+        visible={tokensData.isSecureVerificationModalVisible}
+        verificationMethods={tokensData.secureVerificationMethods}
+        verificationState={tokensData.secureVerificationState}
+        onVerify={tokensData.executeSecureVerification}
+        onCancel={tokensData.cancelSecureVerification}
+        onCodeChange={tokensData.setSecureVerificationCode}
+        onMethodSwitch={tokensData.switchSecureVerificationMethod}
+        title={tokensData.secureVerificationState?.title}
+        description={tokensData.secureVerificationState?.description}
+      />
+
       <Modal
         title={tokensData.t('配置 /console/token 默认导入参数')}
         visible={ccswitchDefaultsVisible}
@@ -318,7 +346,9 @@ const AdminTokensPage = () => {
       >
         <div className='flex flex-col gap-3'>
           <div className='text-sm text-[var(--semi-color-text-2)]'>
-            {tokensData.t('该配置会通过 /api/status 下发到前端，并在 CCSwitch 导入弹窗中作为默认值回显。')}
+            {tokensData.t(
+              '该配置会通过 /api/status 下发到前端，并在 CCSwitch 导入弹窗中作为默认值回显。',
+            )}
           </div>
           <Space spacing='tight' wrap>
             <Button

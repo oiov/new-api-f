@@ -153,6 +153,9 @@ export const useSecureVerification = ({
         return result;
       } catch (error) {
         showError(error.message || t('验证失败，请重试'));
+        if (error && typeof error === 'object') {
+          error.secureVerificationHandled = true;
+        }
         onError?.(error);
         throw error;
       } finally {

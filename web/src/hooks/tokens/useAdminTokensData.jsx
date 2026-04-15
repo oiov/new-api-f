@@ -29,6 +29,37 @@ import {
 } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useSecureVerification } from '../common/useSecureVerification';
+
+const parsePersistedLastTestInfo = (token) => {
+  const tokenId = token?.id;
+  if (!tokenId) {
+    return null;
+  }
+  const lastTestAt = Number(token?.last_test_at || 0);
+  const summaryText = String(token?.last_test_summary || '').trim();
+  if (!lastTestAt || !summaryText) {
+    return null;
+  }
+  try {
+    const summary = JSON.parse(summaryText);
+    return {
+      at: lastTestAt * 1000,
+      ok: Boolean(token?.last_test_ok),
+      error: String(summary?.error || ''),
+      results: Array.isArray(summary?.results) ? summary.results : [],
+      mode: String(summary?.mode || ''),
+    };
+  } catch (error) {
+    return {
+      at: lastTestAt * 1000,
+      ok: Boolean(token?.last_test_ok),
+      error: '',
+      results: [],
+      mode: '',
+    };
+  }
+};
 
 export const useAdminTokensData = () => {
   const { t } = useTranslation();
@@ -60,6 +91,16 @@ export const useAdminTokensData = () => {
     start_timestamp: '',
     end_timestamp: '',
   });
+  const {
+    isModalVisible,
+    verificationMethods,
+    verificationState,
+    withVerification,
+    executeVerification,
+    cancelVerification,
+    setVerificationCode,
+    switchVerificationMethod,
+  } = useSecureVerification();
 
   const formInitValues = {
     username: '',
@@ -100,7 +141,18 @@ export const useAdminTokensData = () => {
       ...token,
       key: token.id,
     }));
+    const persistedLastTestMap = {};
+    items.forEach((token) => {
+      const info = parsePersistedLastTestInfo(token);
+      if (info) {
+        persistedLastTestMap[token.id] = info;
+      }
+    });
     setTokens(items);
+    setLastTestResultsById((prev) => ({
+      ...prev,
+      ...persistedLastTestMap,
+    }));
     setTokenCount(payload.total || 0);
     setActivePage(payload.page || 1);
     setPageSize(payload.page_size || ITEMS_PER_PAGE);
@@ -277,10 +329,11 @@ export const useAdminTokensData = () => {
       setLastTestResultsById((prev) => ({
         ...prev,
         [tokenId]: {
-          at: Date.now(),
+          at: Number(data?.last_test_at || 0) * 1000 || Date.now(),
           ok: allOk,
           error: '',
           results,
+          mode: String(data?.mode || 'both'),
         },
       }));
 
@@ -375,10 +428,11 @@ export const useAdminTokensData = () => {
             setLastTestResultsById((prev) => ({
               ...prev,
               [current]: {
-                at: Date.now(),
+                at: Number(payload?.last_test_at || 0) * 1000 || Date.now(),
                 ok: allOk,
                 error: '',
                 results: list,
+                mode: String(payload?.mode || 'both'),
               },
             }));
           } else {
@@ -546,67 +600,89 @@ export const useAdminTokensData = () => {
       cancelText: t('取消'),
       onOk: async () => {
         try {
-          const res = await API.post(`/api/token/admin/${tokenId}/rotate`, {
-            notify_user: isSystemIssued,
-          });
-          if (!res?.data?.success) {
-            showError(res?.data?.message || t('操作失败'));
+          await withVerification(
+            async () => {
+              const res = await API.post(`/api/token/admin/${tokenId}/rotate`, {
+                notify_user: isSystemIssued,
+              });
+              if (!res?.data?.success) {
+                showError(res?.data?.message || t('操作失败'));
+                return res?.data || null;
+              }
+              const data = res.data?.data || {};
+              const tokenKey = String(data?.token_key || '').trim();
+              Modal.info({
+                title: t('{{action}}成功', { action: actionLabel }),
+                size: 'small',
+                content: (
+                  <div className='flex flex-col gap-3'>
+                    <div className='text-sm text-[var(--semi-color-text-2)]'>
+                      {t('旧令牌已立即失效，请尽快复制并发送新的令牌。')}
+                    </div>
+                    <div className='text-sm'>
+                      {t('用户')}: {record?.username || '-'} ({t('用户 ID')}:{' '}
+                      {record?.user_id || '-'})
+                    </div>
+                    <div className='text-sm'>
+                      {t('令牌')}: {record?.name || '-'} ({t('令牌 ID')}:{' '}
+                      {tokenId})
+                    </div>
+                    <TextArea
+                      value={tokenKey}
+                      readOnly
+                      autosize={{ minRows: 2, maxRows: 4 }}
+                    />
+                    <div className='flex items-center justify-between gap-3 flex-wrap'>
+                      <Text type='secondary'>
+                        {data?.site_notify_sent || data?.event_sent
+                          ? t('已触发用户通知事件')
+                          : data?.notify_error
+                            ? t('用户通知触发失败：{{message}}', {
+                                message: data.notify_error,
+                              })
+                            : t('未触发用户通知事件')}
+                      </Text>
+                      <Button
+                        theme='solid'
+                        type='primary'
+                        size='small'
+                        onClick={async () => {
+                          if (await copy(tokenKey)) {
+                            showSuccess(t('新令牌已复制'));
+                            return;
+                          }
+                          showError(t('复制失败'));
+                        }}
+                      >
+                        {t('复制新令牌')}
+                      </Button>
+                    </div>
+                  </div>
+                ),
+              });
+              showSuccess(t('{{action}}成功', { action: actionLabel }));
+              await refreshCurrentPage();
+              return res?.data || null;
+            },
+            {
+              title: actionLabel,
+              description: isSystemIssued
+                ? t(
+                    '为了保护账户安全，请先完成安全验证。验证通过后将重新签发该访问令牌，并使旧令牌立即失效。',
+                  )
+                : t(
+                    '为了保护账户安全，请先完成安全验证。验证通过后将重置该用户令牌，并使旧令牌立即失效。',
+                  ),
+              preferredMethod: 'passkey',
+            },
+          );
+        } catch (error) {
+          if (error?.secureVerificationHandled) {
             return;
           }
-          const data = res.data?.data || {};
-          const tokenKey = String(data?.token_key || '').trim();
-          Modal.info({
-            title: t('{{action}}成功', { action: actionLabel }),
-            size: 'small',
-            content: (
-              <div className='flex flex-col gap-3'>
-                <div className='text-sm text-[var(--semi-color-text-2)]'>
-                  {t('旧令牌已立即失效，请尽快复制并发送新的令牌。')}
-                </div>
-                <div className='text-sm'>
-                  {t('用户')}: {record?.username || '-'} ({t('用户 ID')}:{' '}
-                  {record?.user_id || '-'})
-                </div>
-                <div className='text-sm'>
-                  {t('令牌')}: {record?.name || '-'} ({t('令牌 ID')}: {tokenId})
-                </div>
-                <TextArea
-                  value={tokenKey}
-                  readOnly
-                  autosize={{ minRows: 2, maxRows: 4 }}
-                />
-                <div className='flex items-center justify-between gap-3 flex-wrap'>
-                  <Text type='secondary'>
-                    {data?.site_notify_sent || data?.event_sent
-                      ? t('已触发用户通知事件')
-                      : data?.notify_error
-                        ? t('用户通知触发失败：{{message}}', {
-                            message: data.notify_error,
-                          })
-                        : t('未触发用户通知事件')}
-                  </Text>
-                  <Button
-                    theme='solid'
-                    type='primary'
-                    size='small'
-                    onClick={async () => {
-                      if (await copy(tokenKey)) {
-                        showSuccess(t('新令牌已复制'));
-                        return;
-                      }
-                      showError(t('复制失败'));
-                    }}
-                  >
-                    {t('复制新令牌')}
-                  </Button>
-                </div>
-              </div>
-            ),
-          });
-          showSuccess(t('{{action}}成功', { action: actionLabel }));
-          await refreshCurrentPage();
-        } catch (error) {
-          showError(error?.message || t('操作失败'));
+          showError(
+            error?.response?.data?.message || error?.message || t('操作失败'),
+          );
         }
       },
     });
@@ -647,6 +723,13 @@ export const useAdminTokensData = () => {
     batchTestTokens,
     batchUpdateGroup,
     rotateToken,
+    isSecureVerificationModalVisible: isModalVisible,
+    secureVerificationMethods: verificationMethods,
+    secureVerificationState: verificationState,
+    executeSecureVerification: executeVerification,
+    cancelSecureVerification: cancelVerification,
+    setSecureVerificationCode: setVerificationCode,
+    switchSecureVerificationMethod: switchVerificationMethod,
     t,
   };
 };

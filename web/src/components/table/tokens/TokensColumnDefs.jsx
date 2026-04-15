@@ -88,6 +88,30 @@ function renderTimestamp(timestamp) {
   return <>{timestamp2string(timestamp)}</>;
 }
 
+const getPersistedLastTestInfo = (record) => {
+  const lastTestAt = Number(record?.last_test_at || 0);
+  const summaryText = String(record?.last_test_summary || '').trim();
+  if (!lastTestAt || !summaryText) {
+    return null;
+  }
+  try {
+    const summary = JSON.parse(summaryText);
+    return {
+      at: lastTestAt * 1000,
+      ok: Boolean(record?.last_test_ok),
+      error: String(summary?.error || ''),
+      results: Array.isArray(summary?.results) ? summary.results : [],
+    };
+  } catch (error) {
+    return {
+      at: lastTestAt * 1000,
+      ok: Boolean(record?.last_test_ok),
+      error: '',
+      results: [],
+    };
+  }
+};
+
 // Render status column only (no usage)
 const renderStatus = (text, record, t) => {
   const enabled = text === 1;
@@ -633,7 +657,9 @@ export const getTokensColumns = ({
       width: 160,
       render: (_, record) => {
         const tokenId = record?.id;
-        const info = tokenId ? lastTestResultsById?.[tokenId] : null;
+        const info =
+          (tokenId ? lastTestResultsById?.[tokenId] : null) ||
+          getPersistedLastTestInfo(record);
         if (!info) {
           return (
             <span className='text-xs text-[var(--semi-color-text-2)]'>
