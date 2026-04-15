@@ -31,6 +31,7 @@ import SubscriptionMigrationModal from './modals/SubscriptionMigrationModal';
 import SubscriptionConsumeLogsModal from './modals/SubscriptionConsumeLogsModal';
 import SubscriptionConversionRequestsPanel from './SubscriptionConversionRequestsPanel';
 import ManualDeliveryOrdersPanel from './ManualDeliveryOrdersPanel';
+import SubscriptionDayPassPlansPanel from './SubscriptionDayPassPlansPanel';
 import { useSubscriptionsData } from '../../../hooks/subscriptions/useSubscriptionsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -230,6 +231,10 @@ const SubscriptionsPage = () => {
 
         <TabPane tab={t('人工发放订单')} itemKey='manual-orders'>
           <ManualDeliveryOrdersPanel t={t} />
+        </TabPane>
+
+        <TabPane tab={t('天卡拆分计划')} itemKey='day-pass-plans'>
+          <SubscriptionDayPassPlansPanel t={t} />
         </TabPane>
       </Tabs>
     </>

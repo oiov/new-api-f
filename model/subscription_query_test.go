@@ -30,7 +30,7 @@ func withSubscriptionQueryTestDB(t *testing.T, run func()) {
 	LOG_DB = db
 	common.UsingSQLite = true
 
-	require.NoError(t, db.AutoMigrate(&User{}, &Channel{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &SubscriptionPreConsumeRecord{}, &Token{}, &Log{}, &EcomAgentAccount{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &Channel{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &TopUp{}, &UserSubscription{}, &SubscriptionDayPassPlan{}, &SubscriptionPreConsumeRecord{}, &Token{}, &Log{}, &EcomAgentAccount{}))
 
 	t.Cleanup(func() {
 		DB = oldDB
@@ -520,6 +520,426 @@ func TestCountUserPlanPurchases_ExcludesRejectedManualOrders(t *testing.T) {
 		count, err := CountUserPlanPurchases(32, 503)
 		require.NoError(t, err)
 		require.EqualValues(t, 2, count)
+	})
+}
+
+func TestCountUserPlanPurchases_ExcludesDerivedDayPass(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       34,
+			Username: "derived_day_pass_count_user",
+			AffCode:  "derived_day_pass_count_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                       811,
+			UserId:                   34,
+			PlanId:                   504,
+			Status:                   "active",
+			StartTime:                now - 3600,
+			EndTime:                  now + 86400,
+			CreatedAt:                now,
+			UpdatedAt:                now,
+			Source:                   SubscriptionSourceOrder,
+			ResourceType:             SubscriptionResourceRequestCount,
+			RequestCountTotal:        100,
+			ParentUserSubscriptionId: 0,
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                       812,
+			UserId:                   34,
+			PlanId:                   504,
+			Status:                   "active",
+			StartTime:                now - 1800,
+			EndTime:                  now + 3600,
+			CreatedAt:                now,
+			UpdatedAt:                now,
+			Source:                   SubscriptionSourceDerivedDayPass,
+			ResourceType:             SubscriptionResourceRequestCount,
+			RequestCountTotal:        10,
+			ParentUserSubscriptionId: 811,
+		}).Error)
+
+		count, err := CountUserPlanPurchases(34, 504)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, count)
+	})
+}
+
+func TestCreateDerivedDayPassFromSubscription(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       35,
+			Username: "derived_day_pass_user",
+			AffCode:  "derived_day_pass_aff",
+			Group:    "vip",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:                505,
+			Title:             "monthly-request-plan",
+			DurationUnit:      SubscriptionDurationMonth,
+			DurationValue:     1,
+			Enabled:           true,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 300,
+			UpgradeGroup:      "vip",
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                      813,
+			UserId:                  35,
+			PlanId:                  505,
+			Status:                  "active",
+			StartTime:               now - 3600,
+			EndTime:                 now + 20*24*3600,
+			CreatedAt:               now,
+			UpdatedAt:               now,
+			Source:                  SubscriptionSourceOrder,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       300,
+			RequestCountUsed:        120,
+			ResetPeriod:             SubscriptionResetNever,
+			AggregateEnabled:        true,
+			SpecificChannelId:       9,
+			SpecificChannelKeyIndex: 2,
+			UpgradeGroup:            "vip",
+		}).Error)
+
+		result, err := CreateDerivedDayPassFromSubscription(35, 813, 50)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.ParentSubscription)
+		require.NotNil(t, result.DayPass)
+		require.EqualValues(t, 50, result.TransferredCount)
+		require.Equal(t, SubscriptionSourceDerivedDayPass, result.DayPass.Source)
+		require.EqualValues(t, 813, result.DayPass.ParentUserSubscriptionId)
+		require.EqualValues(t, 50, result.DayPass.RequestCountTotal)
+		require.EqualValues(t, 170, result.ParentSubscription.RequestCountUsed)
+		require.EqualValues(t, 130, result.ParentRemainCount)
+		require.EqualValues(t, 9, result.DayPass.SpecificChannelId)
+		require.EqualValues(t, 2, result.DayPass.SpecificChannelKeyIndex)
+
+		var storedChild UserSubscription
+		require.NoError(t, DB.Where("id = ?", result.DayPass.Id).First(&storedChild).Error)
+		require.Equal(t, SubscriptionDurationDay, storedChild.DurationUnit)
+		require.Equal(t, SubscriptionResetNever, storedChild.ResetPeriod)
+	})
+}
+
+func TestPreConsumeUserSubscription_PrefersDerivedDayPass(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       36,
+			Username: "derived_day_pass_priority_user",
+			AffCode:  "derived_day_pass_priority_aff",
+			Group:    "vip",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:                506,
+			Title:             "priority-plan",
+			DurationUnit:      SubscriptionDurationMonth,
+			DurationValue:     1,
+			Enabled:           true,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 500,
+			UpgradeGroup:      "vip",
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                      814,
+			UserId:                  36,
+			PlanId:                  506,
+			Status:                  "active",
+			StartTime:               now - 3600,
+			EndTime:                 now + 30*24*3600,
+			CreatedAt:               now,
+			UpdatedAt:               now,
+			Source:                  SubscriptionSourceOrder,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       500,
+			RequestCountUsed:        10,
+			ResetPeriod:             SubscriptionResetNever,
+			AggregateEnabled:        true,
+			SpecificChannelId:       11,
+			SpecificChannelKeyIndex: 0,
+			UpgradeGroup:            "vip",
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                       815,
+			UserId:                   36,
+			PlanId:                   506,
+			ParentUserSubscriptionId: 814,
+			Status:                   "active",
+			StartTime:                now - 600,
+			EndTime:                  now + 3600,
+			CreatedAt:                now,
+			UpdatedAt:                now,
+			Source:                   SubscriptionSourceDerivedDayPass,
+			ResourceType:             SubscriptionResourceRequestCount,
+			RequestCountTotal:        20,
+			RequestCountUsed:         0,
+			ResetPeriod:              SubscriptionResetNever,
+			AggregateEnabled:         true,
+			SpecificChannelId:        11,
+			SpecificChannelKeyIndex:  0,
+			UpgradeGroup:             "vip",
+		}).Error)
+
+		result, err := PreConsumeUserSubscription("derived-day-pass-priority", 36, "", "", 0, 1)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.EqualValues(t, 815, result.UserSubscriptionId)
+
+		var child UserSubscription
+		require.NoError(t, DB.Where("id = ?", 815).First(&child).Error)
+		require.EqualValues(t, 1, child.RequestCountUsed)
+
+		var parent UserSubscription
+		require.NoError(t, DB.Where("id = ?", 814).First(&parent).Error)
+		require.EqualValues(t, 10, parent.RequestCountUsed)
+	})
+}
+
+func TestCreateDerivedDayPassPlan(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       37,
+			Username: "derived_day_pass_plan_user",
+			AffCode:  "derived_day_pass_plan_aff",
+			Group:    "vip",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:                507,
+			Title:             "batch-day-pass-parent",
+			DurationUnit:      SubscriptionDurationMonth,
+			DurationValue:     1,
+			Enabled:           true,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 600,
+			UpgradeGroup:      "vip",
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                816,
+			UserId:            37,
+			PlanId:            507,
+			Status:            "active",
+			StartTime:         now - 3600,
+			EndTime:           now + 25*24*3600,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+			Source:            SubscriptionSourceOrder,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 600,
+			RequestCountUsed:  100,
+			ResetPeriod:       SubscriptionResetNever,
+			AggregateEnabled:  true,
+			UpgradeGroup:      "vip",
+		}).Error)
+
+		result, err := CreateDerivedDayPassPlan(37, 816, 5, 20)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Plan)
+		require.Equal(t, SubscriptionDayPassPlanStatusActive, result.Plan.Status)
+		require.EqualValues(t, 5, result.Plan.TotalDays)
+		require.EqualValues(t, 20, result.Plan.RequestCountPerDay)
+		require.EqualValues(t, 100, result.Plan.TotalRequestCount)
+		require.EqualValues(t, 500, result.ParentRemainCount)
+		require.NotZero(t, result.Plan.NextGenerateAt)
+		require.Equal(t, "Asia/Shanghai", result.Plan.Timezone)
+
+		var stored SubscriptionDayPassPlan
+		require.NoError(t, DB.Where("id = ?", result.Plan.Id).First(&stored).Error)
+		require.EqualValues(t, 0, stored.GeneratedDays)
+		require.EqualValues(t, 0, stored.GeneratedRequestCount)
+	})
+}
+
+func TestProcessDueDerivedDayPassPlans(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       38,
+			Username: "derived_day_pass_plan_process_user",
+			AffCode:  "derived_day_pass_plan_process_aff",
+			Group:    "vip",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:                508,
+			Title:             "batch-day-pass-process-parent",
+			DurationUnit:      SubscriptionDurationMonth,
+			DurationValue:     1,
+			Enabled:           true,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 300,
+			UpgradeGroup:      "vip",
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                      817,
+			UserId:                  38,
+			PlanId:                  508,
+			Status:                  "active",
+			StartTime:               now - 3600,
+			EndTime:                 now + 20*24*3600,
+			CreatedAt:               now,
+			UpdatedAt:               now,
+			Source:                  SubscriptionSourceOrder,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       300,
+			RequestCountUsed:        10,
+			ResetPeriod:             SubscriptionResetNever,
+			AggregateEnabled:        true,
+			SpecificChannelId:       13,
+			SpecificChannelKeyIndex: 3,
+			UpgradeGroup:            "vip",
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionDayPassPlan{
+			Id:                       901,
+			UserId:                   38,
+			ParentUserSubscriptionId: 817,
+			Status:                   SubscriptionDayPassPlanStatusActive,
+			Mode:                     SubscriptionDayPassPlanModeFixedDaily,
+			TotalDays:                1,
+			GeneratedDays:            0,
+			RequestCountPerDay:       30,
+			TotalRequestCount:        30,
+			GeneratedRequestCount:    0,
+			Timezone:                 "Asia/Shanghai",
+			StartDate:                formatSubscriptionPlanDate(now),
+			EndDate:                  formatSubscriptionPlanDate(now),
+			NextGenerateAt:           now - 10,
+			LastGenerateAt:           0,
+		}).Error)
+
+		processed, err := ProcessDueDerivedDayPassPlans(10)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, processed)
+
+		var child UserSubscription
+		require.NoError(t, DB.Where("parent_user_subscription_id = ? AND source = ?", 817, SubscriptionSourceDerivedDayPass).First(&child).Error)
+		require.EqualValues(t, 30, child.RequestCountTotal)
+		require.EqualValues(t, 13, child.SpecificChannelId)
+		require.EqualValues(t, 3, child.SpecificChannelKeyIndex)
+
+		var parent UserSubscription
+		require.NoError(t, DB.Where("id = ?", 817).First(&parent).Error)
+		require.EqualValues(t, 40, parent.RequestCountUsed)
+
+		var plan SubscriptionDayPassPlan
+		require.NoError(t, DB.Where("id = ?", 901).First(&plan).Error)
+		require.Equal(t, SubscriptionDayPassPlanStatusCompleted, plan.Status)
+		require.EqualValues(t, 1, plan.GeneratedDays)
+		require.EqualValues(t, 30, plan.GeneratedRequestCount)
+		require.EqualValues(t, 0, plan.NextGenerateAt)
+	})
+}
+
+func TestGetAdminSubscriptionDayPassPlans(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       39,
+			Username: "admin_day_pass_plan_user",
+			AffCode:  "admin_day_pass_plan_aff",
+			Group:    "vip",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                818,
+			UserId:            39,
+			PlanId:            509,
+			Status:            "active",
+			StartTime:         now - 3600,
+			EndTime:           now + 86400,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 500,
+			RequestCountUsed:  100,
+			Source:            SubscriptionSourceOrder,
+		}).Error)
+
+		require.NoError(t, DB.Create(&SubscriptionDayPassPlan{
+			Id:                       902,
+			UserId:                   39,
+			ParentUserSubscriptionId: 818,
+			Status:                   SubscriptionDayPassPlanStatusActive,
+			Mode:                     SubscriptionDayPassPlanModeFixedDaily,
+			TotalDays:                5,
+			RequestCountPerDay:       20,
+			TotalRequestCount:        100,
+			Timezone:                 "Asia/Shanghai",
+			StartDate:                "2026-04-16",
+			EndDate:                  "2026-04-20",
+			NextGenerateAt:           now + 3600,
+		}).Error)
+
+		items, total, err := GetAdminSubscriptionDayPassPlans(&common.PageInfo{Page: 1, PageSize: 10}, "admin_day_pass_plan_user", "active")
+		require.NoError(t, err)
+		require.EqualValues(t, 1, total)
+		require.Len(t, items, 1)
+		require.Equal(t, "admin_day_pass_plan_user", items[0].Username)
+		require.Equal(t, "vip", items[0].UserGroup)
+		require.NotNil(t, items[0].ParentSubscription)
+		require.EqualValues(t, 818, items[0].ParentSubscription.Id)
+	})
+}
+
+func TestAdminCancelDerivedDayPassPlan(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&SubscriptionDayPassPlan{
+			Id:                       903,
+			UserId:                   40,
+			ParentUserSubscriptionId: 819,
+			Status:                   SubscriptionDayPassPlanStatusActive,
+			Mode:                     SubscriptionDayPassPlanModeFixedDaily,
+			TotalDays:                3,
+			RequestCountPerDay:       15,
+			TotalRequestCount:        45,
+			Timezone:                 "Asia/Shanghai",
+			StartDate:                "2026-04-16",
+			EndDate:                  "2026-04-18",
+			NextGenerateAt:           now + 1800,
+		}).Error)
+
+		result, err := AdminCancelDerivedDayPassPlan(903)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, SubscriptionDayPassPlanStatusCancelled, result.Status)
+		require.EqualValues(t, 0, result.NextGenerateAt)
+
+		var stored SubscriptionDayPassPlan
+		require.NoError(t, DB.Where("id = ?", 903).First(&stored).Error)
+		require.Equal(t, SubscriptionDayPassPlanStatusCancelled, stored.Status)
+		require.EqualValues(t, 0, stored.NextGenerateAt)
 	})
 }
 

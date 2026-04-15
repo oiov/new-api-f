@@ -21,8 +21,17 @@ type SubscriptionPlanDTO struct {
 }
 
 type BillingPreferenceRequest struct {
-	BillingPreference      string `json:"billing_preference"`
-	PreferredSubscriptionId int   `json:"preferred_subscription_id"`
+	BillingPreference       string `json:"billing_preference"`
+	PreferredSubscriptionId int    `json:"preferred_subscription_id"`
+}
+
+type CreateDerivedDayPassRequest struct {
+	RequestCount int64 `json:"request_count"`
+}
+
+type CreateDerivedDayPassPlanRequest struct {
+	TotalDays          int   `json:"total_days"`
+	RequestCountPerDay int64 `json:"request_count_per_day"`
 }
 
 func applySubscriptionPlanDisplayFields(plan *model.SubscriptionPlan, now int64) {
@@ -224,14 +233,74 @@ func GetSubscriptionSelf(c *gin.Context) {
 	if err != nil {
 		manualDeliveryOrders = []model.SubscriptionManualDeliverySummary{}
 	}
+	dayPassPlans, err := model.GetUserDerivedDayPassPlans(userId)
+	if err != nil {
+		dayPassPlans = []model.SubscriptionDayPassPlanSummary{}
+	}
 
 	common.ApiSuccess(c, gin.H{
-		"billing_preference":       pref,
+		"billing_preference":        pref,
 		"preferred_subscription_id": preferredSubscriptionId,
-		"subscriptions":            activeSubscriptions, // all active subscriptions
-		"all_subscriptions":        allSubscriptions,    // all subscriptions including expired
-		"manual_delivery_orders":   manualDeliveryOrders,
+		"subscriptions":             activeSubscriptions, // all active subscriptions
+		"all_subscriptions":         allSubscriptions,    // all subscriptions including expired
+		"manual_delivery_orders":    manualDeliveryOrders,
+		"day_pass_plans":            dayPassPlans,
 	})
+}
+
+func CreateSelfSubscriptionDayPass(c *gin.Context) {
+	userId := c.GetInt("id")
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req CreateDerivedDayPassRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.RequestCount <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.CreateDerivedDayPassFromSubscription(userId, subId, req.RequestCount)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func CreateSelfSubscriptionDayPassPlan(c *gin.Context) {
+	userId := c.GetInt("id")
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req CreateDerivedDayPassPlanRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TotalDays <= 0 || req.RequestCountPerDay <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.CreateDerivedDayPassPlan(userId, subId, req.TotalDays, req.RequestCountPerDay)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func CancelSelfSubscriptionDayPassPlan(c *gin.Context) {
+	userId := c.GetInt("id")
+	planId, _ := strconv.Atoi(c.Param("id"))
+	if planId <= 0 {
+		common.ApiErrorMsg(c, "无效的拆分计划ID")
+		return
+	}
+	result, err := model.CancelDerivedDayPassPlan(userId, planId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
 }
 
 func GetSelfServiceSubscriptionConversion(c *gin.Context) {
@@ -975,6 +1044,20 @@ func AdminListAllUserSubscriptions(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+func AdminListSubscriptionDayPassPlans(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	keyword := c.Query("keyword")
+	status := c.Query("status")
+	items, total, err := model.GetAdminSubscriptionDayPassPlans(pageInfo, keyword, status)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func AdminListSubscriptionConsumeLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
@@ -1196,4 +1279,18 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func AdminCancelSubscriptionDayPassPlan(c *gin.Context) {
+	planId, _ := strconv.Atoi(c.Param("id"))
+	if planId <= 0 {
+		common.ApiErrorMsg(c, "无效的拆分计划ID")
+		return
+	}
+	result, err := model.AdminCancelDerivedDayPassPlan(planId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
 }

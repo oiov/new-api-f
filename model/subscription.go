@@ -81,6 +81,13 @@ const (
 	SubscriptionFulfillmentRejected    = "rejected"
 )
 
+const (
+	SubscriptionSourceOrder          = "order"
+	SubscriptionSourceAdmin          = "admin"
+	SubscriptionSourceRedemption     = "redemption"
+	SubscriptionSourceDerivedDayPass = "derived_day_pass"
+)
+
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
@@ -578,6 +585,8 @@ type UserSubscription struct {
 	Id     int `json:"id"`
 	UserId int `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
 	PlanId int `json:"plan_id" gorm:"index"`
+
+	ParentUserSubscriptionId int `json:"parent_user_subscription_id" gorm:"type:int;not null;default:0;index"`
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
@@ -1801,6 +1810,100 @@ func isUserSubscriptionUsableNow(sub *UserSubscription, now int64) bool {
 	return hasUserSubscriptionRemainingEntitlement(sub)
 }
 
+func isDerivedDayPassSubscription(sub *UserSubscription) bool {
+	if sub == nil {
+		return false
+	}
+	return strings.TrimSpace(sub.Source) == SubscriptionSourceDerivedDayPass || sub.ParentUserSubscriptionId > 0
+}
+
+func canGenerateDerivedDayPassFromSubscription(sub *UserSubscription, now int64) error {
+	if sub == nil {
+		return errors.New("订阅不存在")
+	}
+	if sub.UserId <= 0 || sub.Id <= 0 {
+		return errors.New("无效的订阅")
+	}
+	if isDerivedDayPassSubscription(sub) {
+		return errors.New("天卡不能再次派生天卡")
+	}
+	if sub.Status != "active" {
+		return errors.New("仅支持从生效中的月卡生成天卡")
+	}
+	if sub.EndTime > 0 && sub.EndTime <= now {
+		return errors.New("仅支持从生效中的月卡生成天卡")
+	}
+	if sub.DurationUnit != SubscriptionDurationMonth || sub.DurationValue <= 0 {
+		return errors.New("当前仅支持从月卡生成天卡")
+	}
+	if NormalizeSubscriptionResourceType(sub.ResourceType) != SubscriptionResourceRequestCount {
+		return errors.New("当前仅支持按次数套餐生成天卡")
+	}
+	if !hasLifetimeRequestCountLimit(sub) && getSubscriptionRequestCountPeriodLimit(sub) <= 0 {
+		return errors.New("当前套餐没有可拆分的次数额度")
+	}
+	return nil
+}
+
+func getUserSubscriptionRemainingRequestCount(sub *UserSubscription) int64 {
+	if sub == nil {
+		return 0
+	}
+	resourceType := NormalizeSubscriptionResourceType(sub.ResourceType)
+	if resourceType != SubscriptionResourceRequestCount {
+		return 0
+	}
+	remaining := int64(-1)
+	if hasLifetimeRequestCountLimit(sub) {
+		lifetimeRemain := sub.RequestCountTotal - sub.RequestCountUsed
+		if lifetimeRemain < 0 {
+			lifetimeRemain = 0
+		}
+		remaining = lifetimeRemain
+	}
+	if periodLimit := getSubscriptionRequestCountPeriodLimit(sub); periodLimit > 0 {
+		periodRemain := periodLimit - getCurrentRequestCountUsed(sub)
+		if periodRemain < 0 {
+			periodRemain = 0
+		}
+		if remaining < 0 || periodRemain < remaining {
+			remaining = periodRemain
+		}
+	}
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+func calcDerivedDayPassEndTime(now time.Time, parent *UserSubscription) int64 {
+	fixedSeconds := int64(8 * 3600)
+	if parent != nil && parent.ResetUseFixedClock {
+		if useFixed, normalized := normalizeResetFixedClock(true, parent.ResetFixedSeconds, SubscriptionResetDaily); useFixed {
+			fixedSeconds = normalized
+		}
+	}
+	localNow := subscriptionResetTime(now)
+	targetDay := localNow.AddDate(0, 0, 1)
+	hour := int(fixedSeconds / 3600)
+	minute := int((fixedSeconds % 3600) / 60)
+	second := int(fixedSeconds % 60)
+	deadline := time.Date(
+		targetDay.Year(),
+		targetDay.Month(),
+		targetDay.Day(),
+		hour,
+		minute,
+		second,
+		0,
+		targetDay.Location(),
+	)
+	if !deadline.After(localNow) {
+		deadline = deadline.AddDate(0, 0, 1)
+	}
+	return deadline.Unix()
+}
+
 func deriveUserSubscriptionStatus(sub *UserSubscription, now int64) string {
 	if sub == nil {
 		return "expired"
@@ -1983,7 +2086,7 @@ func CountUserPlanPurchases(userId int, planId int) (int64, error) {
 	}
 	var subscriptionCount int64
 	if err := DB.Model(&UserSubscription{}).
-		Where("user_id = ? AND plan_id = ?", userId, planId).
+		Where("user_id = ? AND plan_id = ? AND parent_user_subscription_id = ?", userId, planId, 0).
 		Count(&subscriptionCount).Error; err != nil {
 		return 0, err
 	}
@@ -2078,7 +2181,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if !skipPlanGuard && lockedPlan.MaxPurchasePerUser > 0 {
 		var count int64
 		if err := tx.Model(&UserSubscription{}).
-			Where("user_id = ? AND plan_id = ?", userId, lockedPlan.Id).
+			Where("user_id = ? AND plan_id = ? AND parent_user_subscription_id = 0", userId, lockedPlan.Id).
 			Count(&count).Error; err != nil {
 			return nil, err
 		}
@@ -2160,6 +2263,143 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	lockedPlan.SoldCount++
 	InvalidateSubscriptionPlanCache(lockedPlan.Id)
 	return sub, nil
+}
+
+type DerivedDayPassResult struct {
+	ParentSubscription *UserSubscription `json:"parent_subscription"`
+	DayPass            *UserSubscription `json:"day_pass"`
+	TransferredCount   int64             `json:"transferred_count"`
+	ParentRemainCount  int64             `json:"parent_remain_count"`
+}
+
+func createDerivedDayPassFromParentTx(tx *gorm.DB, parent *UserSubscription, transferCount int64, nowUnix int64, checkPlanConflict bool) (*UserSubscription, int64, error) {
+	if tx == nil || parent == nil || parent.Id <= 0 {
+		return nil, 0, errors.New("无效的月卡")
+	}
+	if transferCount <= 0 {
+		return nil, 0, errors.New("转出次数必须大于 0")
+	}
+	if checkPlanConflict {
+		if activePlan, err := getActiveDerivedDayPassPlanByParentTx(tx, parent.Id); err != nil {
+			return nil, 0, err
+		} else if activePlan != nil {
+			return nil, 0, errors.New("当前月卡已有生效中的拆分计划")
+		}
+	}
+
+	var activeChildCount int64
+	if err := tx.Model(&UserSubscription{}).
+		Where("parent_user_subscription_id = ? AND status = ? AND end_time > ?", parent.Id, "active", nowUnix).
+		Count(&activeChildCount).Error; err != nil {
+		return nil, 0, err
+	}
+	if activeChildCount > 0 {
+		return nil, 0, errors.New("当前月卡已有生效中的天卡，请先等待其到期")
+	}
+
+	remainingCount := getUserSubscriptionRemainingRequestCount(parent)
+	if remainingCount <= 0 {
+		return nil, 0, errors.New("当前月卡已无可拆分次数")
+	}
+	if transferCount > remainingCount {
+		return nil, 0, fmt.Errorf("当前最多可转出 %d 次", remainingCount)
+	}
+	if err := postConsumeUserSubscriptionDeltaDetailedTx(tx, parent.Id, 0, transferCount); err != nil {
+		return nil, 0, err
+	}
+	if err := tx.Where("id = ?", parent.Id).First(parent).Error; err != nil {
+		return nil, 0, err
+	}
+
+	child := &UserSubscription{
+		UserId:                   parent.UserId,
+		PlanId:                   parent.PlanId,
+		ParentUserSubscriptionId: parent.Id,
+		AmountTotal:              0,
+		AmountUsed:               0,
+		ResourceType:             SubscriptionResourceRequestCount,
+		RequestCountTotal:        transferCount,
+		RequestCountUsed:         0,
+		RequestCountPeriodTotal:  0,
+		RequestCountPeriodUsed:   0,
+		ResetPeriod:              SubscriptionResetNever,
+		ResetCustomSeconds:       0,
+		ResetUseFixedClock:       false,
+		ResetFixedSeconds:        0,
+		AllowedGroupsJSON:        parent.AllowedGroupsJSON,
+		AllowedModelsJSON:        parent.AllowedModelsJSON,
+		AllowedVendorIDsJSON:     parent.AllowedVendorIDsJSON,
+		DurationUnit:             SubscriptionDurationDay,
+		DurationValue:            1,
+		CustomSeconds:            0,
+		StartTime:                nowUnix,
+		EndTime:                  calcDerivedDayPassEndTime(time.Unix(nowUnix, 0), parent),
+		Status:                   "active",
+		Source:                   SubscriptionSourceDerivedDayPass,
+		LastResetTime:            0,
+		NextResetTime:            0,
+		UpgradeGroup:             parent.UpgradeGroup,
+		PrevUserGroup:            "",
+		AggregateEnabled:         parent.AggregateEnabled,
+		SpecificChannelId:        parent.SpecificChannelId,
+		SpecificChannelKeyIndex:  parent.SpecificChannelKeyIndex,
+		CreatedAt:                nowUnix,
+		UpdatedAt:                nowUnix,
+	}
+	if err := tx.Create(child).Error; err != nil {
+		return nil, 0, err
+	}
+	return child, getUserSubscriptionRemainingRequestCount(parent), nil
+}
+
+func CreateDerivedDayPassFromSubscription(userId int, parentSubscriptionId int, transferCount int64) (*DerivedDayPassResult, error) {
+	if userId <= 0 {
+		return nil, errors.New("无效的用户ID")
+	}
+	if parentSubscriptionId <= 0 {
+		return nil, errors.New("无效的订阅ID")
+	}
+	if transferCount <= 0 {
+		return nil, errors.New("转出次数必须大于 0")
+	}
+
+	result := &DerivedDayPassResult{}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		nowUnix := GetDBTimestampWithTx(tx)
+
+		var parent UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ? AND user_id = ?", parentSubscriptionId, userId).
+			First(&parent).Error; err != nil {
+			return err
+		}
+
+		plan, err := getSubscriptionPlanByIdTx(tx, parent.PlanId)
+		if err != nil {
+			return err
+		}
+		if err := maybeResetUserSubscriptionWithPlanTx(tx, &parent, plan, nowUnix); err != nil {
+			return err
+		}
+		if err := canGenerateDerivedDayPassFromSubscription(&parent, nowUnix); err != nil {
+			return err
+		}
+		child, parentRemainCount, err := createDerivedDayPassFromParentTx(tx, &parent, transferCount, nowUnix, true)
+		if err != nil {
+			return err
+		}
+		parentCopy := parent
+		childCopy := *child
+		result.ParentSubscription = &parentCopy
+		result.DayPass = &childCopy
+		result.TransferredCount = transferCount
+		result.ParentRemainCount = parentRemainCount
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // CompleteSubscriptionOrderWithResult completes a subscription order and reports whether this call
@@ -5307,14 +5547,14 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 }
 
 const (
-	AdminSubscriptionActionExtendPeriod = "extend_period"
-	AdminSubscriptionActionReducePeriod = "reduce_period"
-	AdminSubscriptionActionExtendDays   = "extend_days"
-	AdminSubscriptionActionReduceDays   = "reduce_days"
-	AdminSubscriptionActionResetUsage   = "reset_usage_now"
-	AdminSubscriptionActionEnableAccess = "enable_aggregate_access"
-	AdminSubscriptionActionDisableAccess = "disable_aggregate_access"
-	AdminSubscriptionActionSetPreferred = "set_preferred"
+	AdminSubscriptionActionExtendPeriod   = "extend_period"
+	AdminSubscriptionActionReducePeriod   = "reduce_period"
+	AdminSubscriptionActionExtendDays     = "extend_days"
+	AdminSubscriptionActionReduceDays     = "reduce_days"
+	AdminSubscriptionActionResetUsage     = "reset_usage_now"
+	AdminSubscriptionActionEnableAccess   = "enable_aggregate_access"
+	AdminSubscriptionActionDisableAccess  = "disable_aggregate_access"
+	AdminSubscriptionActionSetPreferred   = "set_preferred"
 	AdminSubscriptionActionClearPreferred = "clear_preferred"
 )
 

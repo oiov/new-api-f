@@ -28,6 +28,7 @@ import {
   Divider,
   Empty,
   Input,
+  InputNumber,
   Modal,
   Pagination,
   Progress,
@@ -379,6 +380,7 @@ const SubscriptionPlansCard = ({
   activeSubscriptions = [],
   allSubscriptions = [],
   manualDeliveryOrders = [],
+  dayPassPlans = [],
   reloadSubscriptionSelf,
   withCard = true,
   initialMainTab = 'my_subscriptions',
@@ -457,6 +459,17 @@ const SubscriptionPlansCard = ({
     useState(0);
   const [subscriptionActionLoadingType, setSubscriptionActionLoadingType] =
     useState('');
+  const [dayPassModalVisible, setDayPassModalVisible] = useState(false);
+  const [selectedDayPassSource, setSelectedDayPassSource] = useState(null);
+  const [dayPassRequestCount, setDayPassRequestCount] = useState(0);
+  const [creatingDayPass, setCreatingDayPass] = useState(false);
+  const [dayPassPlanModalVisible, setDayPassPlanModalVisible] = useState(false);
+  const [selectedDayPassPlanSource, setSelectedDayPassPlanSource] =
+    useState(null);
+  const [dayPassPlanTotalDays, setDayPassPlanTotalDays] = useState(0);
+  const [dayPassPlanRequestCount, setDayPassPlanRequestCount] = useState(0);
+  const [creatingDayPassPlan, setCreatingDayPassPlan] = useState(false);
+  const [cancellingDayPassPlanId, setCancellingDayPassPlanId] = useState(0);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
   const [planViewMode, setPlanViewMode] = useState(initialPlanViewMode);
@@ -464,6 +477,12 @@ const SubscriptionPlansCard = ({
     const map = new Map();
     (allSubscriptions || []).forEach((sub) => {
       const planId = sub?.subscription?.plan_id;
+      if (Number(sub?.subscription?.parent_user_subscription_id || 0) > 0) {
+        return;
+      }
+      if (sub?.subscription?.source === 'derived_day_pass') {
+        return;
+      }
       if (!planId) return;
       map.set(planId, (map.get(planId) || 0) + 1);
     });
@@ -525,6 +544,208 @@ const SubscriptionPlansCard = ({
   const openPlanDetail = (planId) => {
     navigate(getSubscriptionPlanDetailPath(planId));
   };
+
+  const getRecommendedDayPassCount = useCallback((item) => {
+    const remain = Number(item?.usageSummary?.remain || 0);
+    if (remain <= 0) {
+      return 0;
+    }
+    const periodTotal = Number(item?.subscription?.request_count_period_total || 0);
+    if (periodTotal > 0) {
+      return Math.min(remain, periodTotal);
+    }
+    const total = Number(item?.subscription?.request_count_total || 0);
+    const durationValue = Math.max(
+      1,
+      Number(item?.subscription?.duration_value || 1),
+    );
+    const averagePerDay =
+      total > 0 ? Math.max(1, Math.ceil(total / (30 * durationValue))) : 0;
+    if (averagePerDay > 0) {
+      return Math.min(remain, averagePerDay);
+    }
+    return remain;
+  }, []);
+
+  const canGenerateDayPass = useCallback(
+    (item) => {
+      if (!item || item.state !== 'active') return false;
+      if (item.isDerivedDayPass) return false;
+      if (item.resourceType !== 'request_count') return false;
+      if (String(item?.subscription?.duration_unit || '') !== 'month') return false;
+      if (Number(item?.usageSummary?.remain || 0) <= 0) return false;
+      if (activeDayPassPlanMap.has(Number(item?.subscription?.id || 0))) return false;
+      return !activeDerivedDayPassParentIds.has(Number(item?.subscription?.id || 0));
+    },
+    [activeDayPassPlanMap, activeDerivedDayPassParentIds],
+  );
+
+  const openCreateDayPass = useCallback(
+    (item) => {
+      if (!canGenerateDayPass(item)) {
+        showError(t('当前订阅暂不支持生成天卡'));
+        return;
+      }
+      setSelectedDayPassSource(item);
+      setDayPassRequestCount(getRecommendedDayPassCount(item));
+      setDayPassModalVisible(true);
+    },
+    [canGenerateDayPass, getRecommendedDayPassCount, t],
+  );
+
+  const handleCreateDayPass = useCallback(async () => {
+    const subscriptionId = Number(selectedDayPassSource?.subscription?.id || 0);
+    const requestCount = Number(dayPassRequestCount || 0);
+    if (subscriptionId <= 0 || requestCount <= 0) {
+      showError(t('请填写有效的转出次数'));
+      return;
+    }
+    setCreatingDayPass(true);
+    try {
+      const res = await API.post(
+        `/api/subscription/self/subscriptions/${subscriptionId}/day_pass`,
+        {
+          request_count: requestCount,
+        },
+      );
+      if (res.data?.success) {
+        showSuccess(t('天卡已生成'));
+        setDayPassModalVisible(false);
+        setSelectedDayPassSource(null);
+        setDayPassRequestCount(0);
+        await reloadSubscriptionSelf?.();
+      } else {
+        showError(res.data?.message || t('生成天卡失败'));
+      }
+    } catch (error) {
+      showError(error?.response?.data?.message || error?.message || t('生成天卡失败'));
+    } finally {
+      setCreatingDayPass(false);
+    }
+  }, [dayPassRequestCount, reloadSubscriptionSelf, selectedDayPassSource, t]);
+
+  const closeDayPassModal = useCallback(() => {
+    if (creatingDayPass) {
+      return;
+    }
+    setDayPassModalVisible(false);
+    setSelectedDayPassSource(null);
+    setDayPassRequestCount(0);
+  }, [creatingDayPass]);
+
+  const getRecommendedDayPassPlanDays = useCallback(
+    (item, perDayCount) => {
+      const remain = Number(item?.usageSummary?.remain || 0);
+      const remainingDays = Math.max(1, Number(item?.remainingDays || 1));
+      const normalizedPerDayCount = Math.max(1, Number(perDayCount || 1));
+      const maxByCount = Math.max(
+        1,
+        Math.floor(remain / normalizedPerDayCount) || 1,
+      );
+      return Math.max(1, Math.min(remainingDays, 7, maxByCount));
+    },
+    [],
+  );
+
+  const openCreateDayPassPlan = useCallback(
+    (item) => {
+      if (!canGenerateDayPass(item)) {
+        showError(t('当前订阅暂不支持创建拆分计划'));
+        return;
+      }
+      const perDayCount = Math.max(
+        1,
+        Number(getRecommendedDayPassCount(item) || 1),
+      );
+      setSelectedDayPassPlanSource(item);
+      setDayPassPlanRequestCount(perDayCount);
+      setDayPassPlanTotalDays(getRecommendedDayPassPlanDays(item, perDayCount));
+      setDayPassPlanModalVisible(true);
+    },
+    [canGenerateDayPass, getRecommendedDayPassCount, getRecommendedDayPassPlanDays, t],
+  );
+
+  const closeDayPassPlanModal = useCallback(() => {
+    if (creatingDayPassPlan) {
+      return;
+    }
+    setDayPassPlanModalVisible(false);
+    setSelectedDayPassPlanSource(null);
+    setDayPassPlanTotalDays(0);
+    setDayPassPlanRequestCount(0);
+  }, [creatingDayPassPlan]);
+
+  const handleCreateDayPassPlan = useCallback(async () => {
+    const subscriptionId = Number(selectedDayPassPlanSource?.subscription?.id || 0);
+    const totalDays = Number(dayPassPlanTotalDays || 0);
+    const requestCountPerDay = Number(dayPassPlanRequestCount || 0);
+    if (subscriptionId <= 0 || totalDays <= 0 || requestCountPerDay <= 0) {
+      showError(t('请填写有效的拆分计划'));
+      return;
+    }
+    setCreatingDayPassPlan(true);
+    try {
+      const res = await API.post(
+        `/api/subscription/self/subscriptions/${subscriptionId}/day_pass_plan`,
+        {
+          total_days: totalDays,
+          request_count_per_day: requestCountPerDay,
+        },
+      );
+      if (res.data?.success) {
+        showSuccess(t('拆分计划已创建'));
+        closeDayPassPlanModal();
+        await reloadSubscriptionSelf?.();
+      } else {
+        showError(res.data?.message || t('创建拆分计划失败'));
+      }
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          t('创建拆分计划失败'),
+      );
+    } finally {
+      setCreatingDayPassPlan(false);
+    }
+  }, [
+    closeDayPassPlanModal,
+    dayPassPlanRequestCount,
+    dayPassPlanTotalDays,
+    reloadSubscriptionSelf,
+    selectedDayPassPlanSource,
+    t,
+  ]);
+
+  const handleCancelDayPassPlan = useCallback(
+    async (planId) => {
+      const normalizedPlanId = Number(planId || 0);
+      if (normalizedPlanId <= 0) {
+        return;
+      }
+      setCancellingDayPassPlanId(normalizedPlanId);
+      try {
+        const res = await API.post(
+          `/api/subscription/self/day_pass_plans/${normalizedPlanId}/cancel`,
+        );
+        if (res.data?.success) {
+          showSuccess(t('拆分计划已取消'));
+          await reloadSubscriptionSelf?.();
+        } else {
+          showError(res.data?.message || t('取消拆分计划失败'));
+        }
+      } catch (error) {
+        showError(
+          error?.response?.data?.message ||
+            error?.message ||
+            t('取消拆分计划失败'),
+        );
+      } finally {
+        setCancellingDayPassPlanId(0);
+      }
+    },
+    [reloadSubscriptionSelf, t],
+  );
 
   const copyRestrictionValue = async (event, value) => {
     event.stopPropagation();
@@ -937,6 +1158,12 @@ const SubscriptionPlansCard = ({
           key: String(subscription?.id || index),
           state,
           plan: planMap.get(subscription?.plan_id) || null,
+          parentSubscriptionId: Number(
+            subscription?.parent_user_subscription_id || 0,
+          ),
+          isDerivedDayPass:
+            Number(subscription?.parent_user_subscription_id || 0) > 0 ||
+            subscription?.source === 'derived_day_pass',
           isAggregateEnabled: Boolean(subscription?.aggregate_enabled),
           isPreferred:
             Number(subscription?.id || 0) ===
@@ -945,16 +1172,66 @@ const SubscriptionPlansCard = ({
           resourceType,
           usageLabel: formatSubscriptionResourceLabel(subscription, t),
           title:
-            planTitleMap.get(subscription?.plan_id) ||
-            `${t('订阅')} #${subscription?.id}`,
+            subscription?.source === 'derived_day_pass'
+              ? `${planTitleMap.get(subscription?.plan_id) || `${t('订阅')} #${subscription?.id}`} · ${t('天卡')}`
+              : planTitleMap.get(subscription?.plan_id) ||
+                `${t('订阅')} #${subscription?.id}`,
           remainingDays,
         };
       })
-      .sort(
-        (a, b) =>
-          (b?.subscription?.end_time || 0) - (a?.subscription?.end_time || 0),
-      );
+      .sort((a, b) => {
+        if (a?.state === 'active' && b?.state !== 'active') return -1;
+        if (a?.state !== 'active' && b?.state === 'active') return 1;
+        if (a?.isDerivedDayPass && !b?.isDerivedDayPass) return -1;
+        if (!a?.isDerivedDayPass && b?.isDerivedDayPass) return 1;
+        return (b?.subscription?.end_time || 0) - (a?.subscription?.end_time || 0);
+      });
   }, [allSubscriptions, planMap, planTitleMap, preferredSubscriptionId, t]);
+
+  const activeDerivedDayPassParentIds = useMemo(() => {
+    const set = new Set();
+    normalizedSubscriptions.forEach((item) => {
+      if (item?.state !== 'active' || !item?.isDerivedDayPass) {
+        return;
+      }
+      const parentId = Number(item?.parentSubscriptionId || 0);
+      if (parentId > 0) {
+        set.add(parentId);
+      }
+    });
+    return set;
+  }, [normalizedSubscriptions]);
+
+  const normalizedDayPassPlans = useMemo(() => {
+    return (dayPassPlans || []).map((item, index) => {
+      const plan = item?.plan || {};
+      const parentSubscription =
+        item?.parent_subscription ||
+        allSubscriptions.find(
+          (sub) =>
+            Number(sub?.subscription?.id || 0) ===
+            Number(plan?.parent_user_subscription_id || 0),
+        )?.subscription ||
+        null;
+      return {
+        key: String(plan?.id || `day-pass-plan-${index}`),
+        plan,
+        parentSubscription,
+      };
+    });
+  }, [allSubscriptions, dayPassPlans]);
+
+  const activeDayPassPlanMap = useMemo(() => {
+    const map = new Map();
+    normalizedDayPassPlans.forEach((item) => {
+      const parentId = Number(item?.plan?.parent_user_subscription_id || 0);
+      if (parentId <= 0 || item?.plan?.status !== 'active') {
+        return;
+      }
+      map.set(parentId, item);
+    });
+    return map;
+  }, [normalizedDayPassPlans]);
 
   const normalizedManualDeliveryOrders = useMemo(() => {
     return (manualDeliveryOrders || []).map((item, index) => {
@@ -1765,6 +2042,9 @@ const SubscriptionPlansCard = ({
 
   const renderSubscriptionBody = (item) => {
     const plan = item.plan || {};
+    const activeDayPassPlan = activeDayPassPlanMap.get(
+      Number(item?.subscription?.id || 0),
+    );
     const usagePercent = item.usageSummary.unlimited
       ? 0
       : Math.round(
@@ -1837,6 +2117,14 @@ const SubscriptionPlansCard = ({
         value: item.isPreferred ? t('是') : t('否'),
       },
     ];
+    if (item.isDerivedDayPass) {
+      metaItems.splice(2, 0, {
+        label: t('派生自'),
+        value: item.parentSubscriptionId
+          ? `${t('订阅')} #${item.parentSubscriptionId}`
+          : '--',
+      });
+    }
 
     return (
       <div className='space-y-4'>
@@ -1862,6 +2150,37 @@ const SubscriptionPlansCard = ({
             </div>
           </div>
           <div className='flex flex-wrap items-center gap-2'>
+            {canGenerateDayPass(item) ? (
+              <>
+                <Button
+                  size='small'
+                  theme='solid'
+                  type='primary'
+                  onClick={() => openCreateDayPass(item)}
+                >
+                  {t('生成天卡')}
+                </Button>
+                <Button
+                  size='small'
+                  theme='light'
+                  type='primary'
+                  onClick={() => openCreateDayPassPlan(item)}
+                >
+                  {t('按天拆分')}
+                </Button>
+              </>
+            ) : null}
+            {activeDayPassPlan ? (
+              <Button
+                size='small'
+                theme='outline'
+                type='danger'
+                loading={cancellingDayPassPlanId === activeDayPassPlan.plan?.id}
+                onClick={() => handleCancelDayPassPlan(activeDayPassPlan.plan?.id)}
+              >
+                {t('取消拆分计划')}
+              </Button>
+            ) : null}
             <Button
               size='small'
               theme={item.isAggregateEnabled ? 'light' : 'solid'}
@@ -1939,6 +2258,30 @@ const SubscriptionPlansCard = ({
             />
           </div>
         )}
+        {activeDayPassPlan ? (
+          <div className='rounded-2xl border border-violet-200 bg-violet-50/70 px-4 py-3'>
+            <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+              <div>
+                <div className='text-sm font-semibold text-violet-700'>
+                  {t('拆分计划进行中')}
+                </div>
+                <div className='mt-1 text-xs text-violet-700/80'>
+                  {t('已生成 {{count}} / {{total}} 天', {
+                    count: Number(activeDayPassPlan.plan?.generated_days || 0),
+                    total: Number(activeDayPassPlan.plan?.total_days || 0),
+                  })}
+                  {' · '}
+                  {t('每天 {{count}} 次', {
+                    count: Number(activeDayPassPlan.plan?.request_count_per_day || 0),
+                  })}
+                </div>
+              </div>
+              <div className='text-xs text-violet-700/80'>
+                {t('下次生成')}：{formatDateTime(activeDayPassPlan.plan?.next_generate_at)}
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className='rounded-2xl border border-semi-color-border bg-white overflow-hidden'>
           <Table
             size='small'
@@ -3599,6 +3942,11 @@ const SubscriptionPlansCard = ({
                             ? t('参与聚合')
                             : t('暂停聚合')}
                         </Tag>
+                        {item.isDerivedDayPass ? (
+                          <Tag color='violet' shape='circle' size='small'>
+                            {t('天卡')}
+                          </Tag>
+                        ) : null}
                         {item.isPreferred ? (
                           <Tag color='orange' shape='circle' size='small'>
                             {t('优先消耗')}
@@ -3607,6 +3955,9 @@ const SubscriptionPlansCard = ({
                       </div>
                       <div className='mt-1 text-xs text-semi-color-text-2'>
                         {t('订阅')} #{item.subscription?.id || '--'}
+                        {item.isDerivedDayPass && item.parentSubscriptionId > 0
+                          ? ` · ${t('派生自')} #${item.parentSubscriptionId}`
+                          : ''}
                       </div>
                     </div>
                   ),
@@ -3986,6 +4337,157 @@ const SubscriptionPlansCard = ({
         onPayCreem={payCreem}
         onPayEpay={payEpay}
       />
+      <Modal
+        title={t('生成天卡')}
+        visible={dayPassModalVisible}
+        onCancel={closeDayPassModal}
+        onOk={handleCreateDayPass}
+        confirmLoading={creatingDayPass}
+        okText={t('确认生成')}
+        cancelText={t('取消')}
+      >
+        <div className='space-y-4'>
+          <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'>
+            <div className='text-sm font-semibold text-semi-color-text-0'>
+              {selectedDayPassSource?.title || '--'}
+            </div>
+            <div className='mt-1 text-xs text-semi-color-text-2'>
+              {t('订阅')} #{selectedDayPassSource?.subscription?.id || '--'}
+            </div>
+            <div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2'>
+              <div>
+                <div className='text-xs text-semi-color-text-2'>
+                  {t('当前可用')}
+                </div>
+                <div className='mt-1 font-medium text-semi-color-text-0'>
+                  {getUsageDisplayText(
+                    selectedDayPassSource?.usageSummary || {},
+                    selectedDayPassSource?.resourceType,
+                    t,
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className='text-xs text-semi-color-text-2'>
+                  {t('当前最多可转出 {{count}} 次', {
+                    count: Number(
+                      selectedDayPassSource?.usageSummary?.remain || 0,
+                    ),
+                  })}
+                </div>
+                <div className='mt-1 font-medium text-semi-color-text-0'>
+                  {t('到期时间')} {formatDateTime(selectedDayPassSource?.subscription?.end_time)}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div className='mb-2 text-sm font-medium text-semi-color-text-0'>
+              {t('转出次数')}
+            </div>
+            <InputNumber
+              min={1}
+              max={Math.max(
+                1,
+                Number(selectedDayPassSource?.usageSummary?.remain || 0),
+              )}
+              value={dayPassRequestCount}
+              step={1}
+              precision={0}
+              style={{ width: '100%' }}
+              placeholder={t('请输入转出次数')}
+              onChange={(value) => setDayPassRequestCount(Number(value || 0))}
+            />
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        title={t('按天拆分')}
+        visible={dayPassPlanModalVisible}
+        onCancel={closeDayPassPlanModal}
+        onOk={handleCreateDayPassPlan}
+        confirmLoading={creatingDayPassPlan}
+        okText={t('确认创建')}
+        cancelText={t('取消')}
+      >
+        <div className='space-y-4'>
+          <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'>
+            <div className='text-sm font-semibold text-semi-color-text-0'>
+              {selectedDayPassPlanSource?.title || '--'}
+            </div>
+            <div className='mt-1 text-xs text-semi-color-text-2'>
+              {t('订阅')} #{selectedDayPassPlanSource?.subscription?.id || '--'}
+            </div>
+            <div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2'>
+              <div>
+                <div className='text-xs text-semi-color-text-2'>
+                  {t('当前可用')}
+                </div>
+                <div className='mt-1 font-medium text-semi-color-text-0'>
+                  {getUsageDisplayText(
+                    selectedDayPassPlanSource?.usageSummary || {},
+                    selectedDayPassPlanSource?.resourceType,
+                    t,
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className='text-xs text-semi-color-text-2'>
+                  {t('预计开始时间')}
+                </div>
+                <div className='mt-1 font-medium text-semi-color-text-0'>
+                  {t('系统将在每日结算时点自动生成')}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+            <div>
+              <div className='mb-2 text-sm font-medium text-semi-color-text-0'>
+                {t('拆分天数')}
+              </div>
+              <InputNumber
+                min={1}
+                max={Math.max(
+                  1,
+                  Number(selectedDayPassPlanSource?.remainingDays || 1),
+                )}
+                value={dayPassPlanTotalDays}
+                step={1}
+                precision={0}
+                style={{ width: '100%' }}
+                placeholder={t('请输入拆分天数')}
+                onChange={(value) => setDayPassPlanTotalDays(Number(value || 0))}
+              />
+            </div>
+            <div>
+              <div className='mb-2 text-sm font-medium text-semi-color-text-0'>
+                {t('每日转出次数')}
+              </div>
+              <InputNumber
+                min={1}
+                max={Math.max(
+                  1,
+                  Number(selectedDayPassPlanSource?.usageSummary?.remain || 0),
+                )}
+                value={dayPassPlanRequestCount}
+                step={1}
+                precision={0}
+                style={{ width: '100%' }}
+                placeholder={t('请输入每日转出次数')}
+                onChange={(value) =>
+                  setDayPassPlanRequestCount(Number(value || 0))
+                }
+              />
+            </div>
+          </div>
+          <div className='rounded-xl border border-dashed border-semi-color-border bg-semi-color-fill-0 px-3 py-2 text-sm text-semi-color-text-1'>
+            {t('预计总拆分次数')}：
+            {Number(dayPassPlanTotalDays || 0) *
+              Number(dayPassPlanRequestCount || 0)}
+          </div>
+        </div>
+      </Modal>
       <SubscriptionConsumeLogsModal
         visible={!!consumeLogsFilter}
         onCancel={() => setConsumeLogsFilter(null)}
