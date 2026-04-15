@@ -44,7 +44,7 @@ import CardPro from '../../components/common/ui/CardPro';
 import { StatusContext } from '../../context/Status';
 import { API, showError, showSuccess, timestamp2string } from '../../helpers';
 
-const { Text } = Typography;
+const { Paragraph, Text } = Typography;
 
 const normalizeJoinSources = (raw) => {
   return String(raw || '')
@@ -58,6 +58,41 @@ const JOIN_SOURCE_LABELS = {
   checkin: '报名后完成签到',
 };
 
+const resolveDisplayName = (item) => {
+  return (
+    item?.display_name ||
+    item?.masked_name ||
+    item?.username ||
+    (item?.user_id ? `UID${item.user_id}` : '-')
+  );
+};
+
+const resolveQualifiedStatus = (item, t) => {
+  if (item?.qualified) {
+    return t('已满足参与条件');
+  }
+  return t('已报名，待达标');
+};
+
+const buildDrawStatusText = (summary, t) => {
+  const needParticipants = Number(summary?.need_participants || 0);
+  const participantCount = Number(summary?.participant_count || 0);
+  const missingParticipants = Math.max(needParticipants - participantCount, 0);
+  const countReached = !!summary?.count_reached;
+  const timeReached = !!summary?.time_reached;
+
+  if (countReached && timeReached) {
+    return t('已满足开奖条件');
+  }
+  if (countReached) {
+    return t('已达人数，等待开奖');
+  }
+  if (timeReached) {
+    return t('已到开奖时间，还差 {{count}} 人', { count: missingParticipants });
+  }
+  return t('还需 {{count}} 人，且等待开奖', { count: missingParticipants });
+};
+
 export default function ActivityLotteryPage() {
   const { t } = useTranslation();
   const [statusState] = useContext(StatusContext);
@@ -68,6 +103,10 @@ export default function ActivityLotteryPage() {
   const [joinLoading, setJoinLoading] = useState(false);
   const [summary, setSummary] = useState(null);
   const [rounds, setRounds] = useState([]);
+  const [joinPressed, setJoinPressed] = useState(false);
+  const [rewardHighlight, setRewardHighlight] = useState(false);
+  const [entriesByRound, setEntriesByRound] = useState({});
+  const [entryLoadingByRound, setEntryLoadingByRound] = useState({});
 
   const loadSummary = useCallback(async () => {
     if (!status?.activity_lottery_enabled) return;
@@ -113,23 +152,74 @@ export default function ActivityLotteryPage() {
     try {
       const res = await API.post('/api/activity/lottery/join');
       if (res?.data?.success) {
-        showSuccess(t('参与成功'));
+        showSuccess(t('报名成功'));
         loadSummary();
       } else {
-        showError(res?.data?.message || t('参与失败'));
+        showError(res?.data?.message || t('报名失败'));
       }
     } catch (error) {
-      showError(error?.response?.data?.message || t('参与失败'));
+      showError(error?.response?.data?.message || t('报名失败'));
     } finally {
       setJoinLoading(false);
     }
   };
+
+  const loadRoundEntries = useCallback(
+    async (roundId) => {
+      const id = Number(roundId || 0);
+      if (!id || entryLoadingByRound[id]) return;
+      setEntryLoadingByRound((prev) => ({ ...prev, [id]: true }));
+      try {
+        const res = await API.get(`/api/activity/lottery/rounds/${id}/entries`);
+        if (res?.data?.success) {
+          setEntriesByRound((prev) => ({
+            ...prev,
+            [id]: Array.isArray(res?.data?.data?.items)
+              ? res.data.data.items
+              : [],
+          }));
+        } else {
+          setEntriesByRound((prev) => ({ ...prev, [id]: [] }));
+        }
+      } catch (error) {
+        setEntriesByRound((prev) => ({ ...prev, [id]: [] }));
+        showError(error?.response?.data?.message || t('获取报名记录失败'));
+      } finally {
+        setEntryLoadingByRound((prev) => ({ ...prev, [id]: false }));
+      }
+    },
+    [entryLoadingByRound, t],
+  );
 
   useEffect(() => {
     if (!status?.activity_lottery_enabled) return;
     loadSummary();
     loadPublicRounds();
   }, [status?.activity_lottery_enabled, loadSummary, loadPublicRounds]);
+
+  useEffect(() => {
+    if (!summary?.prize) {
+      setRewardHighlight(false);
+      return undefined;
+    }
+    setRewardHighlight(true);
+    const timer = window.setTimeout(() => {
+      setRewardHighlight(false);
+    }, 2600);
+    return () => window.clearTimeout(timer);
+  }, [summary?.prize]);
+
+  useEffect(() => {
+    if (!status?.activity_lottery_enabled) return;
+    const roundId = Number(summary?.round?.id || 0);
+    if (!roundId || entriesByRound[roundId]) return;
+    loadRoundEntries(roundId);
+  }, [
+    entriesByRound,
+    loadRoundEntries,
+    status?.activity_lottery_enabled,
+    summary?.round?.id,
+  ]);
 
   const currentRound = summary?.round || null;
   const winners = Array.isArray(summary?.winners) ? summary.winners : [];
@@ -139,12 +229,47 @@ export default function ActivityLotteryPage() {
   );
   const joinAllowed = !!summary?.join_allowed;
   const joined = !!summary?.joined;
+  const qualified = !!summary?.qualified;
   const nowUnix = Math.floor(Date.now() / 1000);
   const signupNotStarted =
     !joinAllowed &&
     !joined &&
     currentRound?.status === 'open' &&
     Number(currentRound?.start_at || 0) > nowUnix;
+  const drawStatusText = useMemo(
+    () => buildDrawStatusText(summary, t),
+    [summary, t],
+  );
+  const historyRounds = useMemo(
+    () =>
+      (Array.isArray(rounds) ? rounds : []).filter((item) => {
+        const round = item?.round;
+        const list = Array.isArray(item?.winners) ? item.winners : [];
+        return (
+          (round?.status || '') === 'drawn' ||
+          list.length > 0 ||
+          Number(round?.drawn_at || 0) > 0
+        );
+      }),
+    [rounds],
+  );
+  useEffect(() => {
+    if (!status?.activity_lottery_enabled || historyRounds.length === 0) return;
+    historyRounds.forEach((item) => {
+      const roundId = Number(item?.round?.id || 0);
+      if (!roundId || entriesByRound[roundId]) return;
+      loadRoundEntries(roundId);
+    });
+  }, [
+    entriesByRound,
+    historyRounds,
+    loadRoundEntries,
+    status?.activity_lottery_enabled,
+  ]);
+  const currentEntries = Array.isArray(entriesByRound[currentRound?.id])
+    ? entriesByRound[currentRound?.id]
+    : [];
+  const currentEntryLoading = !!entryLoadingByRound[currentRound?.id];
 
   return (
     <div className='px-2'>
@@ -157,7 +282,7 @@ export default function ActivityLotteryPage() {
               bordered={false}
               closeIcon={null}
               description={t(
-                '抽奖规则：每期都必须先手动报名；无论配置了哪种自动条件，报名后才开始按本期配置统计充值/消耗条件。满足“参与人数 ≥ 目标人数”且“活动到期”后，系统自动开奖并公示打码信息。',
+                '抽奖规则：每期都必须先手动报名；无论配置了哪种自动条件，报名后才开始按本期配置统计充值/消耗条件。满足“有效参与人数 ≥ 目标人数”且“到开奖时间”后，系统自动开奖并公示结果。',
               )}
             />
             <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
@@ -179,6 +304,12 @@ export default function ActivityLotteryPage() {
                   {joinAllowed && !joined ? (
                     <Button
                       type='primary'
+                      className={`lottery-join-cta ${
+                        joinPressed ? 'lottery-join-cta--pressed' : ''
+                      }`}
+                      onMouseDown={() => setJoinPressed(true)}
+                      onMouseUp={() => setJoinPressed(false)}
+                      onMouseLeave={() => setJoinPressed(false)}
                       onClick={joinCurrent}
                       loading={joinLoading}
                     >
@@ -191,12 +322,32 @@ export default function ActivityLotteryPage() {
                     </Button>
                   ) : null}
                   {joined ? (
-                    <Tag color='blue' type='light' shape='circle'>
+                    <Tag
+                      color='blue'
+                      type='light'
+                      shape='circle'
+                      className='lottery-status-chip lottery-status-chip--joined'
+                    >
                       {t('你已报名本期')}
                     </Tag>
                   ) : null}
-                  {summary?.is_winner ? (
+                  {joined && !qualified ? (
+                    <Tag color='orange' type='light' shape='circle'>
+                      {t('已报名，待达标')}
+                    </Tag>
+                  ) : null}
+                  {qualified ? (
                     <Tag color='green' type='light' shape='circle'>
+                      {t('已满足参与条件')}
+                    </Tag>
+                  ) : null}
+                  {summary?.is_winner ? (
+                    <Tag
+                      color='green'
+                      type='light'
+                      shape='circle'
+                      className='lottery-status-chip lottery-status-chip--winner'
+                    >
                       {t('已中奖')}
                     </Tag>
                   ) : null}
@@ -226,7 +377,12 @@ export default function ActivityLotteryPage() {
                   {t('当前公示')}
                 </div>
                 <div className='mt-1 text-base font-semibold text-semi-color-text-0'>
-                  {currentRound?.title || t('暂无进行中的期数')}
+                  <Text
+                    ellipsis={{ showTooltip: true }}
+                    style={{ maxWidth: '100%', display: 'block' }}
+                  >
+                    {currentRound?.title || t('暂无进行中的期数')}
+                  </Text>
                 </div>
                 {currentRound?.start_at || currentRound?.end_at ? (
                   <div className='mt-2 text-xs text-semi-color-text-2'>
@@ -246,22 +402,25 @@ export default function ActivityLotteryPage() {
                     type='light'
                     shape='circle'
                   >
-                    {t('人数')}: {Number(summary?.participant_count || 0)} /{' '}
+                    {t('有效参与')}: {Number(summary?.participant_count || 0)} /{' '}
                     {Number(summary?.need_participants || 0)}
+                  </Tag>
+                  <Tag color='blue' type='light' shape='circle'>
+                    {t('已报名')}: {Number(summary?.signup_count || 0)}
                   </Tag>
                   <Tag
                     color={summary?.time_reached ? 'green' : 'grey'}
                     type='light'
                     shape='circle'
                   >
-                    {summary?.time_reached ? t('时间已到') : t('等待到期')}
+                    {summary?.time_reached ? t('时间已到') : t('等待开奖')}
                   </Tag>
                   <Tag
                     color={summary?.auto_draw_ready ? 'green' : 'amber'}
                     type='light'
                     shape='circle'
                   >
-                    {summary?.auto_draw_ready ? t('可自动开奖') : t('未满足')}
+                    {drawStatusText}
                   </Tag>
                 </div>
 
@@ -270,9 +429,12 @@ export default function ActivityLotteryPage() {
                     <div className='text-xs font-medium text-amber-800'>
                       {t('本期奖品')}
                     </div>
-                    <div className='mt-2 whitespace-pre-wrap text-sm text-semi-color-text-0'>
+                    <Paragraph
+                      className='mt-2 text-sm text-semi-color-text-0 lottery-multiline-text'
+                      ellipsis={{ rows: 3, expandable: true, showTooltip: true }}
+                    >
                       {currentRound.prize}
-                    </div>
+                    </Paragraph>
                   </div>
                 ) : null}
 
@@ -338,53 +500,120 @@ export default function ActivityLotteryPage() {
                 </div>
 
                 {summary?.prize ? (
-                  <div className='mt-4 rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4'>
+                  <div
+                    className={`mt-4 rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4 lottery-reward-panel ${
+                      rewardHighlight ? 'lottery-reward-panel--active' : ''
+                    }`}
+                  >
                     <div className='text-xs font-medium text-amber-800'>
                       {t('中奖发放内容')}
                     </div>
-                    <div className='mt-2 whitespace-pre-wrap text-sm text-semi-color-text-0'>
+                    <Paragraph
+                      className='mt-2 text-sm text-semi-color-text-0 lottery-multiline-text'
+                      ellipsis={{ rows: 4, expandable: true, showTooltip: true }}
+                    >
                       {summary.prize}
-                    </div>
+                    </Paragraph>
                   </div>
-                ) : (
-                  <Text type='tertiary' size='small' className='mt-3 block'>
-                    {t('中奖发放内容仅中奖者可见')}
-                  </Text>
-                )}
+                ) : null}
 
-                <div className='mt-4'>
-                  <div className='text-xs text-semi-color-text-2'>
-                    {t('中奖公示')}
-                  </div>
-                  {winners.length > 0 ? (
-                    <div className='mt-2 flex flex-col gap-2'>
-                      {winners.map((item) => (
+                {winners.length > 0 ? (
+                  <div className='mt-4'>
+                    <div className='text-xs text-semi-color-text-2'>
+                      {t('中奖公示')}
+                    </div>
+                    <div className='mt-2 overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-fill-0'>
+                      <div className='lottery-public-table lottery-public-table--header'>
+                        <div>{t('中奖者')}</div>
+                        <div>{t('开奖时间')}</div>
+                        <div>{t('状态')}</div>
+                      </div>
+                      {winners.map((item, index) => (
                         <div
-                          key={`${item?.id || ''}-${item?.user_id || ''}`}
-                          className='flex items-center justify-between rounded-xl border border-semi-color-border bg-semi-color-fill-0 px-3 py-2'
+                          key={`${item?.id || ''}-${index}`}
+                          className='lottery-public-table lottery-winner-item'
                         >
                           <div className='min-w-0'>
-                            <div className='truncate text-sm font-medium text-semi-color-text-0'>
-                              {item?.masked_name || '-'}
-                            </div>
-                            {item?.masked_email ? (
-                              <div className='truncate text-[11px] text-semi-color-text-2'>
-                                {item.masked_email}
-                              </div>
-                            ) : null}
+                            <Text ellipsis={{ showTooltip: true }}>
+                              {resolveDisplayName(item)}
+                            </Text>
                           </div>
-                          <Tag color='green' type='light' shape='circle'>
-                            {t('已开奖')}
-                          </Tag>
+                          <div className='text-semi-color-text-1'>
+                            {item?.created_at
+                              ? timestamp2string(item.created_at)
+                              : currentRound?.drawn_at
+                                ? timestamp2string(currentRound.drawn_at)
+                                : '-'}
+                          </div>
+                          <div>
+                            <Tag color={index < 3 ? 'amber' : 'green'} type='light' shape='circle'>
+                              {t('已开奖')}
+                            </Tag>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <div className='mt-2 text-sm text-semi-color-text-2'>
-                      {t('尚未开奖或暂无中奖名单')}
+                  </div>
+                ) : null}
+
+                {currentRound?.id ? (
+                  <div className='mt-4'>
+                    <div className='mb-2 flex items-center justify-between gap-2'>
+                      <div className='text-xs text-semi-color-text-2'>
+                        {t('全部报名用户')} · {Number(summary?.signup_count || currentEntries.length || 0)}
+                      </div>
+                      <Button
+                        theme='borderless'
+                        size='small'
+                        loading={currentEntryLoading}
+                        onClick={() => loadRoundEntries(currentRound.id)}
+                      >
+                        {t('刷新')}
+                      </Button>
                     </div>
-                  )}
-                </div>
+                    <Spin spinning={currentEntryLoading}>
+                      {currentEntries.length > 0 ? (
+                        <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-fill-0'>
+                          <div className='lottery-public-table lottery-public-table--header'>
+                            <div>{t('报名用户')}</div>
+                            <div>{t('报名时间')}</div>
+                            <div>{t('参与状态')}</div>
+                          </div>
+                          {currentEntries.map((item) => (
+                            <div
+                              key={`${item?.id || ''}-${item?.created_at || ''}`}
+                              className='lottery-public-table'
+                            >
+                              <div className='min-w-0'>
+                                <Text ellipsis={{ showTooltip: true }}>
+                                  {resolveDisplayName(item)}
+                                </Text>
+                              </div>
+                              <div className='text-semi-color-text-1'>
+                                {item?.created_at
+                                  ? timestamp2string(item.created_at)
+                                  : '-'}
+                              </div>
+                              <div>
+                                <Tag
+                                  color={item?.qualified ? 'green' : 'orange'}
+                                  type='light'
+                                  shape='circle'
+                                >
+                                  {resolveQualifiedStatus(item, t)}
+                                </Tag>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className='rounded-2xl border border-dashed border-semi-color-border bg-semi-color-fill-0 px-4 py-6 text-sm text-semi-color-text-2'>
+                          {t('暂无报名记录')}
+                        </div>
+                      )}
+                    </Spin>
+                  </div>
+                ) : null}
               </div>
             </Spin>
 
@@ -403,21 +632,27 @@ export default function ActivityLotteryPage() {
                 </Button>
               </div>
               <Spin spinning={roundsLoading}>
-                {Array.isArray(rounds) && rounds.length > 0 ? (
+                {historyRounds.length > 0 ? (
                   <Collapse accordion className='mt-3'>
-                    {rounds.map((item) => {
+                    {historyRounds.map((item) => {
                       const round = item?.round;
                       const list = Array.isArray(item?.winners)
                         ? item.winners
                         : [];
+                      const roundEntries = Array.isArray(entriesByRound[round?.id])
+                        ? entriesByRound[round?.id]
+                        : [];
+                      const roundEntryLoading = !!entryLoadingByRound[round?.id];
                       return (
                         <Collapse.Panel
                           key={round?.id || Math.random()}
                           itemKey={String(round?.id || '')}
                           header={
                             <div className='flex items-center justify-between gap-3 w-full'>
-                              <div className='font-medium'>
-                                {round?.title || `#${round?.id || '-'}`}
+                              <div className='min-w-0 font-medium'>
+                                <Text ellipsis={{ showTooltip: true }}>
+                                  {round?.title || `#${round?.id || '-'}`}
+                                </Text>
                               </div>
                               <div className='text-xs text-semi-color-text-2'>
                                 {round?.end_at
@@ -427,39 +662,122 @@ export default function ActivityLotteryPage() {
                             </div>
                           }
                         >
-                          {list.length > 0 ? (
-                            <div className='space-y-3'>
-                              {round?.prize ? (
-                                <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3 text-sm text-semi-color-text-0'>
-                                  <span className='font-medium'>
-                                    {t('公示奖品')}：
-                                  </span>
-                                  <span className='whitespace-pre-wrap'>
-                                    {round.prize}
-                                  </span>
+                          <div className='space-y-3'>
+                            {round?.prize ? (
+                              <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3 text-sm text-semi-color-text-0'>
+                                <div className='mb-2 font-medium'>
+                                  {t('公示奖品')}
                                 </div>
-                              ) : null}
-                              <div className='flex flex-wrap gap-2'>
-                                {list.map((w) => (
-                                  <Tag
-                                    key={`${w?.id || ''}-${w?.user_id || ''}`}
-                                    color='green'
-                                    type='light'
-                                    shape='circle'
+                                <Paragraph
+                                  className='lottery-multiline-text'
+                                  ellipsis={{
+                                    rows: 3,
+                                    expandable: true,
+                                    showTooltip: true,
+                                  }}
+                                >
+                                  {round.prize}
+                                </Paragraph>
+                              </div>
+                            ) : null}
+                            {list.length > 0 ? (
+                              <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-fill-0'>
+                                <div className='lottery-public-table lottery-public-table--header'>
+                                  <div>{t('中奖者')}</div>
+                                  <div>{t('开奖时间')}</div>
+                                  <div>{t('状态')}</div>
+                                </div>
+                                {list.map((w, index) => (
+                                  <div
+                                    key={`${w?.id || ''}-${index}`}
+                                    className='lottery-public-table lottery-winner-item'
                                   >
-                                    {w?.masked_name || '-'}
-                                    {w?.masked_email
-                                      ? ` (${w.masked_email})`
-                                      : ''}
-                                  </Tag>
+                                    <div className='min-w-0'>
+                                      <Text ellipsis={{ showTooltip: true }}>
+                                        {resolveDisplayName(w)}
+                                      </Text>
+                                    </div>
+                                    <div className='text-semi-color-text-1'>
+                                      {w?.created_at
+                                        ? timestamp2string(w.created_at)
+                                        : round?.drawn_at
+                                          ? timestamp2string(round.drawn_at)
+                                          : '--'}
+                                    </div>
+                                    <div>
+                                      <Tag
+                                        color={index < 3 ? 'amber' : 'green'}
+                                        type='light'
+                                        shape='circle'
+                                      >
+                                        {t('已开奖')}
+                                      </Tag>
+                                    </div>
+                                  </div>
                                 ))}
                               </div>
+                            ) : (
+                              <div className='rounded-2xl border border-dashed border-semi-color-border bg-semi-color-fill-0 px-4 py-6 text-sm text-semi-color-text-2'>
+                                {t('暂无中奖名单')}
+                              </div>
+                            )}
+                            <div className='space-y-2'>
+                              <div className='flex items-center justify-between gap-2'>
+                                <div className='text-xs text-semi-color-text-2'>
+                                  {t('全部报名用户')} · {Number(roundEntries.length || 0)}
+                                </div>
+                                <Button
+                                  theme='borderless'
+                                  size='small'
+                                  loading={roundEntryLoading}
+                                  onClick={() => loadRoundEntries(round?.id)}
+                                >
+                                  {t('刷新')}
+                                </Button>
+                              </div>
+                              <Spin spinning={roundEntryLoading}>
+                                {roundEntries.length > 0 ? (
+                                  <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-fill-0'>
+                                    <div className='lottery-public-table lottery-public-table--header'>
+                                      <div>{t('报名用户')}</div>
+                                      <div>{t('报名时间')}</div>
+                                      <div>{t('参与状态')}</div>
+                                    </div>
+                                    {roundEntries.map((entry, index) => (
+                                      <div
+                                        key={`${entry?.id || ''}-${index}`}
+                                        className='lottery-public-table'
+                                      >
+                                        <div className='min-w-0'>
+                                          <Text ellipsis={{ showTooltip: true }}>
+                                            {resolveDisplayName(entry)}
+                                          </Text>
+                                        </div>
+                                        <div className='text-semi-color-text-1'>
+                                          {entry?.created_at
+                                            ? timestamp2string(entry.created_at)
+                                            : '--'}
+                                        </div>
+                                        <div>
+                                          <Tag
+                                            color={entry?.qualified ? 'green' : 'orange'}
+                                            type='light'
+                                            shape='circle'
+                                          >
+                                            {resolveQualifiedStatus(entry, t)}
+                                          </Tag>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className='rounded-2xl border border-dashed border-semi-color-border bg-semi-color-fill-0 px-4 py-6 text-sm text-semi-color-text-2'>
+                                    {t('暂无报名记录')}
+                                  </div>
+                                )}
+                              </Spin>
                             </div>
-                          ) : (
-                            <div className='text-sm text-semi-color-text-2'>
-                              {t('暂无中奖名单')}
-                            </div>
-                          )}
+                          </div>
                         </Collapse.Panel>
                       );
                     })}

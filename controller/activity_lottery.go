@@ -52,6 +52,23 @@ func GetActivityLotteryPublicRounds(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"items": items})
 }
 
+func GetActivityLotteryPublicEntries(c *gin.Context) {
+	roundId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || roundId <= 0 {
+		common.ApiErrorMsg(c, "无效的期数ID")
+		return
+	}
+	items, err := model.ListPublicActivityLotteryEntries(roundId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"items": items,
+		"total": len(items),
+	})
+}
+
 func JoinActivityLotteryCurrent(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId <= 0 {
@@ -70,6 +87,29 @@ func AdminListActivityLotteryRounds(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(common.ItemsPerPage)))
 	items, total, err := model.ListActivityLotteryRounds(page, pageSize)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"items":     items,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+func AdminListActivityLotteryEntries(c *gin.Context) {
+	roundId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || roundId <= 0 {
+		common.ApiErrorMsg(c, "无效的期数ID")
+		return
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", strconv.Itoa(common.ItemsPerPage)))
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	source := strings.TrimSpace(c.Query("source"))
+	items, total, err := model.ListActivityLotteryEntries(roundId, page, pageSize, keyword, source)
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -106,11 +106,16 @@ const DEFAULT_LOTTERY_FORM = {
   published: true,
 };
 
+const DEFAULT_LOTTERY_ENTRY_FILTERS = {
+  keyword: '',
+  source: '',
+};
+
 const ACTIVITY_LOTTERY_JOIN_SOURCE_OPTIONS = [
-  { value: 'manual', label: '用户点击参与' },
-  { value: 'checkin', label: '签到成功自动参与' },
-  { value: 'topup', label: '充值达标自动参与' },
-  { value: 'consume', label: '消耗达标自动参与' },
+  { value: 'manual', label: '本页手动报名' },
+  { value: 'checkin', label: '报名后完成签到' },
+  { value: 'topup', label: '报名后充值达标' },
+  { value: 'consume', label: '报名后消耗达标' },
 ];
 
 const ACTIVITY_LOTTERY_SCOPE_OPTIONS = [
@@ -123,6 +128,16 @@ const ACTIVITY_LOTTERY_UNIT_OPTIONS = [
   { value: 'token', label: 'Token' },
 ];
 
+const renderEllipsisText = (value, maxWidth = 220) => {
+  const text = String(value || '').trim();
+  if (!text) return '-';
+  return (
+    <Text ellipsis={{ showTooltip: true }} style={{ maxWidth, display: 'block' }}>
+      {text}
+    </Text>
+  );
+};
+
 const normalizeJoinSources = (value) => {
   if (Array.isArray(value)) {
     return value.map((item) => String(item).trim()).filter(Boolean);
@@ -131,6 +146,36 @@ const normalizeJoinSources = (value) => {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+};
+
+const buildLotteryConditionSummary = (record, t) => {
+  const joinSources = normalizeJoinSources(record?.join_sources || 'manual');
+  const parts = joinSources
+    .map((source) => {
+      const option = ACTIVITY_LOTTERY_JOIN_SOURCE_OPTIONS.find(
+        (item) => item.value === source,
+      );
+      return t(option?.label || source);
+    })
+    .filter(Boolean);
+  if (joinSources.includes('topup')) {
+    parts.push(
+      `${t(record?.join_topup_scope === 'total' ? '累计充值' : '今日充值')} · ${t(
+        record?.join_topup_unit === 'token' ? 'Token' : '人民币',
+      )} ≥ ${Number(record?.join_topup_min_money || 0)}`,
+    );
+  }
+  if (joinSources.includes('consume')) {
+    parts.push(
+      `${t(record?.join_daily_consume_scope === 'total' ? '累计消耗' : '今日消耗')} · ${t(
+        record?.join_daily_consume_threshold_unit === 'token'
+          ? 'Token'
+          : '人民币',
+      )} ≥ ${Number(record?.join_daily_consume_min_money || 0)}`,
+    );
+  }
+  parts.push(`${t('人数')} ${Number(record?.participant_count || 0)} / ${Number(record?.min_participants || 0) || 0}`);
+  return parts.join('；');
 };
 
 const JOB_STATUS_OPTIONS = [
@@ -356,6 +401,19 @@ const CheckinAdminPage = () => {
   const [lotterySubmitting, setLotterySubmitting] = useState(false);
   const [editingRound, setEditingRound] = useState(null);
   const [lotteryForm, setLotteryForm] = useState(DEFAULT_LOTTERY_FORM);
+  const [lotteryEntryVisible, setLotteryEntryVisible] = useState(false);
+  const [lotteryEntryLoading, setLotteryEntryLoading] = useState(false);
+  const [lotteryEntries, setLotteryEntries] = useState([]);
+  const [lotteryEntryPage, setLotteryEntryPage] = useState(1);
+  const [lotteryEntryPageSize, setLotteryEntryPageSize] = useState(10);
+  const [lotteryEntryTotal, setLotteryEntryTotal] = useState(0);
+  const [lotteryEntryFilters, setLotteryEntryFilters] = useState(
+    DEFAULT_LOTTERY_ENTRY_FILTERS,
+  );
+  const [lotteryEntryQuery, setLotteryEntryQuery] = useState(
+    DEFAULT_LOTTERY_ENTRY_FILTERS,
+  );
+  const [selectedLotteryRound, setSelectedLotteryRound] = useState(null);
 
   const [createVisible, setCreateVisible] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
@@ -466,6 +524,47 @@ const CheckinAdminPage = () => {
       loadLotteryRounds();
     }
   }, [activeTab, loadLotteryRounds]);
+
+  const loadLotteryEntries = useCallback(async () => {
+    if (!selectedLotteryRound?.id || !lotteryEntryVisible) return;
+    setLotteryEntryLoading(true);
+    try {
+      const res = await API.get(
+        `/api/activity/lottery/admin/rounds/${selectedLotteryRound.id}/entries`,
+        {
+          params: {
+            page: lotteryEntryPage,
+            page_size: lotteryEntryPageSize,
+            keyword: lotteryEntryQuery.keyword?.trim() || undefined,
+            source: lotteryEntryQuery.source || undefined,
+          },
+        },
+      );
+      if (res.data?.success) {
+        setLotteryEntries(res.data?.data?.items || []);
+        setLotteryEntryTotal(Number(res.data?.data?.total || 0));
+      } else {
+        showError(res.data?.message || t('获取报名记录失败'));
+      }
+    } catch (error) {
+      showError(error?.response?.data?.message || t('获取报名记录失败'));
+    } finally {
+      setLotteryEntryLoading(false);
+    }
+  }, [
+    lotteryEntryPage,
+    lotteryEntryPageSize,
+    lotteryEntryQuery,
+    lotteryEntryVisible,
+    selectedLotteryRound?.id,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (lotteryEntryVisible && selectedLotteryRound?.id) {
+      loadLotteryEntries();
+    }
+  }, [loadLotteryEntries, lotteryEntryVisible, selectedLotteryRound?.id]);
 
   useEffect(() => {
     return () => {
@@ -596,6 +695,16 @@ const CheckinAdminPage = () => {
       published: Boolean(record?.published),
     });
     setLotteryModalVisible(true);
+  };
+
+  const handleOpenLotteryEntries = (record) => {
+    if (!record?.id) return;
+    setSelectedLotteryRound(record);
+    setLotteryEntryFilters(DEFAULT_LOTTERY_ENTRY_FILTERS);
+    setLotteryEntryQuery(DEFAULT_LOTTERY_ENTRY_FILTERS);
+    setLotteryEntryPage(1);
+    setLotteryEntryPageSize(10);
+    setLotteryEntryVisible(true);
   };
 
   const handleSubmitLotteryRound = async () => {
@@ -1233,17 +1342,16 @@ const CheckinAdminPage = () => {
         title: t('标题'),
         dataIndex: 'title',
         key: 'title',
-        render: (_, record) => record?.title || `#${record?.id || '-'}`,
+        width: 180,
+        render: (_, record) =>
+          renderEllipsisText(record?.title || `#${record?.id || '-'}`, 150),
       },
       {
         title: t('公示奖品'),
         dataIndex: 'prize',
         key: 'prize',
         width: 220,
-        render: (_, record) => {
-          const value = String(record?.prize || '').trim();
-          return value ? value : '-';
-        },
+        render: (_, record) => renderEllipsisText(record?.prize, 190),
       },
       {
         title: t('状态'),
@@ -1291,7 +1399,7 @@ const CheckinAdminPage = () => {
             ? timestamp2string(record.start_at)
             : '-';
           const end = record?.end_at ? timestamp2string(record.end_at) : '-';
-          return `${start} ~ ${end}`;
+          return renderEllipsisText(`${start} ~ ${end}`, 200);
         },
       },
       {
@@ -1306,78 +1414,8 @@ const CheckinAdminPage = () => {
         title: t('条件'),
         key: 'conditions',
         width: 260,
-        render: (_, record) => {
-          const need = Number(record?.min_participants || 0);
-          const countReached =
-            need > 0 && Number(record?.participant_count || 0) >= need;
-          const timeReached =
-            Number(record?.end_at || 0) > 0 &&
-            Date.now() / 1000 >= Number(record.end_at);
-          const joinSources = normalizeJoinSources(
-            record?.join_sources || 'manual',
-          );
-          return (
-            <Space wrap spacing='tight'>
-              {joinSources.map((source) => {
-                const option = ACTIVITY_LOTTERY_JOIN_SOURCE_OPTIONS.find(
-                  (item) => item.value === source,
-                );
-                return (
-                  <Tag key={source} color='blue' type='light' shape='circle'>
-                    {t(option?.label || source)}
-                  </Tag>
-                );
-              })}
-              {joinSources.includes('topup') ? (
-                <Tag color='orange' type='light' shape='circle'>
-                  {t(
-                    record?.join_topup_scope === 'total'
-                      ? '累计充值'
-                      : '今日充值',
-                  )}{' '}
-                  ·{' '}
-                  {t(record?.join_topup_unit === 'token' ? 'Token' : '人民币')}{' '}
-                  ≥ {Number(record?.join_topup_min_money || 0)}
-                </Tag>
-              ) : null}
-              {joinSources.includes('consume') ? (
-                <Tag color='orange' type='light' shape='circle'>
-                  {t(
-                    record?.join_daily_consume_scope === 'total'
-                      ? '累计消耗'
-                      : '今日消耗',
-                  )}{' '}
-                  ·{' '}
-                  {t(
-                    record?.join_daily_consume_threshold_unit === 'token'
-                      ? 'Token'
-                      : '人民币',
-                  )}{' '}
-                  ≥ {Number(record?.join_daily_consume_min_money || 0)}
-                </Tag>
-              ) : null}
-              <Tag
-                color={countReached ? 'green' : 'grey'}
-                type='light'
-                shape='circle'
-              >
-                {t('人数')}
-              </Tag>
-              <Tag
-                color={timeReached ? 'green' : 'grey'}
-                type='light'
-                shape='circle'
-              >
-                {t('时间')}
-              </Tag>
-              {countReached && timeReached ? (
-                <Tag color='green' type='light' shape='circle'>
-                  {t('可开奖')}
-                </Tag>
-              ) : null}
-            </Space>
-          );
-        },
+        render: (_, record) =>
+          renderEllipsisText(buildLotteryConditionSummary(record, t), 230),
       },
       {
         title: t('中奖人数'),
@@ -1389,7 +1427,8 @@ const CheckinAdminPage = () => {
         title: t('错误'),
         dataIndex: 'last_error',
         key: 'last_error',
-        render: (_, record) => record?.last_error || '-',
+        width: 180,
+        render: (_, record) => renderEllipsisText(record?.last_error, 150),
       },
       {
         title: t('操作'),
@@ -1403,6 +1442,13 @@ const CheckinAdminPage = () => {
               onClick={() => handleOpenLotteryEditModal(record)}
             >
               {t('编辑')}
+            </Button>
+            <Button
+              theme='outline'
+              size='small'
+              onClick={() => handleOpenLotteryEntries(record)}
+            >
+              {t('报名记录')}
             </Button>
             {String(record?.status || '').trim() !== 'open' ? (
               <Button
@@ -1428,10 +1474,61 @@ const CheckinAdminPage = () => {
     ],
     [
       handleDrawLotteryRound,
+      handleOpenLotteryEntries,
       handleOpenLotteryEditModal,
       handleOpenLotteryRound,
       t,
     ],
+  );
+
+  const lotteryEntryColumns = useMemo(
+    () => [
+      {
+        title: t('用户信息'),
+        key: 'user',
+        render: (_, record) => (
+          <div>
+            <div className='font-medium text-semi-color-text-0'>
+              {record?.display_name || record?.username || '-'}
+            </div>
+            <div className='text-xs text-semi-color-text-2'>
+              #{record?.user_id || '-'}
+              {record?.username ? ` · ${record.username}` : ''}
+            </div>
+            {record?.email ? (
+              <div className='text-xs text-semi-color-text-2'>
+                {record.email}
+              </div>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        title: t('来源'),
+        dataIndex: 'source',
+        key: 'source',
+        width: 150,
+        render: (_, record) => {
+          const option = ACTIVITY_LOTTERY_JOIN_SOURCE_OPTIONS.find(
+            (item) => item.value === record?.source,
+          );
+          return (
+            <Tag color='blue' type='light' shape='circle'>
+              {t(option?.label || record?.source || '-')}
+            </Tag>
+          );
+        },
+      },
+      {
+        title: t('报名时间'),
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 180,
+        render: (_, record) =>
+          record?.created_at ? timestamp2string(record.created_at) : '-',
+      },
+    ],
+    [t],
   );
 
   const recordStatsArea = (
@@ -2036,6 +2133,114 @@ const CheckinAdminPage = () => {
               )}
             </div>
           </Collapsible>
+        </div>
+      </Modal>
+
+      <Modal
+        title={
+          selectedLotteryRound?.title
+            ? `${t('报名记录')} · ${selectedLotteryRound.title}`
+            : t('报名记录')
+        }
+        visible={lotteryEntryVisible}
+        onCancel={() => {
+          setLotteryEntryVisible(false);
+          setSelectedLotteryRound(null);
+          setLotteryEntries([]);
+          setLotteryEntryTotal(0);
+        }}
+        footer={null}
+        width={900}
+      >
+        <div className='flex flex-col gap-4'>
+          <div className='grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr),180px,auto]'>
+            <Input
+              value={lotteryEntryFilters.keyword}
+              onChange={(value) =>
+                setLotteryEntryFilters((prev) => ({ ...prev, keyword: value }))
+              }
+              placeholder={t('搜索用户 ID / 用户名 / 邮箱')}
+              showClear
+            />
+            <Select
+              value={lotteryEntryFilters.source}
+              optionList={[
+                { value: '', label: t('全部') },
+                ...ACTIVITY_LOTTERY_JOIN_SOURCE_OPTIONS.map((item) => ({
+                  value: item.value,
+                  label: t(item.label),
+                })),
+              ]}
+              onChange={(value) =>
+                setLotteryEntryFilters((prev) => ({
+                  ...prev,
+                  source: value || '',
+                }))
+              }
+              placeholder={t('来源')}
+              showClear
+            />
+            <Space wrap>
+              <Button
+                theme='outline'
+                onClick={() => {
+                  setLotteryEntryPage(1);
+                  setLotteryEntryQuery({
+                    keyword: lotteryEntryFilters.keyword?.trim() || '',
+                    source: lotteryEntryFilters.source || '',
+                  });
+                }}
+              >
+                {t('筛选')}
+              </Button>
+              <Button
+                theme='outline'
+                onClick={() => {
+                  setLotteryEntryFilters(DEFAULT_LOTTERY_ENTRY_FILTERS);
+                  setLotteryEntryPage(1);
+                  setLotteryEntryQuery(DEFAULT_LOTTERY_ENTRY_FILTERS);
+                }}
+              >
+                {t('重置')}
+              </Button>
+            </Space>
+          </div>
+
+          <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'>
+            <div className='text-xs text-semi-color-text-2'>{t('参与人数')}</div>
+            <div className='mt-1 text-xl font-semibold text-semi-color-text-0'>
+              {Number(selectedLotteryRound?.participant_count || 0)} /{' '}
+              {Number(selectedLotteryRound?.min_participants || 0) || '-'}
+            </div>
+          </div>
+
+          <CardTable
+            columns={lotteryEntryColumns}
+            dataSource={lotteryEntries}
+            loading={lotteryEntryLoading}
+            rowKey='id'
+            pagination={false}
+            empty={
+              <Empty
+                image={<IllustrationNoResult />}
+                darkModeImage={<IllustrationNoResultDark />}
+                description={t('暂无报名记录')}
+              />
+            }
+          />
+
+          {createCardProPagination({
+            currentPage: lotteryEntryPage,
+            pageSize: lotteryEntryPageSize,
+            total: lotteryEntryTotal,
+            onPageChange: setLotteryEntryPage,
+            onPageSizeChange: (size) => {
+              setLotteryEntryPageSize(size);
+              setLotteryEntryPage(1);
+            },
+            isMobile,
+            t,
+          })}
         </div>
       </Modal>
 

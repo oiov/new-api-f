@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,11 +51,14 @@ type ActivityLotteryRound struct {
 }
 
 type ActivityLotteryEntry struct {
-	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
-	RoundId   int    `json:"round_id" gorm:"not null;index;uniqueIndex:idx_activity_lottery_round_user"`
-	UserId    int    `json:"user_id" gorm:"not null;index;uniqueIndex:idx_activity_lottery_round_user"`
-	Source    string `json:"source" gorm:"type:varchar(32);not null;default:'';index"`
-	CreatedAt int64  `json:"created_at" gorm:"bigint;index"`
+	Id              int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	RoundId         int    `json:"round_id" gorm:"not null;index;uniqueIndex:idx_activity_lottery_round_user"`
+	UserId          int    `json:"user_id" gorm:"not null;index;uniqueIndex:idx_activity_lottery_round_user"`
+	Source          string `json:"source" gorm:"type:varchar(32);not null;default:'';index"`
+	Qualified       bool   `json:"qualified" gorm:"not null;default:true;index"`
+	QualifiedSource string `json:"qualified_source" gorm:"type:varchar(32);not null;default:'';index"`
+	QualifiedAt     int64  `json:"qualified_at" gorm:"bigint;index"`
+	CreatedAt       int64  `json:"created_at" gorm:"bigint;index"`
 }
 
 type ActivityLotteryWinner struct {
@@ -64,6 +68,38 @@ type ActivityLotteryWinner struct {
 	MaskedName  string `json:"masked_name" gorm:"type:varchar(128);not null;default:''"`
 	MaskedEmail string `json:"masked_email" gorm:"type:varchar(128);not null;default:''"`
 	CreatedAt   int64  `json:"created_at" gorm:"bigint;index"`
+}
+
+type ActivityLotteryWinnerPublicView struct {
+	Id         int    `json:"id"`
+	RoundId    int    `json:"round_id"`
+	MaskedName string `json:"masked_name"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+type ActivityLotteryEntryAdminView struct {
+	Id              int    `json:"id"`
+	RoundId         int    `json:"round_id"`
+	UserId          int    `json:"user_id"`
+	Source          string `json:"source"`
+	Qualified       bool   `json:"qualified"`
+	QualifiedSource string `json:"qualified_source"`
+	QualifiedAt     int64  `json:"qualified_at"`
+	CreatedAt       int64  `json:"created_at"`
+	Username        string `json:"username"`
+	DisplayName     string `json:"display_name"`
+	Email           string `json:"email"`
+}
+
+type ActivityLotteryEntryPublicView struct {
+	Id              int    `json:"id"`
+	RoundId         int    `json:"round_id"`
+	Source          string `json:"source"`
+	Qualified       bool   `json:"qualified"`
+	QualifiedSource string `json:"qualified_source"`
+	QualifiedAt     int64  `json:"qualified_at"`
+	CreatedAt       int64  `json:"created_at"`
+	DisplayName     string `json:"display_name"`
 }
 
 func (ActivityLotteryRound) TableName() string {
@@ -79,17 +115,19 @@ func (ActivityLotteryWinner) TableName() string {
 }
 
 type ActivityLotteryRoundSummary struct {
-	Round            *ActivityLotteryRoundView `json:"round"`
-	Winners          []*ActivityLotteryWinner  `json:"winners"`
-	NeedParticipants int                       `json:"need_participants"`
-	ParticipantCount int64                     `json:"participant_count"`
-	TimeReached      bool                      `json:"time_reached"`
-	CountReached     bool                      `json:"count_reached"`
-	AutoDrawReady    bool                      `json:"auto_draw_ready"`
-	Joined           bool                      `json:"joined"`
-	JoinAllowed      bool                      `json:"join_allowed"`
-	Prize            string                    `json:"prize,omitempty"` // 仅中奖者可见
-	IsWinner         bool                      `json:"is_winner"`
+	Round            *ActivityLotteryRoundView          `json:"round"`
+	Winners          []*ActivityLotteryWinnerPublicView `json:"winners"`
+	SignupCount      int64                              `json:"signup_count"`
+	NeedParticipants int                                `json:"need_participants"`
+	ParticipantCount int64                              `json:"participant_count"`
+	TimeReached      bool                               `json:"time_reached"`
+	CountReached     bool                               `json:"count_reached"`
+	AutoDrawReady    bool                               `json:"auto_draw_ready"`
+	Joined           bool                               `json:"joined"`
+	Qualified        bool                               `json:"qualified"`
+	JoinAllowed      bool                               `json:"join_allowed"`
+	Prize            string                             `json:"prize,omitempty"` // 仅中奖者可见
+	IsWinner         bool                               `json:"is_winner"`
 }
 
 type ActivityLotteryRoundView struct {
@@ -241,6 +279,19 @@ func isActivityLotteryRoundJoinSourceEnabled(round *ActivityLotteryRound, source
 	}
 	for _, part := range strings.Split(normalizeActivityLotteryRoundJoinSources(round.JoinSources), ",") {
 		if strings.TrimSpace(part) == source {
+			return true
+		}
+	}
+	return false
+}
+
+func activityLotteryRoundRequiresQualification(round *ActivityLotteryRound) bool {
+	if round == nil {
+		return false
+	}
+	for _, part := range strings.Split(normalizeActivityLotteryRoundJoinSources(round.JoinSources), ",") {
+		value := strings.TrimSpace(strings.ToLower(part))
+		if value != "" && value != "manual" {
 			return true
 		}
 	}
@@ -477,13 +528,34 @@ func EnsureActivityLotteryEntry(userId int, source string, now time.Time) error 
 	}
 
 	nowUnix := now.Unix()
+	requiresQualification := activityLotteryRoundRequiresQualification(round)
 	if source != "manual" {
-		if _, err := GetManualActivityLotteryEntry(round.Id, userId); err != nil {
+		manualEntry, err := GetManualActivityLotteryEntry(round.Id, userId)
+		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil
 			}
 			return err
 		}
+		if manualEntry == nil || manualEntry.Id <= 0 {
+			return nil
+		}
+		if manualEntry.Qualified {
+			return nil
+		}
+		if !requiresQualification {
+			return nil
+		}
+		if err := DB.Model(&ActivityLotteryEntry{}).
+			Where("id = ?", manualEntry.Id).
+			Updates(map[string]any{
+				"qualified":        true,
+				"qualified_source": normalizeLotteryText(source, 32),
+				"qualified_at":     nowUnix,
+			}).Error; err != nil {
+			return err
+		}
+		_ = RefreshActivityLotteryRoundParticipantCount(round.Id)
 		return nil
 	}
 	existingEntry, err := GetActivityLotteryEntry(round.Id, userId)
@@ -491,21 +563,34 @@ func EnsureActivityLotteryEntry(userId int, source string, now time.Time) error 
 		if existingEntry.Source == "manual" {
 			return nil
 		}
+		update := map[string]any{
+			"source":     "manual",
+			"created_at": nowUnix,
+		}
+		if !requiresQualification {
+			update["qualified"] = true
+			update["qualified_source"] = "manual"
+			update["qualified_at"] = nowUnix
+		}
 		return DB.Model(&ActivityLotteryEntry{}).
 			Where("id = ?", existingEntry.Id).
-			Updates(map[string]any{
-				"source":     "manual",
-				"created_at": nowUnix,
-			}).Error
+			Updates(update).Error
 	}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 	entry := &ActivityLotteryEntry{
-		RoundId:   round.Id,
-		UserId:    userId,
-		Source:    normalizeLotteryText(source, 32),
-		CreatedAt: nowUnix,
+		RoundId:         round.Id,
+		UserId:          userId,
+		Source:          normalizeLotteryText(source, 32),
+		Qualified:       !requiresQualification,
+		QualifiedSource: "",
+		QualifiedAt:     0,
+		CreatedAt:       nowUnix,
+	}
+	if !requiresQualification {
+		entry.QualifiedSource = "manual"
+		entry.QualifiedAt = nowUnix
 	}
 
 	// 跨 DB 幂等插入：依赖唯一索引 (round_id, user_id)
@@ -522,8 +607,19 @@ func RefreshActivityLotteryRoundParticipantCount(roundId int) error {
 	if roundId <= 0 {
 		return nil
 	}
+	round := &ActivityLotteryRound{}
+	if err := DB.First(round, roundId).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
 	var cnt int64
-	if err := DB.Model(&ActivityLotteryEntry{}).Where("round_id = ?", roundId).Count(&cnt).Error; err != nil {
+	query := DB.Model(&ActivityLotteryEntry{}).Where("round_id = ?", roundId)
+	if activityLotteryRoundRequiresQualification(round) {
+		query = query.Where("qualified = ?", true)
+	}
+	if err := query.Count(&cnt).Error; err != nil {
 		return err
 	}
 	return DB.Model(&ActivityLotteryRound{}).
@@ -531,16 +627,23 @@ func RefreshActivityLotteryRoundParticipantCount(roundId int) error {
 		Update("participant_count", cnt).Error
 }
 
-func ListActivityLotteryWinners(roundId int, limit int) ([]*ActivityLotteryWinner, error) {
+func ListActivityLotteryWinners(roundId int, limit int) ([]*ActivityLotteryWinnerPublicView, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	items := make([]*ActivityLotteryWinner, 0, limit)
-	err := DB.Model(&ActivityLotteryWinner{}).
-		Where("round_id = ?", roundId).
-		Order("id asc").
+	items := make([]*ActivityLotteryWinnerPublicView, 0, limit)
+	err := DB.Table("activity_lottery_winners").
+		Joins("LEFT JOIN users ON users.id = activity_lottery_winners.user_id").
+		Where("activity_lottery_winners.round_id = ?", roundId).
+		Select(strings.Join([]string{
+			"activity_lottery_winners.id",
+			"activity_lottery_winners.round_id",
+			"COALESCE(NULLIF(users.display_name, ''), NULLIF(users.username, ''), activity_lottery_winners.masked_name) AS masked_name",
+			"activity_lottery_winners.created_at",
+		}, ",")).
+		Order("activity_lottery_winners.id asc").
 		Limit(limit).
-		Find(&items).Error
+		Scan(&items).Error
 	return items, err
 }
 
@@ -552,13 +655,15 @@ func GetActivityLotterySummary(now time.Time, userId int) (*ActivityLotteryRound
 	if err != nil || round == nil || round.Id <= 0 {
 		return &ActivityLotteryRoundSummary{
 			Round:            nil,
-			Winners:          []*ActivityLotteryWinner{},
+			Winners:          []*ActivityLotteryWinnerPublicView{},
+			SignupCount:      0,
 			NeedParticipants: 0,
 			ParticipantCount: 0,
 			TimeReached:      false,
 			CountReached:     false,
 			AutoDrawReady:    false,
 			Joined:           false,
+			Qualified:        false,
 			JoinAllowed:      false,
 			Prize:            "",
 			IsWinner:         false,
@@ -575,15 +680,18 @@ func GetActivityLotterySummary(now time.Time, userId int) (*ActivityLotteryRound
 	timeReached := round.EndAt > 0 && nowUnix >= round.EndAt
 	countReached := need > 0 && round.ParticipantCount >= int64(need)
 	autoDrawReady := timeReached && countReached
+	signupCount := int64(0)
+	_ = DB.Model(&ActivityLotteryEntry{}).
+		Where("round_id = ?", round.Id).
+		Count(&signupCount).Error
 	joined := false
+	qualified := false
 	isWinner := false
 	prize := ""
 	if userId > 0 && round.Id > 0 {
-		var cnt int64
-		_ = DB.Model(&ActivityLotteryEntry{}).
-			Where("round_id = ? AND user_id = ?", round.Id, userId).
-			Count(&cnt).Error
-		joined = cnt > 0
+		entry, entryErr := GetActivityLotteryEntry(round.Id, userId)
+		joined = entryErr == nil && entry != nil && entry.Id > 0
+		qualified = joined && entry.Qualified
 
 		var winCnt int64
 		_ = DB.Model(&ActivityLotteryWinner{}).
@@ -605,12 +713,14 @@ func GetActivityLotterySummary(now time.Time, userId int) (*ActivityLotteryRound
 	return &ActivityLotteryRoundSummary{
 		Round:            toActivityLotteryRoundView(round),
 		Winners:          winners,
+		SignupCount:      signupCount,
 		NeedParticipants: need,
 		ParticipantCount: round.ParticipantCount,
 		TimeReached:      timeReached,
 		CountReached:     countReached,
 		AutoDrawReady:    autoDrawReady,
 		Joined:           joined,
+		Qualified:        qualified,
 		JoinAllowed:      joinAllowed,
 		Prize:            prize,
 		IsWinner:         isWinner,
@@ -838,9 +948,82 @@ func ListActivityLotteryRounds(page int, pageSize int) ([]*ActivityLotteryRound,
 	return items, total, nil
 }
 
+func ListActivityLotteryEntries(roundId int, page int, pageSize int, keyword string, source string) ([]*ActivityLotteryEntryAdminView, int64, error) {
+	if roundId <= 0 {
+		return []*ActivityLotteryEntryAdminView{}, 0, nil
+	}
+	page, pageSize = normalizeCheckinPage(page, pageSize)
+	keyword = strings.TrimSpace(keyword)
+	source = strings.TrimSpace(strings.ToLower(source))
+
+	query := DB.Table("activity_lottery_entries").
+		Joins("LEFT JOIN users ON users.id = activity_lottery_entries.user_id").
+		Where("activity_lottery_entries.round_id = ?", roundId)
+	if source != "" {
+		query = query.Where("activity_lottery_entries.source = ?", source)
+	}
+	if keyword != "" {
+		if userId, err := strconv.Atoi(keyword); err == nil && userId > 0 {
+			query = query.Where("activity_lottery_entries.user_id = ?", userId)
+		} else {
+			likeValue := "%" + strings.ToLower(keyword) + "%"
+			query = query.Where(
+				DB.Where("LOWER(users.username) LIKE ?", likeValue).
+					Or("LOWER(users.display_name) LIKE ?", likeValue).
+					Or("LOWER(users.email) LIKE ?", likeValue),
+			)
+		}
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]*ActivityLotteryEntryAdminView, 0, pageSize)
+	if total <= 0 {
+		return items, 0, nil
+	}
+
+	err := query.
+		Select(strings.Join([]string{
+			"activity_lottery_entries.id",
+			"activity_lottery_entries.round_id",
+			"activity_lottery_entries.source",
+			"activity_lottery_entries.qualified",
+			"activity_lottery_entries.qualified_source",
+			"activity_lottery_entries.qualified_at",
+			"activity_lottery_entries.created_at",
+			"users.username",
+			"users.display_name",
+			"users.email",
+		}, ",")).
+		Order("activity_lottery_entries.id desc").
+		Limit(pageSize).
+		Offset((page - 1) * pageSize).
+		Scan(&items).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
 type PublicActivityLotteryRound struct {
-	Round   *ActivityLotteryRoundView `json:"round"`
-	Winners []*ActivityLotteryWinner  `json:"winners"`
+	Round   *ActivityLotteryRoundView          `json:"round"`
+	Winners []*ActivityLotteryWinnerPublicView `json:"winners"`
+}
+
+type activityLotteryEntryUserRow struct {
+	Id              int
+	RoundId         int
+	UserId          int
+	Source          string
+	Qualified       bool
+	QualifiedSource string
+	QualifiedAt     int64
+	CreatedAt       int64
+	Username        string
+	DisplayName     string
 }
 
 func ListPublicActivityLotteryRounds(limit int) ([]*PublicActivityLotteryRound, error) {
@@ -867,6 +1050,57 @@ func ListPublicActivityLotteryRounds(limit int) ([]*PublicActivityLotteryRound, 
 		})
 	}
 	return result, nil
+}
+
+func ListPublicActivityLotteryEntries(roundId int) ([]*ActivityLotteryEntryPublicView, error) {
+	if roundId <= 0 {
+		return []*ActivityLotteryEntryPublicView{}, nil
+	}
+	rows := make([]*activityLotteryEntryUserRow, 0)
+	err := DB.Table("activity_lottery_entries").
+		Joins("LEFT JOIN users ON users.id = activity_lottery_entries.user_id").
+		Where("activity_lottery_entries.round_id = ?", roundId).
+		Select(strings.Join([]string{
+			"activity_lottery_entries.id",
+			"activity_lottery_entries.round_id",
+			"activity_lottery_entries.user_id",
+			"activity_lottery_entries.source",
+			"activity_lottery_entries.qualified",
+			"activity_lottery_entries.qualified_source",
+			"activity_lottery_entries.qualified_at",
+			"activity_lottery_entries.created_at",
+			"users.username",
+			"users.display_name",
+		}, ",")).
+		Order("activity_lottery_entries.created_at asc, activity_lottery_entries.id asc").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*ActivityLotteryEntryPublicView, 0, len(rows))
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		name := strings.TrimSpace(row.DisplayName)
+		if name == "" {
+			name = strings.TrimSpace(row.Username)
+		}
+		if name == "" {
+			name = fmt.Sprintf("UID%d", row.UserId)
+		}
+		items = append(items, &ActivityLotteryEntryPublicView{
+			Id:              row.Id,
+			RoundId:         row.RoundId,
+			Source:          row.Source,
+			Qualified:       row.Qualified,
+			QualifiedSource: row.QualifiedSource,
+			QualifiedAt:     row.QualifiedAt,
+			CreatedAt:       row.CreatedAt,
+			DisplayName:     name,
+		})
+	}
+	return items, nil
 }
 
 func pickRandomUserIDs(ids []int, count int) []int {
@@ -918,7 +1152,7 @@ func DrawActivityLotteryRound(roundId int, now time.Time) ([]*ActivityLotteryWin
 
 		var userIDs []int
 		entries := make([]*ActivityLotteryEntry, 0)
-		if err := tx.Where("round_id = ?", roundId).Find(&entries).Error; err != nil {
+		if err := tx.Where("round_id = ? AND qualified = ?", roundId, true).Find(&entries).Error; err != nil {
 			return err
 		}
 		userIDs = make([]int, 0, len(entries))
@@ -967,7 +1201,13 @@ func DrawActivityLotteryRound(roundId int, now time.Time) ([]*ActivityLotteryWin
 			maskedName := maskUsername("", userID)
 			maskedEmail := ""
 			if u != nil {
-				maskedName = maskUsername(u.Username, u.Id)
+				maskedName = strings.TrimSpace(u.DisplayName)
+				if maskedName == "" {
+					maskedName = strings.TrimSpace(u.Username)
+				}
+				if maskedName == "" {
+					maskedName = maskUsername("", u.Id)
+				}
 				maskedEmail = maskEmail(u.Email)
 			}
 			winners = append(winners, &ActivityLotteryWinner{
