@@ -24,8 +24,8 @@ export const REDEMPTION_STATUS = {
 };
 
 export const REDEMPTION_KEY_PREFIX = {
-  SUBSCRIPTION: 'fishxredemptionP',
-  QUOTA: 'fishxredemptionQ',
+  SUBSCRIPTION: 'nbredemptionP',
+  QUOTA: 'nbredemptionQ',
 };
 
 export const REDEMPTION_PREFIX_KEYWORDS = {

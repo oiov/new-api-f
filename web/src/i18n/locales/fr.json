@@ -1112,7 +1112,7 @@
     "关联订单": "Commande liée",
     "关联订单后，可直接调用人工发放订单 API，用当前账号 API Key 完成发放并自动回写绑定信息。": "Après avoir lié une commande, vous pouvez appeler directement l'API de remise manuelle, livrer avec la clé API du compte actuel et réécrire automatiquement les informations de liaison.",
     "关联订阅": "",
-    "关键字(id/名称/前缀，如 fishxredemptionP)": "关键字(id/名称/前缀，如 fishxredemptionP)",
+    "关键字(id/名称/前缀，如 nbredemptionP)": "关键字(id/名称/前缀，如 nbredemptionP)",
     "关键字(id或者名称)": "Mot-clé (id ou nom)",
     "关闭": "Fermer",
     "关闭侧边栏": "Fermer la barre latérale",

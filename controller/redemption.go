@@ -39,8 +39,8 @@ func buildDefaultRedemptionName(redemption *model.Redemption, plan *model.Subscr
 }
 
 const (
-	redemptionKeyPrefixSubscription = "fishxredemptionP"
-	redemptionKeyPrefixQuota        = "fishxredemptionQ"
+	redemptionKeyPrefixSubscription = "nbredemptionP"
+	redemptionKeyPrefixQuota        = "nbredemptionQ"
 	redemptionKeyTotalLength        = 32
 )
 

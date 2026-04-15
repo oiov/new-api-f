@@ -1090,7 +1090,7 @@
     "关联订单": "Đơn hàng liên kết",
     "关联订单后，可直接调用人工发放订单 API，用当前账号 API Key 完成发放并自动回写绑定信息。": "Sau khi liên kết đơn hàng, có thể gọi trực tiếp API đơn phát thủ công, dùng API Key của tài khoản hiện tại để phát và tự động ghi lại thông tin liên kết.",
     "关联订阅": "",
-    "关键字(id/名称/前缀，如 fishxredemptionP)": "关键字(id/名称/前缀，如 fishxredemptionP)",
+    "关键字(id/名称/前缀，如 nbredemptionP)": "关键字(id/名称/前缀，如 nbredemptionP)",
     "关键字(id或者名称)": "Từ khóa (id hoặc tên)",
     "关闭": "Đóng",
     "关闭侧边栏": "Đóng thanh bên",

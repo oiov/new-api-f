@@ -1204,7 +1204,7 @@
     "关联订单": "Linked Order",
     "关联订单后，可直接调用人工发放订单 API，用当前账号 API Key 完成发放并自动回写绑定信息。": "After linking an order, you can call the manual delivery order API directly, deliver with the current account API key, and write back the binding information automatically.",
     "关联订阅": "",
-    "关键字(id/名称/前缀，如 fishxredemptionP)": "关键字(id/名称/前缀，如 fishxredemptionP)",
+    "关键字(id/名称/前缀，如 nbredemptionP)": "关键字(id/名称/前缀，如 nbredemptionP)",
     "关键字(id或者名称)": "Keyword (id or name)",
     "关闭": "Close",
     "关闭侧边栏": "Close sidebar",

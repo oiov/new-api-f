@@ -69,7 +69,7 @@ const RedemptionsFilters = ({
           <Form.Input
             field='searchKeyword'
             prefix={<IconSearch />}
-            placeholder={t('关键字(id/名称/前缀，如 fishxredemptionP)')}
+            placeholder={t('关键字(id/名称/前缀，如 nbredemptionP)')}
             showClear
             pure
             size='small'
@@ -78,7 +78,9 @@ const RedemptionsFilters = ({
         <div className='flex gap-2 w-full md:w-auto'>
           <Button
             type='tertiary'
-            onClick={() => applyPrefixFilter(REDEMPTION_KEY_PREFIX.SUBSCRIPTION)}
+            onClick={() =>
+              applyPrefixFilter(REDEMPTION_KEY_PREFIX.SUBSCRIPTION)
+            }
             className='flex-1 md:flex-initial md:w-auto'
             size='small'
           >
