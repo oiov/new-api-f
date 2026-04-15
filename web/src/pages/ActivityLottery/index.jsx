@@ -139,6 +139,12 @@ export default function ActivityLotteryPage() {
   );
   const joinAllowed = !!summary?.join_allowed;
   const joined = !!summary?.joined;
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const signupNotStarted =
+    !joinAllowed &&
+    !joined &&
+    currentRound?.status === 'open' &&
+    Number(currentRound?.start_at || 0) > nowUnix;
 
   return (
     <div className='px-2'>
@@ -161,34 +167,46 @@ export default function ActivityLotteryPage() {
                   {t('活动抽奖')}
                 </div>
               </div>
-              <Space wrap>
-                <Button
-                  theme='outline'
-                  onClick={loadSummary}
-                  loading={summaryLoading}
-                >
-                  {t('刷新')}
-                </Button>
-                {joinAllowed && !joined ? (
+              <div className='flex flex-col items-start gap-1 md:items-end'>
+                <Space wrap>
                   <Button
-                    type='primary'
-                    onClick={joinCurrent}
-                    loading={joinLoading}
+                    theme='outline'
+                    onClick={loadSummary}
+                    loading={summaryLoading}
                   >
-                    {t('报名参与')}
+                    {t('刷新')}
                   </Button>
+                  {joinAllowed && !joined ? (
+                    <Button
+                      type='primary'
+                      onClick={joinCurrent}
+                      loading={joinLoading}
+                    >
+                      {t('报名参与')}
+                    </Button>
+                  ) : null}
+                  {signupNotStarted ? (
+                    <Button type='primary' disabled>
+                      {t('报名参与')} · {t('未开始')}
+                    </Button>
+                  ) : null}
+                  {joined ? (
+                    <Tag color='blue' type='light' shape='circle'>
+                      {t('你已报名本期')}
+                    </Tag>
+                  ) : null}
+                  {summary?.is_winner ? (
+                    <Tag color='green' type='light' shape='circle'>
+                      {t('已中奖')}
+                    </Tag>
+                  ) : null}
+                </Space>
+                {signupNotStarted && currentRound?.start_at ? (
+                  <Text type='tertiary' size='small'>
+                    {t('开始时间')}: {timestamp2string(currentRound.start_at)}
+                  </Text>
                 ) : null}
-                {joined ? (
-                  <Tag color='blue' type='light' shape='circle'>
-                    {t('你已报名本期')}
-                  </Tag>
-                ) : null}
-                {summary?.is_winner ? (
-                  <Tag color='green' type='light' shape='circle'>
-                    {t('已中奖')}
-                  </Tag>
-                ) : null}
-              </Space>
+              </div>
             </div>
           </div>
         }
