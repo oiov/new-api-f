@@ -993,10 +993,17 @@ func (token *Token) IsModelLimitsEnabled() bool {
 }
 
 func (token *Token) GetModelLimits() []string {
-	if token.ModelLimits == "" {
+	raw := strings.TrimSpace(token.ModelLimits)
+	if raw == "" {
 		return []string{}
 	}
-	return strings.Split(token.ModelLimits, ",")
+	if strings.HasPrefix(raw, "[") {
+		var limits []string
+		if err := common.UnmarshalJsonStr(raw, &limits); err == nil {
+			return limits
+		}
+	}
+	return strings.Split(raw, ",")
 }
 
 func (token *Token) GetModelLimitsMap() map[string]bool {

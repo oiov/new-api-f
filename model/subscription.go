@@ -4303,6 +4303,7 @@ func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateK
 	}
 	routeGroup := strings.TrimSpace(getUserSubscriptionRouteGroup(sub))
 	allowedModels := decodeUserSubscriptionAllowedModels(sub)
+	modelLimitsValue := strings.Join(allowedModels, ",")
 	modelLimitsEnabled := len(allowedModels) > 0
 	now := GetDBTimestampWithTx(tx)
 	active := sub.Status == "active" && sub.EndTime > now
@@ -4330,7 +4331,7 @@ func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateK
 			ExpiredTime:             sub.EndTime,
 			UnlimitedQuota:          true,
 			ModelLimitsEnabled:      modelLimitsEnabled,
-			ModelLimits:             sub.AllowedModelsJSON,
+			ModelLimits:             modelLimitsValue,
 			Group:                   routeGroup,
 			SpecificChannelId:       sub.SpecificChannelId,
 			SpecificChannelKeyIndex: sub.SpecificChannelKeyIndex,
@@ -4363,7 +4364,7 @@ func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateK
 		"expired_time":               sub.EndTime,
 		"unlimited_quota":            true,
 		"model_limits_enabled":       modelLimitsEnabled,
-		"model_limits":               sub.AllowedModelsJSON,
+		"model_limits":               modelLimitsValue,
 		"group":                      routeGroup,
 		"specific_channel_id":        sub.SpecificChannelId,
 		"specific_channel_key_index": sub.SpecificChannelKeyIndex,
@@ -4385,7 +4386,7 @@ func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateK
 	token.ExpiredTime = sub.EndTime
 	token.UnlimitedQuota = true
 	token.ModelLimitsEnabled = modelLimitsEnabled
-	token.ModelLimits = sub.AllowedModelsJSON
+	token.ModelLimits = modelLimitsValue
 	token.Group = routeGroup
 	token.SpecificChannelId = sub.SpecificChannelId
 	token.SpecificChannelKeyIndex = sub.SpecificChannelKeyIndex

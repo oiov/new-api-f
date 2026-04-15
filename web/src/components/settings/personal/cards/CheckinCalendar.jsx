@@ -786,64 +786,60 @@ const CheckinCalendar = ({
         </div>
       </Modal>
 
-      <div className='rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-4 md:p-6'>
-        <div className='flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between'>
+      <div className='checkin-compact-shell rounded-[20px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-3'>
+        <div className='flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between'>
           <div
-            className='min-w-0 flex-1 cursor-pointer rounded-[22px] border border-white/80 bg-white/90 p-4 backdrop-blur-sm transition-colors hover:bg-white md:p-5'
+            className='checkin-compact-header min-w-0 flex-1 cursor-pointer rounded-[16px] border border-white/80 bg-white/90 p-3 transition-colors hover:bg-white'
             onClick={() => setIsCollapsed(!isCollapsed)}
           >
-            <div className='flex items-start gap-4'>
-              <div className='flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-[0_12px_30px_rgba(15,23,42,0.18)]'>
-                <CalendarCheck size={20} />
+            <div className='flex items-start gap-2.5'>
+              <div className='checkin-compact-header__icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-[0_8px_18px_rgba(15,23,42,0.14)]'>
+                <CalendarCheck size={16} />
               </div>
               <div className='min-w-0 flex-1'>
                 <div className='flex flex-wrap items-center gap-2'>
-                  <Typography.Text className='text-[22px] font-semibold tracking-[-0.02em] text-semi-color-text-0'>
+                  <Typography.Text className='text-[16px] font-semibold tracking-[-0.02em] text-semi-color-text-0'>
                     {t('每日签到')}
                   </Typography.Text>
                   <span
-                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusBadgeClass}`}
+                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}
                     aria-live='polite'
                   >
                     {statusBadgeText}
                   </span>
-                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500'>
+                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500'>
                     {formatLocalMonthKey().replace('-', '.')}
                   </span>
                 </div>
-                <div className='mt-2 text-sm leading-6 text-semi-color-text-1'>
+                <div className='mt-1 text-[12px] leading-5 text-semi-color-text-1'>
                   {headerSummaryText}
                 </div>
                 {checkinScheduleText ? (
-                  <div className='mt-3 inline-flex max-w-full items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600'>
+                  <div className='mt-1.5 inline-flex max-w-full items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600'>
                     <span className='truncate'>{checkinScheduleText}</span>
                   </div>
                 ) : null}
-                <div className='mt-4 flex flex-wrap items-center gap-2 text-xs text-semi-color-text-2'>
-                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5'>
+                <div className='mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-semi-color-text-2'>
+                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5'>
                     {t('累计签到')} {checkinData.stats?.total_checkins || 0}{' '}
                     {t('天')}
                   </span>
-                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5'>
+                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5'>
                     {t('本月获得')} {renderQuota(monthlyQuota, 6)}
-                  </span>
-                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5'>
-                    {t('累计获得')}{' '}
-                    {renderQuota(checkinData.stats?.total_quota || 0, 6)}
                   </span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className='flex w-full shrink-0 flex-col gap-3 xl:w-[320px]'>
-            <div className='rounded-[22px] border border-slate-200/80 bg-white p-4 shadow-sm md:p-5'>
+          <div className='flex w-full shrink-0 flex-col gap-2 xl:w-[240px]'>
+            <div className='checkin-compact-action rounded-[16px] border border-slate-200/80 bg-white p-3 shadow-sm'>
               <div className='flex items-center justify-between gap-3'>
                 <div>
-                  <div className='text-sm font-semibold text-semi-color-text-0'>
+                  <div className='text-[12px] font-semibold text-semi-color-text-0'>
                     {t('今日操作')}
                   </div>
-                  <div className='mt-1 text-xs leading-5 text-semi-color-text-2'>
+                  <div className='mt-1 text-[10px] leading-4 text-semi-color-text-2'>
                     {actionHelperText}
                   </div>
                 </div>
@@ -862,7 +858,7 @@ const CheckinCalendar = ({
                 onClick={() => doCheckin()}
                 loading={checkinLoading || !initialLoaded}
                 disabled={!initialLoaded || checkinData.stats?.checked_in_today}
-                className='mt-4 !h-11 !rounded-xl !border-emerald-500 !bg-emerald-500 hover:!bg-emerald-600'
+                className='mt-2.5 !h-9 !rounded-lg !border-emerald-500 !bg-emerald-500 hover:!bg-emerald-600'
               >
                 {actionButtonText}
               </Button>
@@ -876,13 +872,13 @@ const CheckinCalendar = ({
       {/* 可折叠内容 */}
       {mode === 'full' ? (
         <Collapsible isOpen={isCollapsed === false} keepDOM>
-          <div className='mt-6 rounded-[26px] border border-semi-color-border/80 bg-white p-3 shadow-[0_12px_40px_rgba(15,23,42,0.04)] md:p-4'>
+          <div className='checkin-compact-panel mt-3 rounded-[18px] border border-semi-color-border/80 bg-white p-2 shadow-[0_8px_20px_rgba(15,23,42,0.035)]'>
             <Tabs type='line'>
               {status?.checkin_enabled ? (
                 <TabPane tab={t('签到概览')} itemKey='overview'>
-                  <div className='pt-5 md:pt-6'>
-                    <div className='mb-5 grid grid-cols-1 gap-4 md:mb-6 md:gap-5 lg:grid-cols-[minmax(0,1.35fr),minmax(0,0.65fr)]'>
-                      <div className='rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-4 md:p-5'>
+                  <div className='pt-3 md:pt-4'>
+                    <div className='mb-3 grid grid-cols-1 gap-2.5 md:mb-4 md:gap-3 lg:grid-cols-[minmax(0,1.35fr),minmax(0,0.65fr)]'>
+                      <div className='rounded-[16px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-3'>
                         <div className='flex flex-wrap items-center gap-2.5'>
                           <Typography.Text strong>
                             {t('今日开放状态：{{status}}', {
@@ -897,48 +893,42 @@ const CheckinCalendar = ({
                             {availabilityStatusText || '--'}
                           </Tag>
                         </div>
-                        <div className='mt-3 text-sm leading-6 text-semi-color-text-1'>
+                        <div className='mt-1.5 text-[12px] leading-5 text-semi-color-text-1'>
                           {availabilityHintText ||
                             t('每日签到可获得随机额度奖励')}
                         </div>
-                        <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:mt-5 md:grid-cols-3 md:gap-4'>
+                        <div className='mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3'>
                           {overviewCards.map((item) => (
                             <div
                               key={item.key}
-                              className='rounded-2xl border border-slate-200/80 bg-white px-4 py-4 shadow-sm'
+                              className='rounded-[14px] border border-slate-200/80 bg-white px-3 py-2.5 shadow-sm'
                             >
-                              <div className='text-[12px] text-semi-color-text-2'>
+                              <div className='text-[10px] text-semi-color-text-2'>
                                 {item.label}
                               </div>
                               <div
-                                className={`mt-1.5 text-lg font-semibold ${item.tone}`}
+                                className={`mt-1 text-[15px] font-semibold ${item.tone}`}
                               >
                                 {item.value}
-                              </div>
-                              <div className='mt-1.5 text-[11px] leading-5 text-semi-color-text-2'>
-                                {item.detail}
                               </div>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <div className='grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-2'>
+                      <div className='grid grid-cols-2 gap-2 lg:grid-cols-2'>
                         {leaderboardSummaryCards.map((item) => (
                           <div
                             key={item.key}
-                            className='rounded-[22px] border border-slate-200/80 bg-slate-50/90 px-4 py-4'
+                            className='rounded-[14px] border border-slate-200/80 bg-slate-50/90 px-3 py-2.5'
                           >
-                            <div className='text-[11px] text-semi-color-text-2'>
+                            <div className='text-[10px] text-semi-color-text-2'>
                               {item.label}
                             </div>
                             <div
-                              className={`mt-1.5 text-base font-semibold ${item.tone}`}
+                              className={`mt-1 text-[14px] font-semibold ${item.tone}`}
                             >
                               {item.value}
-                            </div>
-                            <div className='mt-1.5 text-[11px] leading-5 text-semi-color-text-2'>
-                              {item.detail}
                             </div>
                           </div>
                         ))}
@@ -946,27 +936,27 @@ const CheckinCalendar = ({
                     </div>
 
                     <Spin spinning={loading}>
-                      <div className='checkin-calendar overflow-hidden rounded-[24px] border border-semi-color-border/80 bg-semi-color-bg-0 shadow-sm'>
+                      <div className='checkin-calendar overflow-hidden rounded-[16px] border border-semi-color-border/80 bg-semi-color-bg-0 shadow-sm'>
                         <style>{`
                   .checkin-calendar .semi-calendar {
-                    font-size: 13px;
+                    font-size: 12px;
                   }
                   .checkin-calendar .semi-calendar-month-header {
-                    padding: 8px 12px;
+                    padding: 6px 10px;
                   }
                   .checkin-calendar .semi-calendar-month-week-row {
-                    height: 28px;
+                    height: 26px;
                   }
                   .checkin-calendar .semi-calendar-month-week-row th {
-                    font-size: 12px;
+                    font-size: 11px;
                     padding: 4px 0;
                   }
                   .checkin-calendar .semi-calendar-month-grid-row {
                     height: auto;
                   }
                   .checkin-calendar .semi-calendar-month-grid-row td {
-                    height: 56px;
-                    padding: 2px;
+                    height: 52px;
+                    padding: 1px;
                   }
                   .checkin-calendar .semi-calendar-month-grid-row-cell {
                     position: relative;
@@ -974,10 +964,10 @@ const CheckinCalendar = ({
                   }
                   .checkin-calendar .semi-calendar-month-grid-row-cell-day {
                     position: absolute;
-                    top: 4px;
+                    top: 3px;
                     left: 50%;
                     transform: translateX(-50%);
-                    font-size: 12px;
+                    font-size: 11px;
                     z-index: 1;
                   }
                   .checkin-calendar .semi-calendar-month-same {
@@ -987,8 +977,8 @@ const CheckinCalendar = ({
                     background: var(--semi-color-primary);
                     color: white;
                     border-radius: 50%;
-                    width: 20px;
-                    height: 20px;
+                    width: 18px;
+                    height: 18px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -1002,14 +992,12 @@ const CheckinCalendar = ({
                       </div>
                     </Spin>
 
-                    <div className='mt-4 rounded-[22px] border border-slate-200/80 bg-slate-50/90 p-4 md:mt-5'>
-                      <Typography.Text type='tertiary' className='text-xs'>
-                        <ul className='list-disc list-inside space-y-1 leading-6'>
-                          <li>{t('每日签到可获得随机额度奖励')}</li>
-                          <li>{t('签到奖励将直接添加到您的账户余额')}</li>
-                          <li>{t('每日仅可签到一次，请勿重复签到')}</li>
-                        </ul>
-                      </Typography.Text>
+                    <div className='checkin-compact-note mt-2.5 rounded-[14px] border border-slate-200/80 bg-slate-50/90 px-3 py-2'>
+                      <div className='flex flex-wrap gap-x-3 gap-y-1 text-[10px] leading-4 text-semi-color-text-2'>
+                        <span>{t('每日随机奖励')}</span>
+                        <span>{t('奖励直接到账')}</span>
+                        <span>{t('每日仅可签到一次')}</span>
+                      </div>
                     </div>
                   </div>
                 </TabPane>
