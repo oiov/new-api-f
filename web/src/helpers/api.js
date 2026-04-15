@@ -23,6 +23,7 @@ import {
   formatMessageForAPI,
   isValidMessage,
 } from './utils';
+import { authHeader } from './auth';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 import { buildGroupOptions } from './group';
@@ -100,15 +101,25 @@ export function resolveRequestUrl(url) {
 }
 
 function createAPIClient() {
+  const currentUserId = getUserIdFromLocalStorage();
   const instance = axios.create({
     headers: {
-      'New-API-User': getUserIdFromLocalStorage(),
+      'New-API-User': currentUserId,
+      'Fish-X-Code-User': currentUserId,
       'Cache-Control': 'no-store',
+      ...authHeader(),
     },
   });
 
   instance.interceptors.request.use((config) => {
     config.baseURL = getRequestBaseURL(config.url);
+    config.headers = {
+      ...(config.headers || {}),
+      'New-API-User': getUserIdFromLocalStorage(),
+      'Fish-X-Code-User': getUserIdFromLocalStorage(),
+      'Cache-Control': 'no-store',
+      ...authHeader(),
+    };
     return config;
   });
 
