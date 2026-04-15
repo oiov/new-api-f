@@ -69,7 +69,7 @@ const defaultFormState = {
   supabase_anon_key:
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3Z2dhd25vanRqaWFrbHljZmhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMzU3NDUsImV4cCI6MjA4NzYxMTc0NX0.-pQHomLNGWL7OvQpHL2_7T_NwI4wAzyNYMOknX_YJSE',
   confirm_url: '',
-  assignment_status: 'unassigned',
+  assignment_status: '',
   assigned_plan: '',
   assigned_subscription_order_id: '',
   assigned_channel_id: '',
@@ -126,11 +126,11 @@ const DEFAULT_LIST_FILTERS = {
   keyword: '',
   assignedUserKeyword: '',
   planFilter: '',
-  statusFilter: '',
-  assignmentStatusFilter: '',
-  channelBindingFilter: '',
-  orderBindingFilter: '',
-  apiKeyFilter: '',
+  statusFilter: 'ready',
+  assignmentStatusFilter: 'unassigned',
+  channelBindingFilter: 'unlinked',
+  orderBindingFilter: 'unlinked',
+  apiKeyFilter: 'present',
 };
 
 const CLEARED_LIST_FILTERS = {
@@ -282,8 +282,9 @@ function buildManualOrderOptionLabel(item, t) {
 
 function buildAssignmentFormFromRecord(record) {
   return {
-    assignment_status:
-      normalizeAssignmentStatus(record?.assignment_status) || 'unassigned',
+    assignment_status: record
+      ? normalizeAssignmentStatus(record?.assignment_status) || ''
+      : '',
     assigned_plan: record?.assigned_plan || '',
     assigned_subscription_order_id:
       record?.assigned_subscription_order_id > 0
@@ -1231,26 +1232,6 @@ const EcomAgentPage = () => {
     statusFilter,
     t,
   ]);
-
-  const hasActiveFilters =
-    keyword.trim() !== DEFAULT_LIST_FILTERS.keyword ||
-    assignedUserKeyword.trim() !== DEFAULT_LIST_FILTERS.assignedUserKeyword ||
-    planFilter !== DEFAULT_LIST_FILTERS.planFilter ||
-    statusFilter !== DEFAULT_LIST_FILTERS.statusFilter ||
-    assignmentStatusFilter !== DEFAULT_LIST_FILTERS.assignmentStatusFilter ||
-    channelBindingFilter !== DEFAULT_LIST_FILTERS.channelBindingFilter ||
-    orderBindingFilter !== DEFAULT_LIST_FILTERS.orderBindingFilter ||
-    apiKeyFilter !== DEFAULT_LIST_FILTERS.apiKeyFilter;
-
-  const isClearedFilters =
-    keyword.trim() === CLEARED_LIST_FILTERS.keyword &&
-    assignedUserKeyword.trim() === CLEARED_LIST_FILTERS.assignedUserKeyword &&
-    planFilter === CLEARED_LIST_FILTERS.planFilter &&
-    statusFilter === CLEARED_LIST_FILTERS.statusFilter &&
-    assignmentStatusFilter === CLEARED_LIST_FILTERS.assignmentStatusFilter &&
-    channelBindingFilter === CLEARED_LIST_FILTERS.channelBindingFilter &&
-    orderBindingFilter === CLEARED_LIST_FILTERS.orderBindingFilter &&
-    apiKeyFilter === CLEARED_LIST_FILTERS.apiKeyFilter;
 
   const resetFilters = () => {
     setKeyword(DEFAULT_LIST_FILTERS.keyword);
@@ -2706,14 +2687,20 @@ const EcomAgentPage = () => {
                   onChange={(value) =>
                     setAssignmentForm((prev) => ({
                       ...prev,
-                      assignment_status: value || 'unassigned',
+                      assignment_status: value || '',
                     }))
                   }
-                  optionList={ASSIGNMENT_STATUS_OPTIONS.filter((item) => item.value).map((item) => ({
-                    label: t(item.labelKey),
-                    value: item.value,
-                  }))}
+                  optionList={[
+                    { label: t('默认分配状态'), value: '' },
+                    ...ASSIGNMENT_STATUS_OPTIONS.filter((item) => item.value).map(
+                      (item) => ({
+                        label: t(item.labelKey),
+                        value: item.value,
+                      }),
+                    ),
+                  ]}
                   placeholder={t('分配状态')}
+                  showClear
                 />
                 <Select
                   value={assignmentForm.assigned_plan}
@@ -3076,16 +3063,12 @@ const EcomAgentPage = () => {
                     }))}
                     style={{ width: isMobile ? '100%' : 180 }}
                   />
-                  {hasActiveFilters ? (
-                    <Button type='tertiary' onClick={resetFilters}>
-                      {t('恢复默认查询条件')}
-                    </Button>
-                  ) : null}
-                  {!isClearedFilters ? (
-                    <Button type='tertiary' onClick={clearFilters}>
-                      {t('清空查询条件')}
-                    </Button>
-                  ) : null}
+                  <Button type='tertiary' onClick={resetFilters}>
+                    {t('恢复默认查询条件')}
+                  </Button>
+                  <Button type='tertiary' onClick={clearFilters}>
+                    {t('清空查询条件')}
+                  </Button>
                   {filteredAccounts.length > 0 ? (
                     <Button
                       type='tertiary'

@@ -15,6 +15,7 @@ import (
 type Token struct {
 	Id                      int            `json:"id"`
 	UserId                  int            `json:"user_id" gorm:"index"`
+	UserSubscriptionId      int            `json:"user_subscription_id" gorm:"type:int;not null;default:0;index"`
 	Username                string         `json:"username,omitempty" gorm:"column:username;->;-:migration"`
 	Key                     string         `json:"key" gorm:"type:char(48);uniqueIndex"`
 	Source                  string         `json:"source" gorm:"type:varchar(64);not null;default:'';index"`
@@ -42,6 +43,7 @@ const (
 	TokenSourceUserCreated                 = "user_created"
 	TokenSourceSubscriptionAggregateAccess = "subscription_aggregate_access"
 	TokenSourceSubscriptionSpecificChannel = "subscription_specific_channel"
+	TokenSourceDerivedDayPassAccess        = "subscription_derived_day_pass_access"
 )
 
 func normalizeTokenSource(source string) string {
@@ -50,6 +52,8 @@ func normalizeTokenSource(source string) string {
 		return TokenSourceSubscriptionAggregateAccess
 	case TokenSourceSubscriptionSpecificChannel:
 		return TokenSourceSubscriptionSpecificChannel
+	case TokenSourceDerivedDayPassAccess:
+		return TokenSourceDerivedDayPassAccess
 	case TokenSourceUserCreated:
 		return TokenSourceUserCreated
 	default:
@@ -108,6 +112,14 @@ func (token *Token) IsSubscriptionSpecificChannelToken() bool {
 		return true
 	}
 	return token.legacySubscriptionSpecificChannelToken()
+}
+
+func (token *Token) IsDerivedDayPassAccessToken() bool {
+	if token == nil {
+		return false
+	}
+	return token.GetEffectiveSource() == TokenSourceDerivedDayPassAccess &&
+		token.UserSubscriptionId > 0
 }
 
 func (token *Token) IsSubscriptionAggregateAccessToken() bool {
@@ -888,7 +900,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "specific_channel_id", "specific_channel_key_index").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "specific_channel_id", "specific_channel_key_index", "user_subscription_id", "source").Updates(token).Error
 	return err
 }
 

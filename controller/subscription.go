@@ -217,6 +217,10 @@ func GetSubscriptionSelf(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := model.EnsureDerivedDayPassAccessTokensForUser(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	// Get all subscriptions (including expired)
 	allSubscriptions, err := model.GetAllUserSubscriptions(userId)

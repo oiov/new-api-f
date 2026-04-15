@@ -2124,6 +2124,11 @@ const SubscriptionPlansCard = ({
           ? `${t('订阅')} #${item.parentSubscriptionId}`
           : '--',
       });
+      metaItems.push({
+        label: t('天卡独立 Key'),
+        value:
+          item?.dedicated_access_token?.key_preview || t('已自动创建，请前往令牌页面查看'),
+      });
     }
 
     return (

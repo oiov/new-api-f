@@ -226,6 +226,7 @@ const SubscriptionsPage = () => {
               compactMode={compactMode}
               planTitleMap={subscriptionsData.planTitleMap}
               openConsumeLogs={(filter) => setConsumeLogsFilter(filter)}
+              onDataChanged={subscriptionsData.loadUserSubscriptions}
               t={t}
             />
           </CardPro>

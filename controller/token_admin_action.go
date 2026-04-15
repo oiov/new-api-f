@@ -236,7 +236,7 @@ func RotateTokenByAdmin(c *gin.Context) {
 		return
 	}
 
-	isSubscriptionDeliveryToken := token.IsSubscriptionAggregateAccessToken()
+	isSubscriptionDeliveryToken := token.IsSubscriptionAggregateAccessToken() || token.IsDerivedDayPassAccessToken()
 	newKey, err := token.RotateKey()
 	if err != nil {
 		common.ApiError(c, err)

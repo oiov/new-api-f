@@ -526,6 +526,7 @@ export const useAdminTokensData = () => {
     const source = String(record?.source || '').trim();
     const isSystemIssued =
       source === 'subscription_aggregate_access' ||
+      source === 'subscription_derived_day_pass_access' ||
       (Number(record?.specific_channel_id || 0) <= 0 &&
         String(record?.name || '').trim() === subscriptionAccessTokenName);
     const actionLabel = isSystemIssued ? t('重新签发') : t('重置令牌');

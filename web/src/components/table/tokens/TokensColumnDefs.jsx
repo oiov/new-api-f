@@ -61,6 +61,12 @@ const isProtectedSubscriptionAccessToken = (record) => {
   if (!record) {
     return false;
   }
+  if (
+    String(record.source || '').trim() ===
+    'subscription_derived_day_pass_access'
+  ) {
+    return true;
+  }
   if (String(record.source || '').trim() === 'subscription_aggregate_access') {
     const expiredTime = Number(record.expired_time ?? -1);
     const now = Math.floor(Date.now() / 1000);
@@ -356,11 +362,22 @@ const renderOperations = (
   rotateToken,
   t,
 ) => {
-  const canDelete = !isProtectedSubscriptionAccessToken(record);
-  const canEdit = !isProtectedSubscriptionAccessToken(record);
+  const hasOpenLink = typeof onOpenLink === 'function';
+  const canManageToken = typeof manageToken === 'function';
+  const canRefresh = typeof refresh === 'function';
+  const canDelete =
+    !isProtectedSubscriptionAccessToken(record) && canManageToken && canRefresh;
+  const canEdit =
+    !isProtectedSubscriptionAccessToken(record) &&
+    typeof setEditingToken === 'function' &&
+    typeof setShowEdit === 'function';
+  const canToggleStatus = canManageToken && canRefresh;
+  const canOpenChat = hasOpenLink;
+  const canImport = hasOpenLink;
   const rotateActionLabel = isProtectedSubscriptionAccessToken(record)
     ? t('重新签发')
     : t('重置令牌');
+  const canRotate = typeof rotateToken === 'function';
   let chatsArray = [];
   try {
     const raw = localStorage.getItem('chats');
@@ -375,7 +392,10 @@ const renderOperations = (
           key: i,
           name,
           value: item[name],
-          onClick: () => onOpenLink(name, item[name], record),
+          onClick: () => {
+            if (!hasOpenLink) return;
+            onOpenLink(name, item[name], record);
+          },
         });
       }
     }
@@ -385,34 +405,36 @@ const renderOperations = (
 
   return (
     <Space wrap>
-      <SplitButtonGroup
-        className='overflow-hidden'
-        aria-label={t('项目操作按钮组')}
-      >
-        <Button
-          size='small'
-          type='tertiary'
-          onClick={() => {
-            if (chatsArray.length === 0) {
-              showError(t('请联系管理员配置聊天链接'));
-            } else {
-              const first = chatsArray[0];
-              onOpenLink(first.name, first.value, record);
-            }
-          }}
+      {canOpenChat ? (
+        <SplitButtonGroup
+          className='overflow-hidden'
+          aria-label={t('项目操作按钮组')}
         >
-          {t('聊天')}
-        </Button>
-        <Dropdown trigger='click' position='bottomRight' menu={chatsArray}>
           <Button
-            type='tertiary'
-            icon={<IconTreeTriangleDown />}
             size='small'
-          ></Button>
-        </Dropdown>
-      </SplitButtonGroup>
+            type='tertiary'
+            onClick={() => {
+              if (chatsArray.length === 0) {
+                showError(t('请联系管理员配置聊天链接'));
+              } else {
+                const first = chatsArray[0];
+                onOpenLink(first.name, first.value, record);
+              }
+            }}
+          >
+            {t('聊天')}
+          </Button>
+          <Dropdown trigger='click' position='bottomRight' menu={chatsArray}>
+            <Button
+              type='tertiary'
+              icon={<IconTreeTriangleDown />}
+              size='small'
+            ></Button>
+          </Dropdown>
+        </SplitButtonGroup>
+      ) : null}
 
-      {record.status === 1 ? (
+      {canToggleStatus && record.status === 1 ? (
         <Button
           type='danger'
           size='small'
@@ -423,7 +445,9 @@ const renderOperations = (
         >
           {t('禁用')}
         </Button>
-      ) : (
+      ) : null}
+
+      {canToggleStatus && record.status !== 1 ? (
         <Button
           size='small'
           onClick={async () => {
@@ -433,7 +457,7 @@ const renderOperations = (
         >
           {t('启用')}
         </Button>
-      )}
+      ) : null}
 
       {canEdit ? (
         <Button
@@ -448,25 +472,29 @@ const renderOperations = (
         </Button>
       ) : null}
 
-      <Button
-        type='tertiary'
-        size='small'
-        onClick={async () => {
-          await rotateToken?.(record);
-        }}
-      >
-        {rotateActionLabel}
-      </Button>
+      {canRotate ? (
+        <Button
+          type='tertiary'
+          size='small'
+          onClick={async () => {
+            await rotateToken(record);
+          }}
+        >
+          {rotateActionLabel}
+        </Button>
+      ) : null}
 
-      <Button
-        type='tertiary'
-        size='small'
-        onClick={() => {
-          onOpenLink('ccswitch', 'ccswitch://import', record);
-        }}
-      >
-        {t('导入')}
-      </Button>
+      {canImport ? (
+        <Button
+          type='tertiary'
+          size='small'
+          onClick={() => {
+            onOpenLink('ccswitch', 'ccswitch://import', record);
+          }}
+        >
+          {t('导入')}
+        </Button>
+      ) : null}
 
       {canDelete ? (
         <Button

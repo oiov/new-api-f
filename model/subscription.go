@@ -647,6 +647,7 @@ type SubscriptionSummary struct {
 	Subscription         *UserSubscription               `json:"subscription"`
 	RefundOrder          *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
 	AggregateAccessToken *SubscriptionAccessTokenSummary `json:"aggregate_access_token,omitempty"`
+	DedicatedAccessToken *SubscriptionAccessTokenSummary `json:"dedicated_access_token,omitempty"`
 }
 
 type SubscriptionRefundOrderSummary struct {
@@ -664,6 +665,7 @@ type AdminUserSubscriptionSummary struct {
 	UserGroup            string                          `json:"user_group"`
 	RefundOrder          *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
 	AggregateAccessToken *SubscriptionAccessTokenSummary `json:"aggregate_access_token,omitempty"`
+	DedicatedAccessToken *SubscriptionAccessTokenSummary `json:"dedicated_access_token,omitempty"`
 }
 
 type SubscriptionAccessTokenSummary struct {
@@ -2349,6 +2351,9 @@ func createDerivedDayPassFromParentTx(tx *gorm.DB, parent *UserSubscription, tra
 	if err := tx.Create(child).Error; err != nil {
 		return nil, 0, err
 	}
+	if _, err := syncDerivedDayPassAccessTokenTx(tx, child, false); err != nil {
+		return nil, 0, err
+	}
 	return child, getUserSubscriptionRemainingRequestCount(parent), nil
 }
 
@@ -3069,9 +3074,13 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 		return []SubscriptionSummary{}
 	}
 	userIDSet := make(map[int]struct{}, len(subs))
+	subscriptionIDs := make([]int, 0, len(subs))
 	for _, sub := range subs {
 		if sub.UserId > 0 {
 			userIDSet[sub.UserId] = struct{}{}
+		}
+		if sub.Id > 0 {
+			subscriptionIDs = append(subscriptionIDs, sub.Id)
 		}
 	}
 	userIDs := make([]int, 0, len(userIDSet))
@@ -3079,6 +3088,7 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 		userIDs = append(userIDs, userID)
 	}
 	aggregateTokenMap, _ := buildSubscriptionAccessTokenSummaryMapByUserIDs(userIDs)
+	dedicatedTokenMap, _ := buildDedicatedSubscriptionAccessTokenSummaryMapBySubscriptionIDs(subscriptionIDs)
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
@@ -3087,6 +3097,7 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 			Subscription:         &subCopy,
 			RefundOrder:          refundOrder,
 			AggregateAccessToken: aggregateTokenMap[subCopy.UserId],
+			DedicatedAccessToken: dedicatedTokenMap[subCopy.Id],
 		})
 	}
 	return result
@@ -3129,6 +3140,49 @@ func buildSubscriptionAccessTokenSummaryMapByUserIDs(userIDs []int) (map[int]*Su
 			continue
 		}
 		result[token.UserId] = &SubscriptionAccessTokenSummary{
+			TokenId:     token.Id,
+			TokenName:   strings.TrimSpace(token.Name),
+			KeyPreview:  maskSubscriptionAccessTokenKey(token.Key),
+			ExpiredTime: token.ExpiredTime,
+			Status:      token.Status,
+		}
+	}
+	return result, nil
+}
+
+func buildDedicatedSubscriptionAccessTokenSummaryMapBySubscriptionIDs(subscriptionIDs []int) (map[int]*SubscriptionAccessTokenSummary, error) {
+	result := make(map[int]*SubscriptionAccessTokenSummary)
+	if len(subscriptionIDs) == 0 {
+		return result, nil
+	}
+	keyCol := commonKeyCol
+	if keyCol == "" {
+		if common.UsingPostgreSQL {
+			keyCol = `"key"`
+		} else {
+			keyCol = "`key`"
+		}
+	}
+	var tokens []Token
+	if err := DB.Select("id", "user_subscription_id", "name", keyCol, "expired_time", "status").
+		Where(
+			"user_subscription_id IN ? AND source = ? AND deleted_at IS NULL",
+			subscriptionIDs,
+			TokenSourceDerivedDayPassAccess,
+		).
+		Order("id asc").
+		Find(&tokens).Error; err != nil {
+		return nil, err
+	}
+	for i := range tokens {
+		token := tokens[i]
+		if token.UserSubscriptionId <= 0 {
+			continue
+		}
+		if _, exists := result[token.UserSubscriptionId]; exists {
+			continue
+		}
+		result[token.UserSubscriptionId] = &SubscriptionAccessTokenSummary{
 			TokenId:     token.Id,
 			TokenName:   strings.TrimSpace(token.Name),
 			KeyPreview:  maskSubscriptionAccessTokenKey(token.Key),
@@ -3502,6 +3556,15 @@ func GetAdminUserSubscriptions(
 		Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
+	subscriptionIDs := make([]int, 0, len(rows))
+	for _, row := range rows {
+		if row.UserSubscription.Id > 0 {
+			subscriptionIDs = append(subscriptionIDs, row.UserSubscription.Id)
+		}
+	}
+	if err := ensureDerivedDayPassAccessTokensForSubscriptionIDsTx(DB, subscriptionIDs); err != nil {
+		return nil, 0, err
+	}
 	userIDSet := make(map[int]struct{}, len(rows))
 	for _, row := range rows {
 		if row.UserId > 0 {
@@ -3513,6 +3576,7 @@ func GetAdminUserSubscriptions(
 		userIDs = append(userIDs, userID)
 	}
 	aggregateTokenMap, _ := buildSubscriptionAccessTokenSummaryMapByUserIDs(userIDs)
+	dedicatedTokenMap, _ := buildDedicatedSubscriptionAccessTokenSummaryMapBySubscriptionIDs(subscriptionIDs)
 
 	items := make([]AdminUserSubscriptionSummary, 0, len(rows))
 	for _, row := range rows {
@@ -3527,6 +3591,7 @@ func GetAdminUserSubscriptions(
 			UserGroup:            row.UserGroup,
 			RefundOrder:          refundOrder,
 			AggregateAccessToken: aggregateTokenMap[subCopy.UserId],
+			DedicatedAccessToken: dedicatedTokenMap[subCopy.Id],
 		})
 	}
 	return items, total, nil
@@ -4196,6 +4261,152 @@ func getOrCreateSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*To
 	return &token, nil
 }
 
+func buildDerivedDayPassAccessTokenName(sub *UserSubscription) string {
+	if sub == nil || sub.Id <= 0 {
+		return "Derived Day Pass Access"
+	}
+	return fmt.Sprintf("Derived Day Pass Access #%d", sub.Id)
+}
+
+func getDerivedDayPassAccessTokenTx(tx *gorm.DB, userSubscriptionId int) (*Token, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if userSubscriptionId <= 0 {
+		return nil, errors.New("invalid userSubscriptionId")
+	}
+	var token Token
+	if err := tx.Where(
+		"user_subscription_id = ? AND source = ? AND deleted_at IS NULL",
+		userSubscriptionId,
+		TokenSourceDerivedDayPassAccess,
+	).
+		Order("id asc").
+		First(&token).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &token, nil
+}
+
+func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateKey bool) (*Token, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if sub == nil || sub.Id <= 0 {
+		return nil, errors.New("invalid subscription")
+	}
+	if !isDerivedDayPassSubscription(sub) {
+		return nil, nil
+	}
+	routeGroup := strings.TrimSpace(getUserSubscriptionRouteGroup(sub))
+	allowedModels := decodeUserSubscriptionAllowedModels(sub)
+	modelLimitsEnabled := len(allowedModels) > 0
+	now := GetDBTimestampWithTx(tx)
+	active := sub.Status == "active" && sub.EndTime > now
+	token, err := getDerivedDayPassAccessTokenTx(tx, sub.Id)
+	if err != nil {
+		return nil, err
+	}
+	if token == nil {
+		if !active {
+			return nil, nil
+		}
+		key, err := common.GenerateKey()
+		if err != nil {
+			return nil, err
+		}
+		token = &Token{
+			UserId:                  sub.UserId,
+			UserSubscriptionId:      sub.Id,
+			Name:                    buildDerivedDayPassAccessTokenName(sub),
+			Key:                     key,
+			Source:                  TokenSourceDerivedDayPassAccess,
+			Status:                  common.TokenStatusEnabled,
+			CreatedTime:             common.GetTimestamp(),
+			AccessedTime:            common.GetTimestamp(),
+			ExpiredTime:             sub.EndTime,
+			UnlimitedQuota:          true,
+			ModelLimitsEnabled:      modelLimitsEnabled,
+			ModelLimits:             sub.AllowedModelsJSON,
+			Group:                   routeGroup,
+			SpecificChannelId:       sub.SpecificChannelId,
+			SpecificChannelKeyIndex: sub.SpecificChannelKeyIndex,
+		}
+		if err := tx.Create(token).Error; err != nil {
+			return nil, err
+		}
+		if common.RedisEnabled {
+			tokenCopy := *token
+			gopool.Go(func() {
+				_ = cacheSetToken(tokenCopy)
+			})
+		}
+		return token, nil
+	}
+	oldKey := strings.TrimSpace(token.Key)
+	if rotateKey {
+		newKey, err := common.GenerateKey()
+		if err != nil {
+			return nil, err
+		}
+		token.Key = newKey
+	}
+	updates := map[string]any{
+		"user_id":                    sub.UserId,
+		"user_subscription_id":       sub.Id,
+		"name":                       buildDerivedDayPassAccessTokenName(sub),
+		"source":                     TokenSourceDerivedDayPassAccess,
+		"status":                     common.TokenStatusEnabled,
+		"expired_time":               sub.EndTime,
+		"unlimited_quota":            true,
+		"model_limits_enabled":       modelLimitsEnabled,
+		"model_limits":               sub.AllowedModelsJSON,
+		"group":                      routeGroup,
+		"specific_channel_id":        sub.SpecificChannelId,
+		"specific_channel_key_index": sub.SpecificChannelKeyIndex,
+	}
+	if !active {
+		updates["status"] = common.TokenStatusDisabled
+	}
+	if rotateKey {
+		updates["key"] = token.Key
+	}
+	if err := tx.Model(&Token{}).Where("id = ?", token.Id).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	token.UserId = sub.UserId
+	token.UserSubscriptionId = sub.Id
+	token.Name = buildDerivedDayPassAccessTokenName(sub)
+	token.Source = TokenSourceDerivedDayPassAccess
+	token.Status = updates["status"].(int)
+	token.ExpiredTime = sub.EndTime
+	token.UnlimitedQuota = true
+	token.ModelLimitsEnabled = modelLimitsEnabled
+	token.ModelLimits = sub.AllowedModelsJSON
+	token.Group = routeGroup
+	token.SpecificChannelId = sub.SpecificChannelId
+	token.SpecificChannelKeyIndex = sub.SpecificChannelKeyIndex
+	if common.RedisEnabled {
+		tokenCopy := *token
+		gopool.Go(func() {
+			if rotateKey && oldKey != "" && oldKey != tokenCopy.Key {
+				_ = cacheDeleteToken(oldKey)
+			}
+			if tokenCopy.Status == common.TokenStatusEnabled {
+				_ = cacheSetToken(tokenCopy)
+				return
+			}
+			if tokenCopy.Key != "" {
+				_ = cacheDeleteToken(tokenCopy.Key)
+			}
+		})
+	}
+	return token, nil
+}
+
 func disableSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token, error) {
 	if tx == nil {
 		return nil, errors.New("tx is nil")
@@ -4368,6 +4579,55 @@ func provisionAggregateAccessForSubscriptionTx(tx *gorm.DB, sub *UserSubscriptio
 		return err
 	}
 	return refreshSubscriptionAggregateAccessTokenTx(tx, aggregateToken)
+}
+
+func ensureDerivedDayPassAccessTokensForUserTx(tx *gorm.DB, userId int) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	var subs []UserSubscription
+	if err := tx.Where("user_id = ? AND parent_user_subscription_id > 0", userId).
+		Find(&subs).Error; err != nil {
+		return err
+	}
+	for i := range subs {
+		if _, err := syncDerivedDayPassAccessTokenTx(tx, &subs[i], false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func EnsureDerivedDayPassAccessTokensForUser(userId int) error {
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return ensureDerivedDayPassAccessTokensForUserTx(tx, userId)
+	})
+}
+
+func ensureDerivedDayPassAccessTokensForSubscriptionIDsTx(tx *gorm.DB, subscriptionIDs []int) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if len(subscriptionIDs) == 0 {
+		return nil
+	}
+	var subs []UserSubscription
+	if err := tx.Where("id IN ? AND parent_user_subscription_id > 0", subscriptionIDs).
+		Find(&subs).Error; err != nil {
+		return err
+	}
+	for i := range subs {
+		if _, err := syncDerivedDayPassAccessTokenTx(tx, &subs[i], false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func EnsureSubscriptionAggregateAccessTokenForUser(userId int) (*Token, error) {
@@ -5354,6 +5614,9 @@ func AdminTransferUserSubscription(userSubscriptionId int, options AdminTransfer
 			Updates(updates).Error; err != nil {
 			return err
 		}
+		if _, err := syncDerivedDayPassAccessTokenTx(tx, &sub, true); err != nil {
+			return err
+		}
 
 		if deliveredAccessToken != nil &&
 			sourceAggregateToken != nil &&
@@ -5436,6 +5699,9 @@ func AdminTransferUserSubscription(userSubscriptionId int, options AdminTransfer
 	if preservedToken {
 		msgParts = append(msgParts, "已保留原 Subscription Access Key 不变")
 	}
+	if transferredSub != nil && isDerivedDayPassSubscription(transferredSub) {
+		msgParts = append(msgParts, "派生天卡独立 Key 已自动重签")
+	}
 	if logTransferWarning != "" {
 		msgParts = append(msgParts, logTransferWarning)
 	}
@@ -5479,6 +5745,13 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 			"specific_channel_id":        0,
 			"specific_channel_key_index": -1,
 		}).Error; err != nil {
+			return err
+		}
+		sub.Status = "cancelled"
+		sub.EndTime = now
+		sub.SpecificChannelId = 0
+		sub.SpecificChannelKeyIndex = -1
+		if _, err := syncDerivedDayPassAccessTokenTx(tx, &sub, true); err != nil {
 			return err
 		}
 		if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
@@ -5539,6 +5812,16 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		}
 		if err := tx.Where("id = ?", userSubscriptionId).Delete(&UserSubscription{}).Error; err != nil {
 			return err
+		}
+		if token, err := getDerivedDayPassAccessTokenTx(tx, sub.Id); err != nil {
+			return err
+		} else if token != nil {
+			if err := tx.Model(&Token{}).Where("id = ?", token.Id).Updates(map[string]any{
+				"status":       common.TokenStatusDisabled,
+				"expired_time": now,
+			}).Error; err != nil {
+				return err
+			}
 		}
 		if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
 			return err
@@ -5854,6 +6137,9 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 			message = "已取消优先消耗订阅"
 		}
 		if err := tx.Save(&sub).Error; err != nil {
+			return err
+		}
+		if _, err := syncDerivedDayPassAccessTokenTx(tx, &sub, false); err != nil {
 			return err
 		}
 		return ensureSubscriptionAggregateAccessTokenForUserTx(tx, sub.UserId)
