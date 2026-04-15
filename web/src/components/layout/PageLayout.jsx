@@ -82,6 +82,7 @@ const PageLayout = () => {
     '/console/topup',
     '/console/package',
     '/console/invoice',
+    '/console/activity-lottery',
   ];
   const shouldEnablePageScroll = enablePageScrollRoutes.includes(
     location.pathname,

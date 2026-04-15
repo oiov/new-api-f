@@ -11,6 +11,8 @@ import (
 
 const ecomAgentPlaceholderEmailDomain = "placeholder.ecomagent.local"
 
+const ecomAgentAccountStatusDeleted = "deleted"
+
 type EcomAgentAccount struct {
 	Id                          int    `json:"id"`
 	Email                       string `json:"email" gorm:"size:255;not null;uniqueIndex"`
@@ -68,18 +70,18 @@ type EcomAgentAssignedUserInfo struct {
 }
 
 type EcomAgentChannelKeyBindingDetail struct {
-	AccountID       int    `json:"account_id"`
-	Email           string `json:"email"`
-	Status          string `json:"status"`
-	Plan            string `json:"plan"`
-	RequestLimit    int64  `json:"request_limit"`
-	UsageRequests   int64  `json:"usage_requests"`
-	AssignedAt      int64  `json:"assigned_at"`
-	UserID          int    `json:"user_id"`
-	Username        string `json:"username"`
-	UserEmail       string `json:"user_email"`
-	OrderID         int    `json:"order_id"`
-	SubscriptionID  int    `json:"subscription_id"`
+	AccountID      int    `json:"account_id"`
+	Email          string `json:"email"`
+	Status         string `json:"status"`
+	Plan           string `json:"plan"`
+	RequestLimit   int64  `json:"request_limit"`
+	UsageRequests  int64  `json:"usage_requests"`
+	AssignedAt     int64  `json:"assigned_at"`
+	UserID         int    `json:"user_id"`
+	Username       string `json:"username"`
+	UserEmail      string `json:"user_email"`
+	OrderID        int    `json:"order_id"`
+	SubscriptionID int    `json:"subscription_id"`
 }
 
 func (a *EcomAgentAccount) PrepareDefaults() {
@@ -230,19 +232,22 @@ func (a *EcomAgentAccount) Update() error {
 
 func GetAllEcomAgentAccounts() ([]*EcomAgentAccount, error) {
 	accounts := make([]*EcomAgentAccount, 0)
-	err := DB.Order("updated_time DESC").Find(&accounts).Error
+	err := DB.Where("status <> ?", ecomAgentAccountStatusDeleted).
+		Order("updated_time DESC").
+		Find(&accounts).Error
 	return accounts, err
 }
 
 func GetEcomAgentAccountByID(id int) (*EcomAgentAccount, error) {
 	account := &EcomAgentAccount{}
-	err := DB.First(account, id).Error
+	err := DB.Where("id = ? AND status <> ?", id, ecomAgentAccountStatusDeleted).First(account).Error
 	return account, err
 }
 
 func GetEcomAgentAccountByEmail(email string) (*EcomAgentAccount, error) {
 	account := &EcomAgentAccount{}
-	err := DB.Where("email = ?", strings.TrimSpace(strings.ToLower(email))).First(account).Error
+	err := DB.Where("email = ? AND status <> ?", strings.TrimSpace(strings.ToLower(email)), ecomAgentAccountStatusDeleted).
+		First(account).Error
 	return account, err
 }
 
@@ -436,5 +441,37 @@ func IsEcomAgentAccountEmailDuplicated(id int, email string) (bool, error) {
 }
 
 func DeleteEcomAgentAccountByID(id int) error {
-	return DB.Delete(&EcomAgentAccount{}, id).Error
+	now := common.GetTimestamp()
+	updates := map[string]any{
+		"status":                         ecomAgentAccountStatusDeleted,
+		"assignment_status":              "unassigned",
+		"assigned_plan":                  "",
+		"assigned_subscription_order_id": 0,
+		"assigned_channel_id":            0,
+		"assigned_channel_key_index":     -1,
+		"assigned_user_subscription_id":  0,
+		"assigned_at":                    0,
+		"updated_time":                   now,
+	}
+	tx := DB.Model(&EcomAgentAccount{}).
+		Where("id = ? AND status <> ?", id, ecomAgentAccountStatusDeleted).
+		Updates(updates)
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if tx.RowsAffected > 0 {
+		return nil
+	}
+
+	// Idempotent delete: if already deleted, return nil; otherwise bubble "not found".
+	// This keeps semantics predictable for batch deletes and avoids "delete succeeded" on non-existing ids.
+	existing := &EcomAgentAccount{}
+	err := DB.Select("id", "status").Where("id = ?", id).Take(existing).Error
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(existing.Status), ecomAgentAccountStatusDeleted) {
+		return nil
+	}
+	return gorm.ErrRecordNotFound
 }

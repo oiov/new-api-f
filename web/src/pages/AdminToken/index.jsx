@@ -22,7 +22,7 @@ import AdminTokensTable from '../../components/table/admin-tokens';
 
 const AdminToken = () => {
   return (
-    <div className='mt-[60px] px-2'>
+    <div className='mt-[60px] px-2 w-full'>
       <AdminTokensTable />
     </div>
   );

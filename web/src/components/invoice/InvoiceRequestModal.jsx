@@ -18,6 +18,8 @@ import { API, timestamp2string } from '../../helpers';
 const { Text } = Typography;
 const { Option } = Select;
 const MIN_AMOUNT = 50;
+const TYANCHA_COMPANY_URL_PATTERN =
+  /^https:\/\/www\.tianyancha\.com\/company\/\d+\/?$/;
 
 const PAYMENT_METHOD_MAP = {
   stripe: 'Stripe',
@@ -39,9 +41,13 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
     title_type: 'personal',
     title: '',
     tax_id: '',
+    company_info_url: '',
     email: '',
   });
   const formApi = React.useRef(null);
+
+  const isValidTianyanchaCompanyUrl = (url) =>
+    TYANCHA_COMPANY_URL_PATTERN.test((url || '').trim());
 
   useEffect(() => {
     if (visible) {
@@ -49,7 +55,13 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
       setSelectedIds([]);
       setSearchKeyword('');
       setConfirmInvoiceInfo(false);
-      setFormValues({ title_type: 'personal', title: '', tax_id: '', email: '' });
+      setFormValues({
+        title_type: 'personal',
+        title: '',
+        tax_id: '',
+        company_info_url: '',
+        email: '',
+      });
     }
   }, [visible]);
 
@@ -124,15 +136,28 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
     }
 
     if (!confirmInvoiceInfo) {
-      Toast.warning(t('请先二次核对并确认开票信息与税号无误'));
+      Toast.warning(t('请先二次核对并确认开票信息、税号与天眼查企业信息地址无误'));
       return;
     }
 
     const normalizedTitle = values.title.trim();
     const normalizedTaxId = (values.tax_id || '').trim();
+    const normalizedCompanyInfoUrl = (values.company_info_url || '').trim();
     const normalizedEmail = values.email.trim();
-    if (values.title_type === 'enterprise' && !normalizedTaxId) {
+    if (!normalizedTitle) {
+      Toast.warning(t('请输入发票抬头'));
+      return;
+    }
+    if (!normalizedTaxId) {
       Toast.warning(t('企业抬头必须填写税号'));
+      return;
+    }
+    if (!normalizedCompanyInfoUrl) {
+      Toast.warning(t('请输入天眼查企业信息地址'));
+      return;
+    }
+    if (!isValidTianyanchaCompanyUrl(normalizedCompanyInfoUrl)) {
+      Toast.warning(t('请输入有效的天眼查企业信息地址'));
       return;
     }
 
@@ -142,6 +167,7 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
         topup_ids: selectedIds,
         title: normalizedTitle,
         tax_id: normalizedTaxId,
+        company_info_url: normalizedCompanyInfoUrl,
         email: normalizedEmail,
       });
       if (res.data.success === true) {
@@ -240,7 +266,7 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
             <Banner
               type='warning'
               description={t(
-                '发票最低开票金额为 {{min}} 元，请勾选要开票的充值记录。企业抬头必须填写税号。',
+                '发票最低开票金额为 {{min}} 元，请勾选要开票的充值记录。企业税号和天眼查企业信息地址必须填写。',
                 { min: MIN_AMOUNT },
               )}
               style={{ marginBottom: 12 }}
@@ -301,6 +327,7 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
               title_type: values.title_type || 'personal',
               title: values.title || '',
               tax_id: values.tax_id || '',
+              company_info_url: values.company_info_url || '',
               email: values.email || '',
             });
             if (confirmInvoiceInfo) {
@@ -325,8 +352,21 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
           />
           <Form.Input
             field='tax_id'
-            label={t('税号（企业抬头必填）')}
-            placeholder={t('企业纳税人识别号，个人开票可不填')}
+            label={t('企业税号')}
+            placeholder={t('企业纳税人识别号')}
+            rules={[{ required: true, message: t('企业抬头必须填写税号') }]}
+          />
+          <Form.Input
+            field='company_info_url'
+            label={t('天眼查企业信息地址')}
+            placeholder={t('例如 https://www.tianyancha.com/company/4902352402')}
+            rules={[
+              { required: true, message: t('请输入天眼查企业信息地址') },
+              {
+                validator: (rule, value) => isValidTianyanchaCompanyUrl(value),
+                message: t('请输入有效的天眼查企业信息地址'),
+              },
+            ]}
           />
           <Form.Input
             field='email'
@@ -358,9 +398,11 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
             </div>
             <div>
               {t('税号')}：
-              {formValues.title_type === 'personal'
-                ? t('个人抬头可不填')
-                : (formValues.tax_id.trim() || t('未填写'))}
+              {formValues.tax_id.trim() || t('未填写')}
+            </div>
+            <div>
+              {t('天眼查企业信息地址')}：
+              {formValues.company_info_url.trim() || t('未填写')}
             </div>
             <div>
               {t('开票金额')}：¥{selectedAmount.toFixed(2)}
@@ -370,7 +412,9 @@ const InvoiceRequestModal = ({ visible, onClose, onSuccess }) => {
             checked={confirmInvoiceInfo}
             onChange={(e) => setConfirmInvoiceInfo(e.target.checked)}
           >
-            {t('我已二次核对发票抬头、税号和开票金额，确认信息无误')}
+            {t(
+              '我已二次核对发票抬头、税号、天眼查企业信息地址和开票金额，确认信息无误',
+            )}
           </Checkbox>
         </div>
       </Spin>

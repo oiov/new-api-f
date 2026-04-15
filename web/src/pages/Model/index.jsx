@@ -22,7 +22,7 @@ import ModelsTable from '../../components/table/models';
 const ModelPage = () => {
   return (
     <div className='mt-[60px] py-2'>
-      <div className='app-page-shell'>
+      <div className='w-full px-2'>
         <ModelsTable />
       </div>
     </div>

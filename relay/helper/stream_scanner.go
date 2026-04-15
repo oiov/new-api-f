@@ -48,6 +48,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}()
 
 	streamingTimeout := time.Duration(constant.StreamingTimeout) * time.Second
+	if streamingTimeout <= 0 {
+		// 避免 time.NewTicker(0) 触发 panic，同时保持与默认环境变量一致
+		streamingTimeout = 300 * time.Second
+	}
 
 	var (
 		stopChan   = make(chan bool, 3) // 增加缓冲区避免阻塞

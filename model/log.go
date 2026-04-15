@@ -425,6 +425,11 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	err := LOG_DB.Create(log).Error
 	if err != nil {
 		common.SysLog("failed to record task billing log: " + err.Error())
+	} else if params.LogType == LogTypeConsume && params.Quota > 0 {
+		// 不影响主流程：后台任务消耗也计入“今日消耗达标参与”
+		gopool.Go(func() {
+			tryJoinActivityLotteryByDailyConsume(params.UserId, params.Quota, time.Now())
+		})
 	}
 }
 

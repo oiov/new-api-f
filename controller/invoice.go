@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -10,6 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
+
+var tianyanchaCompanyURLPattern = regexp.MustCompile(`^https://www\.tianyancha\.com/company/\d+/?$`)
 
 // ─────────────────────────────────────────────────────────────────
 // 用户端接口
@@ -144,10 +147,11 @@ func GetInvoiceTopUpsByAdmin(c *gin.Context) {
 }
 
 type InvoiceRequest struct {
-	TopUpIds []int  `json:"topup_ids" binding:"required,min=1"`
-	Title    string `json:"title" binding:"required"`
-	TaxId    string `json:"tax_id"`
-	Email    string `json:"email" binding:"required,email"`
+	TopUpIds       []int  `json:"topup_ids" binding:"required,min=1"`
+	Title          string `json:"title" binding:"required"`
+	TaxId          string `json:"tax_id" binding:"required"`
+	CompanyInfoURL string `json:"company_info_url" binding:"required"`
+	Email          string `json:"email" binding:"required,email"`
 }
 
 // CreateInvoice 用户提交开票申请
@@ -183,6 +187,27 @@ func CreateInvoice(c *gin.Context) {
 		return
 	}
 
+	normalizedTitle := strings.TrimSpace(req.Title)
+	normalizedTaxId := strings.TrimSpace(req.TaxId)
+	normalizedCompanyInfoURL := strings.TrimSpace(req.CompanyInfoURL)
+	normalizedEmail := strings.TrimSpace(req.Email)
+	if normalizedTitle == "" {
+		common.ApiErrorMsg(c, "发票抬头不能为空")
+		return
+	}
+	if normalizedTaxId == "" {
+		common.ApiErrorMsg(c, "企业税号不能为空")
+		return
+	}
+	if normalizedCompanyInfoURL == "" {
+		common.ApiErrorMsg(c, "天眼查企业信息地址不能为空")
+		return
+	}
+	if !tianyanchaCompanyURLPattern.MatchString(normalizedCompanyInfoURL) {
+		common.ApiErrorMsg(c, "企业信息地址格式错误，必须为 https://www.tianyancha.com/company/数字")
+		return
+	}
+
 	// 构建 topup_ids 字符串
 	ids := make([]string, len(req.TopUpIds))
 	for i, id := range req.TopUpIds {
@@ -190,13 +215,14 @@ func CreateInvoice(c *gin.Context) {
 	}
 
 	inv := &model.Invoice{
-		UserId:   userId,
-		Title:    strings.TrimSpace(req.Title),
-		TaxId:    strings.TrimSpace(req.TaxId),
-		Email:    strings.TrimSpace(req.Email),
-		Amount:   totalMoney,
-		TopUpIds: strings.Join(ids, ","),
-		Status:   model.InvoiceStatusPending,
+		UserId:         userId,
+		Title:          normalizedTitle,
+		TaxId:          normalizedTaxId,
+		CompanyInfoURL: normalizedCompanyInfoURL,
+		Email:          normalizedEmail,
+		Amount:         totalMoney,
+		TopUpIds:       strings.Join(ids, ","),
+		Status:         model.InvoiceStatusPending,
 	}
 
 	if err := inv.Insert(req.TopUpIds); err != nil {
@@ -212,12 +238,13 @@ func CreateInvoice(c *gin.Context) {
 // ─────────────────────────────────────────────────────────────────
 
 type AdminUpdateInvoiceRequest struct {
-	Title   string `json:"title"`
-	TaxId   string `json:"tax_id"`
-	Email   string `json:"email"`
-	Status  string `json:"status"`
-	FileUrl string `json:"file_url"`
-	Remark  string `json:"remark"`
+	Title          string `json:"title"`
+	TaxId          string `json:"tax_id" binding:"required"`
+	CompanyInfoURL string `json:"company_info_url" binding:"required"`
+	Email          string `json:"email"`
+	Status         string `json:"status"`
+	FileUrl        string `json:"file_url"`
+	Remark         string `json:"remark"`
 }
 
 // UpdateInvoice 管理员编辑发票信息（标题、税号、邮箱、状态、文件URL、备注）
@@ -243,7 +270,23 @@ func UpdateInvoice(c *gin.Context) {
 	if req.Title != "" {
 		inv.Title = strings.TrimSpace(req.Title)
 	}
-	inv.TaxId = strings.TrimSpace(req.TaxId)
+	normalizedTaxId := strings.TrimSpace(req.TaxId)
+	if normalizedTaxId == "" {
+		common.ApiErrorMsg(c, "企业税号不能为空")
+		return
+	}
+	inv.TaxId = normalizedTaxId
+
+	normalizedCompanyInfoURL := strings.TrimSpace(req.CompanyInfoURL)
+	if normalizedCompanyInfoURL == "" {
+		common.ApiErrorMsg(c, "天眼查企业信息地址不能为空")
+		return
+	}
+	if !tianyanchaCompanyURLPattern.MatchString(normalizedCompanyInfoURL) {
+		common.ApiErrorMsg(c, "企业信息地址格式错误，必须为 https://www.tianyancha.com/company/数字")
+		return
+	}
+	inv.CompanyInfoURL = normalizedCompanyInfoURL
 	if req.Email != "" {
 		inv.Email = strings.TrimSpace(req.Email)
 	}

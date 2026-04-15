@@ -363,6 +363,10 @@ const InvoiceList = () => {
     ? [
         { label: t('发票抬头'), value: detailInvoice.title || '—' },
         { label: t('税号'), value: detailInvoice.tax_id || '—' },
+        {
+          label: t('天眼查企业信息地址'),
+          value: detailInvoice.company_info_url || '—',
+        },
         { label: t('接收邮箱'), value: detailInvoice.email || '—' },
         {
           label: t('申请时间'),

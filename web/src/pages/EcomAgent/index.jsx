@@ -132,6 +132,16 @@ const DEFAULT_LIST_FILTERS = {
   apiKeyFilter: 'present',
 };
 
+const CLEARED_LIST_FILTERS = {
+  keyword: '',
+  planFilter: '',
+  statusFilter: '',
+  assignmentStatusFilter: '',
+  channelBindingFilter: '',
+  orderBindingFilter: '',
+  apiKeyFilter: '',
+};
+
 function normalizePlanValue(value) {
   return String(value || '')
     .trim()
@@ -659,6 +669,95 @@ const EcomAgentPage = () => {
   const [maskMode, setMaskMode] = useState(true);
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageSize = 10;
+  const [syncCheckById, setSyncCheckById] = useState({});
+
+  const updateSyncCheckState = (id, patch) => {
+    if (!id) return;
+    setSyncCheckById((prev) => ({
+      ...prev,
+      [id]: {
+        ...(prev[id] || {}),
+        ...patch,
+      },
+    }));
+  };
+
+  const clearSyncCheckStateIfOutdated = (record) => {
+    if (!record?.id) return;
+    const local = syncCheckById[record.id];
+    if (!local) return;
+    const serverTs = Number(record.last_sync_at || 0) || 0;
+    const localTs = Number(local.checkedAt || 0) || 0;
+    if (serverTs <= 0) return;
+    // If server has newer sync timestamp, prefer server state to avoid stale local overrides.
+    if (serverTs >= localTs) {
+      setSyncCheckById((prev) => {
+        if (!prev[record.id]) return prev;
+        const next = { ...prev };
+        delete next[record.id];
+        return next;
+      });
+    }
+  };
+
+  const getDerivedSyncCheckState = (record) => {
+    const id = record?.id;
+    if (!id) {
+      return {
+        status: 'idle',
+        checkedAt: 0,
+        startedAt: 0,
+        message: '',
+      };
+    }
+    const local = syncCheckById[id];
+    if (local) {
+      return local;
+    }
+    const lastSyncAt = Number(record?.last_sync_at || 0) || 0;
+    if (syncingId === id) {
+      return {
+        status: 'running',
+        startedAt: Math.floor(Date.now() / 1000),
+        checkedAt: lastSyncAt,
+        message: '',
+      };
+    }
+    if (lastSyncAt > 0) {
+      const lastError = String(record?.last_error || '').trim();
+      return {
+        status: lastError ? 'failed' : 'success',
+        checkedAt: lastSyncAt,
+        startedAt: 0,
+        message: lastError,
+      };
+    }
+    return {
+      status: 'idle',
+      checkedAt: 0,
+      startedAt: 0,
+      message: '',
+    };
+  };
+
+  const runWithConcurrency = async (items, concurrency, task) => {
+    // Avoid Array.shift() O(n) behavior on large batches.
+    let cursor = 0;
+    const workers = new Array(Math.max(1, concurrency))
+      .fill(null)
+      .map(async () => {
+        while (true) {
+          const idx = cursor;
+          cursor += 1;
+          if (idx >= items.length) return;
+          const item = items[idx];
+          if (item === undefined) continue;
+          // eslint-disable-next-line no-await-in-loop
+          await task(item);
+        }
+      });
+    await Promise.all(workers);
+  };
 
   const renderEmail = (value) => {
     const text = String(value || '').trim();
@@ -709,6 +808,8 @@ const EcomAgentPage = () => {
       const res = await API.get('/api/ecomagent/accounts');
       if (res.data.success) {
         const nextAccounts = res.data.data || [];
+        // Ensure local "check state" doesn't mask newer server sync results.
+        nextAccounts.forEach(clearSyncCheckStateIfOutdated);
         setAccounts(nextAccounts);
         if (detailRecord?.id) {
           const nextDetail = nextAccounts.find(
@@ -1122,6 +1223,15 @@ const EcomAgentPage = () => {
     orderBindingFilter !== DEFAULT_LIST_FILTERS.orderBindingFilter ||
     apiKeyFilter !== DEFAULT_LIST_FILTERS.apiKeyFilter;
 
+  const isClearedFilters =
+    keyword.trim() === CLEARED_LIST_FILTERS.keyword &&
+    planFilter === CLEARED_LIST_FILTERS.planFilter &&
+    statusFilter === CLEARED_LIST_FILTERS.statusFilter &&
+    assignmentStatusFilter === CLEARED_LIST_FILTERS.assignmentStatusFilter &&
+    channelBindingFilter === CLEARED_LIST_FILTERS.channelBindingFilter &&
+    orderBindingFilter === CLEARED_LIST_FILTERS.orderBindingFilter &&
+    apiKeyFilter === CLEARED_LIST_FILTERS.apiKeyFilter;
+
   const resetFilters = () => {
     setKeyword(DEFAULT_LIST_FILTERS.keyword);
     setPlanFilter(DEFAULT_LIST_FILTERS.planFilter);
@@ -1130,6 +1240,17 @@ const EcomAgentPage = () => {
     setChannelBindingFilter(DEFAULT_LIST_FILTERS.channelBindingFilter);
     setOrderBindingFilter(DEFAULT_LIST_FILTERS.orderBindingFilter);
     setApiKeyFilter(DEFAULT_LIST_FILTERS.apiKeyFilter);
+    setCurrentPage(1);
+  };
+
+  const clearFilters = () => {
+    setKeyword(CLEARED_LIST_FILTERS.keyword);
+    setPlanFilter(CLEARED_LIST_FILTERS.planFilter);
+    setStatusFilter(CLEARED_LIST_FILTERS.statusFilter);
+    setAssignmentStatusFilter(CLEARED_LIST_FILTERS.assignmentStatusFilter);
+    setChannelBindingFilter(CLEARED_LIST_FILTERS.channelBindingFilter);
+    setOrderBindingFilter(CLEARED_LIST_FILTERS.orderBindingFilter);
+    setApiKeyFilter(CLEARED_LIST_FILTERS.apiKeyFilter);
     setCurrentPage(1);
   };
 
@@ -1261,6 +1382,12 @@ const EcomAgentPage = () => {
   const handleSync = async (record, options = {}) => {
     const { silent = false, forceGenerateKey = false } = options;
     setSyncingId(record.id);
+    updateSyncCheckState(record.id, {
+      status: 'running',
+      startedAt: Math.floor(Date.now() / 1000),
+      checkedAt: 0,
+      message: '',
+    });
     try {
       const res = await API.post(
         `/api/ecomagent/accounts/${record.id}/sync${
@@ -1268,21 +1395,40 @@ const EcomAgentPage = () => {
         }`,
       );
       if (res.data.success) {
+        updateSyncCheckState(record.id, {
+          status: 'success',
+          checkedAt: Math.floor(Date.now() / 1000),
+          startedAt: 0,
+          message: forceGenerateKey ? t('API Key 创建完成') : t('同步完成'),
+        });
         if (!silent) {
           showSuccess(forceGenerateKey ? t('API Key 创建完成') : t('同步完成'));
         }
       } else {
-        showError(
+        const msg =
           res.data.message ||
-            (forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
-        );
+          (forceGenerateKey ? t('API Key 创建失败') : t('同步失败'));
+        updateSyncCheckState(record.id, {
+          status: 'failed',
+          checkedAt: Math.floor(Date.now() / 1000),
+          startedAt: 0,
+          message: msg,
+        });
+        showError(msg);
       }
       await loadAccounts();
     } catch (error) {
-      showError(
+      const msg =
+        error?.response?.data?.message ||
         error?.message ||
-          (forceGenerateKey ? t('API Key 创建失败') : t('同步失败')),
-      );
+        (forceGenerateKey ? t('API Key 创建失败') : t('同步失败'));
+      updateSyncCheckState(record.id, {
+        status: 'failed',
+        checkedAt: Math.floor(Date.now() / 1000),
+        startedAt: 0,
+        message: msg,
+      });
+      showError(msg);
       await loadAccounts();
     } finally {
       setSyncingId(null);
@@ -1293,13 +1439,13 @@ const EcomAgentPage = () => {
     try {
       const res = await API.delete(`/api/ecomagent/accounts/${record.id}`);
       if (res.data.success) {
-        showSuccess(t('删除成功'));
+        showSuccess(t('移除成功'));
         await loadAccounts();
       } else {
-        showError(res.data.message || t('删除失败'));
+        showError(res.data.message || t('移除失败'));
       }
     } catch (error) {
-      showError(error?.message || t('删除失败'));
+      showError(error?.message || t('移除失败'));
     }
   };
 
@@ -1390,9 +1536,16 @@ const EcomAgentPage = () => {
 
   const confirmDelete = (record) => {
     Modal.confirm({
-      title: t('确认删除'),
-      content: renderEmail(record?.email),
-      okText: t('确认删除'),
+      title: t('确认移除'),
+      content: (
+        <div className='flex flex-col gap-1'>
+          <Text strong>{renderEmail(record?.email)}</Text>
+          <Text type='secondary' size='small'>
+            {t('将从列表移除并保留数据（软删除）。')}
+          </Text>
+        </div>
+      ),
+      okText: t('确认移除'),
       cancelText: t('取消'),
       okButtonProps: { color: 'red' },
       onOk: () => handleDelete(record),
@@ -1406,22 +1559,60 @@ const EcomAgentPage = () => {
       const recordsById = new Map(
         accounts.map((account) => [account.id, account]),
       );
-      const results = await Promise.all(
-        selectedRowKeys.map(async (id) => {
-          try {
-            const value = await API.post(`/api/ecomagent/accounts/${id}/sync`);
-            return { id, status: 'fulfilled', value };
-          } catch (reason) {
-            return { id, status: 'rejected', reason };
+
+      const resultsById = new Map();
+      selectedRowKeys.forEach((id) => {
+        updateSyncCheckState(id, {
+          status: 'running',
+          startedAt: Math.floor(Date.now() / 1000),
+          checkedAt: 0,
+          message: '',
+        });
+      });
+
+      // Concurrency-limited to reduce 429 rate limit bursts.
+      await runWithConcurrency(selectedRowKeys, 2, async (id) => {
+        try {
+          const value = await API.post(`/api/ecomagent/accounts/${id}/sync`);
+          resultsById.set(id, { id, status: 'fulfilled', value });
+          if (value?.data?.success) {
+            updateSyncCheckState(id, {
+              status: 'success',
+              checkedAt: Math.floor(Date.now() / 1000),
+              startedAt: 0,
+              message: t('同步完成'),
+            });
+          } else {
+            updateSyncCheckState(id, {
+              status: 'failed',
+              checkedAt: Math.floor(Date.now() / 1000),
+              startedAt: 0,
+              message: value?.data?.message || t('同步失败'),
+            });
           }
-        }),
-      );
-      const success = results.filter(
-        (item) => item.status === 'fulfilled' && item.value?.data?.success,
+        } catch (reason) {
+          resultsById.set(id, { id, status: 'rejected', reason });
+          updateSyncCheckState(id, {
+            status: 'failed',
+            checkedAt: Math.floor(Date.now() / 1000),
+            startedAt: 0,
+            message:
+              reason?.response?.data?.message ||
+              reason?.message ||
+              t('同步失败'),
+          });
+        }
+      });
+
+      const orderedResults = selectedRowKeys
+        .map((id) => resultsById.get(id))
+        .filter(Boolean);
+      const success = orderedResults.filter(
+        (item) => item.value?.data?.success,
       ).length;
-      const failed = results.length - success;
+      const failed = orderedResults.length - success;
       const failureMessages = getBatchFailureMessages(
-        results,
+        orderedResults,
         recordsById,
         t,
         renderEmail,
@@ -1485,20 +1676,20 @@ const EcomAgentPage = () => {
       }
       if (failed > 0) {
         showError(
-          t('批量删除完成，成功 {{success}} 个，失败 {{failed}} 个。', {
+          t('批量移除完成，成功 {{success}} 个，失败 {{failed}} 个。', {
             success,
             failed,
           }),
         );
         renderBatchFailureDialog({
-          title: t('批量删除失败详情'),
+          title: t('批量移除失败详情'),
           messages: failureMessages,
           t,
           handleCopy,
         });
       } else {
         showSuccess(
-          t('批量删除完成，成功 {{success}} 个，失败 {{failed}} 个。', {
+          t('批量移除完成，成功 {{success}} 个，失败 {{failed}} 个。', {
             success,
             failed,
           }),
@@ -1585,6 +1776,96 @@ const EcomAgentPage = () => {
             )}
           </div>
         ),
+      },
+      {
+        title: t('检测状态'),
+        dataIndex: 'last_sync_at',
+        width: isMobile ? 120 : 140,
+        render: (_, record) => {
+          const state = getDerivedSyncCheckState(record);
+          const status = state?.status || 'idle';
+          if (status === 'running') {
+            return (
+              <Tag color='blue' size='small'>
+                {t('检测中')}
+              </Tag>
+            );
+          }
+          if (status === 'success') {
+            return (
+              <Tag color='green' size='small'>
+                {t('成功')}
+              </Tag>
+            );
+          }
+          if (status === 'failed') {
+            return (
+              <Tag color='red' size='small'>
+                {t('失败')}
+              </Tag>
+            );
+          }
+          return (
+            <Text size='small' type='tertiary'>
+              {t('未检测')}
+            </Text>
+          );
+        },
+      },
+      {
+        title: t('上次检测时间'),
+        dataIndex: 'last_sync_at',
+        width: isMobile ? 160 : 180,
+        render: (_, record) => {
+          const state = getDerivedSyncCheckState(record);
+          const ts =
+            Number(state?.checkedAt || 0) || Number(state?.startedAt || 0) || 0;
+          return (
+            <Text size='small' type='tertiary'>
+              {formatTs(ts)}
+            </Text>
+          );
+        },
+      },
+      {
+        title: t('检测结果'),
+        dataIndex: 'last_error',
+        width: isMobile ? 220 : 320,
+        render: (_, record) => {
+          const state = getDerivedSyncCheckState(record);
+          const status = state?.status || 'idle';
+          const message =
+            String(state?.message || '').trim() ||
+            (status === 'success' ? t('同步完成') : '');
+          if (status === 'idle') {
+            return (
+              <Text size='small' type='tertiary'>
+                -
+              </Text>
+            );
+          }
+          if (status === 'running') {
+            return (
+              <Text
+                size='small'
+                type='tertiary'
+                ellipsis={{ showTooltip: true }}
+              >
+                {t('检测中')}
+              </Text>
+            );
+          }
+          return (
+            <Text
+              size='small'
+              type={status === 'failed' ? 'danger' : 'tertiary'}
+              ellipsis={{ showTooltip: true }}
+              style={{ maxWidth: isMobile ? 180 : 280 }}
+            >
+              {message || '-'}
+            </Text>
+          );
+        },
       },
       {
         title: t('操作'),
@@ -1684,7 +1965,7 @@ const EcomAgentPage = () => {
         ),
       },
     ],
-    [isMobile, maskMode, syncingId, t],
+    [isMobile, maskMode, syncingId, syncCheckById, t],
   );
 
   const paginatedAccounts = useMemo(() => {
@@ -2909,7 +3190,12 @@ const EcomAgentPage = () => {
                   />
                   {hasActiveFilters ? (
                     <Button type='tertiary' onClick={resetFilters}>
-                      {t('重置筛选')}
+                      {t('恢复默认查询条件')}
+                    </Button>
+                  ) : null}
+                  {!isClearedFilters ? (
+                    <Button type='tertiary' onClick={clearFilters}>
+                      {t('清空查询条件')}
                     </Button>
                   ) : null}
                   {filteredAccounts.length > 0 ? (
@@ -2938,12 +3224,12 @@ const EcomAgentPage = () => {
                         </Button>
                       </Popconfirm>
                       <Popconfirm
-                        title={t('确认删除')}
+                        title={t('确认移除')}
                         content={t(
-                          '确定要删除选中的 {{count}} 项吗？此操作不可逆。',
+                          '确定要将选中的 {{count}} 项从列表移除吗？数据将保留（软删除）。',
                           { count: selectedRowKeys.length },
                         )}
-                        okText={t('确认删除')}
+                        okText={t('确认移除')}
                         cancelText={t('取消')}
                         onConfirm={handleBatchDelete}
                       >
@@ -2952,7 +3238,7 @@ const EcomAgentPage = () => {
                           loading={batchDeleting}
                           disabled={batchSyncing}
                         >
-                          {t('批量删除')} ({selectedRowKeys.length})
+                          {t('批量移除')} ({selectedRowKeys.length})
                         </Button>
                       </Popconfirm>
                       <Button

@@ -743,6 +743,28 @@ const ROUTE_SEO_CONFIGS = [
       }),
   },
   {
+    pattern: '/console/checkin-lottery',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 签到管理页标题',
+        descriptionKey: 'SEO 签到管理页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/activity-lottery',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 活动抽奖页标题',
+        descriptionKey: 'SEO 活动抽奖页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
     pattern: '/console/invite',
     build: (language, pathname) =>
       buildRouteSeo({

@@ -832,7 +832,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
               {t('转移给其他用户')}
             </div>
             <Select
-              filter={false}
+              filter
               remote
               loading={transferUserSearchLoading}
               optionList={transferUserOptions}

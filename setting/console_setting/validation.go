@@ -218,6 +218,63 @@ func GetApiInfo() []map[string]interface{} {
 	return getJSONList(GetConsoleSetting().ApiInfo)
 }
 
+func validateSubscriptionPromoLink(link string) error {
+	link = strings.TrimSpace(link)
+	if link == "" {
+		return nil
+	}
+	if strings.HasPrefix(link, "//") {
+		return fmt.Errorf("购买引导横幅的按钮链接只能使用站内相对路径或完整的HTTPS地址")
+	}
+	if strings.HasPrefix(link, "/") {
+		if len(link) > 500 {
+			return fmt.Errorf("购买引导横幅的按钮链接长度不能超过500字符")
+		}
+		return nil
+	}
+	lower := strings.ToLower(link)
+	if strings.HasPrefix(lower, "https://") {
+		if err := validateURL(link, 1, "购买引导横幅按钮"); err != nil {
+			return err
+		}
+		if len(link) > 500 {
+			return fmt.Errorf("购买引导横幅的按钮链接长度不能超过500字符")
+		}
+		return nil
+	}
+	return fmt.Errorf("购买引导横幅的按钮链接只能使用站内相对路径或完整的HTTPS地址")
+}
+
+func validateSubscriptionPromoText(value string, fieldName string, maxLength int) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if len(value) > maxLength {
+		return fmt.Errorf("购买引导横幅的%s长度不能超过%d字符", fieldName, maxLength)
+	}
+	return checkDangerousContent(value, 1, "购买引导横幅"+fieldName)
+}
+
+func ValidateSubscriptionPromoField(key string, value string) error {
+	switch key {
+	case "subscription_promo_badge_left":
+		return validateSubscriptionPromoText(value, "左侧徽标文案", 50)
+	case "subscription_promo_badge_right":
+		return validateSubscriptionPromoText(value, "右侧徽标文案", 50)
+	case "subscription_promo_title":
+		return validateSubscriptionPromoText(value, "标题", 120)
+	case "subscription_promo_subtitle":
+		return validateSubscriptionPromoText(value, "副标题", 240)
+	case "subscription_promo_button_text":
+		return validateSubscriptionPromoText(value, "按钮文案", 80)
+	case "subscription_promo_button_link":
+		return validateSubscriptionPromoLink(value)
+	default:
+		return nil
+	}
+}
+
 func validateAnnouncements(announcementsStr string) error {
 	list, err := parseJSONArray(announcementsStr, "系统公告")
 	if err != nil {

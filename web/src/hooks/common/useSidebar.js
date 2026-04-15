@@ -37,6 +37,8 @@ export const DEFAULT_ADMIN_CONFIG = {
     package: true,
     token: true,
     log: true,
+    checkinLottery: true,
+    activityLottery: true,
     midjourney: true,
     task: true,
   },

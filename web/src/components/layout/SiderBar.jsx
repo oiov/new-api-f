@@ -59,6 +59,8 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
+  activityLottery: '/console/activity-lottery',
+  checkinLottery: '/console/checkin-lottery',
   siteNotifications: '/console/personal#site-notifications',
 };
 
@@ -104,6 +106,16 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         text: t('使用日志'),
         itemKey: 'log',
         to: '/log',
+      },
+      {
+        text: t('签到管理'),
+        itemKey: 'checkinLottery',
+        to: '/console/checkin-lottery',
+      },
+      {
+        text: t('活动抽奖'),
+        itemKey: 'activityLottery',
+        to: '/console/activity-lottery',
       },
       {
         text: t('绘图日志'),
@@ -364,7 +376,7 @@ const SiderBar = ({ onNavigate = () => { } }) => {
           updateRouterMapWithChats(chats);
         }
       } catch (e) {
-        showError('聊天数据解析失败');
+        showError(t('聊天数据解析失败'));
       }
     }
   }, []);

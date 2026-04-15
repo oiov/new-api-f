@@ -52,6 +52,12 @@ const TokensTable = (tokensData) => {
     showUsernameColumn,
     allowSensitiveActions,
     readonly,
+    showTestColumn,
+    testingTokenIds,
+    testToken,
+    showLastTestColumn,
+    lastTestResultsById,
+    forceFullWidth,
   } = tokensData;
 
   // Get all columns
@@ -71,6 +77,11 @@ const TokensTable = (tokensData) => {
       showUsernameColumn,
       allowSensitiveActions,
       readonly,
+      showTestColumn,
+      testingTokenIds,
+      testToken,
+      showLastTestColumn,
+      lastTestResultsById,
     });
   }, [
     t,
@@ -87,17 +98,20 @@ const TokensTable = (tokensData) => {
     showUsernameColumn,
     allowSensitiveActions,
     readonly,
+    showTestColumn,
+    testingTokenIds,
+    testToken,
+    showLastTestColumn,
+    lastTestResultsById,
   ]);
 
   // Handle compact mode by removing fixed positioning
   const tableColumns = useMemo(() => {
     return compactMode
       ? columns.map((col) => {
-          if (col.dataIndex === 'operate') {
-            const { fixed, ...rest } = col;
-            return rest;
-          }
-          return col;
+          if (!col?.fixed) return col;
+          const { fixed, ...rest } = col;
+          return rest;
         })
       : columns;
   }, [compactMode, columns]);
@@ -106,7 +120,11 @@ const TokensTable = (tokensData) => {
     <CardTable
       columns={tableColumns}
       dataSource={tokens}
-      scroll={compactMode ? undefined : { x: 'max-content' }}
+      scroll={
+        compactMode
+          ? undefined
+          : { x: forceFullWidth ? '100%' : 'max-content' }
+      }
       pagination={{
         currentPage: activePage,
         pageSize: pageSize,

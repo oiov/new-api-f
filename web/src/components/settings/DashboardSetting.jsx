@@ -26,6 +26,7 @@ import SettingsAnnouncements from '../../pages/Setting/Dashboard/SettingsAnnounc
 import SettingsFAQ from '../../pages/Setting/Dashboard/SettingsFAQ';
 import SettingsUptimeKuma from '../../pages/Setting/Dashboard/SettingsUptimeKuma';
 import SettingsDataDashboard from '../../pages/Setting/Dashboard/SettingsDataDashboard';
+import SettingsSubscriptionPromo from '../../pages/Setting/Dashboard/SettingsSubscriptionPromo';
 
 const DashboardSetting = () => {
   const { t } = useTranslation();
@@ -38,6 +39,13 @@ const DashboardSetting = () => {
     'console_setting.announcements_enabled': '',
     'console_setting.faq_enabled': '',
     'console_setting.uptime_kuma_enabled': '',
+    'console_setting.subscription_promo_enabled': '',
+    'console_setting.subscription_promo_badge_left': '',
+    'console_setting.subscription_promo_badge_right': '',
+    'console_setting.subscription_promo_title': '',
+    'console_setting.subscription_promo_subtitle': '',
+    'console_setting.subscription_promo_button_text': '',
+    'console_setting.subscription_promo_button_link': '',
 
     // 用于迁移检测的旧键，下个版本会删除
     ApiInfo: '',
@@ -153,6 +161,11 @@ const DashboardSetting = () => {
         {/* 系统公告管理 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsAnnouncements options={inputs} refresh={onRefresh} />
+        </Card>
+
+        {/* 控制台购买引导横幅 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsSubscriptionPromo options={inputs} refresh={onRefresh} />
         </Card>
 
         {/* API信息管理 */}

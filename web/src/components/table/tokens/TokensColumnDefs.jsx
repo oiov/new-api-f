@@ -488,6 +488,11 @@ export const getTokensColumns = ({
   showUsernameColumn = false,
   allowSensitiveActions = true,
   readonly = false,
+  showTestColumn = false,
+  testingTokenIds = {},
+  testToken,
+  showLastTestColumn = false,
+  lastTestResultsById = {},
 }) => {
   const columns = [
     {
@@ -571,6 +576,101 @@ export const getTokensColumns = ({
         ),
     },
   ];
+
+  if (showLastTestColumn) {
+    columns.push({
+      title: t('最近测试'),
+      key: 'last_test',
+      width: 160,
+      render: (_, record) => {
+        const tokenId = record?.id;
+        const info = tokenId ? lastTestResultsById?.[tokenId] : null;
+        if (!info) {
+          return (
+            <span className='text-xs text-[var(--semi-color-text-2)]'>
+              {t('未测试')}
+            </span>
+          );
+        }
+
+        const list = Array.isArray(info?.results) ? info.results : [];
+        const claude = list.find((item) => item?.kind === 'claude');
+        const responses = list.find((item) => item?.kind === 'responses');
+
+        const summaryParts = [];
+        if (claude) {
+          summaryParts.push(
+            `C:${claude.http_code}${claude.ok ? '✓' : '✗'}`,
+          );
+        }
+        if (responses) {
+          summaryParts.push(
+            `R:${responses.http_code}${responses.ok ? '✓' : '✗'}`,
+          );
+        }
+        const summary = summaryParts.join(' / ') || (info?.error ? t('失败') : t('无结果'));
+
+        const content = (
+          <div className='flex flex-col gap-1 text-sm'>
+            <div>
+              {t('时间')}:{' '}
+              {info?.at ? new Date(info.at).toLocaleString() : '-'}
+            </div>
+            {info?.error ? (
+              <div className='text-[var(--semi-color-danger)]'>
+                {t('错误')}: {info.error}
+              </div>
+            ) : null}
+            {list.map((item) => (
+              <div key={`${tokenId}-${item.kind}-${item.path}`}>
+                {(item.kind || '-').toUpperCase()} {item.path} · {item.model} · HTTP{' '}
+                {item.http_code} · ok:{item.ok ? '1' : '0'}
+                {item.x_oneapi_request_id ? ` · ${item.x_oneapi_request_id}` : ''}
+              </div>
+            ))}
+          </div>
+        );
+
+        return (
+          <Popover content={content} position='top'>
+            <Tag color={info?.ok ? 'green' : 'red'} shape='circle'>
+              {summary}
+            </Tag>
+          </Popover>
+        );
+      },
+    });
+  }
+
+  if (showTestColumn) {
+    columns.push({
+      title: t('测试'),
+      key: 'test',
+      fixed: 'right',
+      width: 90,
+      render: (text, record) => {
+        const loading = Boolean(testingTokenIds?.[record?.id]);
+        return (
+          <Tooltip
+            content={t('同时测试 /v1/messages（Claude）与 /v1/responses（Codex），可能产生实际调用与计费')}
+          >
+            <Button
+              size='small'
+              theme='solid'
+              type='primary'
+              loading={loading}
+              onClick={async (e) => {
+                e.stopPropagation();
+                await testToken?.(record);
+              }}
+            >
+              {t('测试')}
+            </Button>
+          </Tooltip>
+        );
+      },
+    });
+  }
 
   if (showUsernameColumn) {
     columns.unshift({

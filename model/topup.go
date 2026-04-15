@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -120,6 +121,11 @@ func rechargeAmountBasedTopUp(tradeNo string) (topUp *TopUp, quotaToAdd int, com
 		return nil
 	})
 
+	if err == nil && completed {
+		// 不影响主流程：充值达标可自动参与活动抽奖
+		go tryJoinActivityLotteryByTopup(topUp, time.Now())
+	}
+
 	return topUp, quotaToAdd, completed, err
 }
 
@@ -174,6 +180,7 @@ func Recharge(referenceId string, customerId string) (completed bool, err error)
 
 	if completed {
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount))
+		go tryJoinActivityLotteryByTopup(topUp, time.Now())
 	}
 
 	return completed, nil
@@ -420,6 +427,7 @@ func ManualCompleteTopUp(tradeNo string) error {
 
 	// 事务外记录日志，避免阻塞
 	RecordLog(userId, LogTypeTopup, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney))
+	go tryJoinActivityLotteryByTopup(&TopUp{UserId: userId, Money: payMoney}, time.Now())
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string) (completed bool, err error) {
@@ -495,6 +503,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 
 	if completed {
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
+		go tryJoinActivityLotteryByTopup(topUp, time.Now())
 	}
 
 	return completed, nil

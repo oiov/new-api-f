@@ -53,6 +53,8 @@ const TopUp = lazy(() => import('./pages/TopUp'));
 const InvoicePage = lazy(() => import('./pages/Invoice'));
 const InvoiceAdminPage = lazy(() => import('./pages/InvoiceAdmin'));
 const CheckinAdminPage = lazy(() => import('./pages/CheckinAdmin'));
+const ActivityLotteryPage = lazy(() => import('./pages/ActivityLottery'));
+const CheckinLotteryPage = lazy(() => import('./pages/CheckinLottery'));
 const PackagePage = lazy(() => import('./pages/Package'));
 const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
@@ -408,6 +410,26 @@ function App() {
               <PrivateRoute>
                 <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                   <InvitePage />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/activity-lottery'
+            element={
+              <PrivateRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <ActivityLotteryPage />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/checkin-lottery'
+            element={
+              <PrivateRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <CheckinLotteryPage />
                 </Suspense>
               </PrivateRoute>
             }

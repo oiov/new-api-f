@@ -34,6 +34,9 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/pricing", middleware.TryUserAuth(), controller.GetPricing)
 		apiRouter.GET("/subscription/plans", controller.GetSubscriptionPlans) // public: no auth needed
 		apiRouter.GET("/anti_distribution/public", controller.GetAntiDistributionPublicConfig)
+		apiRouter.GET("/activity/lottery/current", middleware.TryUserAuth(), controller.GetActivityLotteryCurrent)
+		apiRouter.GET("/activity/lottery/rounds", controller.GetActivityLotteryPublicRounds)
+		apiRouter.POST("/activity/lottery/join", middleware.UserAuth(), controller.JoinActivityLotteryCurrent)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), controller.ResetPassword)
@@ -223,13 +226,25 @@ func SetApiRouter(router *gin.Engine) {
 			checkinAdminRoute.GET("/auto_jobs", controller.GetCheckinAutoJobs)
 			checkinAdminRoute.GET("/auto_jobs/:id", controller.GetCheckinAutoJob)
 			checkinAdminRoute.POST("/auto_jobs", controller.CreateCheckinAutoJob)
+			checkinAdminRoute.PUT("/auto_jobs/:id", controller.UpdateCheckinAutoJob)
 			checkinAdminRoute.POST("/auto_jobs/:id/cancel", controller.CancelCheckinAutoJob)
+
+		}
+		activityLotteryAdminRoute := apiRouter.Group("/activity/lottery/admin")
+		activityLotteryAdminRoute.Use(middleware.RootAuth())
+		{
+			activityLotteryAdminRoute.GET("/rounds", controller.AdminListActivityLotteryRounds)
+			activityLotteryAdminRoute.POST("/rounds", controller.AdminCreateActivityLotteryRound)
+			activityLotteryAdminRoute.PUT("/rounds/:id", controller.AdminUpdateActivityLotteryRound)
+			activityLotteryAdminRoute.POST("/rounds/:id/open", controller.AdminOpenActivityLotteryRound)
+			activityLotteryAdminRoute.POST("/rounds/:id/draw", controller.AdminDrawActivityLotteryRound)
 		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.PUT("/", controller.UpdateOption)
+			optionRoute.PUT("/batch", controller.BatchUpdateOption)
 			optionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
 			optionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
 			optionRoute.POST("/rest_model_ratio", controller.ResetModelRatio)
@@ -337,6 +352,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			tokenRoute.GET("/admin", middleware.AdminAuth(), controller.GetAllTokensByAdmin)
 			tokenRoute.GET("/admin/search", middleware.AdminAuth(), middleware.SearchRateLimit(), controller.SearchTokensByAdmin)
+			tokenRoute.POST("/admin/:id/test", middleware.AdminAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.TestTokenByAdmin)
+			tokenRoute.POST("/admin/batch/group", middleware.AdminAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.SecureVerificationRequired(), controller.UpdateTokenGroupBatchByAdmin)
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id", controller.GetToken)
