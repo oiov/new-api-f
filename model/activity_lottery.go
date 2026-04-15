@@ -1127,18 +1127,22 @@ func pickRandomUserIDs(ids []int, count int) []int {
 	return out[:count]
 }
 
-func DrawActivityLotteryRound(roundId int, now time.Time) ([]*ActivityLotteryWinner, error) {
+func DrawActivityLotteryRound(roundId int, now time.Time) ([]*ActivityLotteryWinner, *ActivityLotteryRound, bool, error) {
 	if roundId <= 0 {
-		return nil, gorm.ErrRecordNotFound
+		return nil, nil, false, gorm.ErrRecordNotFound
 	}
 
 	nowUnix := now.Unix()
 	var winners []*ActivityLotteryWinner
+	var drawnRound *ActivityLotteryRound
+	isNewDraw := false
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		round := &ActivityLotteryRound{}
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(round, roundId).Error; err != nil {
 			return err
 		}
+		roundCopy := *round
+		drawnRound = &roundCopy
 		if round.Status == ActivityLotteryRoundStatusDrawn {
 			// idempotent
 			existing := make([]*ActivityLotteryWinner, 0)
@@ -1268,6 +1272,10 @@ func DrawActivityLotteryRound(roundId int, now time.Time) ([]*ActivityLotteryWin
 		}).Error; err != nil {
 			return err
 		}
+		drawnRound.Status = ActivityLotteryRoundStatusDrawn
+		drawnRound.DrawnAt = nowUnix
+		drawnRound.UpdatedAt = nowUnix
+		isNewDraw = true
 		return nil
 	})
 	if err != nil {
@@ -1275,9 +1283,9 @@ func DrawActivityLotteryRound(roundId int, now time.Time) ([]*ActivityLotteryWin
 			"last_error": err.Error(),
 			"updated_at": now.Unix(),
 		}).Error
-		return nil, err
+		return nil, nil, false, err
 	}
-	return winners, nil
+	return winners, drawnRound, isNewDraw, nil
 }
 
 func ExpireActivityLotteryRound(roundId int, now time.Time) error {

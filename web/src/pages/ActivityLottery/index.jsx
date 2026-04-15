@@ -44,6 +44,7 @@ import { useTranslation } from 'react-i18next';
 import CardPro from '../../components/common/ui/CardPro';
 import { StatusContext } from '../../context/Status';
 import { API, showError, showSuccess, timestamp2string } from '../../helpers';
+import { useIsMobile } from '../../hooks/common/useIsMobile';
 
 const { Paragraph, Text } = Typography;
 
@@ -112,6 +113,7 @@ export default function ActivityLotteryPage() {
   const { t } = useTranslation();
   const [statusState] = useContext(StatusContext);
   const status = statusState?.status || {};
+  const isMobile = useIsMobile();
 
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [roundsLoading, setRoundsLoading] = useState(false);
@@ -310,16 +312,23 @@ export default function ActivityLotteryPage() {
       <SideSheet
         title={entryDrawerRound?.title || t('全部报名用户')}
         visible={!!entryDrawerRound}
-        width={720}
+        width={isMobile ? '100%' : 720}
         onCancel={closeEntryDrawer}
         footer={
-          <div className='flex items-center justify-between gap-3'>
+          <div
+            className={`flex gap-3 ${
+              isMobile
+                ? 'flex-col items-stretch justify-start'
+                : 'items-center justify-between'
+            }`}
+          >
             <Text type='secondary'>
               {t('全部报名用户')} · {Number(drawerEntries.length || 0)}
             </Text>
             <Button
               theme='outline'
               size='small'
+              block={isMobile}
               loading={drawerEntryLoading}
               onClick={() => loadRoundEntries(drawerRoundId)}
               disabled={!drawerRoundId}
@@ -335,7 +344,11 @@ export default function ActivityLotteryPage() {
           height: '100%',
         }}
       >
-        <div className='border-b border-semi-color-border px-6 py-3 text-xs text-semi-color-text-2'>
+        <div
+          className={`border-b border-semi-color-border text-xs text-semi-color-text-2 ${
+            isMobile ? 'px-4 py-3' : 'px-6 py-3'
+          }`}
+        >
           {entryDrawerRound?.start_at || entryDrawerRound?.end_at ? (
             <>
               {t('活动时间')}:{' '}
@@ -351,40 +364,80 @@ export default function ActivityLotteryPage() {
             t('报名记录')
           )}
         </div>
-        <div className='flex-1 overflow-y-auto px-6 py-4'>
+        <div className={`flex-1 overflow-y-auto ${isMobile ? 'px-4 py-3' : 'px-6 py-4'}`}>
           <Spin spinning={drawerEntryLoading}>
             {drawerEntries.length > 0 ? (
-              <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-fill-0'>
-                <div className='lottery-public-table lottery-public-table--header'>
-                  <div>{t('报名用户')}</div>
-                  <div>{t('报名时间')}</div>
-                  <div>{t('参与状态')}</div>
+              isMobile ? (
+                <div className='space-y-3'>
+                  {drawerEntries.map((item, index) => (
+                    <div
+                      key={`${item?.id || ''}-${item?.created_at || ''}-${index}`}
+                      className='rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-4 shadow-sm'
+                    >
+                      <div className='flex items-start justify-between gap-3'>
+                        <div className='min-w-0 flex-1'>
+                          <div className='text-xs text-semi-color-text-2'>
+                            {t('报名用户')}
+                          </div>
+                          <Text
+                            ellipsis={{ showTooltip: true }}
+                            className='mt-1 block text-sm font-semibold text-semi-color-text-0'
+                          >
+                            {resolveDisplayName(item)}
+                          </Text>
+                        </div>
+                        <Tag
+                          color={item?.qualified ? 'green' : 'orange'}
+                          type='light'
+                          shape='circle'
+                        >
+                          {resolveQualifiedStatus(item, t)}
+                        </Tag>
+                      </div>
+                      <div className='mt-3 rounded-xl bg-semi-color-bg-1 px-3 py-2'>
+                        <div className='text-xs text-semi-color-text-2'>
+                          {t('报名时间')}
+                        </div>
+                        <div className='mt-1 text-sm text-semi-color-text-1'>
+                          {item?.created_at ? timestamp2string(item.created_at) : '-'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                {drawerEntries.map((item, index) => (
-                  <div
-                    key={`${item?.id || ''}-${item?.created_at || ''}-${index}`}
-                    className='lottery-public-table'
-                  >
-                    <div className='min-w-0'>
-                      <Text ellipsis={{ showTooltip: true }}>
-                        {resolveDisplayName(item)}
-                      </Text>
-                    </div>
-                    <div className='text-semi-color-text-1'>
-                      {item?.created_at ? timestamp2string(item.created_at) : '-'}
-                    </div>
-                    <div>
-                      <Tag
-                        color={item?.qualified ? 'green' : 'orange'}
-                        type='light'
-                        shape='circle'
-                      >
-                        {resolveQualifiedStatus(item, t)}
-                      </Tag>
-                    </div>
+              ) : (
+                <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-fill-0'>
+                  <div className='lottery-public-table lottery-public-table--header'>
+                    <div>{t('报名用户')}</div>
+                    <div>{t('报名时间')}</div>
+                    <div>{t('参与状态')}</div>
                   </div>
-                ))}
-              </div>
+                  {drawerEntries.map((item, index) => (
+                    <div
+                      key={`${item?.id || ''}-${item?.created_at || ''}-${index}`}
+                      className='lottery-public-table'
+                    >
+                      <div className='min-w-0'>
+                        <Text ellipsis={{ showTooltip: true }}>
+                          {resolveDisplayName(item)}
+                        </Text>
+                      </div>
+                      <div className='text-semi-color-text-1'>
+                        {item?.created_at ? timestamp2string(item.created_at) : '-'}
+                      </div>
+                      <div>
+                        <Tag
+                          color={item?.qualified ? 'green' : 'orange'}
+                          type='light'
+                          shape='circle'
+                        >
+                          {resolveQualifiedStatus(item, t)}
+                        </Tag>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             ) : (
               <div className='rounded-2xl border border-dashed border-semi-color-border bg-semi-color-fill-0 px-4 py-10 text-sm text-semi-color-text-2'>
                 {t('暂无报名记录')}

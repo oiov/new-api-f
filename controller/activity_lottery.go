@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -210,10 +211,13 @@ func AdminDrawActivityLotteryRound(c *gin.Context) {
 		return
 	}
 	now := model.GetCheckinNow()
-	winners, err := model.DrawActivityLotteryRound(id, now)
+	winners, round, isNewDraw, err := model.DrawActivityLotteryRound(id, now)
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if isNewDraw {
+		service.NotifyActivityLotteryWinnersAsync(round, winners)
 	}
 	common.ApiSuccess(c, gin.H{"id": id, "winners": winners})
 }
