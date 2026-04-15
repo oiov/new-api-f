@@ -588,27 +588,27 @@ const SubscriptionPlansCard = ({
     }
   };
 
-  const loadConversionPreview = useCallback(async () => {
-    if (!showUserSubscriptions) {
-      setConversionPreview(null);
-      return;
-    }
-    setConversionLoading(true);
-    try {
-      const res = await API.get('/api/subscription/self/conversion_campaign', {
-        skipErrorHandler: true,
-      });
-      if (res.data?.success) {
-        setConversionPreview(res.data.data || null);
-      } else {
-        setConversionPreview(null);
-      }
-    } catch {
-      setConversionPreview(null);
-    } finally {
-      setConversionLoading(false);
-    }
-  }, [showUserSubscriptions]);
+  // const loadConversionPreview = useCallback(async () => {
+  //   if (!showUserSubscriptions) {
+  //     setConversionPreview(null);
+  //     return;
+  //   }
+  //   setConversionLoading(true);
+  //   try {
+  //     const res = await API.get('/api/subscription/self/conversion_campaign', {
+  //       skipErrorHandler: true,
+  //     });
+  //     if (res.data?.success) {
+  //       setConversionPreview(res.data.data || null);
+  //     } else {
+  //       setConversionPreview(null);
+  //     }
+  //   } catch {
+  //     setConversionPreview(null);
+  //   } finally {
+  //     setConversionLoading(false);
+  //   }
+  // }, [showUserSubscriptions]);
 
   const operateSelfSubscription = useCallback(
     async (subscriptionId, action, successMessage) => {
