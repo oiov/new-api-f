@@ -92,6 +92,17 @@ function renderPlanLimitDisplay(planMeta, t) {
   return t('不限');
 }
 
+function getRecordConsumedValue(other) {
+  let consumed = Number(other?.subscription_consumed || 0);
+  if (consumed > 0) {
+    return consumed;
+  }
+  const preConsumed = Number(other?.subscription_pre_consumed || 0);
+  const postDelta = Number(other?.subscription_post_delta || 0);
+  const fallback = preConsumed + postDelta;
+  return fallback > 0 ? fallback : 0;
+}
+
 const SubscriptionConsumeLogsModal = ({
   visible,
   onCancel,
@@ -258,14 +269,7 @@ const SubscriptionConsumeLogsModal = ({
         width: 180,
         render: (_, record) => {
           const other = getLogOther(record?.other) || {};
-          let consumed = Number(other?.subscription_consumed || 0);
-          // Fallback for older records: derive from pre_consumed + post_delta
-          if (consumed <= 0) {
-            const preConsumed = Number(other?.subscription_pre_consumed || 0);
-            const postDelta = Number(other?.subscription_post_delta || 0);
-            const fallback = preConsumed + postDelta;
-            if (fallback > 0) consumed = fallback;
-          }
+          const consumed = getRecordConsumedValue(other);
           const remain = other?.subscription_remain;
           const total = other?.subscription_total;
           const planId = Number(other?.subscription_plan_id || 0);
@@ -366,6 +370,7 @@ const SubscriptionConsumeLogsModal = ({
         ...rows.map((record) => {
           const other = getLogOther(record?.other) || {};
           const resourceType = getRecordResourceType(record);
+          const consumed = getRecordConsumedValue(other);
           return [
             formatTs(record?.created_at),
             record?.user_id || '',
@@ -373,7 +378,7 @@ const SubscriptionConsumeLogsModal = ({
             other?.subscription_id || '',
             getSubscriptionDisplay(other, planMetaMap).planLabel,
             resourceType === 'request_count' ? 'request_count' : 'quota',
-            formatConsumedValue(other?.subscription_consumed || 0, resourceType),
+            formatConsumedValue(consumed, resourceType),
             formatConsumedValue(other?.subscription_remain || 0, resourceType),
             formatConsumedValue(other?.subscription_total || 0, resourceType),
             record?.request_id || '',

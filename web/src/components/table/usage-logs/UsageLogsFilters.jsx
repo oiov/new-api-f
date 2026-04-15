@@ -103,6 +103,24 @@ const LogsFilters = ({
           />
 
           <Form.Input
+            field='error_message'
+            prefix={<IconSearch />}
+            placeholder={t('错误内容')}
+            showClear
+            pure
+            size='small'
+          />
+
+          <Form.Input
+            field='status_code'
+            prefix={<IconSearch />}
+            placeholder={t('状态码')}
+            showClear
+            pure
+            size='small'
+          />
+
+          <Form.Input
             field='subscription_id'
             prefix={<IconSearch />}
             placeholder={`${t('订阅实例')} ${t('ID')}`}

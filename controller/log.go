@@ -22,9 +22,11 @@ func GetAllLogs(c *gin.Context) {
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
 	requestId := c.Query("request_id")
+	errorMessage := c.Query("error_message")
+	statusCode := c.Query("status_code")
 	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
 	subscriptionPlanId, _ := strconv.Atoi(c.Query("subscription_plan_id"))
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, subscriptionId, subscriptionPlanId)
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -45,9 +47,11 @@ func GetUserLogs(c *gin.Context) {
 	modelName := c.Query("model_name")
 	group := c.Query("group")
 	requestId := c.Query("request_id")
+	errorMessage := c.Query("error_message")
+	statusCode := c.Query("status_code")
 	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
 	subscriptionPlanId, _ := strconv.Atoi(c.Query("subscription_plan_id"))
-	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, subscriptionId, subscriptionPlanId)
+	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -108,9 +112,11 @@ func GetLogsStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
+	errorMessage := c.Query("error_message")
+	statusCode := c.Query("status_code")
 	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
 	subscriptionPlanId, _ := strconv.Atoi(c.Query("subscription_plan_id"))
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, subscriptionId, subscriptionPlanId)
+	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -137,9 +143,11 @@ func GetLogsSelfStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
+	errorMessage := c.Query("error_message")
+	statusCode := c.Query("status_code")
 	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
 	subscriptionPlanId, _ := strconv.Atoi(c.Query("subscription_plan_id"))
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, 0, modelName, username, tokenName, channel, group, subscriptionId, subscriptionPlanId)
+	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, 0, modelName, username, tokenName, channel, group, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
