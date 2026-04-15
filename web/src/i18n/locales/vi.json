@@ -5900,7 +5900,15 @@
     "SEO 签到管理页标题": "Quản lý điểm danh",
     "SEO 签到管理页描述": "Xem lịch điểm danh, bảng xếp hạng và lịch sử phần thưởng.",
     "SEO 活动抽奖页标题": "Vòng quay hoạt động",
-    "SEO 活动抽奖页描述": "Xem các kỳ quay, phần thưởng công khai, điều kiện tham gia và kết quả trúng thưởng."
+    "SEO 活动抽奖页描述": "Xem các kỳ quay, phần thưởng công khai, điều kiện tham gia và kết quả trúng thưởng.",
+    "报名参与": "Đăng ký tham gia",
+    "你已报名本期": "Bạn đã đăng ký kỳ này",
+    "抽奖规则：每期需先手动报名；报名后再按本期配置统计充值或消耗条件，满足“参与人数 ≥ 目标人数”且“活动到期”后自动开奖。": "Quy tắc: mỗi kỳ phải đăng ký thủ công trước; sau khi đăng ký, điều kiện nạp tiền hoặc tiêu dùng sẽ được tính theo cấu hình của kỳ. Hệ thống tự quay khi đủ số người tham gia và đến thời điểm kết thúc.",
+    "抽奖规则：每期需先手动报名；报名后再按本期配置统计充值/消耗条件。满足“参与人数 ≥ 目标人数”且“活动到期”后，系统自动开奖并公示打码信息。": "Quy tắc: mỗi kỳ phải đăng ký thủ công trước; sau khi đăng ký, điều kiện nạp tiền/tiêu dùng sẽ được tính cho kỳ đó. Hệ thống tự quay và công bố thông tin che mờ khi đủ số người tham gia và đến thời điểm kết thúc.",
+    "规则：每期需先手动报名；报名后再按本期配置统计充值或消耗条件，满足人数与到期时间后自动开奖。": "Quy tắc: mỗi kỳ cần đăng ký thủ công trước; sau khi đăng ký sẽ tính điều kiện nạp tiền hoặc tiêu dùng theo cấu hình của kỳ, và tự quay khi đủ số người và đến hạn.",
+    "抽奖规则：用户每期都必须先手动报名；无论配置了哪种自动条件，报名后才开始按本期配置统计充值或消耗条件，满足“参与人数 ≥ 目标人数”且“活动到期”后自动开奖。": "Quy tắc: người dùng phải đăng ký thủ công trước cho từng kỳ. Dù cấu hình điều kiện tự động nào, chỉ sau khi đăng ký thì chỉ số nạp tiền hoặc tiêu dùng mới bắt đầu được tính; hệ thống sẽ tự quay khi đủ số người tham gia và đến thời điểm kết thúc.",
+    "抽奖规则：每期都必须先手动报名；无论配置了哪种自动条件，报名后才开始按本期配置统计充值/消耗条件。满足“参与人数 ≥ 目标人数”且“活动到期”后，系统自动开奖并公示打码信息。": "Quy tắc: mỗi kỳ đều phải đăng ký thủ công trước. Dù cấu hình điều kiện tự động nào, chỉ sau khi đăng ký thì chỉ số nạp tiền/tiêu dùng mới bắt đầu được tính; hệ thống sẽ tự quay và công bố thông tin che mờ khi đủ số người tham gia và đến thời điểm kết thúc.",
+    "规则：每期都必须先手动报名；无论配置了哪种自动条件，报名后才开始按本期配置统计充值或消耗条件，满足人数与到期时间后自动开奖。": "Quy tắc: mỗi kỳ đều phải đăng ký thủ công trước. Dù cấu hình điều kiện tự động nào, chỉ sau khi đăng ký thì chỉ số nạp tiền hoặc tiêu dùng mới bắt đầu được tính, và hệ thống sẽ tự quay khi đủ số người và đến hạn."
   },
   "自动签到任务": "Auto check-in jobs",
   "管理后台定时签到任务并查看执行明细": "Manage scheduled check-in jobs and inspect execution details.",
@@ -6035,5 +6043,8 @@
   "查看低价套餐": "Xem gói giá tốt",
   "SEO 财务中心页标题": "Trung tâm tài chính",
   "SEO 财务中心页描述": "Xem thống kê nạp tiền, hóa đơn và đơn hàng trong trung tâm tài chính.",
+  "本页手动报名": "Đăng ký ngay trên trang này",
+  "报名后": "Sau khi đăng ký",
+  "报名后完成签到": "Điểm danh sau khi đăng ký",
   "en-CA": "en-CA"
 }

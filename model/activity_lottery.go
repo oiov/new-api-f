@@ -313,6 +313,10 @@ func getActivityLotteryDayStart(now time.Time) int64 {
 }
 
 func sumSuccessfulTopupMetric(userId int, scope string, unit string, now time.Time) (float64, error) {
+	return sumSuccessfulTopupMetricSince(userId, scope, unit, now, 0)
+}
+
+func sumSuccessfulTopupMetricSince(userId int, scope string, unit string, now time.Time, sinceUnix int64) (float64, error) {
 	if userId <= 0 {
 		return 0, nil
 	}
@@ -320,7 +324,11 @@ func sumSuccessfulTopupMetric(userId int, scope string, unit string, now time.Ti
 		Select("money, amount").
 		Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess)
 	if normalizeActivityLotteryThresholdScope(scope) == "today" {
-		query = query.Where("complete_time >= ?", getActivityLotteryDayStart(now))
+		startAt := getActivityLotteryDayStart(now)
+		if sinceUnix > startAt {
+			startAt = sinceUnix
+		}
+		query = query.Where("complete_time >= ?", startAt)
 	}
 	items := make([]*TopUp, 0)
 	if err := query.Find(&items).Error; err != nil {
@@ -349,6 +357,10 @@ func sumSuccessfulTopupMetric(userId int, scope string, unit string, now time.Ti
 }
 
 func sumConsumeMetric(userId int, scope string, unit string, now time.Time) (float64, error) {
+	return sumConsumeMetricSince(userId, scope, unit, now, 0)
+}
+
+func sumConsumeMetricSince(userId int, scope string, unit string, now time.Time, sinceUnix int64) (float64, error) {
 	if userId <= 0 {
 		return 0, nil
 	}
@@ -356,7 +368,11 @@ func sumConsumeMetric(userId int, scope string, unit string, now time.Time) (flo
 		Select("SUM(quota)").
 		Where("type = ? AND user_id = ?", LogTypeConsume, userId)
 	if normalizeActivityLotteryThresholdScope(scope) == "today" {
-		query = query.Where("created_at >= ?", getActivityLotteryDayStart(now))
+		startAt := getActivityLotteryDayStart(now)
+		if sinceUnix > startAt {
+			startAt = sinceUnix
+		}
+		query = query.Where("created_at >= ?", startAt)
 	}
 	var sum sql.NullInt64
 	if err := query.Scan(&sum).Error; err != nil {
@@ -380,29 +396,72 @@ func GetCurrentActivityLotteryRound(now time.Time) (*ActivityLotteryRound, error
 		return nil, gorm.ErrRecordNotFound
 	}
 	nowUnix := now.Unix()
-	round := &ActivityLotteryRound{}
+	items := make([]*ActivityLotteryRound, 0, 1)
 	err := DB.Model(&ActivityLotteryRound{}).
 		Where("published = ?", true).
 		Where("status = ?", ActivityLotteryRoundStatusOpen).
 		Where("start_at <= ? AND end_at > ? AND end_at > 0", nowUnix, nowUnix).
 		Order("id desc").
-		First(round).Error
-	return round, err
+		Limit(1).
+		Find(&items).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 || items[0] == nil || items[0].Id <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return items[0], nil
 }
 
 func GetLatestPublishedActivityLotteryRound() (*ActivityLotteryRound, error) {
-	round := &ActivityLotteryRound{}
+	items := make([]*ActivityLotteryRound, 0, 1)
 	err := DB.Model(&ActivityLotteryRound{}).
 		Where("published = ?", true).
 		Order("id desc").
-		First(round).Error
-	return round, err
+		Limit(1).
+		Find(&items).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 || items[0] == nil || items[0].Id <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return items[0], nil
+}
+
+func GetActivityLotteryEntry(roundId int, userId int) (*ActivityLotteryEntry, error) {
+	if roundId <= 0 || userId <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	items := make([]*ActivityLotteryEntry, 0, 1)
+	if err := DB.Where("round_id = ? AND user_id = ?", roundId, userId).Limit(1).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	if len(items) == 0 || items[0] == nil || items[0].Id <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return items[0], nil
+}
+
+func GetManualActivityLotteryEntry(roundId int, userId int) (*ActivityLotteryEntry, error) {
+	if roundId <= 0 || userId <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	items := make([]*ActivityLotteryEntry, 0, 1)
+	if err := DB.Where("round_id = ? AND user_id = ? AND source = ?", roundId, userId, "manual").Limit(1).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	if len(items) == 0 || items[0] == nil || items[0].Id <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return items[0], nil
 }
 
 func EnsureActivityLotteryEntry(userId int, source string, now time.Time) error {
 	if !operation_setting.IsActivityLotteryEnabled() {
 		return nil
 	}
+	source = strings.TrimSpace(strings.ToLower(source))
 	round, err := GetCurrentActivityLotteryRound(now)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -413,11 +472,35 @@ func EnsureActivityLotteryEntry(userId int, source string, now time.Time) error 
 	if round == nil || round.Id <= 0 {
 		return nil
 	}
-	if !isActivityLotteryRoundJoinSourceEnabled(round, source) {
+	if source != "manual" && !isActivityLotteryRoundJoinSourceEnabled(round, source) {
 		return fmt.Errorf("当前期数未启用该参与方式")
 	}
 
 	nowUnix := now.Unix()
+	if source != "manual" {
+		if _, err := GetManualActivityLotteryEntry(round.Id, userId); err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+		return nil
+	}
+	existingEntry, err := GetActivityLotteryEntry(round.Id, userId)
+	if err == nil && existingEntry != nil && existingEntry.Id > 0 {
+		if existingEntry.Source == "manual" {
+			return nil
+		}
+		return DB.Model(&ActivityLotteryEntry{}).
+			Where("id = ?", existingEntry.Id).
+			Updates(map[string]any{
+				"source":     "manual",
+				"created_at": nowUnix,
+			}).Error
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
 	entry := &ActivityLotteryEntry{
 		RoundId:   round.Id,
 		UserId:    userId,
@@ -518,8 +601,7 @@ func GetActivityLotterySummary(now time.Time, userId int) (*ActivityLotteryRound
 		round.StartAt > 0 &&
 		round.EndAt > 0 &&
 		nowUnix >= round.StartAt &&
-		nowUnix < round.EndAt &&
-		isActivityLotteryRoundJoinSourceEnabled(round, "manual")
+		nowUnix < round.EndAt
 	return &ActivityLotteryRoundSummary{
 		Round:            toActivityLotteryRoundView(round),
 		Winners:          winners,
@@ -1003,24 +1085,28 @@ func tryJoinActivityLotteryByTopup(topUp *TopUp, now time.Time) {
 	if !isActivityLotteryRoundJoinSourceEnabled(round, "topup") {
 		return
 	}
+	manualEntry, err := GetManualActivityLotteryEntry(round.Id, topUp.UserId)
+	if err != nil || manualEntry == nil || manualEntry.Id <= 0 {
+		return
+	}
 	threshold := getActivityLotteryRoundJoinTopupMinMoney(round)
 	if threshold <= 0 {
 		return
 	}
-	progress, err := sumSuccessfulTopupMetric(
+	progress, err := sumSuccessfulTopupMetricSince(
 		topUp.UserId,
 		getActivityLotteryRoundJoinTopupScope(round),
 		getActivityLotteryRoundJoinTopupUnit(round),
 		now,
+		manualEntry.CreatedAt,
 	)
 	if err != nil || progress < threshold {
 		return
 	}
-	_ = EnsureActivityLotteryEntry(topUp.UserId, "topup", now)
 }
 
-func tryJoinActivityLotteryByDailyConsume(userId int, consumeQuota int, now time.Time) {
-	if userId <= 0 || consumeQuota <= 0 {
+func tryJoinActivityLotteryByDailyConsume(userId int, _ int, now time.Time) {
+	if userId <= 0 {
 		return
 	}
 	setting := operation_setting.GetActivityLotterySetting()
@@ -1034,17 +1120,22 @@ func tryJoinActivityLotteryByDailyConsume(userId int, consumeQuota int, now time
 	if !isActivityLotteryRoundJoinSourceEnabled(round, "consume") {
 		return
 	}
+	manualEntry, err := GetManualActivityLotteryEntry(round.Id, userId)
+	if err != nil || manualEntry == nil || manualEntry.Id <= 0 {
+		return
+	}
 	threshold := getActivityLotteryRoundJoinDailyConsumeMinMoney(round)
 	if threshold <= 0 {
 		return
 	}
-	progress, err := sumConsumeMetric(
+	progress, err := sumConsumeMetricSince(
 		userId,
 		getActivityLotteryRoundJoinConsumeScope(round),
 		getActivityLotteryRoundJoinConsumeUnit(round),
 		now,
+		manualEntry.CreatedAt,
 	)
-	if err == nil && progress >= threshold {
-		_ = EnsureActivityLotteryEntry(userId, "consume", now)
+	if err != nil || progress < threshold {
+		return
 	}
 }

@@ -1032,14 +1032,11 @@ const CheckinCalendar = ({
                       </div>
                       <div className='mt-2 text-sm text-semi-color-text-1'>
                         {t(
-                          '规则：需同时满足参与人数与到期时间，系统将自动开奖。',
+                          '规则：每期都必须先手动报名；无论配置了哪种自动条件，报名后才开始按本期配置统计充值或消耗条件，满足人数与到期时间后自动开奖。',
                         )}
                       </div>
                       <div className='mt-3 flex flex-wrap items-center gap-2'>
-                        {normalizeCheckinWeekdays(
-                          lotterySummary?.round?.join_sources || 'manual',
-                        ).includes('manual') &&
-                        lotterySummary?.join_allowed &&
+                        {lotterySummary?.join_allowed &&
                         !lotterySummary?.joined ? (
                           <Button
                             type='primary'
@@ -1047,12 +1044,12 @@ const CheckinCalendar = ({
                             loading={lotteryJoinLoading}
                             onClick={joinActivityLottery}
                           >
-                            {t('参与活动')}
+                            {t('报名参与')}
                           </Button>
                         ) : null}
                         {lotterySummary?.joined ? (
                           <Tag color='blue' type='light' shape='circle'>
-                            {t('你已参与本期')}
+                            {t('你已报名本期')}
                           </Tag>
                         ) : null}
                       </div>

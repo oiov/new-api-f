@@ -1800,7 +1800,7 @@ const CheckinAdminPage = () => {
                   bordered={false}
                   closeIcon={null}
                   description={t(
-                    '抽奖规则：需同时满足“参与人数 ≥ 目标人数”与“活动到期”，系统将自动开奖并公示打码信息。',
+                    '抽奖规则：用户每期都必须先手动报名；无论配置了哪种自动条件，报名后才开始按本期配置统计充值或消耗条件，满足“参与人数 ≥ 目标人数”且“活动到期”后自动开奖。',
                   )}
                 />
                 <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>

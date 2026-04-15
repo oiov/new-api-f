@@ -54,10 +54,8 @@ const normalizeJoinSources = (raw) => {
 };
 
 const JOIN_SOURCE_LABELS = {
-  manual: '用户点击参与',
-  checkin: '签到成功自动参与',
-  topup: '充值达标自动参与',
-  consume: '消耗达标自动参与',
+  manual: '本页手动报名',
+  checkin: '报名后完成签到',
 };
 
 export default function ActivityLotteryPage() {
@@ -139,7 +137,6 @@ export default function ActivityLotteryPage() {
     () => normalizeJoinSources(currentRound?.join_sources || 'manual'),
     [currentRound?.join_sources],
   );
-  const manualEnabled = joinSources.includes('manual');
   const joinAllowed = !!summary?.join_allowed;
   const joined = !!summary?.joined;
 
@@ -154,7 +151,7 @@ export default function ActivityLotteryPage() {
               bordered={false}
               closeIcon={null}
               description={t(
-                '抽奖规则：需同时满足“参与人数 ≥ 目标人数”与“活动到期”，系统将自动开奖并公示打码信息。',
+                '抽奖规则：每期都必须先手动报名；无论配置了哪种自动条件，报名后才开始按本期配置统计充值/消耗条件。满足“参与人数 ≥ 目标人数”且“活动到期”后，系统自动开奖并公示打码信息。',
               )}
             />
             <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
@@ -172,18 +169,18 @@ export default function ActivityLotteryPage() {
                 >
                   {t('刷新')}
                 </Button>
-                {manualEnabled && joinAllowed && !joined ? (
+                {joinAllowed && !joined ? (
                   <Button
                     type='primary'
                     onClick={joinCurrent}
                     loading={joinLoading}
                   >
-                    {t('参与活动')}
+                    {t('报名参与')}
                   </Button>
                 ) : null}
                 {joined ? (
                   <Tag color='blue' type='light' shape='circle'>
-                    {t('你已参与本期')}
+                    {t('你已报名本期')}
                   </Tag>
                 ) : null}
                 {summary?.is_winner ? (
@@ -266,7 +263,12 @@ export default function ActivityLotteryPage() {
                     {t('参与条件')}
                   </div>
                   <div className='mt-2 flex flex-wrap gap-2'>
-                    {joinSources.map((source) => (
+                    <Tag color='blue' type='light' shape='circle'>
+                      {t('本页手动报名')}
+                    </Tag>
+                    {joinSources
+                      .filter((source) => source === 'checkin')
+                      .map((source) => (
                       <Tag
                         key={source}
                         color='blue'
@@ -275,9 +277,10 @@ export default function ActivityLotteryPage() {
                       >
                         {t(JOIN_SOURCE_LABELS[source] || source)}
                       </Tag>
-                    ))}
+                      ))}
                     {joinSources.includes('topup') ? (
                       <Tag color='orange' type='light' shape='circle'>
+                        {t('报名后')}{' '}
                         {t(
                           currentRound?.join_topup_scope === 'total'
                             ? '累计充值'
@@ -294,6 +297,7 @@ export default function ActivityLotteryPage() {
                     ) : null}
                     {joinSources.includes('consume') ? (
                       <Tag color='orange' type='light' shape='circle'>
+                        {t('报名后')}{' '}
                         {t(
                           currentRound?.join_daily_consume_scope === 'total'
                             ? '累计消耗'
