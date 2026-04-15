@@ -166,6 +166,9 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.GET("/self/consume_logs", controller.GetSubscriptionSelfConsumeLogs)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
 			subscriptionRoute.POST("/self/subscriptions/:id/action", controller.OperateSelfUserSubscription)
+			subscriptionRoute.POST("/self/subscriptions/:id/day_pass", middleware.CriticalRateLimit(), controller.CreateSelfSubscriptionDayPass)
+			subscriptionRoute.POST("/self/subscriptions/:id/day_pass_plan", middleware.CriticalRateLimit(), controller.CreateSelfSubscriptionDayPassPlan)
+			subscriptionRoute.POST("/self/day_pass_plans/:id/cancel", middleware.CriticalRateLimit(), controller.CancelSelfSubscriptionDayPassPlan)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
@@ -181,6 +184,7 @@ func SetApiRouter(router *gin.Engine) {
 
 			// User subscription management (admin)
 			subscriptionAdminRoute.GET("/user_subscriptions", controller.AdminListAllUserSubscriptions)
+			subscriptionAdminRoute.GET("/day_pass_plans", controller.AdminListSubscriptionDayPassPlans)
 			subscriptionAdminRoute.GET("/consume_logs", controller.AdminListSubscriptionConsumeLogs)
 			subscriptionAdminRoute.GET("/conversion_requests", controller.AdminListSubscriptionConversionRequests)
 			subscriptionAdminRoute.POST("/conversion_requests/:id/approve", controller.AdminApproveSubscriptionConversionRequest)
@@ -196,6 +200,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/transfer", controller.AdminTransferUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
+			subscriptionAdminRoute.POST("/day_pass_plans/:id/cancel", controller.AdminCancelSubscriptionDayPassPlan)
 		}
 
 		// Subscription payment callbacks (no auth)
@@ -356,6 +361,7 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.GET("/admin", middleware.AdminAuth(), controller.GetAllTokensByAdmin)
 			tokenRoute.GET("/admin/search", middleware.AdminAuth(), middleware.SearchRateLimit(), controller.SearchTokensByAdmin)
 			tokenRoute.POST("/admin/:id/test", middleware.AdminAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.TestTokenByAdmin)
+			tokenRoute.POST("/admin/:id/rotate", middleware.AdminAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.SecureVerificationRequired(), controller.RotateTokenByAdmin)
 			tokenRoute.POST("/admin/batch/group", middleware.AdminAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.SecureVerificationRequired(), controller.UpdateTokenGroupBatchByAdmin)
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)

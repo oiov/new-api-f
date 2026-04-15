@@ -41,6 +41,7 @@ const SubscriptionPricingTab = ({ onPlansChange, t }) => {
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
   const [manualDeliveryOrders, setManualDeliveryOrders] = useState([]);
+  const [dayPassPlans, setDayPassPlans] = useState([]);
   const [payMethods, setPayMethods] = useState([]);
   const [enableOnlineTopUp, setEnableOnlineTopUp] = useState(
     statusState?.status?.enable_online_topup || false,
@@ -77,6 +78,7 @@ const SubscriptionPricingTab = ({ onPlansChange, t }) => {
       setActiveSubscriptions([]);
       setAllSubscriptions([]);
       setManualDeliveryOrders([]);
+      setDayPassPlans([]);
       return;
     }
     try {
@@ -93,11 +95,13 @@ const SubscriptionPricingTab = ({ onPlansChange, t }) => {
         setActiveSubscriptions(res.data.data?.subscriptions || []);
         setAllSubscriptions(res.data.data?.all_subscriptions || []);
         setManualDeliveryOrders(res.data.data?.manual_delivery_orders || []);
+        setDayPassPlans(res.data.data?.day_pass_plans || []);
       }
     } catch (e) {
       setActiveSubscriptions([]);
       setAllSubscriptions([]);
       setManualDeliveryOrders([]);
+      setDayPassPlans([]);
     }
   };
 
@@ -200,6 +204,7 @@ const SubscriptionPricingTab = ({ onPlansChange, t }) => {
         activeSubscriptions={activeSubscriptions}
         allSubscriptions={allSubscriptions}
         manualDeliveryOrders={manualDeliveryOrders}
+        dayPassPlans={dayPassPlans}
         reloadSubscriptionSelf={getSubscriptionSelf}
         initialMainTab={PLAN_LIST_TAB}
         uiVariant={PACKAGE_VARIANT}

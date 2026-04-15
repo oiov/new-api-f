@@ -286,6 +286,7 @@ func AddToken(c *gin.Context) {
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
 		Key:                key,
+		Source:             model.TokenSourceUserCreated,
 		CreatedTime:        common.GetTimestamp(),
 		AccessedTime:       common.GetTimestamp(),
 		ExpiredTime:        token.ExpiredTime,

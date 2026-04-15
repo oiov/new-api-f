@@ -141,6 +141,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
   const [manualDeliveryOrders, setManualDeliveryOrders] = useState([]);
+  const [dayPassPlans, setDayPassPlans] = useState([]);
 
   // 预设充值额度选项
   const [presetAmounts, setPresetAmounts] = useState([]);
@@ -528,6 +529,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
         const allSubs = res.data.data?.all_subscriptions || [];
         setAllSubscriptions(allSubs);
         setManualDeliveryOrders(res.data.data?.manual_delivery_orders || []);
+        setDayPassPlans(res.data.data?.day_pass_plans || []);
       }
     } catch (e) {
       // ignore
@@ -999,6 +1001,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
               activeSubscriptions={activeSubscriptions}
               allSubscriptions={allSubscriptions}
               manualDeliveryOrders={manualDeliveryOrders}
+              dayPassPlans={dayPassPlans}
               reloadSubscriptionSelf={getSubscriptionSelf}
               initialMainTab={MY_SUBSCRIPTIONS_TAB}
               uiVariant={SUBSCRIPTION_VARIANT}
@@ -1022,6 +1025,7 @@ const TopUp = ({ mode = VIEW_SUBSCRIPTION }) => {
             activeSubscriptions={activeSubscriptions}
             allSubscriptions={allSubscriptions}
             manualDeliveryOrders={manualDeliveryOrders}
+            dayPassPlans={dayPassPlans}
             reloadSubscriptionSelf={getSubscriptionSelf}
             initialMainTab={MY_SUBSCRIPTIONS_TAB}
             uiVariant={SUBSCRIPTION_VARIANT}

@@ -31,6 +31,7 @@ import SubscriptionMigrationModal from './modals/SubscriptionMigrationModal';
 import SubscriptionConsumeLogsModal from './modals/SubscriptionConsumeLogsModal';
 import SubscriptionConversionRequestsPanel from './SubscriptionConversionRequestsPanel';
 import ManualDeliveryOrdersPanel from './ManualDeliveryOrdersPanel';
+import SubscriptionDayPassPlansPanel from './SubscriptionDayPassPlansPanel';
 import { useSubscriptionsData } from '../../../hooks/subscriptions/useSubscriptionsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -40,6 +41,7 @@ const SubscriptionsPage = () => {
   const subscriptionsData = useSubscriptionsData();
   const isMobile = useIsMobile();
   const [statusState] = useContext(StatusContext);
+  const [activeTabKey, setActiveTabKey] = useState('config');
   const [showMigration, setShowMigration] = useState(false);
   const [consumeLogsFilter, setConsumeLogsFilter] = useState(null);
   const enableEpay = !!statusState?.status?.enable_online_topup;
@@ -91,7 +93,12 @@ const SubscriptionsPage = () => {
         t={t}
       />
 
-      <Tabs type='card' defaultActiveKey='config' className='mt-1'>
+      <Tabs
+        type='card'
+        activeKey={activeTabKey}
+        onChange={setActiveTabKey}
+        className='mt-1'
+      >
         <TabPane tab={t('订阅管理配置')} itemKey='config'>
           <CardPro
             type='type1'
@@ -219,6 +226,7 @@ const SubscriptionsPage = () => {
               compactMode={compactMode}
               planTitleMap={subscriptionsData.planTitleMap}
               openConsumeLogs={(filter) => setConsumeLogsFilter(filter)}
+              onDataChanged={subscriptionsData.loadUserSubscriptions}
               t={t}
             />
           </CardPro>
@@ -230,6 +238,12 @@ const SubscriptionsPage = () => {
 
         <TabPane tab={t('人工发放订单')} itemKey='manual-orders'>
           <ManualDeliveryOrdersPanel t={t} />
+        </TabPane>
+
+        <TabPane tab={t('天卡拆分计划')} itemKey='day-pass-plans'>
+          {activeTabKey === 'day-pass-plans' ? (
+            <SubscriptionDayPassPlansPanel t={t} />
+          ) : null}
         </TabPane>
       </Tabs>
     </>

@@ -15,8 +15,10 @@ import (
 type Token struct {
 	Id                      int            `json:"id"`
 	UserId                  int            `json:"user_id" gorm:"index"`
+	UserSubscriptionId      int            `json:"user_subscription_id" gorm:"type:int;not null;default:0;index"`
 	Username                string         `json:"username,omitempty" gorm:"column:username;->;-:migration"`
 	Key                     string         `json:"key" gorm:"type:char(48);uniqueIndex"`
+	Source                  string         `json:"source" gorm:"type:varchar(64);not null;default:'';index"`
 	SpecificChannelId       int            `json:"specific_channel_id" gorm:"type:int;not null;default:0"`
 	SpecificChannelKeyIndex int            `json:"specific_channel_key_index" gorm:"type:int;not null;default:-1"`
 	Status                  int            `json:"status" gorm:"default:1"`
@@ -37,6 +39,61 @@ type Token struct {
 
 const SubscriptionAggregateAccessTokenName = "Subscription Access"
 
+const (
+	TokenSourceUserCreated                 = "user_created"
+	TokenSourceSubscriptionAggregateAccess = "subscription_aggregate_access"
+	TokenSourceSubscriptionSpecificChannel = "subscription_specific_channel"
+	TokenSourceDerivedDayPassAccess        = "subscription_derived_day_pass_access"
+)
+
+func normalizeTokenSource(source string) string {
+	switch strings.TrimSpace(source) {
+	case TokenSourceSubscriptionAggregateAccess:
+		return TokenSourceSubscriptionAggregateAccess
+	case TokenSourceSubscriptionSpecificChannel:
+		return TokenSourceSubscriptionSpecificChannel
+	case TokenSourceDerivedDayPassAccess:
+		return TokenSourceDerivedDayPassAccess
+	case TokenSourceUserCreated:
+		return TokenSourceUserCreated
+	default:
+		return ""
+	}
+}
+
+func (token *Token) legacySubscriptionAggregateAccessToken() bool {
+	if token == nil {
+		return false
+	}
+	return token.SpecificChannelId <= 0 && strings.TrimSpace(token.Name) == SubscriptionAggregateAccessTokenName
+}
+
+func (token *Token) legacySubscriptionSpecificChannelToken() bool {
+	if token == nil {
+		return false
+	}
+	if token.SpecificChannelId <= 0 {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(token.Group), "sub_plan_")
+}
+
+func (token *Token) GetEffectiveSource() string {
+	if token == nil {
+		return TokenSourceUserCreated
+	}
+	if source := normalizeTokenSource(token.Source); source != "" {
+		return source
+	}
+	if token.legacySubscriptionAggregateAccessToken() {
+		return TokenSourceSubscriptionAggregateAccess
+	}
+	if token.legacySubscriptionSpecificChannelToken() {
+		return TokenSourceSubscriptionSpecificChannel
+	}
+	return TokenSourceUserCreated
+}
+
 func (token *Token) IsActiveSubscriptionAggregateAccessToken(now int64) bool {
 	if token == nil {
 		return false
@@ -51,17 +108,28 @@ func (token *Token) IsSubscriptionSpecificChannelToken() bool {
 	if token == nil {
 		return false
 	}
-	if token.SpecificChannelId <= 0 {
+	if token.GetEffectiveSource() == TokenSourceSubscriptionSpecificChannel {
+		return true
+	}
+	return token.legacySubscriptionSpecificChannelToken()
+}
+
+func (token *Token) IsDerivedDayPassAccessToken() bool {
+	if token == nil {
 		return false
 	}
-	return strings.HasPrefix(strings.TrimSpace(token.Group), "sub_plan_")
+	return token.GetEffectiveSource() == TokenSourceDerivedDayPassAccess &&
+		token.UserSubscriptionId > 0
 }
 
 func (token *Token) IsSubscriptionAggregateAccessToken() bool {
 	if token == nil {
 		return false
 	}
-	return token.SpecificChannelId <= 0 && strings.TrimSpace(token.Name) == SubscriptionAggregateAccessTokenName
+	if token.GetEffectiveSource() != TokenSourceSubscriptionAggregateAccess {
+		return false
+	}
+	return token.SpecificChannelId <= 0
 }
 
 type AdminTokenSearchFilters struct {
@@ -832,8 +900,62 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "specific_channel_id", "specific_channel_key_index").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "specific_channel_id", "specific_channel_key_index", "user_subscription_id", "source").Updates(token).Error
 	return err
+}
+
+func isTokenKeyDuplicateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "duplicate") ||
+		strings.Contains(message, "unique constraint") ||
+		strings.Contains(message, "unique failed")
+}
+
+func (token *Token) RotateKey() (string, error) {
+	if token == nil || token.Id <= 0 {
+		return "", errors.New("invalid token")
+	}
+	oldKey := strings.TrimSpace(token.Key)
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		newKey, err := common.GenerateKey()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if newKey == "" || newKey == oldKey {
+			lastErr = errors.New("generated empty or duplicated token key")
+			continue
+		}
+		err = DB.Model(&Token{}).
+			Where("id = ?", token.Id).
+			Update("key", newKey).Error
+		if err != nil {
+			lastErr = err
+			if isTokenKeyDuplicateError(err) {
+				continue
+			}
+			return "", err
+		}
+		token.Key = newKey
+		if common.RedisEnabled {
+			tokenCopy := *token
+			gopool.Go(func() {
+				if oldKey != "" {
+					_ = cacheDeleteToken(oldKey)
+				}
+				_ = cacheSetToken(tokenCopy)
+			})
+		}
+		return newKey, nil
+	}
+	if lastErr == nil {
+		lastErr = errors.New("failed to rotate token key")
+	}
+	return "", lastErr
 }
 
 func (token *Token) SelectUpdate() (err error) {

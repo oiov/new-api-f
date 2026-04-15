@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -372,6 +373,20 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			Name:    c.GetString("channel_name"),
 			AutoBan: &autoBanInt,
 		}, nil
+	}
+	if specificChannelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok && specificChannelId != nil {
+		channelID, err := strconv.Atoi(fmt.Sprint(specificChannelId))
+		if err == nil && channelID > 0 {
+			channel, getErr := model.GetChannelById(channelID, true)
+			if getErr != nil {
+				return nil, types.NewError(fmt.Errorf("获取指定渠道失败（retry）: %w", getErr), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+			}
+			newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
+			if newAPIError != nil {
+				return nil, newAPIError
+			}
+			return channel, nil
+		}
 	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 

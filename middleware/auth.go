@@ -397,6 +397,9 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	}
 	common.SetContextKey(c, constant.ContextKeyTokenGroup, token.Group)
 	common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, token.CrossGroupRetry)
+	if token.UserSubscriptionId > 0 {
+		common.SetContextKey(c, constant.ContextKeyPreferredSubscriptionId, token.UserSubscriptionId)
+	}
 	if token.SpecificChannelId > 0 {
 		c.Set("specific_channel_id", strconv.Itoa(token.SpecificChannelId))
 	}

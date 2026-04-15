@@ -25,6 +25,7 @@ type User struct {
 	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
 	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
 	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	CreatedAt        int64          `json:"created_at" gorm:"bigint;index;autoCreateTime"`
 	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
 	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
 	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
@@ -578,6 +579,9 @@ func (user *User) Insert(inviterId int, clientIP string) error {
 	user.Quota = common.QuotaForNewUser
 	//user.SetAccessToken(common.GetUUID())
 	user.AffCode = common.GetRandomString(4)
+	if user.CreatedAt <= 0 {
+		user.CreatedAt = common.GetTimestamp()
+	}
 
 	// 初始化用户设置，包括默认的边栏配置
 	if user.Setting == "" {
@@ -637,6 +641,9 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	}
 	user.Quota = common.QuotaForNewUser
 	user.AffCode = common.GetRandomString(4)
+	if user.CreatedAt <= 0 {
+		user.CreatedAt = common.GetTimestamp()
+	}
 
 	// 初始化用户设置
 	if user.Setting == "" {

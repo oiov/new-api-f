@@ -19,13 +19,21 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal } from '@douyinfe/semi-ui';
-import { API, buildGroupOptions, showError, showSuccess } from '../../helpers';
+import { Button, Modal, TextArea, Typography } from '@douyinfe/semi-ui';
+import {
+  API,
+  buildGroupOptions,
+  copy,
+  showError,
+  showSuccess,
+} from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 
 export const useAdminTokensData = () => {
   const { t } = useTranslation();
+  const { Text } = Typography;
+  const subscriptionAccessTokenName = 'Subscription Access';
   const [compactMode, setCompactMode] = useTableCompactMode('admin-tokens');
   const [tokens, setTokens] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -282,7 +290,8 @@ export const useAdminTokensData = () => {
         content: (
           <div className='flex flex-col gap-1'>
             <div>
-              {t('用户')}: {record.username || '-'} ({t('用户 ID')}: {record.user_id})
+              {t('用户')}: {record.username || '-'} ({t('用户 ID')}:{' '}
+              {record.user_id})
             </div>
             <div>
               {t('令牌')}: {record.name || '-'} ({t('令牌 ID')}: {tokenId})
@@ -305,13 +314,18 @@ export const useAdminTokensData = () => {
                       {t('模型')}: {item.model || '-'}
                     </div>
                     <div>
-                      HTTP: {item.http_code} / ok: {item.ok ? '1' : '0'}
+                      {t('HTTP')}: {item.http_code} / {t('通过')}:{' '}
+                      {item.ok ? '1' : '0'}
                     </div>
                     {item.x_oneapi_request_id ? (
-                      <div>x-oneapi-request-id: {item.x_oneapi_request_id}</div>
+                      <div>
+                        {t('请求 ID')}: {item.x_oneapi_request_id}
+                      </div>
                     ) : null}
                     {item.error_type ? (
-                      <div>error.type: {item.error_type}</div>
+                      <div>
+                        {t('错误类型')}: {item.error_type}
+                      </div>
                     ) : null}
                   </div>
                 ))}
@@ -446,10 +460,10 @@ export const useAdminTokensData = () => {
                           key={`${item.token_id}-${r.kind || ''}-${r.path || ''}`}
                           className='text-sm'
                         >
-                          {(r.kind || '-').toUpperCase()} {r.path} · HTTP {r.http_code}{' '}
-                          · ok:{r.ok ? '1' : '0'}{' '}
+                          {(r.kind || '-').toUpperCase()} {r.path} · {t('HTTP')}{' '}
+                          {r.http_code} · {t('通过')}:{r.ok ? '1' : '0'}{' '}
                           {r.x_oneapi_request_id
-                            ? `· ${r.x_oneapi_request_id}`
+                            ? `· ${t('请求 ID')}: ${r.x_oneapi_request_id}`
                             : ''}
                         </div>
                       ))}
@@ -480,7 +494,11 @@ export const useAdminTokensData = () => {
         group: group || '',
       });
       if (res?.data?.success) {
-        showSuccess(t('已更新 {{count}} 个令牌分组', { count: res.data.data?.updated || 0 }));
+        showSuccess(
+          t('已更新 {{count}} 个令牌分组', {
+            count: res.data.data?.updated || 0,
+          }),
+        );
         await loadTokens(1, pageSize);
         setSelectedRowKeys([]);
       } else {
@@ -489,6 +507,109 @@ export const useAdminTokensData = () => {
     } catch (error) {
       showError(error?.message || t('更新失败'));
     }
+  };
+
+  const refreshCurrentPage = async () => {
+    if (searchMode) {
+      await searchTokens(activePage, pageSize, appliedFilters);
+      return;
+    }
+    await loadTokens(activePage, pageSize);
+  };
+
+  const rotateToken = async (record) => {
+    const tokenId = Number(record?.id || 0);
+    if (tokenId <= 0) {
+      showError(t('无效的令牌'));
+      return;
+    }
+    const source = String(record?.source || '').trim();
+    const isSystemIssued =
+      source === 'subscription_aggregate_access' ||
+      source === 'subscription_derived_day_pass_access' ||
+      (Number(record?.specific_channel_id || 0) <= 0 &&
+        String(record?.name || '').trim() === subscriptionAccessTokenName);
+    const actionLabel = isSystemIssued ? t('重新签发') : t('重置令牌');
+
+    Modal.confirm({
+      title: isSystemIssued
+        ? t('确认重新签发该访问令牌？')
+        : t('确认重置该用户令牌？'),
+      content: isSystemIssued
+        ? t(
+            '重新签发后，旧的 Subscription Access 令牌会立即失效，用户需要到订阅页面复制新的令牌。',
+          )
+        : t(
+            '重置后，旧令牌会立即失效，但额度、分组、模型权限与渠道绑定保持不变。',
+          ),
+      okText: actionLabel,
+      cancelText: t('取消'),
+      onOk: async () => {
+        try {
+          const res = await API.post(`/api/token/admin/${tokenId}/rotate`, {
+            notify_user: isSystemIssued,
+          });
+          if (!res?.data?.success) {
+            showError(res?.data?.message || t('操作失败'));
+            return;
+          }
+          const data = res.data?.data || {};
+          const tokenKey = String(data?.token_key || '').trim();
+          Modal.info({
+            title: t('{{action}}成功', { action: actionLabel }),
+            size: 'small',
+            content: (
+              <div className='flex flex-col gap-3'>
+                <div className='text-sm text-[var(--semi-color-text-2)]'>
+                  {t('旧令牌已立即失效，请尽快复制并发送新的令牌。')}
+                </div>
+                <div className='text-sm'>
+                  {t('用户')}: {record?.username || '-'} ({t('用户 ID')}:{' '}
+                  {record?.user_id || '-'})
+                </div>
+                <div className='text-sm'>
+                  {t('令牌')}: {record?.name || '-'} ({t('令牌 ID')}: {tokenId})
+                </div>
+                <TextArea
+                  value={tokenKey}
+                  readOnly
+                  autosize={{ minRows: 2, maxRows: 4 }}
+                />
+                <div className='flex items-center justify-between gap-3 flex-wrap'>
+                  <Text type='secondary'>
+                    {data?.site_notify_sent || data?.event_sent
+                      ? t('已触发用户通知事件')
+                      : data?.notify_error
+                        ? t('用户通知触发失败：{{message}}', {
+                            message: data.notify_error,
+                          })
+                        : t('未触发用户通知事件')}
+                  </Text>
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    size='small'
+                    onClick={async () => {
+                      if (await copy(tokenKey)) {
+                        showSuccess(t('新令牌已复制'));
+                        return;
+                      }
+                      showError(t('复制失败'));
+                    }}
+                  >
+                    {t('复制新令牌')}
+                  </Button>
+                </div>
+              </div>
+            ),
+          });
+          showSuccess(t('{{action}}成功', { action: actionLabel }));
+          await refreshCurrentPage();
+        } catch (error) {
+          showError(error?.message || t('操作失败'));
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -525,6 +646,7 @@ export const useAdminTokensData = () => {
     testToken,
     batchTestTokens,
     batchUpdateGroup,
+    rotateToken,
     t,
   };
 };

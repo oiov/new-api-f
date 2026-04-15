@@ -298,7 +298,6 @@ const AdminTokensPage = () => {
         rowSelection={tokensData.rowSelection}
         showUsernameColumn={true}
         allowSensitiveActions={false}
-        readonly={true}
         showTestColumn={true}
         testingTokenIds={tokensData.testingTokenIds}
         testToken={tokensData.testToken}

@@ -69,7 +69,7 @@ const defaultFormState = {
   supabase_anon_key:
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3Z2dhd25vanRqaWFrbHljZmhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMzU3NDUsImV4cCI6MjA4NzYxMTc0NX0.-pQHomLNGWL7OvQpHL2_7T_NwI4wAzyNYMOknX_YJSE',
   confirm_url: '',
-  assignment_status: 'unassigned',
+  assignment_status: '',
   assigned_plan: '',
   assigned_subscription_order_id: '',
   assigned_channel_id: '',
@@ -124,6 +124,7 @@ const API_KEY_STATUS_OPTIONS = [
 
 const DEFAULT_LIST_FILTERS = {
   keyword: '',
+  assignedUserKeyword: '',
   planFilter: '',
   statusFilter: 'ready',
   assignmentStatusFilter: 'unassigned',
@@ -134,6 +135,7 @@ const DEFAULT_LIST_FILTERS = {
 
 const CLEARED_LIST_FILTERS = {
   keyword: '',
+  assignedUserKeyword: '',
   planFilter: '',
   statusFilter: '',
   assignmentStatusFilter: '',
@@ -167,7 +169,7 @@ function getAssignmentStatusLabel(status, t) {
   return t('未分配');
 }
 
-function formatShanghaiDateTime(value) {
+function formatShanghaiDateTime(value, locale) {
   if (value === undefined || value === null || value === '') return '-';
 
   let date;
@@ -192,7 +194,7 @@ function formatShanghaiDateTime(value) {
     return String(value);
   }
 
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(locale || undefined, {
     timeZone: 'Asia/Shanghai',
     year: 'numeric',
     month: '2-digit',
@@ -204,6 +206,14 @@ function formatShanghaiDateTime(value) {
   })
     .format(date)
     .replace(/\//g, '-');
+}
+
+function formatUidLabel(userId, t) {
+  return userId > 0 ? t('UID {{id}}', { id: userId }) : t('UID -');
+}
+
+function formatChannelKeyLabel(index, t) {
+  return t('Key #{{index}}', { index });
 }
 
 function parseTags(value) {
@@ -223,7 +233,7 @@ function getAssignedChannelLabel(record, t) {
   }
   const channelLabel = `${t('渠道')} #${record.assigned_channel_id}`;
   if (Number(record?.assigned_channel_key_index) >= 0) {
-    return `${channelLabel} / Key #${record.assigned_channel_key_index}`;
+    return `${channelLabel} / ${formatChannelKeyLabel(record.assigned_channel_key_index, t)}`;
   }
   return channelLabel;
 }
@@ -243,10 +253,10 @@ function getAssignedUserLabel(record, t) {
     return t('未绑定用户');
   }
   if (username && userId > 0) {
-    return `${username} / UID ${userId}`;
+    return `${username} / ${formatUidLabel(userId, t)}`;
   }
   if (userId > 0) {
-    return `UID ${userId}`;
+    return formatUidLabel(userId, t);
   }
   return username;
 }
@@ -268,14 +278,15 @@ function buildManualOrderOptionLabel(item, t) {
   const username = item?.username || '-';
   const planTitle = order?.plan_title || item?.plan?.title || '-';
   const userId = Number(order?.user_id || 0);
-  const userLabel = userId > 0 ? `UID ${userId}` : 'UID -';
+  const userLabel = formatUidLabel(userId, t);
   return `#${order?.id || '-'} · ${userLabel} · ${username} · ${planTitle}`;
 }
 
 function buildAssignmentFormFromRecord(record) {
   return {
-    assignment_status:
-      normalizeAssignmentStatus(record?.assignment_status) || 'unassigned',
+    assignment_status: record
+      ? normalizeAssignmentStatus(record?.assignment_status) || ''
+      : '',
     assigned_plan: record?.assigned_plan || '',
     assigned_subscription_order_id:
       record?.assigned_subscription_order_id > 0
@@ -623,7 +634,7 @@ function renderBatchFailureDialog({ title, messages, t, handleCopy }) {
 }
 
 const EcomAgentPage = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const [accounts, setAccounts] = useState([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
@@ -650,6 +661,9 @@ const EcomAgentPage = () => {
   const [pageSize, setPageSize] = useState(10);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [keyword, setKeyword] = useState(DEFAULT_LIST_FILTERS.keyword);
+  const [assignedUserKeyword, setAssignedUserKeyword] = useState(
+    DEFAULT_LIST_FILTERS.assignedUserKeyword,
+  );
   const [planFilter, setPlanFilter] = useState(DEFAULT_LIST_FILTERS.planFilter);
   const [statusFilter, setStatusFilter] = useState(
     DEFAULT_LIST_FILTERS.statusFilter,
@@ -1020,7 +1034,7 @@ const EcomAgentPage = () => {
     const currentUsername = String(selectedManualOrder?.username || '').trim();
     const userSuffix =
       currentUserId > 0
-        ? ` · UID ${currentUserId}${currentUsername ? ` · ${currentUsername}` : ''}`
+        ? ` · ${formatUidLabel(currentUserId, t)}${currentUsername ? ` · ${currentUsername}` : ''}`
         : '';
     return Array.from({ length: total }, (_, index) => {
       const isReservedForCurrentOrder =
@@ -1028,10 +1042,11 @@ const EcomAgentPage = () => {
         String(selectedAssignedChannel.id) ===
           String(selectedManualReservedChannelId) &&
         index === selectedManualReservedChannelKeyIndex;
+      const keyLabel = formatChannelKeyLabel(index, t);
       return {
         label: isReservedForCurrentOrder
-          ? `Key #${index}${userSuffix} · ${t('当前订单预留槽位')}`
-          : `Key #${index}${userSuffix}`,
+          ? `${keyLabel}${userSuffix} · ${t('当前订单预留槽位')}`
+          : `${keyLabel}${userSuffix}`,
         value: String(index),
         disabled: hasSelectedManualReservedSlot && !isReservedForCurrentOrder,
       };
@@ -1137,6 +1152,9 @@ const EcomAgentPage = () => {
 
   const filteredAccounts = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
+    const normalizedAssignedUserKeyword = assignedUserKeyword
+      .trim()
+      .toLowerCase();
     return accounts.filter((record) => {
       const matchesPlan =
         !planFilter || normalizePlanValue(record.plan) === planFilter;
@@ -1171,6 +1189,20 @@ const EcomAgentPage = () => {
       ) {
         return false;
       }
+      if (normalizedAssignedUserKeyword) {
+        const assignedSearchSource = [
+          record.assigned_username,
+          record.assigned_user_email,
+          String(record.assigned_user_id || ''),
+          getAssignedUserLabel(record, t),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!assignedSearchSource.includes(normalizedAssignedUserKeyword)) {
+          return false;
+        }
+      }
       if (!normalizedKeyword) {
         return true;
       }
@@ -1204,6 +1236,7 @@ const EcomAgentPage = () => {
     });
   }, [
     accounts,
+    assignedUserKeyword,
     assignmentStatusFilter,
     apiKeyFilter,
     channelBindingFilter,
@@ -1214,26 +1247,9 @@ const EcomAgentPage = () => {
     t,
   ]);
 
-  const hasActiveFilters =
-    keyword.trim() !== DEFAULT_LIST_FILTERS.keyword ||
-    planFilter !== DEFAULT_LIST_FILTERS.planFilter ||
-    statusFilter !== DEFAULT_LIST_FILTERS.statusFilter ||
-    assignmentStatusFilter !== DEFAULT_LIST_FILTERS.assignmentStatusFilter ||
-    channelBindingFilter !== DEFAULT_LIST_FILTERS.channelBindingFilter ||
-    orderBindingFilter !== DEFAULT_LIST_FILTERS.orderBindingFilter ||
-    apiKeyFilter !== DEFAULT_LIST_FILTERS.apiKeyFilter;
-
-  const isClearedFilters =
-    keyword.trim() === CLEARED_LIST_FILTERS.keyword &&
-    planFilter === CLEARED_LIST_FILTERS.planFilter &&
-    statusFilter === CLEARED_LIST_FILTERS.statusFilter &&
-    assignmentStatusFilter === CLEARED_LIST_FILTERS.assignmentStatusFilter &&
-    channelBindingFilter === CLEARED_LIST_FILTERS.channelBindingFilter &&
-    orderBindingFilter === CLEARED_LIST_FILTERS.orderBindingFilter &&
-    apiKeyFilter === CLEARED_LIST_FILTERS.apiKeyFilter;
-
   const resetFilters = () => {
     setKeyword(DEFAULT_LIST_FILTERS.keyword);
+    setAssignedUserKeyword(DEFAULT_LIST_FILTERS.assignedUserKeyword);
     setPlanFilter(DEFAULT_LIST_FILTERS.planFilter);
     setStatusFilter(DEFAULT_LIST_FILTERS.statusFilter);
     setAssignmentStatusFilter(DEFAULT_LIST_FILTERS.assignmentStatusFilter);
@@ -1245,6 +1261,7 @@ const EcomAgentPage = () => {
 
   const clearFilters = () => {
     setKeyword(CLEARED_LIST_FILTERS.keyword);
+    setAssignedUserKeyword(CLEARED_LIST_FILTERS.assignedUserKeyword);
     setPlanFilter(CLEARED_LIST_FILTERS.planFilter);
     setStatusFilter(CLEARED_LIST_FILTERS.statusFilter);
     setAssignmentStatusFilter(CLEARED_LIST_FILTERS.assignmentStatusFilter);
@@ -2729,7 +2746,7 @@ const EcomAgentPage = () => {
               <Text strong>{renderEmail(assignmentRecord.email)}</Text>
               <div className='mt-1'>
                 <Text size='small' type='tertiary'>
-                  accountId:{' '}
+                  {t('accountId')}:{' '}
                   {assignmentRecord.account_id ||
                     getSubscriptionData(assignmentRecord)?.accountId ||
                     '-'}
@@ -2807,16 +2824,20 @@ const EcomAgentPage = () => {
                   onChange={(value) =>
                     setAssignmentForm((prev) => ({
                       ...prev,
-                      assignment_status: value || 'unassigned',
+                      assignment_status: value || '',
                     }))
                   }
-                  optionList={ASSIGNMENT_STATUS_OPTIONS.filter(
-                    (item) => item.value,
-                  ).map((item) => ({
-                    label: t(item.labelKey),
-                    value: item.value,
-                  }))}
+                  optionList={[
+                    { label: t('默认分配状态'), value: '' },
+                    ...ASSIGNMENT_STATUS_OPTIONS.filter(
+                      (item) => item.value,
+                    ).map((item) => ({
+                      label: t(item.labelKey),
+                      value: item.value,
+                    })),
+                  ]}
                   placeholder={t('分配状态')}
+                  showClear
                 />
                 <Select
                   value={assignmentForm.assigned_plan}
@@ -2899,8 +2920,16 @@ const EcomAgentPage = () => {
                           {
                             key: 'order_id',
                             label: t('关联订单'),
-                            value: `#${selectedManualOrder?.order?.id || '-'} · UID ${
-                              selectedManualOrder?.order?.user_id || '-'
+                            value: `#${selectedManualOrder?.order?.id || '-'} · ${
+                              Number(selectedManualOrder?.order?.user_id || 0) >
+                              0
+                                ? formatUidLabel(
+                                    Number(
+                                      selectedManualOrder?.order?.user_id || 0,
+                                    ),
+                                    t,
+                                  )
+                                : t('UID -')
                             }`,
                           },
                           {
@@ -2932,8 +2961,11 @@ const EcomAgentPage = () => {
                       {t('已自动匹配发放渠道')}
                     </Text>
                     <div className='mt-1'>
-                      {t('渠道')} #{selectedManualReservedChannelId} · Key #
-                      {selectedManualReservedChannelKeyIndex}
+                      {t('渠道')} #{selectedManualReservedChannelId} ·{' '}
+                      {formatChannelKeyLabel(
+                        selectedManualReservedChannelKeyIndex,
+                        t,
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -2998,8 +3030,11 @@ const EcomAgentPage = () => {
                     {hasSelectedManualReservedSlot ? (
                       <Text size='small' type='tertiary'>
                         {t('当前订单预留槽位')}: {t('渠道')} #
-                        {selectedManualReservedChannelId} · Key #
-                        {selectedManualReservedChannelKeyIndex}
+                        {selectedManualReservedChannelId} ·{' '}
+                        {formatChannelKeyLabel(
+                          selectedManualReservedChannelKeyIndex,
+                          t,
+                        )}
                       </Text>
                     ) : null}
                   </div>
@@ -3040,7 +3075,7 @@ const EcomAgentPage = () => {
               <Text strong>{renderEmail(historyRecord.email)}</Text>
               <div className='mt-1'>
                 <Text type='tertiary'>
-                  accountId:{' '}
+                  {t('accountId')}:{' '}
                   {historyRecord.account_id ||
                     getSubscriptionData(historyRecord)?.accountId ||
                     '-'}
@@ -3073,10 +3108,14 @@ const EcomAgentPage = () => {
                       </div>
                       <div className='mt-2 flex flex-col gap-1'>
                         <Text size='small' type='tertiary'>
-                          {t('时间')}: {formatShanghaiDateTime(item?.timestamp)}
+                          {t('时间')}:{' '}
+                          {formatShanghaiDateTime(
+                            item?.timestamp,
+                            i18n.resolvedLanguage || i18n.language,
+                          )}
                         </Text>
                         <Text size='small' type='tertiary'>
-                          Tokens: {Number(item?.tokens || 0)}
+                          {t('Token 数')}: {Number(item?.tokens || 0)}
                         </Text>
                       </div>
                     </div>
@@ -3115,6 +3154,16 @@ const EcomAgentPage = () => {
                       '搜索邮箱 / accountId / 状态 / 套餐 / 标签 / 渠道 / 订单',
                     )}
                     style={{ width: isMobile ? '100%' : 280 }}
+                  />
+                  <Input
+                    showClear
+                    value={assignedUserKeyword}
+                    onChange={(value) => {
+                      setAssignedUserKeyword(value);
+                      setCurrentPage(1);
+                    }}
+                    placeholder={t('搜索绑定用户名 / UID / 绑定邮箱')}
+                    style={{ width: isMobile ? '100%' : 240 }}
                   />
                   <Select
                     value={planFilter}
@@ -3188,16 +3237,12 @@ const EcomAgentPage = () => {
                     }))}
                     style={{ width: isMobile ? '100%' : 180 }}
                   />
-                  {hasActiveFilters ? (
-                    <Button type='tertiary' onClick={resetFilters}>
-                      {t('恢复默认查询条件')}
-                    </Button>
-                  ) : null}
-                  {!isClearedFilters ? (
-                    <Button type='tertiary' onClick={clearFilters}>
-                      {t('清空查询条件')}
-                    </Button>
-                  ) : null}
+                  <Button type='tertiary' onClick={resetFilters}>
+                    {t('恢复默认查询条件')}
+                  </Button>
+                  <Button type='tertiary' onClick={clearFilters}>
+                    {t('清空查询条件')}
+                  </Button>
                   {filteredAccounts.length > 0 ? (
                     <Button
                       type='tertiary'

@@ -64,14 +64,20 @@ func getForcedChannelKeyIndex(c *gin.Context) int {
 	return index
 }
 
-func applyAggregateSubscriptionRoute(c *gin.Context, modelName string) *types.NewAPIError {
+func applyPreferredSubscriptionRoute(c *gin.Context, modelName string) *types.NewAPIError {
 	if c == nil || strings.TrimSpace(modelName) == "" {
 		return nil
 	}
-	if c.GetString("token_name") != model.SubscriptionAggregateAccessTokenName {
+	if _, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
 		return nil
 	}
-	if _, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
+	tokenName := strings.TrimSpace(c.GetString("token_name"))
+	tokenGroup := strings.TrimSpace(common.GetContextKeyString(c, constant.ContextKeyTokenGroup))
+	shouldApply := tokenName == model.SubscriptionAggregateAccessTokenName
+	if !shouldApply && strings.HasPrefix(tokenGroup, "sub_plan_") {
+		shouldApply = true
+	}
+	if !shouldApply {
 		return nil
 	}
 	userId := c.GetInt("id")
@@ -94,6 +100,9 @@ func applyAggregateSubscriptionRoute(c *gin.Context, modelName string) *types.Ne
 	if decision == nil || decision.UserSubscriptionId <= 0 || decision.SpecificChannelId <= 0 {
 		return nil
 	}
+	if tokenName != model.SubscriptionAggregateAccessTokenName && tokenGroup != "" && decision.RouteGroup != "" && decision.RouteGroup != tokenGroup {
+		return nil
+	}
 	common.SetContextKey(c, constant.ContextKeyPreferredSubscriptionId, decision.UserSubscriptionId)
 	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(decision.SpecificChannelId))
 	common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelKeyIndex, decision.SpecificChannelKeyIndex)
@@ -113,7 +122,7 @@ func Distribute() func(c *gin.Context) {
 			return
 		}
 		if shouldSelectChannel && modelRequest.Model != "" {
-			if err := applyAggregateSubscriptionRoute(c, modelRequest.Model); err != nil {
+			if err := applyPreferredSubscriptionRoute(c, modelRequest.Model); err != nil {
 				statusCode := err.StatusCode
 				if statusCode <= 0 {
 					statusCode = http.StatusServiceUnavailable

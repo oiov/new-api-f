@@ -14,6 +14,7 @@ const (
 	NotifyTypeChannelUpdate      = "channel_update"
 	NotifyTypeChannelTest        = "channel_test"
 	NotifyTypeActivityLotteryWin = "activity_lottery_win"
+	NotifyTypeTokenRotated       = "token_rotated"
 )
 
 func NewNotify(t string, title string, content string, values []interface{}) Notify {

@@ -61,6 +61,17 @@ const isProtectedSubscriptionAccessToken = (record) => {
   if (!record) {
     return false;
   }
+  if (
+    String(record.source || '').trim() ===
+    'subscription_derived_day_pass_access'
+  ) {
+    return true;
+  }
+  if (String(record.source || '').trim() === 'subscription_aggregate_access') {
+    const expiredTime = Number(record.expired_time ?? -1);
+    const now = Math.floor(Date.now() / 1000);
+    return expiredTime === -1 || expiredTime > now;
+  }
   if (Number(record.specific_channel_id || 0) > 0) {
     return false;
   }
@@ -348,10 +359,25 @@ const renderOperations = (
   setShowEdit,
   manageToken,
   refresh,
+  rotateToken,
   t,
 ) => {
-  const canDelete = !isProtectedSubscriptionAccessToken(record);
-  const canEdit = !isProtectedSubscriptionAccessToken(record);
+  const hasOpenLink = typeof onOpenLink === 'function';
+  const canManageToken = typeof manageToken === 'function';
+  const canRefresh = typeof refresh === 'function';
+  const canDelete =
+    !isProtectedSubscriptionAccessToken(record) && canManageToken && canRefresh;
+  const canEdit =
+    !isProtectedSubscriptionAccessToken(record) &&
+    typeof setEditingToken === 'function' &&
+    typeof setShowEdit === 'function';
+  const canToggleStatus = canManageToken && canRefresh;
+  const canOpenChat = hasOpenLink;
+  const canImport = hasOpenLink;
+  const rotateActionLabel = isProtectedSubscriptionAccessToken(record)
+    ? t('重新签发')
+    : t('重置令牌');
+  const canRotate = typeof rotateToken === 'function';
   let chatsArray = [];
   try {
     const raw = localStorage.getItem('chats');
@@ -366,7 +392,10 @@ const renderOperations = (
           key: i,
           name,
           value: item[name],
-          onClick: () => onOpenLink(name, item[name], record),
+          onClick: () => {
+            if (!hasOpenLink) return;
+            onOpenLink(name, item[name], record);
+          },
         });
       }
     }
@@ -376,34 +405,36 @@ const renderOperations = (
 
   return (
     <Space wrap>
-      <SplitButtonGroup
-        className='overflow-hidden'
-        aria-label={t('项目操作按钮组')}
-      >
-        <Button
-          size='small'
-          type='tertiary'
-          onClick={() => {
-            if (chatsArray.length === 0) {
-              showError(t('请联系管理员配置聊天链接'));
-            } else {
-              const first = chatsArray[0];
-              onOpenLink(first.name, first.value, record);
-            }
-          }}
+      {canOpenChat ? (
+        <SplitButtonGroup
+          className='overflow-hidden'
+          aria-label={t('项目操作按钮组')}
         >
-          {t('聊天')}
-        </Button>
-        <Dropdown trigger='click' position='bottomRight' menu={chatsArray}>
           <Button
-            type='tertiary'
-            icon={<IconTreeTriangleDown />}
             size='small'
-          ></Button>
-        </Dropdown>
-      </SplitButtonGroup>
+            type='tertiary'
+            onClick={() => {
+              if (chatsArray.length === 0) {
+                showError(t('请联系管理员配置聊天链接'));
+              } else {
+                const first = chatsArray[0];
+                onOpenLink(first.name, first.value, record);
+              }
+            }}
+          >
+            {t('聊天')}
+          </Button>
+          <Dropdown trigger='click' position='bottomRight' menu={chatsArray}>
+            <Button
+              type='tertiary'
+              icon={<IconTreeTriangleDown />}
+              size='small'
+            ></Button>
+          </Dropdown>
+        </SplitButtonGroup>
+      ) : null}
 
-      {record.status === 1 ? (
+      {canToggleStatus && record.status === 1 ? (
         <Button
           type='danger'
           size='small'
@@ -414,7 +445,9 @@ const renderOperations = (
         >
           {t('禁用')}
         </Button>
-      ) : (
+      ) : null}
+
+      {canToggleStatus && record.status !== 1 ? (
         <Button
           size='small'
           onClick={async () => {
@@ -424,7 +457,7 @@ const renderOperations = (
         >
           {t('启用')}
         </Button>
-      )}
+      ) : null}
 
       {canEdit ? (
         <Button
@@ -439,15 +472,29 @@ const renderOperations = (
         </Button>
       ) : null}
 
-      <Button
-        type='tertiary'
-        size='small'
-        onClick={() => {
-          onOpenLink('ccswitch', 'ccswitch://import', record);
-        }}
-      >
-        {t('导入')}
-      </Button>
+      {canRotate ? (
+        <Button
+          type='tertiary'
+          size='small'
+          onClick={async () => {
+            await rotateToken(record);
+          }}
+        >
+          {rotateActionLabel}
+        </Button>
+      ) : null}
+
+      {canImport ? (
+        <Button
+          type='tertiary'
+          size='small'
+          onClick={() => {
+            onOpenLink('ccswitch', 'ccswitch://import', record);
+          }}
+        >
+          {t('导入')}
+        </Button>
+      ) : null}
 
       {canDelete ? (
         <Button
@@ -493,6 +540,7 @@ export const getTokensColumns = ({
   testToken,
   showLastTestColumn = false,
   lastTestResultsById = {},
+  rotateToken,
 }) => {
   const columns = [
     {
@@ -572,6 +620,7 @@ export const getTokensColumns = ({
           setShowEdit,
           manageToken,
           refresh,
+          rotateToken,
           t,
         ),
     },
@@ -599,22 +648,20 @@ export const getTokensColumns = ({
 
         const summaryParts = [];
         if (claude) {
-          summaryParts.push(
-            `C:${claude.http_code}${claude.ok ? '✓' : '✗'}`,
-          );
+          summaryParts.push(`C:${claude.http_code}${claude.ok ? '✓' : '✗'}`);
         }
         if (responses) {
           summaryParts.push(
             `R:${responses.http_code}${responses.ok ? '✓' : '✗'}`,
           );
         }
-        const summary = summaryParts.join(' / ') || (info?.error ? t('失败') : t('无结果'));
+        const summary =
+          summaryParts.join(' / ') || (info?.error ? t('失败') : t('无结果'));
 
         const content = (
           <div className='flex flex-col gap-1 text-sm'>
             <div>
-              {t('时间')}:{' '}
-              {info?.at ? new Date(info.at).toLocaleString() : '-'}
+              {t('时间')}: {info?.at ? new Date(info.at).toLocaleString() : '-'}
             </div>
             {info?.error ? (
               <div className='text-[var(--semi-color-danger)]'>
@@ -623,9 +670,11 @@ export const getTokensColumns = ({
             ) : null}
             {list.map((item) => (
               <div key={`${tokenId}-${item.kind}-${item.path}`}>
-                {(item.kind || '-').toUpperCase()} {item.path} · {item.model} · HTTP{' '}
-                {item.http_code} · ok:{item.ok ? '1' : '0'}
-                {item.x_oneapi_request_id ? ` · ${item.x_oneapi_request_id}` : ''}
+                {(item.kind || '-').toUpperCase()} {item.path} · {item.model} ·{' '}
+                {t('HTTP')} {item.http_code} · {t('通过')}:{item.ok ? '1' : '0'}
+                {item.x_oneapi_request_id
+                  ? ` · ${t('请求 ID')}: ${item.x_oneapi_request_id}`
+                  : ''}
               </div>
             ))}
           </div>
@@ -652,7 +701,9 @@ export const getTokensColumns = ({
         const loading = Boolean(testingTokenIds?.[record?.id]);
         return (
           <Tooltip
-            content={t('同时测试 /v1/messages（Claude）与 /v1/responses（Codex），可能产生实际调用与计费')}
+            content={t(
+              '同时测试 /v1/messages（Claude）与 /v1/responses（Codex），可能产生实际调用与计费',
+            )}
           >
             <Button
               size='small'
