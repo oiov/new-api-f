@@ -254,6 +254,7 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	hadActivityLotteryQualifiedColumn := DB.Migrator().HasColumn(&ActivityLotteryEntry{}, "qualified")
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -310,12 +311,34 @@ func migrateDB() error {
 	if err := migrateSubscriptionManualDeliveryDefaults(); err != nil {
 		return err
 	}
+	if err := migrateActivityLotteryEntryQualificationCompatibility(hadActivityLotteryQualifiedColumn); err != nil {
+		return err
+	}
 	if updated, err := RefreshActiveSubscriptionResetWindows(500); err != nil {
 		return err
 	} else if updated > 0 {
 		common.SysLog(fmt.Sprintf("subscription reset windows refreshed: updated=%d", updated))
 	}
 	return nil
+}
+
+func migrateActivityLotteryEntryQualificationCompatibility(hadQualified bool) error {
+	if hadQualified {
+		return nil
+	}
+	update := map[string]any{
+		"qualified": true,
+	}
+	if common.UsingPostgreSQL {
+		update["qualified_source"] = gorm.Expr(`COALESCE(NULLIF(source, ''), 'manual')`)
+		update["qualified_at"] = gorm.Expr(`COALESCE(NULLIF(created_at, 0), 0)`)
+	} else {
+		update["qualified_source"] = gorm.Expr("COALESCE(NULLIF(source, ''), 'manual')")
+		update["qualified_at"] = gorm.Expr("COALESCE(NULLIF(created_at, 0), 0)")
+	}
+	return DB.Model(&ActivityLotteryEntry{}).
+		Where("id > 0").
+		Updates(update).Error
 }
 
 func migrateDBFast() error {

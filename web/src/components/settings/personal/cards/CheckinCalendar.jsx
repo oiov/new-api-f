@@ -598,13 +598,13 @@ const CheckinCalendar = ({
     try {
       const res = await API.post('/api/activity/lottery/join');
       if (res?.data?.success) {
-        showSuccess(t('参与成功'));
+        showSuccess(t('报名成功'));
         fetchActivityLotterySummary();
       } else {
-        showError(res?.data?.message || t('参与失败'));
+        showError(res?.data?.message || t('报名失败'));
       }
     } catch (error) {
-      showError(error?.response?.data?.message || t('参与失败'));
+      showError(error?.response?.data?.message || t('报名失败'));
     } finally {
       setLotteryJoinLoading(false);
     }
@@ -1088,9 +1088,13 @@ const CheckinCalendar = ({
                               type='light'
                               shape='circle'
                             >
-                              {t('人数')}:{' '}
+                              {t('有效参与')}:{' '}
                               {Number(lotterySummary?.participant_count || 0)} /{' '}
                               {Number(lotterySummary?.need_participants || 0)}
+                            </Tag>
+                            <Tag color='blue' type='light' shape='circle'>
+                              {t('已报名')}:{' '}
+                              {Number(lotterySummary?.signup_count || 0)}
                             </Tag>
                             <Tag
                               color={
@@ -1101,7 +1105,7 @@ const CheckinCalendar = ({
                             >
                               {lotterySummary?.time_reached
                                 ? t('时间已到')
-                                : t('等待到期')}
+                                : t('等待开奖')}
                             </Tag>
                             <Tag
                               color={

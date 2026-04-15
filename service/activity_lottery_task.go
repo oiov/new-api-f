@@ -81,10 +81,13 @@ func runActivityLotteryOnce() {
 			logger.LogInfo(ctx, fmt.Sprintf("activity lottery expired: round_id=%d", round.Id))
 			continue
 		}
-		_, err := model.DrawActivityLotteryRound(round.Id, now)
+		winners, drawnRound, isNewDraw, err := model.DrawActivityLotteryRound(round.Id, now)
 		if err != nil {
 			logger.LogWarn(ctx, fmt.Sprintf("activity lottery draw failed: round_id=%d err=%v", round.Id, err))
 			continue
+		}
+		if isNewDraw {
+			NotifyActivityLotteryWinnersAsync(drawnRound, winners)
 		}
 		logger.LogInfo(ctx, fmt.Sprintf("activity lottery drawn: round_id=%d", round.Id))
 	}

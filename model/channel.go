@@ -1225,6 +1225,54 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	return tx.Commit().Error
 }
 
+func BatchUpdateChannelModels(ids []int, models *string, modelMapping *string) error {
+	if len(ids) == 0 {
+		return errors.New("no channel ids provided")
+	}
+	if models == nil && modelMapping == nil {
+		return errors.New("no update field provided")
+	}
+
+	updateData := map[string]any{}
+	shouldReCreateAbilities := false
+	if models != nil {
+		updateData["models"] = *models
+		shouldReCreateAbilities = true
+	}
+	if modelMapping != nil {
+		updateData["model_mapping"] = *modelMapping
+	}
+
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	err := tx.Model(&Channel{}).Where("id in (?)", ids).Updates(updateData).Error
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	channels, err := GetChannelsByIds(ids)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if shouldReCreateAbilities {
+		for _, channel := range channels {
+			err = channel.UpdateAbilities(tx)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+	}
+
+	return tx.Commit().Error
+}
+
 // CountAllChannels returns total channels in DB
 func CountAllChannels() (int64, error) {
 	var total int64

@@ -504,6 +504,30 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 }
 
+func testChannelWithKey(channel *model.Channel, key string, keyIndex int, testModel string, endpointType string, isStream bool) testResult {
+	if channel == nil {
+		return testResult{
+			localErr: errors.New("channel is nil"),
+		}
+	}
+	channelCopy := *channel
+	channelCopy.Key = key
+	channelCopy.ChannelInfo.IsMultiKey = false
+	channelCopy.ChannelInfo.MultiKeySize = 0
+	channelCopy.ChannelInfo.MultiKeyStatusList = nil
+	channelCopy.ChannelInfo.MultiKeyDisabledReason = nil
+	channelCopy.ChannelInfo.MultiKeyDisabledTime = nil
+	channelCopy.ChannelInfo.MultiKeyUsedCount = nil
+	channelCopy.ChannelInfo.MultiKeyUsedQuota = nil
+	channelCopy.ChannelInfo.MultiKeyMaxRequestCount = nil
+	channelCopy.ChannelInfo.MultiKeyPollingIndex = 0
+	result := testChannel(&channelCopy, testModel, endpointType, isStream)
+	if result.context != nil {
+		common.SetContextKey(result.context, constant.ContextKeyChannelMultiKeyIndex, keyIndex)
+	}
+	return result
+}
+
 func coerceTestUsage(usageAny any, isStream bool, estimatePromptTokens int) (*dto.Usage, error) {
 	switch u := usageAny.(type) {
 	case *dto.Usage:

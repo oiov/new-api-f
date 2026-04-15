@@ -36,6 +36,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/anti_distribution/public", controller.GetAntiDistributionPublicConfig)
 		apiRouter.GET("/activity/lottery/current", middleware.TryUserAuth(), controller.GetActivityLotteryCurrent)
 		apiRouter.GET("/activity/lottery/rounds", controller.GetActivityLotteryPublicRounds)
+		apiRouter.GET("/activity/lottery/rounds/:id/entries", controller.GetActivityLotteryPublicEntries)
 		apiRouter.POST("/activity/lottery/join", middleware.UserAuth(), controller.JoinActivityLotteryCurrent)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
@@ -220,7 +221,7 @@ func SetApiRouter(router *gin.Engine) {
 			financeRoute.GET("/overview", controller.GetFinanceOverview)
 		}
 		checkinAdminRoute := apiRouter.Group("/checkin/admin")
-		checkinAdminRoute.Use(middleware.RootAuth())
+		checkinAdminRoute.Use(middleware.AdminAuth())
 		{
 			checkinAdminRoute.GET("/records", controller.GetAdminCheckinRecords)
 			checkinAdminRoute.GET("/auto_jobs", controller.GetCheckinAutoJobs)
@@ -231,9 +232,10 @@ func SetApiRouter(router *gin.Engine) {
 
 		}
 		activityLotteryAdminRoute := apiRouter.Group("/activity/lottery/admin")
-		activityLotteryAdminRoute.Use(middleware.RootAuth())
+		activityLotteryAdminRoute.Use(middleware.AdminAuth())
 		{
 			activityLotteryAdminRoute.GET("/rounds", controller.AdminListActivityLotteryRounds)
+			activityLotteryAdminRoute.GET("/rounds/:id/entries", controller.AdminListActivityLotteryEntries)
 			activityLotteryAdminRoute.POST("/rounds", controller.AdminCreateActivityLotteryRound)
 			activityLotteryAdminRoute.PUT("/rounds/:id", controller.AdminUpdateActivityLotteryRound)
 			activityLotteryAdminRoute.POST("/rounds/:id/open", controller.AdminOpenActivityLotteryRound)
@@ -313,6 +315,7 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.PUT("/tag", controller.EditTagChannels)
 			channelRoute.DELETE("/:id", controller.DeleteChannel)
 			channelRoute.POST("/batch", controller.DeleteChannelBatch)
+			channelRoute.PUT("/batch/models", controller.BatchUpdateChannelModels)
 			channelRoute.POST("/fix", controller.FixChannelsAbilities)
 			channelRoute.GET("/fetch_models/:id", controller.FetchUpstreamModels)
 			channelRoute.POST("/fetch_models", controller.FetchModels)

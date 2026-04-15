@@ -184,6 +184,39 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
     }
   };
 
+  const handleTestKey = async (keyIndex) => {
+    const operationId = `test_${keyIndex}`;
+    setOperationLoading((prev) => ({ ...prev, [operationId]: true }));
+
+    try {
+      const res = await API.post('/api/channel/multi_key/manage', {
+        channel_id: channel.id,
+        action: 'test_key',
+        key_index: keyIndex,
+      });
+
+      if (res.data.success) {
+        const seconds = Number(res.data.time || 0).toFixed(2);
+        showSuccess(
+          t('密钥连通性测试通过，耗时 {{time}} 秒', { time: seconds }),
+        );
+      } else {
+        const seconds = Number(res.data.time || 0);
+        const suffix =
+          seconds > 0
+            ? ` (${t('耗时 {{time}} 秒', { time: seconds.toFixed(2) })})`
+            : '';
+        showError(`${res.data.message}${suffix}`);
+      }
+    } catch (error) {
+      showError(
+        error?.response?.data?.message || error?.message || t('密钥连通性测试失败'),
+      );
+    } finally {
+      setOperationLoading((prev) => ({ ...prev, [operationId]: false }));
+    }
+  };
+
   // Enable all disabled keys
   const handleEnableAll = async () => {
     setOperationLoading((prev) => ({ ...prev, enable_all: true }));
@@ -802,9 +835,17 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       title: t('操作'),
       key: 'action',
       fixed: 'right',
-      width: 150,
+      width: 240,
       render: (_, record) => (
         <Space>
+          <Button
+            type='tertiary'
+            size='small'
+            loading={operationLoading[`test_${record.index}`]}
+            onClick={() => handleTestKey(record.index)}
+          >
+            {t('测试')}
+          </Button>
           {record.status === 1 ? (
             <Button
               type='danger'

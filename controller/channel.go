@@ -849,6 +849,12 @@ type ChannelBatch struct {
 	Tag *string `json:"tag"`
 }
 
+type ChannelBatchModelConfig struct {
+	Ids          []int   `json:"ids"`
+	Models       *string `json:"models"`
+	ModelMapping *string `json:"model_mapping"`
+}
+
 func DeleteChannelBatch(c *gin.Context) {
 	channelBatch := ChannelBatch{}
 	err := c.ShouldBindJSON(&channelBatch)
@@ -871,6 +877,63 @@ func DeleteChannelBatch(c *gin.Context) {
 		"data":    len(channelBatch.Ids),
 	})
 	return
+}
+
+func BatchUpdateChannelModels(c *gin.Context) {
+	channelBatch := ChannelBatchModelConfig{}
+	err := c.ShouldBindJSON(&channelBatch)
+	if err != nil || len(channelBatch.Ids) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误",
+		})
+		return
+	}
+
+	if channelBatch.Models != nil {
+		trimmedModels := strings.TrimSpace(*channelBatch.Models)
+		if trimmedModels == "" {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "模型列表不能为空",
+			})
+			return
+		}
+		channelBatch.Models = common.GetPointer[string](trimmedModels)
+	}
+
+	if channelBatch.ModelMapping != nil {
+		trimmedModelMapping := strings.TrimSpace(*channelBatch.ModelMapping)
+		if trimmedModelMapping != "" && !json.Valid([]byte(trimmedModelMapping)) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "模型映射必须是合法的 JSON 格式",
+			})
+			return
+		}
+		channelBatch.ModelMapping = common.GetPointer[string](trimmedModelMapping)
+	}
+
+	if channelBatch.Models == nil && channelBatch.ModelMapping == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "请至少提供一个要更新的字段",
+		})
+		return
+	}
+
+	err = model.BatchUpdateChannelModels(channelBatch.Ids, channelBatch.Models, channelBatch.ModelMapping)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	service.ResetProxyClientCache()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    len(channelBatch.Ids),
+	})
 }
 
 type PatchChannel struct {
@@ -1300,7 +1363,7 @@ func CopyChannel(c *gin.Context) {
 // MultiKeyManageRequest represents the request for multi-key management operations
 type MultiKeyManageRequest struct {
 	ChannelId       int    `json:"channel_id"`
-	Action          string `json:"action"`              // "disable_key", "enable_key", "delete_key", "delete_disabled_keys", "get_key_status"
+	Action          string `json:"action"`              // "disable_key", "enable_key", "delete_key", "delete_disabled_keys", "get_key_status", "test_key"
 	KeyIndex        *int   `json:"key_index,omitempty"` // for disable_key, enable_key, and delete_key actions
 	MaxRequestCount *int64 `json:"max_request_count,omitempty"`
 	Page            int    `json:"page,omitempty"`      // for get_key_status pagination
@@ -1579,6 +1642,62 @@ func ManageMultiKeys(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "密钥已禁用",
+		})
+		return
+
+	case "test_key":
+		if request.KeyIndex == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "未指定要测试的密钥索引",
+			})
+			return
+		}
+
+		keyIndex := *request.KeyIndex
+		keys := channel.GetKeys()
+		if keyIndex < 0 || keyIndex >= len(keys) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "密钥索引超出范围",
+			})
+			return
+		}
+
+		key := strings.TrimSpace(keys[keyIndex])
+		if key == "" {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "密钥为空，无法测试",
+			})
+			return
+		}
+
+		tik := time.Now()
+		result := testChannelWithKey(channel, key, keyIndex, "", "", false)
+		if result.localErr != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": common.AppendDisplaySite(c, result.localErr.Error()),
+				"time":    0.0,
+			})
+			return
+		}
+
+		milliseconds := time.Since(tik).Milliseconds()
+		consumedTime := float64(milliseconds) / 1000.0
+		if result.newAPIError != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": result.newAPIError.Error(),
+				"time":    consumedTime,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "连通性测试通过",
+			"time":    consumedTime,
 		})
 		return
 
