@@ -12,6 +12,7 @@ web/dist
 web-next/.next
 web-next/node_modules
 .env
+.env.local
 one-api
 new-api
 /__debug_bin*

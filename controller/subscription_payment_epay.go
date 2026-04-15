@@ -139,11 +139,13 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
+		common.SysLog(fmt.Sprintf("SubscriptionEpayNotify verify failed: err=%v verifyStatus=%v params=%v", err, verifyInfo.VerifyStatus, params))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
 
 	if verifyInfo.TradeStatus != epay.StatusTradeSuccess {
+		common.SysLog(fmt.Sprintf("SubscriptionEpayNotify trade not success: tradeNo=%s status=%s", verifyInfo.ServiceTradeNo, verifyInfo.TradeStatus))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -153,6 +155,7 @@ func SubscriptionEpayNotify(c *gin.Context) {
 
 	completedNow, err := model.CompleteSubscriptionOrderWithResult(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo))
 	if err != nil {
+		common.SysLog(fmt.Sprintf("SubscriptionEpayNotify CompleteSubscriptionOrderWithResult failed: tradeNo=%s err=%v", verifyInfo.ServiceTradeNo, err))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -198,6 +201,7 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
+		common.SysLog(fmt.Sprintf("SubscriptionEpayReturn verify failed: err=%v verifyStatus=%v params=%v", err, verifyInfo.VerifyStatus, params))
 		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
 		return
 	}
@@ -206,6 +210,7 @@ func SubscriptionEpayReturn(c *gin.Context) {
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		completedNow, err := model.CompleteSubscriptionOrderWithResult(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo))
 		if err != nil {
+			common.SysLog(fmt.Sprintf("SubscriptionEpayReturn CompleteSubscriptionOrderWithResult failed: tradeNo=%s err=%v", verifyInfo.ServiceTradeNo, err))
 			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
 			return
 		}
