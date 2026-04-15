@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Badge,
   Banner,
@@ -51,6 +51,7 @@ import {
   renderGroup,
   renderGroupTextWithDescription,
   renderQuota,
+  getUserData,
 } from '../../helpers';
 import { primeGroupMetadata } from '../../helpers/group';
 import { getCurrencyConfig, renderQuotaWithAmount } from '../../helpers/render';
@@ -389,8 +390,11 @@ const SubscriptionPlansCard = ({
   mainPanelMode = 'tabs',
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
+  const currentUser = useMemo(() => getUserData(), []);
+  const isLoggedIn = !!currentUser?.id;
   const isPackageVariant = uiVariant === 'package';
   const usePackageConsoleLayout = isPackageVariant && showUserSubscriptions;
   const renderSubscriptionPanel =
@@ -516,7 +520,9 @@ const SubscriptionPlansCard = ({
         ? t('已售罄')
         : reached
           ? t('已达上限')
-          : t('立即订阅');
+          : isLoggedIn
+            ? t('立即订阅')
+            : t('登录后购买');
 
     return {
       count,
@@ -527,13 +533,28 @@ const SubscriptionPlansCard = ({
       reason,
       buttonText,
     };
-  }, [getPlanPurchaseCount, t]);
+  }, [getPlanPurchaseCount, isLoggedIn, t]);
+
+  const redirectToLogin = useCallback(() => {
+    navigate('/login', {
+      state: {
+        from: {
+          pathname: location.pathname,
+          search: location.search,
+        },
+      },
+    });
+  }, [location.pathname, location.search, navigate]);
 
   const openBuy = (p) => {
     const plan = p?.plan || {};
     const availability = getPlanPurchaseAvailability(plan);
     if (availability.disabled) {
       showError(availability.reason || t('当前暂不可购买'));
+      return;
+    }
+    if (!isLoggedIn) {
+      redirectToLogin();
       return;
     }
     setSelectedPlan(p);
@@ -2834,12 +2855,28 @@ const SubscriptionPlansCard = ({
                 theme='solid'
                 type='primary'
                 onClick={() => openBuy(record)}
-                icon={<ChevronRight size={14} />}
+                icon={
+                  isLoggedIn ? (
+                    <ChevronRight size={14} />
+                  ) : (
+                    <ShieldCheck size={14} />
+                  )
+                }
                 iconPosition='right'
                 block
+                className={
+                  isLoggedIn
+                    ? undefined
+                    : 'subscription-plan-selling-card__login-cta'
+                }
               >
-                {t('立即订阅')}
+                {availability.buttonText}
               </Button>
+              {!isLoggedIn ? (
+                <div className='subscription-plan-selling-card__login-hint'>
+                  {t('先登录，再进入支付确认')}
+                </div>
+              ) : null}
             </div>
           );
         },
@@ -3086,16 +3123,34 @@ const SubscriptionPlansCard = ({
                   </Button>
                 </Tooltip>
               ) : (
-                <Button
-                  theme='solid'
-                  type='primary'
-                  block
-                  onClick={() => openBuy(record)}
-                  icon={<ChevronRight size={14} />}
-                  iconPosition='right'
-                >
-                  {t('立即订阅')}
-                </Button>
+                <div className='subscription-plan-selling-card__cta-stack'>
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    block
+                    onClick={() => openBuy(record)}
+                    icon={
+                      isLoggedIn ? (
+                        <ChevronRight size={14} />
+                      ) : (
+                        <ShieldCheck size={14} />
+                      )
+                    }
+                    iconPosition='right'
+                    className={
+                      isLoggedIn
+                        ? undefined
+                        : 'subscription-plan-selling-card__login-cta'
+                    }
+                  >
+                    {availability.buttonText}
+                  </Button>
+                  {!isLoggedIn ? (
+                    <div className='subscription-plan-selling-card__login-hint'>
+                      {t('先登录，再进入支付确认')}
+                    </div>
+                  ) : null}
+                </div>
               )}
             </div>
           </div>

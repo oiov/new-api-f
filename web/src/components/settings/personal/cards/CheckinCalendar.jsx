@@ -140,10 +140,12 @@ const CheckinCalendar = ({
   className = '',
   mode = 'full', // 'full' | 'promo'
   showActivityLottery = true,
+  showLeaderboard = true,
 }) => {
   const isMobile = useIsMobile();
   const activityLotteryEnabled =
     !!showActivityLottery && !!status?.activity_lottery_enabled;
+  const leaderboardEnabled = !!showLeaderboard;
   const [loading, setLoading] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [lotteryLoading, setLotteryLoading] = useState(false);
@@ -181,6 +183,16 @@ const CheckinCalendar = ({
   const [initialLoaded, setInitialLoaded] = useState(false);
   // 折叠状态：null 表示未确定（等待首次加载）
   const [isCollapsed, setIsCollapsed] = useState(null);
+  const showOverviewTab = !!status?.checkin_enabled;
+  const showLotteryTab = activityLotteryEnabled;
+  const showLeaderboardTab = !!status?.checkin_enabled && leaderboardEnabled;
+  const showTodayRecordsTab = showLeaderboardTab && todayRecords.length > 0;
+  const visibleTabCount = [
+    showOverviewTab,
+    showLotteryTab,
+    showLeaderboardTab,
+    showTodayRecordsTab,
+  ].filter(Boolean).length;
 
   // 创建日期到额度的映射，方便快速查找
   const checkinRecordsMap = useMemo(() => {
@@ -430,6 +442,10 @@ const CheckinCalendar = ({
   };
 
   const fetchCheckinLeaderboard = async (page = leaderboardPage) => {
+    if (!leaderboardEnabled) {
+      resetLeaderboardState();
+      return;
+    }
     setLeaderboardLoading(true);
     try {
       const res = await API.get('/api/user/checkin/leaderboard', {
@@ -530,7 +546,9 @@ const CheckinCalendar = ({
         );
         // 刷新签到状态
         fetchCheckinStatus(currentMonth);
-        fetchCheckinLeaderboard(leaderboardPage);
+        if (leaderboardEnabled) {
+          fetchCheckinLeaderboard(leaderboardPage);
+        }
         if (activityLotteryEnabled) {
           fetchActivityLotterySummary();
         }
@@ -619,10 +637,18 @@ const CheckinCalendar = ({
 
   useEffect(() => {
     if (mode !== 'full') return;
-    if (status?.checkin_enabled) {
+    if (status?.checkin_enabled && leaderboardEnabled) {
       fetchCheckinLeaderboard(leaderboardPage);
+    } else {
+      resetLeaderboardState();
     }
-  }, [mode, status?.checkin_enabled, leaderboardPage, leaderboardPageSize]);
+  }, [
+    mode,
+    status?.checkin_enabled,
+    leaderboardEnabled,
+    leaderboardPage,
+    leaderboardPageSize,
+  ]);
 
   useEffect(() => {
     if (mode !== 'full') return;
@@ -758,6 +784,136 @@ const CheckinCalendar = ({
     return <div className={className}>{subscriptionPromoBanner}</div>;
   }
 
+  const overviewContent = showOverviewTab ? (
+    <div className='pt-3 md:pt-4'>
+      <div
+        className={`mb-3 grid grid-cols-1 gap-2.5 md:mb-4 md:gap-3 ${
+          showLeaderboardTab
+            ? 'lg:grid-cols-[minmax(0,1.35fr),minmax(0,0.65fr)]'
+            : ''
+        }`.trim()}
+      >
+        <div className='rounded-[16px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-3'>
+          <div className='flex flex-wrap items-center gap-2.5'>
+            <Typography.Text strong>
+              {t('今日开放状态：{{status}}', {
+                status: availabilityStatusText || '--',
+              })}
+            </Typography.Text>
+            <Tag
+              color={checkinData.available_now ? 'green' : 'grey'}
+              shape='circle'
+              type='light'
+            >
+              {availabilityStatusText || '--'}
+            </Tag>
+          </div>
+          <div className='mt-1.5 text-[12px] leading-5 text-semi-color-text-1'>
+            {availabilityHintText || t('每日签到可获得随机额度奖励')}
+          </div>
+          <div className='mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3'>
+            {overviewCards.map((item) => (
+              <div
+                key={item.key}
+                className='rounded-[14px] border border-slate-200/80 bg-white px-3 py-2.5 shadow-sm'
+              >
+                <div className='text-[10px] text-semi-color-text-2'>
+                  {item.label}
+                </div>
+                <div className={`mt-1 text-[15px] font-semibold ${item.tone}`}>
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {showLeaderboardTab ? (
+          <div className='grid grid-cols-2 gap-2 lg:grid-cols-2'>
+            {leaderboardSummaryCards.map((item) => (
+              <div
+                key={item.key}
+                className='rounded-[14px] border border-slate-200/80 bg-slate-50/90 px-3 py-2.5'
+              >
+                <div className='text-[10px] text-semi-color-text-2'>
+                  {item.label}
+                </div>
+                <div className={`mt-1 text-[14px] font-semibold ${item.tone}`}>
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <Spin spinning={loading}>
+        <div className='checkin-calendar overflow-hidden rounded-[16px] border border-semi-color-border/80 bg-semi-color-bg-0 shadow-sm'>
+          <style>{`
+            .checkin-calendar .semi-calendar {
+              font-size: 12px;
+            }
+            .checkin-calendar .semi-calendar-month-header {
+              padding: 6px 10px;
+            }
+            .checkin-calendar .semi-calendar-month-week-row {
+              height: 26px;
+            }
+            .checkin-calendar .semi-calendar-month-week-row th {
+              font-size: 11px;
+              padding: 4px 0;
+            }
+            .checkin-calendar .semi-calendar-month-grid-row {
+              height: auto;
+            }
+            .checkin-calendar .semi-calendar-month-grid-row td {
+              height: 52px;
+              padding: 1px;
+            }
+            .checkin-calendar .semi-calendar-month-grid-row-cell {
+              position: relative;
+              height: 100%;
+            }
+            .checkin-calendar .semi-calendar-month-grid-row-cell-day {
+              position: absolute;
+              top: 3px;
+              left: 50%;
+              transform: translateX(-50%);
+              font-size: 11px;
+              z-index: 1;
+            }
+            .checkin-calendar .semi-calendar-month-same {
+              background: transparent;
+            }
+            .checkin-calendar .semi-calendar-month-today .semi-calendar-month-grid-row-cell-day {
+              background: var(--semi-color-primary);
+              color: white;
+              border-radius: 50%;
+              width: 18px;
+              height: 18px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+          `}</style>
+          <Calendar
+            mode='month'
+            onChange={handleMonthChange}
+            dateGridRender={dateRender}
+          />
+        </div>
+      </Spin>
+
+      <div className='checkin-compact-note mt-2.5 rounded-[14px] border border-slate-200/80 bg-slate-50/90 px-3 py-2'>
+        <div className='flex flex-wrap gap-x-3 gap-y-1 text-[10px] leading-4 text-semi-color-text-2'>
+          <span>{t('每日随机奖励')}</span>
+          <span>{t('奖励直接到账')}</span>
+          <span>{t('每日仅可签到一次')}</span>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <Card
       className={`overflow-hidden border border-semi-color-border/80 !rounded-[28px] bg-white shadow-[0_20px_70px_rgba(15,23,42,0.05)] ${className}`.trim()}
@@ -873,138 +1029,18 @@ const CheckinCalendar = ({
       {mode === 'full' ? (
         <Collapsible isOpen={isCollapsed === false} keepDOM>
           <div className='checkin-compact-panel mt-3 rounded-[18px] border border-semi-color-border/80 bg-white p-2 shadow-[0_8px_20px_rgba(15,23,42,0.035)]'>
-            <Tabs type='line'>
-              {status?.checkin_enabled ? (
-                <TabPane tab={t('签到概览')} itemKey='overview'>
-                  <div className='pt-3 md:pt-4'>
-                    <div className='mb-3 grid grid-cols-1 gap-2.5 md:mb-4 md:gap-3 lg:grid-cols-[minmax(0,1.35fr),minmax(0,0.65fr)]'>
-                      <div className='rounded-[16px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))] p-3'>
-                        <div className='flex flex-wrap items-center gap-2.5'>
-                          <Typography.Text strong>
-                            {t('今日开放状态：{{status}}', {
-                              status: availabilityStatusText || '--',
-                            })}
-                          </Typography.Text>
-                          <Tag
-                            color={checkinData.available_now ? 'green' : 'grey'}
-                            shape='circle'
-                            type='light'
-                          >
-                            {availabilityStatusText || '--'}
-                          </Tag>
-                        </div>
-                        <div className='mt-1.5 text-[12px] leading-5 text-semi-color-text-1'>
-                          {availabilityHintText ||
-                            t('每日签到可获得随机额度奖励')}
-                        </div>
-                        <div className='mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3'>
-                          {overviewCards.map((item) => (
-                            <div
-                              key={item.key}
-                              className='rounded-[14px] border border-slate-200/80 bg-white px-3 py-2.5 shadow-sm'
-                            >
-                              <div className='text-[10px] text-semi-color-text-2'>
-                                {item.label}
-                              </div>
-                              <div
-                                className={`mt-1 text-[15px] font-semibold ${item.tone}`}
-                              >
-                                {item.value}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+            {visibleTabCount <= 1 && showOverviewTab ? (
+              overviewContent
+            ) : (
+              <Tabs type='line'>
+                {showOverviewTab ? (
+                  <TabPane tab={t('签到概览')} itemKey='overview'>
+                    {overviewContent}
+                  </TabPane>
+                ) : null}
 
-                      <div className='grid grid-cols-2 gap-2 lg:grid-cols-2'>
-                        {leaderboardSummaryCards.map((item) => (
-                          <div
-                            key={item.key}
-                            className='rounded-[14px] border border-slate-200/80 bg-slate-50/90 px-3 py-2.5'
-                          >
-                            <div className='text-[10px] text-semi-color-text-2'>
-                              {item.label}
-                            </div>
-                            <div
-                              className={`mt-1 text-[14px] font-semibold ${item.tone}`}
-                            >
-                              {item.value}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <Spin spinning={loading}>
-                      <div className='checkin-calendar overflow-hidden rounded-[16px] border border-semi-color-border/80 bg-semi-color-bg-0 shadow-sm'>
-                        <style>{`
-                  .checkin-calendar .semi-calendar {
-                    font-size: 12px;
-                  }
-                  .checkin-calendar .semi-calendar-month-header {
-                    padding: 6px 10px;
-                  }
-                  .checkin-calendar .semi-calendar-month-week-row {
-                    height: 26px;
-                  }
-                  .checkin-calendar .semi-calendar-month-week-row th {
-                    font-size: 11px;
-                    padding: 4px 0;
-                  }
-                  .checkin-calendar .semi-calendar-month-grid-row {
-                    height: auto;
-                  }
-                  .checkin-calendar .semi-calendar-month-grid-row td {
-                    height: 52px;
-                    padding: 1px;
-                  }
-                  .checkin-calendar .semi-calendar-month-grid-row-cell {
-                    position: relative;
-                    height: 100%;
-                  }
-                  .checkin-calendar .semi-calendar-month-grid-row-cell-day {
-                    position: absolute;
-                    top: 3px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    font-size: 11px;
-                    z-index: 1;
-                  }
-                  .checkin-calendar .semi-calendar-month-same {
-                    background: transparent;
-                  }
-                  .checkin-calendar .semi-calendar-month-today .semi-calendar-month-grid-row-cell-day {
-                    background: var(--semi-color-primary);
-                    color: white;
-                    border-radius: 50%;
-                    width: 18px;
-                    height: 18px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                  }
-                `}</style>
-                        <Calendar
-                          mode='month'
-                          onChange={handleMonthChange}
-                          dateGridRender={dateRender}
-                        />
-                      </div>
-                    </Spin>
-
-                    <div className='checkin-compact-note mt-2.5 rounded-[14px] border border-slate-200/80 bg-slate-50/90 px-3 py-2'>
-                      <div className='flex flex-wrap gap-x-3 gap-y-1 text-[10px] leading-4 text-semi-color-text-2'>
-                        <span>{t('每日随机奖励')}</span>
-                        <span>{t('奖励直接到账')}</span>
-                        <span>{t('每日仅可签到一次')}</span>
-                      </div>
-                    </div>
-                  </div>
-                </TabPane>
-              ) : null}
-
-              {activityLotteryEnabled ? (
-                <TabPane tab={t('活动抽奖')} itemKey='lottery'>
+                {showLotteryTab ? (
+                  <TabPane tab={t('活动抽奖')} itemKey='lottery'>
                   <div className='pt-5 md:pt-6'>
                     <div className='rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,251,235,0.96),rgba(255,255,255,0.98))] p-4 md:p-5'>
                       <div className='flex items-start justify-between gap-3'>
@@ -1324,10 +1360,10 @@ const CheckinCalendar = ({
                       </div>
                     </div>
                   </div>
-                </TabPane>
-              ) : null}
-              {status?.checkin_enabled ? (
-                <TabPane tab={t('签到榜')} itemKey='leaderboard'>
+                  </TabPane>
+                ) : null}
+                {showLeaderboardTab ? (
+                  <TabPane tab={t('签到榜')} itemKey='leaderboard'>
                   <div className='pt-5 md:pt-6'>
                     <Spin spinning={leaderboardLoading}>
                       <div className='space-y-4 md:space-y-5'>
@@ -1467,10 +1503,10 @@ const CheckinCalendar = ({
                       </div>
                     </Spin>
                   </div>
-                </TabPane>
-              ) : null}
-              {todayRecords.length > 0 ? (
-                <TabPane tab={t('今日签到')} itemKey='today-records'>
+                  </TabPane>
+                ) : null}
+                {showTodayRecordsTab ? (
+                  <TabPane tab={t('今日签到')} itemKey='today-records'>
                   <div className='pt-5 md:pt-6'>
                     <Spin spinning={leaderboardLoading}>
                       <div className='space-y-4 md:space-y-5'>
@@ -1502,9 +1538,10 @@ const CheckinCalendar = ({
                       </div>
                     </Spin>
                   </div>
-                </TabPane>
-              ) : null}
-            </Tabs>
+                  </TabPane>
+                ) : null}
+              </Tabs>
+            )}
           </div>
         </Collapsible>
       ) : null}

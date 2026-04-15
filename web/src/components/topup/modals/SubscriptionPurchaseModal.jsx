@@ -41,6 +41,7 @@ import {
   isSubscriptionClaudePlan,
   isSubscriptionDiscountActive,
 } from '../../../helpers/subscriptionFormat';
+import { renderQuota } from '../../../helpers';
 
 const { Text } = Typography;
 
@@ -133,6 +134,42 @@ const SubscriptionPurchaseModal = ({
   const isClaudePlan = isSubscriptionClaudePlan(plan);
   const isClaudeMonthlyPlan = isClaudeMonthlySubscriptionPlan(plan);
   const isManualDeliveryPlan = plan?.delivery_mode === 'manual_delivery';
+  const resourceType = getSubscriptionResourceType(plan);
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const resourceAmountText = usageSummary.unlimited
+    ? t('不限')
+    : resourceType === 'request_count'
+      ? `${Number(usageSummary.total || 0).toLocaleString()} ${t('次')}`
+      : renderQuota(usageSummary.total || 0);
+  const paymentMethodText = [
+    hasStripe ? 'Stripe' : null,
+    hasCreem ? 'Creem' : null,
+    hasEpay ? t('易支付') : null,
+  ]
+    .filter(Boolean)
+    .join(' / ');
+  const planMetaItems = [
+    {
+      key: 'duration',
+      label: t('有效期'),
+      value: formatSubscriptionSellingDuration(plan, t),
+    },
+    {
+      key: 'resource',
+      label: resourceType === 'request_count' ? t('请求次数') : t('Token额度'),
+      value: resourceAmountText,
+    },
+    {
+      key: 'delivery',
+      label: t('套餐类型'),
+      value: isManualDeliveryPlan ? t('人工发放') : t('自动开通'),
+    },
+    {
+      key: 'payment',
+      label: t('支付方式'),
+      value: paymentMethodText || t('在线支付'),
+    },
+  ];
   const noticeItems = [
     isManualDeliveryPlan
       ? {
@@ -225,6 +262,14 @@ const SubscriptionPurchaseModal = ({
               </Text>
             </div>
             <div className='subscription-purchase-modal__price-box'>
+              <div className='subscription-purchase-modal__price-box-head'>
+                <div className='subscription-purchase-modal__price-box-icon'>
+                  <Package size={14} />
+                </div>
+                <Text className='subscription-purchase-modal__price-box-label'>
+                  {t('当前价格')}
+                </Text>
+              </div>
               {hasActiveDiscount ? (
                 <Text type='tertiary' delete className='subscription-purchase-modal__price-original'>
                   {symbol}
@@ -245,6 +290,27 @@ const SubscriptionPurchaseModal = ({
                     })
                   : formatSubscriptionSellingDuration(plan, t)}
               </div>
+            </div>
+            <div className='subscription-purchase-modal__meta-grid'>
+              {planMetaItems.map((item) => (
+                <div
+                  key={item.key}
+                  className='subscription-purchase-modal__meta-card'
+                >
+                  <div className='subscription-purchase-modal__meta-card-label'>
+                    {item.label}
+                  </div>
+                  <div
+                    className={`subscription-purchase-modal__meta-card-value ${
+                      item.key === 'resource' || item.key === 'payment'
+                        ? 'subscription-purchase-modal__meta-card-value--strong'
+                        : ''
+                    }`}
+                  >
+                    {item.value}
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 

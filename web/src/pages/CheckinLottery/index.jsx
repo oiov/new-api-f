@@ -62,6 +62,7 @@ export default function CheckinLotteryPage() {
             turnstileEnabled={turnstileEnabled}
             turnstileSiteKey={turnstileSiteKey}
             showActivityLottery={false}
+            showLeaderboard={false}
             mode='full'
             className='checkin-lottery-calendar-card'
           />

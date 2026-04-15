@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Banner,
   Button,
@@ -159,6 +159,7 @@ function renderTagList(items = []) {
 export default function SubscriptionPlanDetail() {
   const { planId } = useParams();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { i18n, t } = useTranslation();
   const [statusState] = useContext(StatusContext);
@@ -376,6 +377,22 @@ export default function SubscriptionPlanDetail() {
   const closeBuy = () => {
     setOpen(false);
     setPaying(false);
+  };
+
+  const openBuy = () => {
+    if (disabled) return;
+    if (!isLoggedIn) {
+      navigate('/login', {
+        state: {
+          from: {
+            pathname: location.pathname,
+            search: location.search,
+          },
+        },
+      });
+      return;
+    }
+    setOpen(true);
   };
 
   const payStripe = async () => {
@@ -850,11 +867,22 @@ export default function SubscriptionPlanDetail() {
                 type='primary'
                 block
                 disabled={disabled}
-                onClick={() => setOpen(true)}
-                icon={<ChevronRight size={14} />}
+                onClick={openBuy}
+                icon={
+                  isLoggedIn ? <ChevronRight size={14} /> : <ShieldCheck size={14} />
+                }
                 iconPosition='right'
+                className={
+                  isLoggedIn ? undefined : 'pricing-plan-detail-buy-card__login-cta'
+                }
               >
-                {disabled ? (saleSummary.soldOut ? t('已售罄') : t('已达上限')) : t('立即订阅')}
+                {disabled
+                  ? saleSummary.soldOut
+                    ? t('已售罄')
+                    : t('已达上限')
+                  : isLoggedIn
+                    ? t('立即订阅')
+                    : t('登录后购买')}
               </Button>
               <Button
                 theme='outline'
@@ -868,7 +896,7 @@ export default function SubscriptionPlanDetail() {
               {!isLoggedIn ? (
                 <div className='pricing-plan-detail-buy-card__footnote'>
                   <Text type='tertiary' size='small'>
-                    {t('登录后可查看自己已购数量与订阅状态。')}
+                    {t('先登录，再进入支付确认')}
                   </Text>
                 </div>
               ) : null}
