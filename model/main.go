@@ -305,6 +305,9 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if err := migrateUserCreatedAtCompatibility(); err != nil {
+		return err
+	}
 	if err := migrateLegacyPeriodicRequestCountPlans(); err != nil {
 		return err
 	}
@@ -318,6 +321,47 @@ func migrateDB() error {
 		return err
 	} else if updated > 0 {
 		common.SysLog(fmt.Sprintf("subscription reset windows refreshed: updated=%d", updated))
+	}
+	return nil
+}
+
+func migrateUserCreatedAtCompatibility() error {
+	if !DB.Migrator().HasColumn(&User{}, "created_at") {
+		return nil
+	}
+	if DB.Migrator().HasTable("logs") {
+		if err := DB.Exec(`
+UPDATE users
+SET created_at = (
+	SELECT MIN(logs.created_at)
+	FROM logs
+	WHERE logs.user_id = users.id
+)
+WHERE COALESCE(created_at, 0) = 0
+  AND EXISTS (
+  	SELECT 1
+  	FROM logs
+  	WHERE logs.user_id = users.id
+  )
+`).Error; err != nil {
+			return err
+		}
+	}
+	if err := DB.Exec(`
+UPDATE users
+SET created_at = (
+	SELECT MIN(tokens.created_time)
+	FROM tokens
+	WHERE tokens.user_id = users.id
+)
+WHERE COALESCE(created_at, 0) = 0
+  AND EXISTS (
+  	SELECT 1
+  	FROM tokens
+  	WHERE tokens.user_id = users.id
+  )
+`).Error; err != nil {
+		return err
 	}
 	return nil
 }

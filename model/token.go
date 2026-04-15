@@ -836,6 +836,60 @@ func (token *Token) Update() (err error) {
 	return err
 }
 
+func isTokenKeyDuplicateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "duplicate") ||
+		strings.Contains(message, "unique constraint") ||
+		strings.Contains(message, "unique failed")
+}
+
+func (token *Token) RotateKey() (string, error) {
+	if token == nil || token.Id <= 0 {
+		return "", errors.New("invalid token")
+	}
+	oldKey := strings.TrimSpace(token.Key)
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		newKey, err := common.GenerateKey()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if newKey == "" || newKey == oldKey {
+			lastErr = errors.New("generated empty or duplicated token key")
+			continue
+		}
+		err = DB.Model(&Token{}).
+			Where("id = ?", token.Id).
+			Update("key", newKey).Error
+		if err != nil {
+			lastErr = err
+			if isTokenKeyDuplicateError(err) {
+				continue
+			}
+			return "", err
+		}
+		token.Key = newKey
+		if common.RedisEnabled {
+			tokenCopy := *token
+			gopool.Go(func() {
+				if oldKey != "" {
+					_ = cacheDeleteToken(oldKey)
+				}
+				_ = cacheSetToken(tokenCopy)
+			})
+		}
+		return newKey, nil
+	}
+	if lastErr == nil {
+		lastErr = errors.New("failed to rotate token key")
+	}
+	return "", lastErr
+}
+
 func (token *Token) SelectUpdate() (err error) {
 	defer func() {
 		if shouldUpdateRedis(true, err) {

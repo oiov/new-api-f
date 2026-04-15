@@ -58,6 +58,7 @@ const TokensTable = (tokensData) => {
     showLastTestColumn,
     lastTestResultsById,
     forceFullWidth,
+    rotateToken,
   } = tokensData;
 
   // Get all columns
@@ -82,6 +83,7 @@ const TokensTable = (tokensData) => {
       testToken,
       showLastTestColumn,
       lastTestResultsById,
+      rotateToken,
     });
   }, [
     t,
@@ -103,6 +105,7 @@ const TokensTable = (tokensData) => {
     testToken,
     showLastTestColumn,
     lastTestResultsById,
+    rotateToken,
   ]);
 
   // Handle compact mode by removing fixed positioning

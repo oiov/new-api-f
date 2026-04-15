@@ -348,10 +348,14 @@ const renderOperations = (
   setShowEdit,
   manageToken,
   refresh,
+  rotateToken,
   t,
 ) => {
   const canDelete = !isProtectedSubscriptionAccessToken(record);
   const canEdit = !isProtectedSubscriptionAccessToken(record);
+  const rotateActionLabel = isProtectedSubscriptionAccessToken(record)
+    ? t('重新签发')
+    : t('重置令牌');
   let chatsArray = [];
   try {
     const raw = localStorage.getItem('chats');
@@ -442,6 +446,16 @@ const renderOperations = (
       <Button
         type='tertiary'
         size='small'
+        onClick={async () => {
+          await rotateToken?.(record);
+        }}
+      >
+        {rotateActionLabel}
+      </Button>
+
+      <Button
+        type='tertiary'
+        size='small'
         onClick={() => {
           onOpenLink('ccswitch', 'ccswitch://import', record);
         }}
@@ -493,6 +507,7 @@ export const getTokensColumns = ({
   testToken,
   showLastTestColumn = false,
   lastTestResultsById = {},
+  rotateToken,
 }) => {
   const columns = [
     {
@@ -572,6 +587,7 @@ export const getTokensColumns = ({
           setShowEdit,
           manageToken,
           refresh,
+          rotateToken,
           t,
         ),
     },
@@ -623,9 +639,9 @@ export const getTokensColumns = ({
             ) : null}
             {list.map((item) => (
               <div key={`${tokenId}-${item.kind}-${item.path}`}>
-                {(item.kind || '-').toUpperCase()} {item.path} · {item.model} · HTTP{' '}
-                {item.http_code} · ok:{item.ok ? '1' : '0'}
-                {item.x_oneapi_request_id ? ` · ${item.x_oneapi_request_id}` : ''}
+                {(item.kind || '-').toUpperCase()} {item.path} · {item.model} · {t('HTTP')}{' '}
+                {item.http_code} · {t('通过')}:{item.ok ? '1' : '0'}
+                {item.x_oneapi_request_id ? ` · ${t('请求 ID')}: ${item.x_oneapi_request_id}` : ''}
               </div>
             ))}
           </div>

@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/tidwall/gjson"
@@ -30,6 +32,10 @@ type adminTokenTestRequest struct {
 
 	ClaudeModel    string `json:"claude_model,omitempty"`
 	ResponsesModel string `json:"responses_model,omitempty"`
+}
+
+type adminRotateTokenRequest struct {
+	NotifyUser *bool `json:"notify_user,omitempty"`
 }
 
 type adminTokenTestResult struct {
@@ -202,5 +208,100 @@ func TestTokenByAdmin(c *gin.Context) {
 		"user_id":  token.UserId,
 		"mode":     mode,
 		"results":  results,
+	})
+}
+
+func RotateTokenByAdmin(c *gin.Context) {
+	tokenId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || tokenId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	req := adminRotateTokenRequest{}
+	if c.Request.ContentLength > 0 {
+		if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	}
+
+	token, err := model.GetTokenById(tokenId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if token == nil || strings.TrimSpace(token.Key) == "" {
+		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
+		return
+	}
+
+	isSubscriptionDeliveryToken := token.IsSubscriptionAggregateAccessToken()
+	newKey, err := token.RotateKey()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	notifyUser := isSubscriptionDeliveryToken
+	if req.NotifyUser != nil {
+		notifyUser = *req.NotifyUser
+	}
+
+	notifySent := false
+	notifyError := ""
+	if notifyUser && token.UserId > 0 {
+		user, userErr := model.GetUserById(token.UserId, false)
+		if userErr != nil {
+			notifyError = userErr.Error()
+		} else {
+			title := "管理员已重置你的 API 令牌"
+			content := fmt.Sprintf(
+				"你的令牌 <strong>%s</strong> 已被管理员重置，旧令牌已立即失效。请前往令牌页面获取并替换新的令牌。",
+				strings.TrimSpace(token.Name),
+			)
+			level := "warning"
+			if isSubscriptionDeliveryToken {
+				title = "管理员已重新签发你的 Subscription Access 令牌"
+				content = "你的 Subscription Access 令牌已被管理员重新签发，旧令牌已立即失效。请前往订阅页面查看并复制新的访问令牌。"
+				level = "success"
+			}
+			if _, sendErr := service.SendSiteNotificationToUser(
+				user,
+				c.GetInt("id"),
+				title,
+				content,
+				level,
+				false,
+			); sendErr != nil {
+				notifyError = sendErr.Error()
+			} else {
+				notifySent = true
+			}
+		}
+	}
+
+	actionName := "重置令牌"
+	tokenSource := "user_created"
+	if isSubscriptionDeliveryToken {
+		actionName = "重新签发"
+		tokenSource = "subscription_delivery"
+	}
+	model.RecordLog(token.UserId, model.LogTypeSystem, fmt.Sprintf("管理员%s：%s", actionName, strings.TrimSpace(token.Name)))
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"token_id":         token.Id,
+			"user_id":          token.UserId,
+			"token_name":       token.Name,
+			"token_key":        "sk-" + newKey,
+			"token_source":     tokenSource,
+			"notify_sent":      notifySent,
+			"notify_error":     notifyError,
+			"action_label":     actionName,
+			"is_system_issued": isSubscriptionDeliveryToken,
+		},
 	})
 }
