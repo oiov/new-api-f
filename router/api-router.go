@@ -315,6 +315,7 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.PUT("/tag", controller.EditTagChannels)
 			channelRoute.DELETE("/:id", controller.DeleteChannel)
 			channelRoute.POST("/batch", controller.DeleteChannelBatch)
+			channelRoute.PUT("/batch/models", controller.BatchUpdateChannelModels)
 			channelRoute.POST("/fix", controller.FixChannelsAbilities)
 			channelRoute.GET("/fetch_models/:id", controller.FetchUpstreamModels)
 			channelRoute.POST("/fetch_models", controller.FetchModels)

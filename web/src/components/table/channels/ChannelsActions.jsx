@@ -34,8 +34,8 @@ const ChannelsActions = ({
   batchTestSelectedChannels,
   batchTestingChannels,
   setShowBatchSetTag,
-  setShowBatchModelMapping,
-  batchUpdatingModelMapping,
+  setShowBatchModelConfig,
+  batchUpdatingModelConfig,
   testAllChannels,
   fixChannelsAbilities,
   updateAllChannelsBalance,
@@ -114,14 +114,14 @@ const ChannelsActions = ({
           <Button
             size='small'
             disabled={
-              !enableBatchDelete || batchUpdatingModelMapping || enableTagMode
+              !enableBatchDelete || batchUpdatingModelConfig || enableTagMode
             }
-            loading={batchUpdatingModelMapping}
+            loading={batchUpdatingModelConfig}
             type='tertiary'
-            onClick={() => setShowBatchModelMapping(true)}
+            onClick={() => setShowBatchModelConfig(true)}
             className='w-full md:w-auto'
           >
-            {t('批量修改模型映射')}
+            {t('批量编辑模型配置')}
           </Button>
 
           <Dropdown

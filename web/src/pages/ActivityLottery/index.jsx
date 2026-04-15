@@ -29,6 +29,7 @@ import {
   Button,
   Collapse,
   Empty,
+  SideSheet,
   Space,
   Spin,
   Tag,
@@ -93,6 +94,20 @@ const buildDrawStatusText = (summary, t) => {
   return t('还需 {{count}} 人，且等待开奖', { count: missingParticipants });
 };
 
+const renderRoundPublicTargets = (round, t) => {
+  if (!round) return null;
+  return (
+    <div className='mt-3 flex flex-wrap gap-2'>
+      <Tag color='cyan' type='light' shape='circle'>
+        {t('最低参与人数')}: {Number(round?.min_participants || 0)}
+      </Tag>
+      <Tag color='violet' type='light' shape='circle'>
+        {t('中奖人数')}: {Number(round?.winner_count || 0)}
+      </Tag>
+    </div>
+  );
+};
+
 export default function ActivityLotteryPage() {
   const { t } = useTranslation();
   const [statusState] = useContext(StatusContext);
@@ -107,6 +122,7 @@ export default function ActivityLotteryPage() {
   const [rewardHighlight, setRewardHighlight] = useState(false);
   const [entriesByRound, setEntriesByRound] = useState({});
   const [entryLoadingByRound, setEntryLoadingByRound] = useState({});
+  const [entryDrawerRound, setEntryDrawerRound] = useState(null);
 
   const loadSummary = useCallback(async () => {
     if (!status?.activity_lottery_enabled) return;
@@ -270,9 +286,113 @@ export default function ActivityLotteryPage() {
     ? entriesByRound[currentRound?.id]
     : [];
   const currentEntryLoading = !!entryLoadingByRound[currentRound?.id];
+  const drawerRoundId = Number(entryDrawerRound?.id || 0);
+  const drawerEntries = Array.isArray(entriesByRound[drawerRoundId])
+    ? entriesByRound[drawerRoundId]
+    : [];
+  const drawerEntryLoading = !!entryLoadingByRound[drawerRoundId];
+
+  const openEntryDrawer = useCallback(
+    (round) => {
+      if (!round?.id) return;
+      setEntryDrawerRound(round);
+      loadRoundEntries(round.id);
+    },
+    [loadRoundEntries],
+  );
+
+  const closeEntryDrawer = useCallback(() => {
+    setEntryDrawerRound(null);
+  }, []);
 
   return (
     <div className='px-2'>
+      <SideSheet
+        title={entryDrawerRound?.title || t('全部报名用户')}
+        visible={!!entryDrawerRound}
+        width={720}
+        onCancel={closeEntryDrawer}
+        footer={
+          <div className='flex items-center justify-between gap-3'>
+            <Text type='secondary'>
+              {t('全部报名用户')} · {Number(drawerEntries.length || 0)}
+            </Text>
+            <Button
+              theme='outline'
+              size='small'
+              loading={drawerEntryLoading}
+              onClick={() => loadRoundEntries(drawerRoundId)}
+              disabled={!drawerRoundId}
+            >
+              {t('刷新')}
+            </Button>
+          </div>
+        }
+        bodyStyle={{
+          padding: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+        }}
+      >
+        <div className='border-b border-semi-color-border px-6 py-3 text-xs text-semi-color-text-2'>
+          {entryDrawerRound?.start_at || entryDrawerRound?.end_at ? (
+            <>
+              {t('活动时间')}:{' '}
+              {entryDrawerRound?.start_at
+                ? timestamp2string(entryDrawerRound.start_at)
+                : '--'}{' '}
+              ~{' '}
+              {entryDrawerRound?.end_at
+                ? timestamp2string(entryDrawerRound.end_at)
+                : '--'}
+            </>
+          ) : (
+            t('报名记录')
+          )}
+        </div>
+        <div className='flex-1 overflow-y-auto px-6 py-4'>
+          <Spin spinning={drawerEntryLoading}>
+            {drawerEntries.length > 0 ? (
+              <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-fill-0'>
+                <div className='lottery-public-table lottery-public-table--header'>
+                  <div>{t('报名用户')}</div>
+                  <div>{t('报名时间')}</div>
+                  <div>{t('参与状态')}</div>
+                </div>
+                {drawerEntries.map((item, index) => (
+                  <div
+                    key={`${item?.id || ''}-${item?.created_at || ''}-${index}`}
+                    className='lottery-public-table'
+                  >
+                    <div className='min-w-0'>
+                      <Text ellipsis={{ showTooltip: true }}>
+                        {resolveDisplayName(item)}
+                      </Text>
+                    </div>
+                    <div className='text-semi-color-text-1'>
+                      {item?.created_at ? timestamp2string(item.created_at) : '-'}
+                    </div>
+                    <div>
+                      <Tag
+                        color={item?.qualified ? 'green' : 'orange'}
+                        type='light'
+                        shape='circle'
+                      >
+                        {resolveQualifiedStatus(item, t)}
+                      </Tag>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className='rounded-2xl border border-dashed border-semi-color-border bg-semi-color-fill-0 px-4 py-10 text-sm text-semi-color-text-2'>
+                {t('暂无报名记录')}
+              </div>
+            )}
+          </Spin>
+        </div>
+      </SideSheet>
       <CardPro
         type='type2'
         searchArea={
@@ -423,6 +543,7 @@ export default function ActivityLotteryPage() {
                     {drawStatusText}
                   </Tag>
                 </div>
+                {renderRoundPublicTargets(currentRound, t)}
 
                 {currentRound?.prize ? (
                   <div className='mt-4 rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4'>
@@ -563,55 +684,18 @@ export default function ActivityLotteryPage() {
                         {t('全部报名用户')} · {Number(summary?.signup_count || currentEntries.length || 0)}
                       </div>
                       <Button
-                        theme='borderless'
+                        theme='outline'
                         size='small'
-                        loading={currentEntryLoading}
-                        onClick={() => loadRoundEntries(currentRound.id)}
+                        loading={
+                          currentEntryLoading &&
+                          Number(entryDrawerRound?.id || 0) ===
+                            Number(currentRound.id || 0)
+                        }
+                        onClick={() => openEntryDrawer(currentRound)}
                       >
-                        {t('刷新')}
+                        {t('查看')}
                       </Button>
                     </div>
-                    <Spin spinning={currentEntryLoading}>
-                      {currentEntries.length > 0 ? (
-                        <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-fill-0'>
-                          <div className='lottery-public-table lottery-public-table--header'>
-                            <div>{t('报名用户')}</div>
-                            <div>{t('报名时间')}</div>
-                            <div>{t('参与状态')}</div>
-                          </div>
-                          {currentEntries.map((item) => (
-                            <div
-                              key={`${item?.id || ''}-${item?.created_at || ''}`}
-                              className='lottery-public-table'
-                            >
-                              <div className='min-w-0'>
-                                <Text ellipsis={{ showTooltip: true }}>
-                                  {resolveDisplayName(item)}
-                                </Text>
-                              </div>
-                              <div className='text-semi-color-text-1'>
-                                {item?.created_at
-                                  ? timestamp2string(item.created_at)
-                                  : '-'}
-                              </div>
-                              <div>
-                                <Tag
-                                  color={item?.qualified ? 'green' : 'orange'}
-                                  type='light'
-                                  shape='circle'
-                                >
-                                  {resolveQualifiedStatus(item, t)}
-                                </Tag>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className='rounded-2xl border border-dashed border-semi-color-border bg-semi-color-fill-0 px-4 py-6 text-sm text-semi-color-text-2'>
-                          {t('暂无报名记录')}
-                        </div>
-                      )}
-                    </Spin>
                   </div>
                 ) : null}
               </div>
@@ -663,6 +747,7 @@ export default function ActivityLotteryPage() {
                           }
                         >
                           <div className='space-y-3'>
+                            {renderRoundPublicTargets(round, t)}
                             {round?.prize ? (
                               <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3 text-sm text-semi-color-text-0'>
                                 <div className='mb-2 font-medium'>
@@ -727,55 +812,18 @@ export default function ActivityLotteryPage() {
                                   {t('全部报名用户')} · {Number(roundEntries.length || 0)}
                                 </div>
                                 <Button
-                                  theme='borderless'
+                                  theme='outline'
                                   size='small'
-                                  loading={roundEntryLoading}
-                                  onClick={() => loadRoundEntries(round?.id)}
+                                  loading={
+                                    roundEntryLoading &&
+                                    Number(entryDrawerRound?.id || 0) ===
+                                      Number(round?.id || 0)
+                                  }
+                                  onClick={() => openEntryDrawer(round)}
                                 >
-                                  {t('刷新')}
+                                  {t('查看')}
                                 </Button>
                               </div>
-                              <Spin spinning={roundEntryLoading}>
-                                {roundEntries.length > 0 ? (
-                                  <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-fill-0'>
-                                    <div className='lottery-public-table lottery-public-table--header'>
-                                      <div>{t('报名用户')}</div>
-                                      <div>{t('报名时间')}</div>
-                                      <div>{t('参与状态')}</div>
-                                    </div>
-                                    {roundEntries.map((entry, index) => (
-                                      <div
-                                        key={`${entry?.id || ''}-${index}`}
-                                        className='lottery-public-table'
-                                      >
-                                        <div className='min-w-0'>
-                                          <Text ellipsis={{ showTooltip: true }}>
-                                            {resolveDisplayName(entry)}
-                                          </Text>
-                                        </div>
-                                        <div className='text-semi-color-text-1'>
-                                          {entry?.created_at
-                                            ? timestamp2string(entry.created_at)
-                                            : '--'}
-                                        </div>
-                                        <div>
-                                          <Tag
-                                            color={entry?.qualified ? 'green' : 'orange'}
-                                            type='light'
-                                            shape='circle'
-                                          >
-                                            {resolveQualifiedStatus(entry, t)}
-                                          </Tag>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <div className='rounded-2xl border border-dashed border-semi-color-border bg-semi-color-fill-0 px-4 py-6 text-sm text-semi-color-text-2'>
-                                    {t('暂无报名记录')}
-                                  </div>
-                                )}
-                              </Spin>
                             </div>
                           </div>
                         </Collapse.Panel>

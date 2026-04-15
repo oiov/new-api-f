@@ -25,37 +25,55 @@ const MODEL_MAPPING_EXAMPLE = {
 };
 
 const BatchModelMappingModal = ({
-  showBatchModelMapping,
-  setShowBatchModelMapping,
-  batchSetChannelModelMapping,
+  showBatchModelConfig,
+  setShowBatchModelConfig,
+  batchUpdateChannelModelConfig,
+  batchModelsValue,
+  setBatchModelsValue,
   batchModelMappingValue,
   setBatchModelMappingValue,
-  batchUpdatingModelMapping,
+  batchUpdatingModelConfig,
   selectedChannels,
   t,
 }) => {
   const handleClose = () => {
+    setBatchModelsValue('');
     setBatchModelMappingValue('');
-    setShowBatchModelMapping(false);
+    setShowBatchModelConfig(false);
   };
 
   return (
     <Modal
-      title={t('批量修改模型映射')}
-      visible={showBatchModelMapping}
-      onOk={batchSetChannelModelMapping}
+      title={t('批量编辑模型配置')}
+      visible={showBatchModelConfig}
+      onOk={batchUpdateChannelModelConfig}
       onCancel={handleClose}
-      confirmLoading={batchUpdatingModelMapping}
-      okButtonProps={{ loading: batchUpdatingModelMapping }}
+      confirmLoading={batchUpdatingModelConfig}
+      okButtonProps={{ loading: batchUpdatingModelConfig }}
       maskClosable={false}
       centered={true}
       size='medium'
       className='!rounded-lg'
     >
-      <div className='mb-4'>
+      <div className='mb-4 flex flex-col gap-2'>
         <Typography.Text>
-          {t('请输入要应用到所选渠道的模型映射 JSON。输入 {} 可清空模型映射。')}
+          {t('仅会更新你填写的字段，留空的字段不会改动。')}
         </Typography.Text>
+        <Typography.Text type='secondary'>
+          {t('模型列表支持逗号或换行分隔；模型重定向请输入合法 JSON，输入 {} 可清空。')}
+        </Typography.Text>
+      </div>
+      <div className='mb-4'>
+        <Typography.Text strong>{t('模型列表')}</Typography.Text>
+        <TextArea
+          autosize={{ minRows: 4, maxRows: 10 }}
+          placeholder={t('请输入模型列表，例如：gpt-4o-mini,claude-3-5-sonnet')}
+          value={batchModelsValue}
+          onChange={(value) => setBatchModelsValue(value)}
+        />
+      </div>
+      <div>
+        <Typography.Text strong>{t('模型重定向')}</Typography.Text>
       </div>
       <TextArea
         autosize={{ minRows: 8, maxRows: 16 }}
@@ -71,7 +89,7 @@ const BatchModelMappingModal = ({
           )}
         </Typography.Text>
         <Typography.Text type='tertiary'>
-          {t('仅会更新 model_mapping 字段，不会改动其他渠道配置。')}
+          {t('提交后会按已选渠道批量覆盖模型列表和/或模型重定向。')}
         </Typography.Text>
       </div>
     </Modal>
