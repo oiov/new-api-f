@@ -48,6 +48,7 @@ export default function SettingsLog(props) {
     LogConsumeEnabled: false,
     ErrorLogDisplayEnabled: true,
     ErrorDetailsEnabled: true,
+    LogExportEnabled: false,
     UpstreamModelNameAlignedToRequestEnabled: true,
     historyTimestamp: dayjs().subtract(1, 'month').toDate(),
   });
@@ -261,6 +262,30 @@ export default function SettingsLog(props) {
                   style={{ display: 'block', marginTop: 4 }}
                 >
                   {t('关闭后不记录错误日志，前端仅返回通用错误文案，用户侧日志也不展示错误日志')}
+                </Text>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'LogExportEnabled'}
+                  label={t('允许日志导出')}
+                  size='default'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      LogExportEnabled: value,
+                    });
+                  }}
+                />
+                <Text
+                  type='tertiary'
+                  size='small'
+                  style={{ display: 'block', marginTop: 4 }}
+                >
+                  {t(
+                    '关闭后，console/log 不显示导出按钮，同时导出接口不可用。',
+                  )}
                 </Text>
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>

@@ -51,9 +51,13 @@ import {
   getSubscriptionDailyPriceDisplay,
   formatSubscriptionDuration,
   formatSubscriptionSellingDuration,
+  getSubscriptionPerRequestPriceDisplay,
   getSubscriptionPriceDisplay,
   formatSubscriptionResourceLabel,
   formatSubscriptionResetHint,
+  getSubscriptionMarketingSubtitle,
+  getSubscriptionCommerceBadge,
+  getSubscriptionPlanMetricItemsForCommerce,
   isSubscriptionFixedDeadlineDayPlan,
   getSubscriptionRestrictionSummary,
   getSubscriptionResourceType,
@@ -138,22 +142,52 @@ function inferSubscriptionPlanSeries(plan) {
   return 'other';
 }
 
-function renderScopedTag(key, value, color = 'white', onClick) {
+function renderScopedTag(key, value, options = {}) {
+  const {
+    color = 'white',
+    onClick,
+    icon = null,
+    className = '',
+  } = options;
   return (
     <Tag
       key={key}
       color={color}
       shape='circle'
       onClick={onClick}
-      className={onClick ? 'pricing-clickable-tag' : undefined}
+      className={[
+        onClick ? 'pricing-clickable-tag' : '',
+        'pricing-plan-detail-scope-tag',
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
-      {value}
+      <span className='pricing-plan-detail-scope-tag__content'>
+        {icon ? (
+          <span className='pricing-plan-detail-scope-tag__icon'>{icon}</span>
+        ) : null}
+        <span>{value}</span>
+      </span>
     </Tag>
   );
 }
 
-function renderTagList(items = []) {
-  return <div className='flex flex-wrap gap-2'>{items}</div>;
+function renderTagList(items = [], options = {}) {
+  const { variant = 'default', lead = null } = options;
+  return (
+    <div className={`pricing-plan-detail-chip-list pricing-plan-detail-chip-list--${variant}`}>
+      {lead ? (
+        <div className='pricing-plan-detail-chip-list__lead'>
+          {lead.icon ? (
+            <span className='pricing-plan-detail-chip-list__lead-icon'>{lead.icon}</span>
+          ) : null}
+          <span>{lead.text}</span>
+        </div>
+      ) : null}
+      {items}
+    </div>
+  );
 }
 
 export default function SubscriptionPlanDetail() {
@@ -544,6 +578,7 @@ export default function SubscriptionPlanDetail() {
     isClaudePlan && String(plan?.duration_unit || 'month') === 'month';
   const isManualDeliveryPlan = plan?.delivery_mode === 'manual_delivery';
   const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
+  const perRequestPriceDisplay = getSubscriptionPerRequestPriceDisplay(plan);
   const { symbol, effectivePrice, originalPrice } = getSubscriptionPriceDisplay(plan);
   const displayPrice = effectivePrice.toFixed(Number.isInteger(effectivePrice) ? 0 : 2);
   const displayOriginalPrice = originalPrice.toFixed(
@@ -554,30 +589,52 @@ export default function SubscriptionPlanDetail() {
   const scheduleHint = isSubscriptionFixedDeadlineDayPlan(plan)
     ? formatSubscriptionSellingDuration(plan, t)
     : resetHint;
+  const marketingSubtitle = getSubscriptionMarketingSubtitle(plan, t);
+  const marketingBadge = getSubscriptionCommerceBadge(
+    plan,
+    plans.map((item) => item?.plan || item),
+    t,
+  );
+  const planMetricItems = getSubscriptionPlanMetricItemsForCommerce(plan, t);
   const purchaseLimitInfo = {
     limit,
     count,
   };
+  const buyCardHighlights = [
+    {
+      label: t('到手价'),
+      value: `${symbol}${displayPrice}`,
+      sub: t('按 {{duration}} 计费', {
+        duration: formatSubscriptionSellingDuration(plan, t),
+      }),
+    },
+    {
+      label: t('买到什么'),
+      value: getPlanResourceAmountText(plan, t),
+      sub: perRequestPriceDisplay?.displayPerRequestPrice
+        ? t('单次约 {{price}}', {
+            price: `${symbol}${perRequestPriceDisplay.displayPerRequestPrice}`,
+          })
+        : getPlanBenefitDescription(plan, t),
+    },
+    {
+      label: t('什么时候重置'),
+      value: scheduleHint,
+      sub: t('付款成功后立即开始生效'),
+    },
+  ];
   const heroStats = [
     {
-      label:
-        isClaudePlan && dailyPriceDisplay ? t('每天成本') : t('套餐价格'),
-      value:
-        isClaudePlan && dailyPriceDisplay
-          ? `${symbol}${dailyPriceDisplay.displayDailyPrice}/${t('天')}`
-          : `${symbol}${displayPrice}`,
-      sub:
-        isClaudePlan && dailyPriceDisplay
-          ? t('合计 {{price}} / {{duration}}', {
-              price: `${symbol}${displayPrice}`,
-              duration: formatSubscriptionSellingDuration(plan, t),
-            })
-          : formatSubscriptionSellingDuration(plan, t),
+      label: t('套餐价格'),
+      value: `${symbol}${displayPrice}`,
+      sub: t('{{duration}} 生效', {
+        duration: formatSubscriptionSellingDuration(plan, t),
+      }),
     },
     {
       label: t('核心权益'),
       value: getPlanResourceAmountText(plan, t),
-      sub: getPlanBenefitDescription(plan, t),
+      sub: marketingSubtitle,
     },
     {
       label: t('购买状态'),
@@ -644,6 +701,11 @@ export default function SubscriptionPlanDetail() {
                 <div className='pricing-plan-detail-hero__copy'>
                   <div className='pricing-plan-detail-hero__eyebrow'>
                     <Tag color='blue' shape='circle'>{t('套餐详情')}</Tag>
+                    {marketingBadge ? (
+                      <Tag color={marketingBadge.tone} shape='circle'>
+                        {marketingBadge.label}
+                      </Tag>
+                    ) : null}
                     {isClaudePlan && (
                       <Tag color='violet' shape='circle'>{t('Claude 系列')}</Tag>
                     )}
@@ -660,8 +722,34 @@ export default function SubscriptionPlanDetail() {
                     {plan.title}
                   </Title>
                   <Text className='pricing-plan-detail-hero__subtitle' type='secondary'>
-                    {plan.subtitle || t('以套餐配置为准')}
+                    {marketingSubtitle}
                   </Text>
+                  {marketingBadge?.description ? (
+                    <Text className='pricing-plan-detail-hero__selling-point' type='primary'>
+                      {marketingBadge.description}
+                    </Text>
+                  ) : null}
+                  <div className='mt-4 flex flex-wrap gap-2'>
+                    {activeDiscount ? (
+                      <Tag color='red' shape='circle'>
+                        {t('原价')} {symbol}{displayOriginalPrice}
+                      </Tag>
+                    ) : null}
+                    {dailyPriceDisplay ? (
+                      <Tag color='blue' shape='circle'>
+                        {t('折合每天约 {{price}}', {
+                          price: `${symbol}${dailyPriceDisplay.displayDailyPrice}`,
+                        })}
+                      </Tag>
+                    ) : null}
+                    {perRequestPriceDisplay?.displayPerRequestPrice ? (
+                      <Tag color='gold' shape='circle'>
+                        {t('单次约 {{price}}', {
+                          price: `${symbol}${perRequestPriceDisplay.displayPerRequestPrice}`,
+                        })}
+                      </Tag>
+                    ) : null}
+                  </div>
                   <div className='mt-2 inline-flex max-w-full items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-xs font-medium text-semi-color-text-1 shadow-sm dark:bg-white/10'>
                     <Clock3 size={14} className='flex-shrink-0' />
                     <span>{scheduleHint}</span>
@@ -689,9 +777,58 @@ export default function SubscriptionPlanDetail() {
             <Card className='pricing-plan-detail-section !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 18 }}>
               <div className='pricing-plan-detail-section__header'>
                 <div>
-                  <Text strong>{t('适用限制')}</Text>
+                  <Text strong>{t('购买后你会得到')}</Text>
                   <Text type='tertiary' className='block mt-1'>
-                    {t('购买前请确认套餐对应的分组、模型和供应商范围。')}
+                    {t('把价格、权益、重置规则拆开看，避免误解。')}
+                  </Text>
+                </div>
+              </div>
+              <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
+                {buyCardHighlights.map((item) => (
+                  <div
+                    key={item.label}
+                    className='pricing-plan-detail-mini-card'
+                  >
+                    <div className='text-xs text-semi-color-text-2'>{item.label}</div>
+                    <div className='mt-2 text-lg font-semibold text-semi-color-text-0'>
+                      {item.value}
+                    </div>
+                    <div className='mt-2 text-sm text-semi-color-text-1'>{item.sub}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className='pricing-plan-detail-section !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 18 }}>
+              <div className='pricing-plan-detail-section__header'>
+                <div>
+                  <Text strong>{t('套餐规则')}</Text>
+                  <Text type='tertiary' className='block mt-1'>
+                    {t('重点看可用时长、重置时间和整个有效期内最多可用多少。')}
+                  </Text>
+                </div>
+              </div>
+              <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4'>
+                {planMetricItems.map((item) => (
+                  <div
+                    key={item.key}
+                    className='pricing-plan-detail-mini-card'
+                  >
+                    <div className='text-xs text-semi-color-text-2'>{item.label}</div>
+                    <div className='mt-2 text-base font-semibold text-semi-color-text-0'>
+                      {item.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className='pricing-plan-detail-section !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 18 }}>
+              <div className='pricing-plan-detail-section__header'>
+                <div>
+                  <Text strong>{t('购买后可用范围')}</Text>
+                  <Text type='tertiary' className='block mt-1'>
+                    {t('购买前请确认这个套餐能用在哪些分组、模型和供应商上。')}
                   </Text>
                 </div>
               </div>
@@ -710,7 +847,13 @@ export default function SubscriptionPlanDetail() {
                             <div key={`upgrade-${plan.upgrade_group}`}>
                               {renderGroup(plan.upgrade_group)}
                             </div>,
-                          ]),
+                          ], {
+                            variant: 'highlight',
+                            lead: {
+                              icon: <Layers3 size={13} />,
+                              text: t('升级后进入这个分组'),
+                            },
+                          }),
                         }
                       : null,
                     uniqueRestrictionGroups.length > 0
@@ -720,6 +863,13 @@ export default function SubscriptionPlanDetail() {
                             uniqueRestrictionGroups.map((group) => (
                               <div key={`group-${group}`}>{renderGroup(group)}</div>
                             )),
+                            {
+                              variant: 'group',
+                              lead: {
+                                icon: <Layers3 size={13} />,
+                                text: t('这些分组可直接使用'),
+                              },
+                            },
                           ),
                         }
                       : null,
@@ -731,10 +881,22 @@ export default function SubscriptionPlanDetail() {
                               renderScopedTag(
                                 `model-${modelName}`,
                                 modelName,
-                                'grey',
-                                (event) => copyRestrictionValue(event, modelName),
+                                {
+                                  color: 'grey',
+                                  icon: <Package size={12} />,
+                                  className: 'pricing-plan-detail-scope-tag--model',
+                                  onClick: (event) =>
+                                    copyRestrictionValue(event, modelName),
+                                },
                               ),
                             ),
+                            {
+                              variant: 'model',
+                              lead: {
+                                icon: <Package size={13} />,
+                                text: t('支持以下模型'),
+                              },
+                            },
                           ),
                         }
                       : null,
@@ -746,10 +908,22 @@ export default function SubscriptionPlanDetail() {
                               renderScopedTag(
                                 `vendor-${vendorName}`,
                                 vendorName,
-                                'green',
-                                (event) => copyRestrictionValue(event, vendorName),
+                                {
+                                  color: 'green',
+                                  icon: <BadgeCheck size={12} />,
+                                  className: 'pricing-plan-detail-scope-tag--vendor',
+                                  onClick: (event) =>
+                                    copyRestrictionValue(event, vendorName),
+                                },
                               ),
                             ),
+                            {
+                              variant: 'vendor',
+                              lead: {
+                                icon: <BadgeCheck size={13} />,
+                                text: t('由这些供应商提供'),
+                              },
+                            },
                           ),
                         }
                       : null,
@@ -777,35 +951,41 @@ export default function SubscriptionPlanDetail() {
                 </div>
                 <div className='pricing-plan-detail-buy-card__price'>
                   <span>{symbol}</span>
-                  {isClaudePlan && dailyPriceDisplay
-                    ? dailyPriceDisplay.displayDailyPrice
-                    : displayPrice}
-                  {isClaudePlan && dailyPriceDisplay ? (
-                    <Text type='secondary' size='small'>
-                      / {t('天')}
-                    </Text>
-                  ) : null}
+                  {displayPrice}
+                  <Text type='secondary' size='small'>
+                    / {formatSubscriptionSellingDuration(plan, t)}
+                  </Text>
                 </div>
               </div>
-              {isClaudePlan && dailyPriceDisplay ? (
-                <div className='pricing-plan-detail-buy-card__price-note'>
-                  <Text type='tertiary'>
-                    {t('合计 {{price}} / {{duration}}', {
-                      price: `${symbol}${displayPrice}`,
-                      duration: formatSubscriptionSellingDuration(plan, t),
-                    })}
-                  </Text>
+              {dailyPriceDisplay || activeDiscount || perRequestPriceDisplay ? (
+                <div className='pricing-plan-detail-buy-card__price-note flex flex-wrap items-center gap-2'>
+                  {dailyPriceDisplay ? (
+                    <Tag color='blue' shape='circle'>
+                      {t('折合每天约 {{price}}', {
+                        price: `${symbol}${dailyPriceDisplay.displayDailyPrice}`,
+                      })}
+                    </Tag>
+                  ) : null}
+                  {perRequestPriceDisplay?.displayPerRequestPrice ? (
+                    <Tag color='gold' shape='circle'>
+                      {t('单次约 {{price}}', {
+                        price: `${symbol}${perRequestPriceDisplay.displayPerRequestPrice}`,
+                      })}
+                    </Tag>
+                  ) : null}
+                  {activeDiscount ? (
+                    <Tag color='red' shape='circle'>
+                      {t('原价')} {symbol}{displayOriginalPrice}
+                    </Tag>
+                  ) : null}
                 </div>
               ) : null}
               {activeDiscount ? (
                 <div className='pricing-plan-detail-buy-card__price-note'>
-                  <Text type='tertiary' delete>
-                    {symbol}
-                    {displayOriginalPrice}
+                  <Text type='tertiary'>
+                    {t('优惠截止时间')}：{' '}
+                    {new Date(Number(plan?.discount_deadline || 0) * 1000).toLocaleString()}
                   </Text>
-                  <Tag color='red' shape='circle'>
-                    {t('限时优惠')}
-                  </Tag>
                 </div>
               ) : null}
 

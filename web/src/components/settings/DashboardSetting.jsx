@@ -56,7 +56,6 @@ const DashboardSetting = () => {
 
     /* 数据看板 */
     DataExportEnabled: false,
-    LogExportEnabled: false,
     DataExportDefaultTime: 'hour',
     DataExportInterval: 5,
   });
@@ -73,10 +72,7 @@ const DashboardSetting = () => {
         if (item.key in inputs) {
           newInputs[item.key] = item.value;
         }
-        if (
-          item.key.endsWith('Enabled') &&
-          (item.key === 'DataExportEnabled' || item.key === 'LogExportEnabled')
-        ) {
+        if (item.key.endsWith('Enabled') && item.key === 'DataExportEnabled') {
           newInputs[item.key] = toBoolean(item.value);
         }
       });

@@ -83,10 +83,14 @@ import {
   getSubscriptionDailyPriceDisplay,
   formatSubscriptionSellingDuration,
   getSubscriptionPriceDisplay,
+  getSubscriptionPerRequestPriceDisplay,
   formatSubscriptionResetPeriod,
   formatSubscriptionResourceLabel,
   getSubscriptionEffectivePrice,
+  getSubscriptionMarketingSubtitle,
+  getSubscriptionCommerceBadge,
   getSubscriptionPlanMetricItems,
+  getSubscriptionPlanMetricItemsForCommerce,
   getSubscriptionRestrictionSummary,
   getSubscriptionResourceType,
   getSubscriptionSaleSummary,
@@ -282,6 +286,59 @@ function getPlanBenefitDescription(plan, t) {
   }
 
   return `${t('每个重置周期可用')} ${amountText} · ${t('重置')} ${resetPeriod}`;
+}
+
+function getScopedItemsSummary(items = [], t, type) {
+  const uniqueItems = Array.from(new Set((items || []).filter(Boolean)));
+  if (uniqueItems.length === 0) {
+    return '';
+  }
+  if (uniqueItems.length === 1) {
+    if (type === 'model') {
+      return t('{{name}} 1 个模型', { name: uniqueItems[0] });
+    }
+    if (type === 'vendor') {
+      return t('{{name}} 1 个供应商', { name: uniqueItems[0] });
+    }
+    return uniqueItems[0];
+  }
+  if (type === 'model') {
+    return t('{{name}} 等 {{count}} 个模型', {
+      name: uniqueItems[0],
+      count: uniqueItems.length,
+    });
+  }
+  if (type === 'vendor') {
+    return t('{{name}} 等 {{count}} 个供应商', {
+      name: uniqueItems[0],
+      count: uniqueItems.length,
+    });
+  }
+  return t('共 {{count}} 个可用分组', { count: uniqueItems.length });
+}
+
+function getPlanScopeSummary(plan, restrictionSummary, t) {
+  const groupItems = restrictionSummary?.groups?.filter(
+    (item) => item && item !== plan?.upgrade_group,
+  );
+  const modelSummary = getScopedItemsSummary(restrictionSummary?.models, t, 'model');
+  const vendorSummary = getScopedItemsSummary(
+    restrictionSummary?.vendors,
+    t,
+    'vendor',
+  );
+
+  const primaryScope = plan?.upgrade_group
+    ? t('升级分组 {{group}}', { group: plan.upgrade_group })
+    : getScopedItemsSummary(groupItems, t, 'group') || t('适用范围更灵活');
+  const secondaryScope = [modelSummary, vendorSummary]
+    .filter(Boolean)
+    .join(' · ');
+
+  return {
+    primary: primaryScope,
+    secondary: secondaryScope || t('详情页可查看全部权益'),
+  };
 }
 
 function inferSubscriptionPlanSeries(plan) {
@@ -2138,7 +2195,7 @@ const SubscriptionPlansCard = ({
     const metaItems = [
       {
         label: t('套餐说明'),
-        value: plan?.subtitle || t('暂无说明'),
+        value: getSubscriptionMarketingSubtitle(plan, t) || t('暂无说明'),
       },
       {
         label: t('来源'),
@@ -2369,7 +2426,7 @@ const SubscriptionPlansCard = ({
                 {
                   key: 'meta',
                   category: t('套餐信息'),
-                  summary: plan?.subtitle || t('暂无说明'),
+                  summary: getSubscriptionMarketingSubtitle(plan, t) || t('暂无说明'),
                   details: metaItems,
                 },
               ].map((record) => (
@@ -2425,7 +2482,7 @@ const SubscriptionPlansCard = ({
                 {
                   key: 'meta',
                   category: t('套餐信息'),
-                  summary: plan?.subtitle || t('暂无说明'),
+                  summary: getSubscriptionMarketingSubtitle(plan, t) || t('暂无说明'),
                   details: metaItems,
                 },
               ]}
@@ -2485,7 +2542,7 @@ const SubscriptionPlansCard = ({
         <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'>
           <div className='text-xs text-gray-500'>{t('套餐说明')}</div>
           <div className='mt-1 text-sm text-semi-color-text-0 break-all'>
-            {plan?.subtitle || t('暂无说明')}
+            {getSubscriptionMarketingSubtitle(plan, t) || t('暂无说明')}
           </div>
         </div>
         <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'>
@@ -2576,9 +2633,9 @@ const SubscriptionPlansCard = ({
           <div className='mt-1 text-sm text-semi-color-text-2'>
             #{order?.id || '--'} · {order?.trade_no || '--'}
           </div>
-          {item?.plan?.subtitle ? (
+          {getSubscriptionMarketingSubtitle(item?.plan || {}, t) ? (
             <div className='mt-1 text-sm text-semi-color-text-2 line-clamp-2'>
-              {item.plan.subtitle}
+              {getSubscriptionMarketingSubtitle(item?.plan || {}, t)}
             </div>
           ) : null}
         </div>
@@ -2751,7 +2808,7 @@ const SubscriptionPlansCard = ({
                   )}
                 </div>
                 <Text type='tertiary' size='small'>
-                  {plan?.subtitle || t('以套餐配置为准')}
+                  {getSubscriptionMarketingSubtitle(plan, t) || t('以套餐配置为准')}
                 </Text>
               </div>
             </div>
@@ -2986,34 +3043,76 @@ const SubscriptionPlansCard = ({
   const renderPackagePlanCard = (record, index) => {
     const plan = record?.plan || {};
     const seriesMeta = getSubscriptionSeriesMeta(plan, t);
+    const marketingBadge = getSubscriptionCommerceBadge(
+      plan,
+      sortedPlans.map((item) => item?.plan || item),
+      t,
+    );
     const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
     const availability = getPlanPurchaseAvailability(plan);
     const limit = availability.limit;
     const reached = availability.reached;
     const saleSummary = availability.saleSummary;
     const restrictionSummary = getSubscriptionRestrictionSummary(plan);
-    const metricItems = getSubscriptionPlanMetricItems(plan, t);
+    const metricItems = getSubscriptionPlanMetricItemsForCommerce(plan, t);
     const { symbol, effectivePrice, originalPrice } =
       getSubscriptionPriceDisplay(plan);
+    const perRequestPriceDisplay = getSubscriptionPerRequestPriceDisplay(plan);
     const displayPrice = effectivePrice.toFixed(
       Number.isInteger(effectivePrice) ? 0 : 2,
     );
     const activeDiscount = isSubscriptionDiscountActive(plan);
     const disabled = availability.disabled;
     const tip = availability.reason;
-    const uniqueGroups = Array.from(
-      new Set(
-        restrictionSummary.groups.filter(
-          (item) => item && item !== plan?.upgrade_group,
-        ),
-      ),
-    );
-    const uniqueModels = Array.from(new Set(restrictionSummary.models)).slice(0, 2);
-    const uniqueVendors = Array.from(new Set(restrictionSummary.vendors)).slice(0, 1);
-    const remainingModelCount = Math.max(
-      0,
-      Array.from(new Set(restrictionSummary.models)).length - uniqueModels.length,
-    );
+    const planSubtitle = getSubscriptionMarketingSubtitle(plan, t);
+    const durationText = formatSubscriptionSellingDuration(plan, t);
+    const resourceSummaryText =
+      perRequestPriceDisplay?.displayPerRequestPrice
+        ? t('单次约 {{price}}', {
+            price: `${symbol}${perRequestPriceDisplay.displayPerRequestPrice}`,
+          })
+        : getPlanBenefitDescription(plan, t);
+    const scopeSummary = getPlanScopeSummary(plan, restrictionSummary, t);
+    const visibleMetricItems = metricItems.slice(0, isMobile ? 2 : 4);
+    const badgeItems = [
+      marketingBadge
+        ? {
+            key: `badge-${marketingBadge.key}`,
+            color: marketingBadge.tone,
+            text: marketingBadge.label,
+            className:
+              'subscription-plan-selling-card__badge subscription-plan-selling-card__badge--primary',
+          }
+        : null,
+      seriesMeta.label
+        ? {
+            key: `series-${seriesMeta.key}`,
+            color: seriesMeta.color,
+            text: seriesMeta.label,
+          }
+        : null,
+      activeDiscount
+        ? { key: 'discount', color: 'red', text: t('限时优惠') }
+        : null,
+      saleSummary.soldOut
+        ? { key: 'sold-out', color: 'red', text: t('已售罄') }
+        : null,
+      reached && !saleSummary.soldOut
+        ? { key: 'reached', color: 'orange', text: t('已达上限') }
+        : null,
+      availability.count > 0 && limit > 0
+        ? {
+            key: 'bought',
+            color: 'blue',
+            text: t('已购 {{count}} / {{limit}}', {
+              count: availability.count,
+              limit,
+            }),
+          }
+        : null,
+    ]
+      .filter(Boolean)
+      .slice(0, isMobile ? 2 : 3);
 
     return (
       <Card
@@ -3023,94 +3122,97 @@ const SubscriptionPlansCard = ({
       >
         <div className='subscription-plan-selling-card__inner'>
           <div className='subscription-plan-selling-card__top'>
+            <div className='subscription-plan-selling-card__badges'>
+              {badgeItems.map((item) => (
+                <Tag
+                  key={item.key}
+                  color={item.color}
+                  shape='circle'
+                  size='small'
+                  className={item.className}
+                >
+                  {item.text}
+                </Tag>
+              ))}
+            </div>
             <div className='flex items-start justify-between gap-3'>
               <div className='subscription-plan-selling-card__summary min-w-0 flex-1'>
                 <div className='subscription-plan-selling-card__title-row flex flex-wrap items-center gap-2'>
                   <Text strong className='subscription-plan-selling-card__title text-base'>
                     {plan?.title || t('订阅套餐')}
                   </Text>
-                  {seriesMeta.label && (
-                    <Tag color={seriesMeta.color} shape='circle' size='small'>
-                      {seriesMeta.label}
-                    </Tag>
-                  )}
-                  {saleSummary.soldOut && (
-                    <Tag color='red' shape='circle' size='small'>
-                      {t('已售罄')}
-                    </Tag>
-                  )}
-                  {reached && !saleSummary.soldOut && (
-                    <Tag color='orange' shape='circle' size='small'>
-                      {t('已达上限')}
-                    </Tag>
-                  )}
                 </div>
                 <Text
                   type='tertiary'
                   size='small'
-                  className='subscription-plan-selling-card__subtitle mt-2 block leading-6'
+                  className='subscription-plan-selling-card__subtitle mt-1.5 block'
                 >
-                  {plan?.subtitle || t('以套餐配置为准')}
+                  {planSubtitle}
                 </Text>
-                {seriesMeta.showDailyPrice ? (
+                <Text
+                  type='secondary'
+                  size='small'
+                  className='subscription-plan-selling-card__hint mt-1.5 block'
+                >
+                  {resourceSummaryText}
+                </Text>
+                {!isMobile && marketingBadge?.description ? (
                   <Text
-                    type='secondary'
+                    type='primary'
                     size='small'
-                    className='subscription-plan-selling-card__hint mt-2 block leading-5'
+                    className='subscription-plan-selling-card__selling-point mt-1 block'
                   >
-                    {t('支付成功后自动生效。')}
+                    {marketingBadge.description}
                   </Text>
-                ) : (
-                  <span className='subscription-plan-selling-card__hint-spacer' />
-                )}
+                ) : null}
               </div>
-              <div className='rounded-2xl bg-white/80 p-2 shadow-sm dark:bg-white/10'>
+              <div className='subscription-plan-selling-card__icon-wrap'>
                 <Package
-                  size={18}
+                  size={16}
                   className='text-semi-color-text-1'
                 />
               </div>
             </div>
 
-            <div className='subscription-plan-selling-card__price-row mt-5 flex items-end justify-between gap-3'>
+            <div className='subscription-plan-selling-card__price-row mt-4 flex items-end justify-between gap-3'>
               <div className='min-w-0 flex-1'>
                 <div className='subscription-plan-selling-card__price'>
-                  {seriesMeta.showDailyPrice && dailyPriceDisplay ? (
-                    <>
-                      {symbol}
-                      {dailyPriceDisplay.displayDailyPrice}
-                    </>
-                  ) : (
-                    <>
-                      {symbol}
-                      {displayPrice}
-                    </>
-                  )}
+                  {symbol}
+                  {displayPrice}
                   <span className='subscription-plan-selling-card__duration'>
-                    /{' '}
-                    {seriesMeta.showDailyPrice && dailyPriceDisplay
-                      ? t('天')
-                      : formatSubscriptionSellingDuration(plan, t)}
+                    / {durationText}
                   </span>
                 </div>
                 {seriesMeta.showDailyPrice && dailyPriceDisplay ? (
                   <Text type='secondary' size='small' className='block'>
-                    {t('合计 {{price}} / {{duration}}', {
-                      price: `${symbol}${displayPrice}`,
-                      duration: formatSubscriptionSellingDuration(plan, t),
+                    {t('折合每天约 {{price}}', {
+                      price: `${symbol}${dailyPriceDisplay.displayDailyPrice}`,
                     })}
                   </Text>
                 ) : null}
                 {activeDiscount ? (
-                  <Text type='tertiary' size='small' delete>
-                    {symbol}
-                    {originalPrice.toFixed(
-                      Number.isInteger(originalPrice) ? 0 : 2,
-                    )}
-                  </Text>
+                  <div className='mt-1 flex items-center gap-2'>
+                    <Text type='secondary' size='small'>
+                      {t('原价')}
+                    </Text>
+                    <Text
+                      size='small'
+                      delete
+                      className='font-medium text-semi-color-text-1'
+                    >
+                      {symbol}
+                      {originalPrice.toFixed(
+                        Number.isInteger(originalPrice) ? 0 : 2,
+                      )}
+                    </Text>
+                  </div>
                 ) : null}
                 {activeDiscount ? (
-                  <Text type='tertiary' size='small' className='block'>
+                  <Text
+                    type='tertiary'
+                    size='small'
+                    className='subscription-plan-selling-card__discount-deadline block'
+                  >
                     {t('优惠截止时间')}：{' '}
                     {new Date(
                       Number(plan?.discount_deadline || 0) * 1000,
@@ -3121,19 +3223,21 @@ const SubscriptionPlansCard = ({
               <div className='subscription-plan-selling-card__sale-meta text-right text-xs text-semi-color-text-2'>
                 <div>
                   {saleSummary.unlimited
-                    ? `${t('已售')} ${saleSummary.soldCount}`
-                    : `${t('剩余')} ${saleSummary.remainingSaleCount}`}
+                    ? `${t('已售出')} ${saleSummary.soldCount} ${t('份')}`
+                    : `${t('还可购买')} ${saleSummary.remainingSaleCount} ${t('份')}`}
                 </div>
-                {limit > 0 && <div>{`${t('限购')} ${limit}`}</div>}
+                {limit > 0 && <div>{`${t('每人限购')} ${limit} ${t('份')}`}</div>}
               </div>
             </div>
           </div>
 
           <div className='subscription-plan-selling-card__metrics'>
-            {metricItems.slice(0, 4).map((item) => (
+            {visibleMetricItems.map((item, metricIndex) => (
               <div
                 key={item.key}
-                className='subscription-plan-selling-card__metric'
+                className={`subscription-plan-selling-card__metric${
+                  metricIndex > 1 ? ' subscription-plan-selling-card__metric--secondary' : ''
+                }`}
               >
                 <div className='subscription-plan-selling-card__metric-label'>
                   {item.label}
@@ -3149,74 +3253,30 @@ const SubscriptionPlansCard = ({
             <div className='subscription-plan-selling-card__restriction-head'>
               <div className='subscription-plan-selling-card__restriction-title'>
                 <IconInfoCircle size='small' />
-                <span>{t('适用范围')}</span>
+                <span>{t('购买后可用范围')}</span>
               </div>
             </div>
-            {plan?.upgrade_group || uniqueGroups.length > 0 ? (
-              <div className='subscription-plan-selling-card__restriction-row'>
-                <div className='subscription-plan-selling-card__restriction-label'>
-                  {plan?.upgrade_group ? t('分组') : t('可用分组')}
-                </div>
-                <div className='subscription-plan-selling-card__tag-group'>
-                  {plan?.upgrade_group ? renderGroup(plan.upgrade_group) : null}
-                  {uniqueGroups.map((item) => (
-                    <React.Fragment key={`group-fragment-${item}`}>
-                      {renderGroup(item)}
-                    </React.Fragment>
-                  ))}
-                </div>
+            <div className='subscription-plan-selling-card__scope-summary'>
+              <div className='subscription-plan-selling-card__scope-primary subscription-plan-selling-card__scope-chip'>
+                {scopeSummary.primary}
               </div>
-            ) : null}
-            {uniqueModels.length > 0 || uniqueVendors.length > 0 ? (
-              <div className='subscription-plan-selling-card__restriction-row'>
-                <div className='subscription-plan-selling-card__restriction-label'>
-                  {t('模型与供应商')}
-                </div>
-                <div className='subscription-plan-selling-card__tag-group'>
-                  {uniqueModels.map((item) =>
-                    renderScopedValueTag({
-                      key: `model-${item}`,
-                      value: item,
-                      color: 'grey',
-                      onClick: (event) => copyRestrictionValue(event, item),
-                    }),
-                  )}
-                  {remainingModelCount > 0 ? (
-                    <Tag color='orange' shape='circle' size='small'>
-                      {t('另有 {{count}} 个模型', { count: remainingModelCount })}
-                    </Tag>
-                  ) : null}
-                  {uniqueVendors.map((item) =>
-                    renderScopedValueTag({
-                      key: `vendor-${item}`,
-                      value: item,
-                      color: 'green',
-                      onClick: (event) => copyRestrictionValue(event, item),
-                    }),
-                  )}
-                </div>
+              <div className='subscription-plan-selling-card__scope-secondary subscription-plan-selling-card__scope-chip subscription-plan-selling-card__scope-chip--muted'>
+                {scopeSummary.secondary}
               </div>
-            ) : null}
-            {!plan?.upgrade_group &&
-              uniqueGroups.length === 0 &&
-              uniqueModels.length === 0 &&
-              uniqueVendors.length === 0 ? (
-              <div className='subscription-plan-selling-card__restriction-empty'>
-                {t('适用范围更灵活')}
-              </div>
-            ) : null}
+            </div>
             <div className='grid grid-cols-2 gap-2'>
               <Button
                 theme='outline'
                 type='tertiary'
+                size='small'
                 block
                 onClick={() => openPlanDetail(plan?.id)}
               >
-                {t('查看详情')}
+                {t('查看全部权益')}
               </Button>
               {disabled ? (
                 <Tooltip content={tip} position='top'>
-                  <Button theme='solid' type='primary' disabled block>
+                  <Button theme='solid' type='primary' size='small' disabled block>
                     {availability.buttonText}
                   </Button>
                 </Tooltip>
@@ -3225,6 +3285,7 @@ const SubscriptionPlansCard = ({
                   <Button
                     theme='solid'
                     type='primary'
+                    size='small'
                     block
                     onClick={() => openBuy(record)}
                     icon={
@@ -3294,20 +3355,31 @@ const SubscriptionPlansCard = ({
             {recommendedEmptyStatePlans.map((record, index) => {
               const plan = record?.plan || {};
               const seriesMeta = getSubscriptionSeriesMeta(plan, t);
+              const marketingBadge = getSubscriptionCommerceBadge(
+                plan,
+                recommendedEmptyStatePlans.map((item) => item?.plan || item),
+                t,
+              );
               const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
               const { symbol, effectivePrice } = getSubscriptionPriceDisplay(plan);
               const availability = getPlanPurchaseAvailability(plan);
+              const perRequestPriceDisplay = getSubscriptionPerRequestPriceDisplay(plan);
               const displayPrice = Number(effectivePrice || 0).toFixed(
                 Number.isInteger(effectivePrice) ? 0 : 2,
               );
               return (
                 <div
                   key={plan?.id || index}
-                  className='rounded-2xl border border-[var(--semi-color-border)] bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)]'
+                  className='rounded-2xl border border-[var(--semi-color-border)] bg-white p-3.5 shadow-[0_12px_32px_rgba(15,23,42,0.05)]'
                 >
                   <div className='flex items-start justify-between gap-3'>
                     <div className='min-w-0'>
                       <div className='flex flex-wrap items-center gap-2'>
+                        {marketingBadge ? (
+                          <Tag color={marketingBadge.tone} shape='circle' size='small'>
+                            {marketingBadge.label}
+                          </Tag>
+                        ) : null}
                         <Text strong>{plan?.title || t('订阅套餐')}</Text>
                         {seriesMeta.label ? (
                           <Tag color={seriesMeta.color} shape='circle' size='small'>
@@ -3320,39 +3392,38 @@ const SubscriptionPlansCard = ({
                         size='small'
                         className='mt-2 block leading-6'
                       >
-                        {plan?.subtitle || getPlanBenefitDescription(plan, t)}
+                        {getSubscriptionMarketingSubtitle(plan, t) || getPlanBenefitDescription(plan, t)}
                       </Text>
                     </div>
                     <div className='rounded-xl bg-blue-50 p-2 text-blue-600'>
                       <Package size={16} />
                     </div>
                   </div>
-                  <div className='mt-4'>
-                    <div className='text-3xl font-semibold text-semi-color-text-0'>
-                      {seriesMeta.showDailyPrice && dailyPriceDisplay
-                        ? `${symbol}${dailyPriceDisplay.displayDailyPrice}`
-                        : `${symbol}${displayPrice}`}
-                      <span className='ml-1 text-base font-medium text-semi-color-text-2'>
-                        /{' '}
-                        {seriesMeta.showDailyPrice && dailyPriceDisplay
-                          ? t('天')
-                          : formatSubscriptionSellingDuration(plan, t)}
+                  <div className='mt-3'>
+                    <div className='text-[28px] font-semibold leading-none text-semi-color-text-0'>
+                      {`${symbol}${displayPrice}`}
+                      <span className='ml-1 text-sm font-medium text-semi-color-text-2'>
+                        / {formatSubscriptionSellingDuration(plan, t)}
                       </span>
                     </div>
                     <Text type='tertiary' size='small' className='mt-1 block'>
-                      {seriesMeta.showDailyPrice && dailyPriceDisplay
-                        ? t('合计 {{price}} / {{duration}}', {
-                            price: `${symbol}${displayPrice}`,
-                            duration: formatSubscriptionSellingDuration(plan, t),
+                      {perRequestPriceDisplay?.displayPerRequestPrice
+                        ? t('单次约 {{price}}', {
+                            price: `${symbol}${perRequestPriceDisplay.displayPerRequestPrice}`,
                           })
-                        : getPlanBenefitDescription(plan, t)}
+                        : dailyPriceDisplay
+                          ? t('折合每天约 {{price}}', {
+                              price: `${symbol}${dailyPriceDisplay.displayDailyPrice}`,
+                            })
+                          : getPlanBenefitDescription(plan, t)}
                     </Text>
                   </div>
                   <Button
                     theme='solid'
                     type='primary'
+                    size='small'
                     block
-                    className='mt-4'
+                    className='mt-3'
                     disabled={availability.disabled}
                     onClick={() => openBuy(record)}
                   >
