@@ -814,7 +814,7 @@ const AddEditSubscriptionModal = ({
                           label={t('原价')}
                           required
                           min={0}
-                          precision={2}
+                          precision={4}
                           rules={[{ required: true, message: t('请输入金额') }]}
                           style={{ width: '100%' }}
                         />
@@ -825,7 +825,7 @@ const AddEditSubscriptionModal = ({
                           field='discount_price_amount'
                           label={t('优惠价格')}
                           min={0}
-                          precision={2}
+                          precision={4}
                           extraText={t('0 表示不启用限时优惠')}
                           style={{ width: '100%' }}
                         />

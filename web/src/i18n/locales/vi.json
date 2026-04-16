@@ -6260,5 +6260,12 @@
   "切换当前展示的订阅记录和消耗范围": "Chuyển phạm vi gói đăng ký và bản ghi tiêu hao đang hiển thị",
   "查看订单发放状态与交付结果": "Xem trạng thái phát đơn và kết quả bàn giao",
   "收到通知后，快速导入并开始使用": "Sau khi nhận thông báo, nhập nhanh và bắt đầu sử dụng",
-  "请先了解该 Key 的保管与调用限制": "Trước tiên hãy xem kỹ cách bảo quản và giới hạn sử dụng của Key này"
+  "请先了解该 Key 的保管与调用限制": "Trước tiên hãy xem kỹ cách bảo quản và giới hạn sử dụng của Key này",
+  "可在此配置 /console/token 的默认测试模型与导入默认参数（CCSwitch）": "Có thể cấu hình mô hình kiểm tra mặc định và tham số nhập mặc định (CCSwitch) cho /console/token tại đây",
+  "配置默认测试模型": "Cấu hình mô hình kiểm tra mặc định",
+  "配置 /console/token 默认测试模型": "Cấu hình mô hình kiểm tra mặc định cho /console/token",
+  "该配置会通过 /api/status 下发到前端，普通用户与管理员测试令牌时都会使用这里的默认模型。": "Cấu hình này sẽ được gửi xuống frontend qua /api/status, và cả người dùng thường lẫn quản trị viên đều sẽ dùng các mô hình mặc định tại đây khi kiểm tra token.",
+  "Claude 默认模型": "Mô hình Claude mặc định",
+  "Responses 默认模型": "Mô hình Responses mặc định",
+  "恢复默认": "Khôi phục mặc định"
 }

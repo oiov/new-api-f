@@ -30,6 +30,7 @@ import {
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { useSecureVerification } from '../common/useSecureVerification';
+import { getTokenTestDefaults } from '../../helpers/token';
 
 const parsePersistedLastTestInfo = (token) => {
   const tokenId = token?.id;
@@ -300,13 +301,14 @@ export const useAdminTokensData = () => {
   const testToken = async (record) => {
     const tokenId = record?.id;
     if (!tokenId) return;
+    const testDefaults = getTokenTestDefaults();
 
     setTestingTokenIds((prev) => ({ ...prev, [tokenId]: true }));
     try {
       const res = await API.post(`/api/token/admin/${tokenId}/test`, {
         mode: 'both',
-        claude_model: 'claude-opus-4-6',
-        responses_model: 'gpt-5.1-codex',
+        claude_model: testDefaults.claude_model,
+        responses_model: testDefaults.responses_model,
         max_tokens: 16,
       });
       const { success, message, data } = res.data || {};
@@ -401,6 +403,7 @@ export const useAdminTokensData = () => {
       showError(t('请先选择要测试的令牌！'));
       return;
     }
+    const testDefaults = getTokenTestDefaults();
 
     const tokenIds = [...selectedRowKeys];
     const results = [];
@@ -416,8 +419,8 @@ export const useAdminTokensData = () => {
         try {
           const res = await API.post(`/api/token/admin/${current}/test`, {
             mode: 'both',
-            claude_model: 'claude-opus-4-6',
-            responses_model: 'gpt-5.1-codex',
+            claude_model: testDefaults.claude_model,
+            responses_model: testDefaults.responses_model,
             max_tokens: 16,
           });
           if (res?.data?.success) {

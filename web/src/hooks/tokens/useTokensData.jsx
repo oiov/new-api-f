@@ -29,7 +29,10 @@ import {
 } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
-import { fetchTokenKey as fetchTokenKeyById } from '../../helpers/token';
+import {
+  fetchTokenKey as fetchTokenKeyById,
+  getTokenTestDefaults,
+} from '../../helpers/token';
 
 const SUBSCRIPTION_ACCESS_TOKEN_NAME = 'Subscription Access';
 
@@ -46,6 +49,36 @@ const isProtectedSubscriptionAccessToken = (token) => {
   const expiredTime = Number(token.expired_time ?? -1);
   const now = Math.floor(Date.now() / 1000);
   return expiredTime === -1 || expiredTime > now;
+};
+
+const parsePersistedLastTestInfo = (token) => {
+  const tokenId = token?.id;
+  if (!tokenId) {
+    return null;
+  }
+  const lastTestAt = Number(token?.last_test_at || 0);
+  const summaryText = String(token?.last_test_summary || '').trim();
+  if (!lastTestAt || !summaryText) {
+    return null;
+  }
+  try {
+    const summary = JSON.parse(summaryText);
+    return {
+      at: lastTestAt * 1000,
+      ok: Boolean(token?.last_test_ok),
+      error: String(summary?.error || ''),
+      results: Array.isArray(summary?.results) ? summary.results : [],
+      mode: String(summary?.mode || ''),
+    };
+  } catch (error) {
+    return {
+      at: lastTestAt * 1000,
+      ok: Boolean(token?.last_test_ok),
+      error: '',
+      results: [],
+      mode: '',
+    };
+  }
 };
 
 export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
@@ -84,6 +117,8 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const [resolvedTokenKeys, setResolvedTokenKeys] = useState({});
   const [loadingTokenKeys, setLoadingTokenKeys] = useState({});
   const keyRequestsRef = useRef({});
+  const [testingTokenIds, setTestingTokenIds] = useState({});
+  const [lastTestResultsById, setLastTestResultsById] = useState({});
 
   // Form state
   const [formApi, setFormApi] = useState(null);
@@ -114,7 +149,19 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Sync page data from API response
   const syncPageData = (payload) => {
-    setTokens(payload.items || []);
+    const items = payload.items || [];
+    const persistedLastTestMap = {};
+    items.forEach((token) => {
+      const info = parsePersistedLastTestInfo(token);
+      if (info) {
+        persistedLastTestMap[token.id] = info;
+      }
+    });
+    setTokens(items);
+    setLastTestResultsById((prev) => ({
+      ...prev,
+      ...persistedLastTestMap,
+    }));
     setTokenCount(payload.total || 0);
     setActivePage(payload.page || 1);
     setPageSize(payload.page_size || pageSize);
@@ -396,6 +443,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Row selection handlers
   const rowSelection = {
+    selectedRowKeys: selectedKeys.map((token) => token.id),
     getCheckboxProps: (record) => ({
       disabled: isProtectedSubscriptionAccessToken(record),
     }),
@@ -406,6 +454,245 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
         selectedRows.filter((token) => !isProtectedSubscriptionAccessToken(token)),
       );
     },
+  };
+
+  const testToken = async (record) => {
+    const tokenId = record?.id;
+    if (!tokenId) return;
+    const testDefaults = getTokenTestDefaults();
+
+    setTestingTokenIds((prev) => ({ ...prev, [tokenId]: true }));
+    try {
+      const res = await API.post(`/api/token/${tokenId}/test`, {
+        mode: 'both',
+        claude_model: testDefaults.claude_model,
+        responses_model: testDefaults.responses_model,
+        max_tokens: 16,
+      });
+      const { success, message, data } = res.data || {};
+      if (!success) {
+        showError(message || t('测试失败'));
+        setLastTestResultsById((prev) => ({
+          ...prev,
+          [tokenId]: {
+            at: Date.now(),
+            ok: false,
+            error: message || t('测试失败'),
+            results: [],
+          },
+        }));
+        return;
+      }
+
+      const results = Array.isArray(data?.results) ? data.results : [];
+      const allOk = results.length > 0 && results.every((item) => item?.ok);
+      setLastTestResultsById((prev) => ({
+        ...prev,
+        [tokenId]: {
+          at: Number(data?.last_test_at || 0) * 1000 || Date.now(),
+          ok: allOk,
+          error: '',
+          results,
+          mode: String(data?.mode || 'both'),
+        },
+      }));
+
+      Modal.info({
+        title: t('令牌测试结果'),
+        size: 'small',
+        content: (
+          <div className='flex flex-col gap-1'>
+            <div>
+              {t('令牌')}: {record.name || '-'} ({t('令牌 ID')}: {tokenId})
+            </div>
+            {results.length > 0 ? (
+              <div className='flex flex-col gap-2 mt-2'>
+                {results.map((item) => (
+                  <div
+                    key={`${item.kind || ''}-${item.path || ''}-${item.model || ''}`}
+                    className='p-2 rounded-md'
+                    style={{
+                      background: 'var(--semi-color-fill-0)',
+                      border: '1px solid var(--semi-color-border)',
+                    }}
+                  >
+                    <div className='font-medium'>
+                      {(item.kind || '-').toUpperCase()} · {item.path || '-'}
+                    </div>
+                    <div>
+                      {t('模型')}: {item.model || '-'}
+                    </div>
+                    <div>
+                      {t('HTTP')}: {item.http_code} / {t('通过')}:{' '}
+                      {item.ok ? '1' : '0'}
+                    </div>
+                    {item.x_oneapi_request_id ? (
+                      <div>
+                        {t('请求 ID')}: {item.x_oneapi_request_id}
+                      </div>
+                    ) : null}
+                    {item.error_type ? (
+                      <div>
+                        {t('错误类型')}: {item.error_type}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className='mt-2'>{t('无返回结果')}</div>
+            )}
+          </div>
+        ),
+      });
+    } catch (error) {
+      showError(error?.message || t('测试失败'));
+    } finally {
+      setTestingTokenIds((prev) => ({ ...prev, [tokenId]: false }));
+    }
+  };
+
+  const batchTestTokens = async () => {
+    if (!selectedKeys.length) {
+      showError(t('请先选择要测试的令牌！'));
+      return;
+    }
+    const testDefaults = getTokenTestDefaults();
+
+    const tokenRecords = [...selectedKeys];
+    const tokenIds = tokenRecords.map((item) => item.id);
+    const results = [];
+    const recordMap = new Map(tokenRecords.map((item) => [item.id, item]));
+    const concurrency = 3;
+    let cursor = 0;
+
+    const worker = async () => {
+      while (cursor < tokenIds.length) {
+        const current = tokenIds[cursor];
+        cursor += 1;
+        setTestingTokenIds((prev) => ({ ...prev, [current]: true }));
+        try {
+          const res = await API.post(`/api/token/${current}/test`, {
+            mode: 'both',
+            claude_model: testDefaults.claude_model,
+            responses_model: testDefaults.responses_model,
+            max_tokens: 16,
+          });
+          if (res?.data?.success) {
+            const payload = res.data.data || {};
+            results.push({ token_id: current, ...payload });
+            const list = Array.isArray(payload?.results) ? payload.results : [];
+            const allOk = list.length > 0 && list.every((item) => item?.ok);
+            setLastTestResultsById((prev) => ({
+              ...prev,
+              [current]: {
+                at: Number(payload?.last_test_at || 0) * 1000 || Date.now(),
+                ok: allOk,
+                error: '',
+                results: list,
+                mode: String(payload?.mode || 'both'),
+              },
+            }));
+          } else {
+            results.push({
+              token_id: current,
+              results: [],
+              error: res?.data?.message || t('测试失败'),
+            });
+            setLastTestResultsById((prev) => ({
+              ...prev,
+              [current]: {
+                at: Date.now(),
+                ok: false,
+                error: res?.data?.message || t('测试失败'),
+                results: [],
+              },
+            }));
+          }
+        } catch (error) {
+          results.push({
+            token_id: current,
+            results: [],
+            error: error?.message || t('测试失败'),
+          });
+          setLastTestResultsById((prev) => ({
+            ...prev,
+            [current]: {
+              at: Date.now(),
+              ok: false,
+              error: error?.message || t('测试失败'),
+              results: [],
+            },
+          }));
+        } finally {
+          setTestingTokenIds((prev) => ({ ...prev, [current]: false }));
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+    const okCount = results.filter((item) => {
+      const list = Array.isArray(item?.results) ? item.results : [];
+      return list.length > 0 && list.every((r) => r.ok);
+    }).length;
+
+    Modal.info({
+      title: t('批量测试结果'),
+      size: 'large',
+      content: (
+        <div className='flex flex-col gap-2'>
+          <div>
+            {t('总计')}: {results.length}，{t('全通过')}: {okCount}
+          </div>
+          <div className='flex flex-col gap-2 max-h-[60vh] overflow-auto pr-1'>
+            {results.map((item) => {
+              const list = Array.isArray(item?.results) ? item.results : [];
+              const record = recordMap.get(item.token_id);
+              return (
+                <div
+                  key={item.token_id}
+                  className='p-2 rounded-md'
+                  style={{
+                    background: 'var(--semi-color-fill-0)',
+                    border: '1px solid var(--semi-color-border)',
+                  }}
+                >
+                  <div className='font-medium'>
+                    {record?.name || t('未命名令牌')} · {t('令牌 ID')}: {item.token_id}
+                  </div>
+                  {item.error ? (
+                    <div className='text-[var(--semi-color-danger)]'>
+                      {t('错误')}: {item.error}
+                    </div>
+                  ) : null}
+                  {list.length ? (
+                    <div className='flex flex-col gap-1 mt-1'>
+                      {list.map((r) => (
+                        <div
+                          key={`${item.token_id}-${r.kind || ''}-${r.path || ''}`}
+                          className='text-sm'
+                        >
+                          {(r.kind || '-').toUpperCase()} {r.path} · {t('HTTP')}{' '}
+                          {r.http_code} · {t('通过')}:{r.ok ? '1' : '0'}
+                          {r.x_oneapi_request_id
+                            ? ` · ${t('请求 ID')}: ${r.x_oneapi_request_id}`
+                            : ''}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className='text-sm text-[var(--semi-color-text-2)] mt-1'>
+                      {t('无返回结果')}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ),
+    });
   };
 
   // Handle row styling
@@ -586,6 +873,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     batchDeleteTokens,
     batchDeleteInvalidTokens,
     batchCopyTokens,
+    testingTokenIds,
+    lastTestResultsById,
+    testToken,
+    batchTestTokens,
     syncPageData,
 
     // Translation

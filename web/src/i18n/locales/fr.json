@@ -5789,5 +5789,12 @@
   "切换当前展示的订阅记录和消耗范围": "Basculer les abonnements et les consommations actuellement affichés",
   "查看订单发放状态与交付结果": "Voir l'état d'émission de la commande et le résultat de livraison",
   "收到通知后，快速导入并开始使用": "Après notification, importez rapidement puis commencez à utiliser",
-  "请先了解该 Key 的保管与调用限制": "Prenez d'abord connaissance des règles de conservation et des limites d'appel de cette clé"
+  "请先了解该 Key 的保管与调用限制": "Prenez d'abord connaissance des règles de conservation et des limites d'appel de cette clé",
+  "可在此配置 /console/token 的默认测试模型与导入默认参数（CCSwitch）": "Configurez ici les modèles de test par défaut et les paramètres d'importation par défaut (CCSwitch) pour /console/token",
+  "配置默认测试模型": "Configurer les modèles de test par défaut",
+  "配置 /console/token 默认测试模型": "Configurer les modèles de test par défaut pour /console/token",
+  "该配置会通过 /api/status 下发到前端，普通用户与管理员测试令牌时都会使用这里的默认模型。": "Cette configuration est transmise au front-end via /api/status, et les utilisateurs comme les administrateurs utiliseront ces modèles par défaut lors du test des jetons.",
+  "Claude 默认模型": "Modèle Claude par défaut",
+  "Responses 默认模型": "Modèle Responses par défaut",
+  "恢复默认": "Restaurer les valeurs par défaut"
 }

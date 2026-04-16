@@ -17,12 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Modal,
   Button,
-  Table,
   Tag,
   Typography,
   Space,
@@ -44,6 +43,8 @@ import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
+import CardTable from '../../../common/ui/CardTable';
+import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import {
   API,
   renderQuota,
@@ -56,6 +57,7 @@ const { Text } = Typography;
 
 const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [keyStatusList, setKeyStatusList] = useState([]);
   const [operationLoading, setOperationLoading] = useState({});
@@ -837,7 +839,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       fixed: 'right',
       width: 240,
       render: (_, record) => (
-        <Space>
+        <div className='flex flex-wrap justify-end gap-2'>
           <Button
             type='tertiary'
             size='small'
@@ -870,7 +872,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
             content={t('此操作不可撤销，将永久删除该密钥')}
             onConfirm={() => handleDeleteKey(record.index)}
             okType={'danger'}
-            position={'topRight'}
+            position={isMobile ? 'top' : 'topRight'}
           >
             <Button
               type='danger'
@@ -880,36 +882,61 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
               {t('删除')}
             </Button>
           </Popconfirm>
-        </Space>
+        </div>
       ),
     },
   ];
 
+  const displayColumns = useMemo(() => {
+    if (!isMobile) {
+      return columns;
+    }
+    const mobileKeys = new Set([
+      'index',
+      'status',
+      'binding_users',
+      'used_count',
+      'used_quota',
+      'max_request_count',
+      'reason',
+      'action',
+    ]);
+    return columns.filter((column) => {
+      if (column.key === 'action') {
+        return true;
+      }
+      return mobileKeys.has(column.dataIndex);
+    });
+  }, [columns, isMobile]);
+
   return (
     <Modal
       title={
-        <Space>
+        <div className='flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center'>
           <Text>{t('多密钥管理')}</Text>
-          {channel?.name && (
+          <div className='flex flex-wrap gap-2'>
+            {channel?.name && (
+              <Tag size='small' shape='circle' color='white'>
+                {channel.name}
+              </Tag>
+            )}
             <Tag size='small' shape='circle' color='white'>
-              {channel.name}
+              {t('总密钥数')}: {total}
             </Tag>
-          )}
-          <Tag size='small' shape='circle' color='white'>
-            {t('总密钥数')}: {total}
-          </Tag>
-          {channel?.channel_info?.multi_key_mode && (
-            <Tag size='small' shape='circle' color='white'>
-              {channel.channel_info.multi_key_mode === 'random'
-                ? t('随机模式')
-                : t('轮询模式')}
-            </Tag>
-          )}
-        </Space>
+            {channel?.channel_info?.multi_key_mode && (
+              <Tag size='small' shape='circle' color='white'>
+                {channel.channel_info.multi_key_mode === 'random'
+                  ? t('随机模式')
+                  : t('轮询模式')}
+              </Tag>
+            )}
+          </div>
+        </div>
       }
       visible={visible}
       onCancel={onCancel}
-      width={1120}
+      width={isMobile ? '100%' : 1120}
+      size={isMobile ? 'full-width' : undefined}
       footer={null}
     >
       <div className='flex flex-col mb-5'>
@@ -921,8 +948,8 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
             border: '1px solid var(--semi-color-border)',
           }}
         >
-          <Row gutter={16} align='middle'>
-            <Col span={8}>
+          <Row gutter={[12, 12]} align='middle'>
+            <Col span={isMobile ? 24 : 8}>
               <div
                 style={{
                   background: 'var(--semi-color-bg-0)',
@@ -956,7 +983,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                 />
               </div>
             </Col>
-            <Col span={8}>
+            <Col span={isMobile ? 24 : 8}>
               <div
                 style={{
                   background: 'var(--semi-color-bg-0)',
@@ -990,7 +1017,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                 />
               </div>
             </Col>
-            <Col span={8}>
+            <Col span={isMobile ? 24 : 8}>
               <div
                 style={{
                   background: 'var(--semi-color-bg-0)',
@@ -1061,12 +1088,11 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
         <div className='flex-1 flex flex-col min-h-0'>
           <Spin spinning={loading}>
             <Card className='!rounded-xl'>
-              <Table
+              <CardTable
                 title={() => (
-                  <Row gutter={12} style={{ width: '100%' }}>
-                    <Col span={14}>
-                      <Row gutter={12} style={{ alignItems: 'center' }}>
-                        <Col>
+                  <Row gutter={[12, 12]} style={{ width: '100%' }}>
+                    <Col span={24} lg={14}>
+                      <div className='flex flex-wrap items-center gap-2'>
                           <Select
                             value={statusFilter}
                             onChange={handleStatusFilterChange}
@@ -1086,14 +1112,17 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                               {t('自动禁用')}
                             </Select.Option>
                           </Select>
-                        </Col>
-                      </Row>
+                      </div>
                     </Col>
                     <Col
-                      span={10}
-                      style={{ display: 'flex', justifyContent: 'flex-end' }}
+                      span={24}
+                      lg={10}
+                      style={{
+                        display: 'flex',
+                        justifyContent: isMobile ? 'flex-start' : 'flex-end',
+                      }}
                     >
-                      <Space>
+                      <div className='flex flex-wrap gap-2'>
                         <Button
                           size='small'
                           type='tertiary'
@@ -1112,10 +1141,10 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                               size='small'
                               type='primary'
                               loading={operationLoading.enable_all}
-                            >
-                              {t('启用全部')}
-                            </Button>
-                          </Popconfirm>
+                          >
+                            {t('启用全部')}
+                          </Button>
+                        </Popconfirm>
                         )}
                         {enabledCount > 0 && (
                           <Popconfirm
@@ -1150,11 +1179,11 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                             {t('删除自动禁用密钥')}
                           </Button>
                         </Popconfirm>
-                      </Space>
+                      </div>
                     </Col>
                   </Row>
                 )}
-                columns={columns}
+                columns={displayColumns}
                 dataSource={keyStatusList}
                 pagination={{
                   currentPage: currentPage,

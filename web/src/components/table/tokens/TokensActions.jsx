@@ -28,6 +28,7 @@ const TokensActions = ({
   setEditingToken,
   setShowEdit,
   batchCopyTokens,
+  batchTestTokens,
   batchDeleteTokens,
   batchDeleteInvalidTokens,
   t,
@@ -95,6 +96,16 @@ const TokensActions = ({
           size='small'
         >
           {t('复制所选令牌')}
+        </Button>
+
+        <Button
+          type='primary'
+          theme='light'
+          className='flex-1 md:flex-initial'
+          onClick={batchTestTokens}
+          size='small'
+        >
+          {t('测试所选令牌')}
         </Button>
 
         <Button

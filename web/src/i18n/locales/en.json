@@ -5899,5 +5899,12 @@
   "切换当前展示的订阅记录和消耗范围": "Switch which subscriptions and usage records are currently shown",
   "查看订单发放状态与交付结果": "View fulfillment status and delivery results for the order",
   "收到通知后，快速导入并开始使用": "Import quickly and start using it after you receive the notice",
-  "请先了解该 Key 的保管与调用限制": "Review the storage and usage limits for this key first"
+  "请先了解该 Key 的保管与调用限制": "Review the storage and usage limits for this key first",
+  "可在此配置 /console/token 的默认测试模型与导入默认参数（CCSwitch）": "Configure the default test models and import defaults (CCSwitch) for /console/token here",
+  "配置默认测试模型": "Configure Default Test Models",
+  "配置 /console/token 默认测试模型": "Configure Default Test Models for /console/token",
+  "该配置会通过 /api/status 下发到前端，普通用户与管理员测试令牌时都会使用这里的默认模型。": "This configuration is delivered to the frontend through /api/status, and both users and admins will use these default models when testing tokens.",
+  "Claude 默认模型": "Default Claude Model",
+  "Responses 默认模型": "Default Responses Model",
+  "恢复默认": "Restore Defaults"
 }

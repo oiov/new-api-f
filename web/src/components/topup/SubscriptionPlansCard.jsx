@@ -80,6 +80,7 @@ import { useIsMobile } from '../../hooks/common/useIsMobile';
 import {
   getClaudeMonthlyMarketingSubtitle,
   formatSubscriptionDuration,
+  formatSubscriptionSettlementPrice,
   getSubscriptionDailyPriceDisplay,
   formatSubscriptionSellingDuration,
   getSubscriptionPriceDisplay,
@@ -321,23 +322,12 @@ function getPlanScopeSummary(plan, restrictionSummary, t) {
   const groupItems = restrictionSummary?.groups?.filter(
     (item) => item && item !== plan?.upgrade_group,
   );
-  const modelSummary = getScopedItemsSummary(restrictionSummary?.models, t, 'model');
-  const vendorSummary = getScopedItemsSummary(
-    restrictionSummary?.vendors,
-    t,
-    'vendor',
-  );
-
   const primaryScope = plan?.upgrade_group
     ? t('升级分组 {{group}}', { group: plan.upgrade_group })
     : getScopedItemsSummary(groupItems, t, 'group') || t('适用范围更灵活');
-  const secondaryScope = [modelSummary, vendorSummary]
-    .filter(Boolean)
-    .join(' · ');
 
   return {
     primary: primaryScope,
-    secondary: secondaryScope || t('详情页可查看全部权益'),
   };
 }
 
@@ -1524,6 +1514,48 @@ const SubscriptionPlansCard = ({
       return series === planSeriesFilter;
     });
   }, [planKeyword, plans, planSeriesFilter]);
+
+  const planSeriesCounts = useMemo(() => {
+    const keyword = planKeyword.trim().toLowerCase();
+    const counts = {
+      all: 0,
+      claude: 0,
+      codex: 0,
+      mixed: 0,
+    };
+
+    (plans || []).forEach((item) => {
+      const plan = item?.plan || {};
+      const matchesKeyword =
+        !keyword ||
+        [
+          plan?.title,
+          plan?.subtitle,
+          plan?.upgrade_group,
+          ...(Array.isArray(plan?.allowed_groups) ? plan.allowed_groups : []),
+          ...(Array.isArray(plan?.allowed_models) ? plan.allowed_models : []),
+          ...(Array.isArray(plan?.allowed_vendor_names)
+            ? plan.allowed_vendor_names
+            : []),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(keyword);
+
+      if (!matchesKeyword) {
+        return;
+      }
+
+      counts.all += 1;
+      const series = inferSubscriptionPlanSeries(plan);
+      if (series === 'claude' || series === 'codex' || series === 'mixed') {
+        counts[series] += 1;
+      }
+    });
+
+    return counts;
+  }, [planKeyword, plans]);
 
   const sortedPlans = useMemo(() => {
     const result = [...filteredPlans];
@@ -2825,9 +2857,7 @@ const SubscriptionPlansCard = ({
           const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
           const { symbol, effectivePrice, originalPrice } =
             getSubscriptionPriceDisplay(plan);
-          const displayPrice = effectivePrice.toFixed(
-            Number.isInteger(effectivePrice) ? 0 : 2,
-          );
+          const displayPrice = formatSubscriptionSettlementPrice(effectivePrice);
           const activeDiscount = isSubscriptionDiscountActive(plan);
           return (
             <div className='inline-flex flex-col items-start'>
@@ -2852,9 +2882,7 @@ const SubscriptionPlansCard = ({
               {activeDiscount ? (
                 <Text type='tertiary' size='small' delete>
                   {symbol}
-                  {originalPrice.toFixed(
-                    Number.isInteger(originalPrice) ? 0 : 2,
-                  )}
+                  {formatSubscriptionSettlementPrice(originalPrice)}
                 </Text>
               ) : null}
               <Text type='tertiary' size='small'>
@@ -3058,9 +3086,7 @@ const SubscriptionPlansCard = ({
     const { symbol, effectivePrice, originalPrice } =
       getSubscriptionPriceDisplay(plan);
     const perRequestPriceDisplay = getSubscriptionPerRequestPriceDisplay(plan);
-    const displayPrice = effectivePrice.toFixed(
-      Number.isInteger(effectivePrice) ? 0 : 2,
-    );
+    const displayPrice = formatSubscriptionSettlementPrice(effectivePrice);
     const activeDiscount = isSubscriptionDiscountActive(plan);
     const disabled = availability.disabled;
     const tip = availability.reason;
@@ -3076,15 +3102,23 @@ const SubscriptionPlansCard = ({
     const visibleMetricItems = metricItems.slice(0, isMobile ? 2 : 4);
     const primaryMetricItems = visibleMetricItems.slice(0, 2);
     const secondaryMetricItems = visibleMetricItems.slice(2);
-    const stockSummaryText = saleSummary.soldOut
-      ? t('已售罄')
-      : saleSummary.unlimited
-        ? t('已售出 {{count}} 份', { count: saleSummary.soldCount })
-        : t('剩余 {{count}} 份', { count: saleSummary.remainingSaleCount });
-    const limitSummaryText =
-      limit > 0
-        ? t('每人限购 {{count}} 份', { count: limit })
-        : t('不限购');
+    const soldSummaryText = t('已售出 {{count}} 份', {
+      count: saleSummary.soldCount,
+    });
+    const statusValueText = !plan?.enabled
+      ? t('已下架')
+      : saleSummary.soldOut
+        ? t('已售罄')
+        : reached
+          ? t('已达上限')
+          : t('可购买');
+    const statusMetaItems = [
+      soldSummaryText,
+      !saleSummary.unlimited
+        ? t('剩余 {{count}} 份', { count: saleSummary.remainingSaleCount })
+        : null,
+      limit > 0 ? t('限购 {{count}} 份', { count: limit }) : null,
+    ].filter(Boolean);
     const badgeItems = [
       marketingBadge
         ? {
@@ -3168,15 +3202,6 @@ const SubscriptionPlansCard = ({
                 >
                   {resourceSummaryText}
                 </Text>
-                {!isMobile && marketingBadge?.description ? (
-                  <Text
-                    type='primary'
-                    size='small'
-                    className='subscription-plan-selling-card__selling-point mt-1 block'
-                  >
-                    {marketingBadge.description}
-                  </Text>
-                ) : null}
               </div>
               <div className='subscription-plan-selling-card__icon-wrap'>
                 <Package
@@ -3187,7 +3212,7 @@ const SubscriptionPlansCard = ({
             </div>
 
             <div className='subscription-plan-selling-card__price-row mt-4 flex items-end justify-between gap-3'>
-              <div className='min-w-0 flex-1'>
+              <div className='subscription-plan-selling-card__price-main min-w-0 flex-1'>
                 <div className='subscription-plan-selling-card__price'>
                   {symbol}
                   {displayPrice}
@@ -3213,9 +3238,7 @@ const SubscriptionPlansCard = ({
                       className='font-medium text-semi-color-text-1'
                     >
                       {symbol}
-                      {originalPrice.toFixed(
-                        Number.isInteger(originalPrice) ? 0 : 2,
-                      )}
+                      {formatSubscriptionSettlementPrice(originalPrice)}
                     </Text>
                   </div>
                 ) : null}
@@ -3234,33 +3257,14 @@ const SubscriptionPlansCard = ({
               </div>
               <div className='subscription-plan-selling-card__sale-panel'>
                 <div className='subscription-plan-selling-card__sale-kicker'>
-                  {t('售卖信息')}
+                  {t('购买状态')}
                 </div>
                 <div className='subscription-plan-selling-card__sale-value'>
-                  {stockSummaryText}
+                  {statusValueText}
                 </div>
                 <div className='subscription-plan-selling-card__sale-subvalue'>
-                  {limitSummaryText}
+                  {statusMetaItems.join(' · ')}
                 </div>
-              </div>
-            </div>
-
-            <div className='subscription-plan-selling-card__fact-strip'>
-              <div className='subscription-plan-selling-card__fact-pill'>
-                <span className='subscription-plan-selling-card__fact-pill-label'>
-                  {t('购买后核心权益')}
-                </span>
-                <span className='subscription-plan-selling-card__fact-pill-value'>
-                  {resourceSummaryText}
-                </span>
-              </div>
-              <div className='subscription-plan-selling-card__fact-pill subscription-plan-selling-card__fact-pill--muted'>
-                <span className='subscription-plan-selling-card__fact-pill-label'>
-                  {t('可用范围')}
-                </span>
-                <span className='subscription-plan-selling-card__fact-pill-value'>
-                  {scopeSummary.primary}
-                </span>
               </div>
             </div>
           </div>
@@ -3305,23 +3309,30 @@ const SubscriptionPlansCard = ({
               <div className='subscription-plan-selling-card__scope-primary subscription-plan-selling-card__scope-chip'>
                 {scopeSummary.primary}
               </div>
-              <div className='subscription-plan-selling-card__scope-secondary subscription-plan-selling-card__scope-chip subscription-plan-selling-card__scope-chip--muted'>
-                {scopeSummary.secondary}
-              </div>
             </div>
-            <div className='grid grid-cols-2 gap-2'>
+            <div className='subscription-plan-selling-card__actions grid grid-cols-2 gap-2'>
               <Button
                 theme='outline'
                 type='tertiary'
                 size='small'
                 block
                 onClick={() => openPlanDetail(plan?.id)}
+                icon={<BookOpen size={14} />}
+                iconPosition='right'
               >
                 {t('查看全部权益')}
               </Button>
               {disabled ? (
                 <Tooltip content={tip} position='top'>
-                  <Button theme='solid' type='primary' size='small' disabled block>
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    size='small'
+                    disabled
+                    block
+                    icon={<ShieldCheck size={14} />}
+                    iconPosition='right'
+                  >
                     {availability.buttonText}
                   </Button>
                 </Tooltip>
@@ -3408,9 +3419,10 @@ const SubscriptionPlansCard = ({
               const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
               const { symbol, effectivePrice } = getSubscriptionPriceDisplay(plan);
               const availability = getPlanPurchaseAvailability(plan);
+              const saleSummary = availability.saleSummary;
               const perRequestPriceDisplay = getSubscriptionPerRequestPriceDisplay(plan);
-              const displayPrice = Number(effectivePrice || 0).toFixed(
-                Number.isInteger(effectivePrice) ? 0 : 2,
+              const displayPrice = formatSubscriptionSettlementPrice(
+                effectivePrice,
               );
               return (
                 <div
@@ -3462,6 +3474,24 @@ const SubscriptionPlansCard = ({
                             })
                           : getPlanBenefitDescription(plan, t)}
                     </Text>
+                    <div className='mt-2 flex flex-wrap items-center gap-2'>
+                      <Tag color='blue' shape='circle' size='small'>
+                        {t('已售出 {{count}} 份', { count: saleSummary.soldCount })}
+                      </Tag>
+                      {!saleSummary.unlimited ? (
+                        <Tag
+                          color={saleSummary.soldOut ? 'red' : 'grey'}
+                          shape='circle'
+                          size='small'
+                        >
+                          {saleSummary.soldOut
+                            ? t('已售罄')
+                            : t('剩余 {{count}} 份', {
+                                count: saleSummary.remainingSaleCount,
+                              })}
+                        </Tag>
+                      ) : null}
+                    </div>
                   </div>
                   <Button
                     theme='solid'
@@ -3471,6 +3501,14 @@ const SubscriptionPlansCard = ({
                     className='mt-3'
                     disabled={availability.disabled}
                     onClick={() => openBuy(record)}
+                    icon={
+                      availability.disabled ? (
+                        <ShieldCheck size={14} />
+                      ) : (
+                        <ChevronRight size={14} />
+                      )
+                    }
+                    iconPosition='right'
                   >
                     {availability.disabled
                       ? availability.buttonText
@@ -3487,6 +3525,8 @@ const SubscriptionPlansCard = ({
               type='primary'
               size='large'
               onClick={() => navigate('/pricing?currency=CNY&plan_series=all')}
+              icon={<Package size={16} />}
+              iconPosition='right'
             >
               {t('查看全部套餐')}
             </Button>
@@ -3495,6 +3535,8 @@ const SubscriptionPlansCard = ({
               type='tertiary'
               size='large'
               onClick={() => setActiveMainTab('plan_list')}
+              icon={<List size={16} />}
+              iconPosition='right'
             >
               {t('切换到套餐列表')}
             </Button>
@@ -3506,12 +3548,32 @@ const SubscriptionPlansCard = ({
 
   const planSeriesOptions = useMemo(
     () => [
-      { value: 'all', label: `${t('全部系列')} (${plans.length})` },
-      { value: 'claude', label: t('Claude 系列') },
-      { value: 'codex', label: t('Codex 系列') },
-      { value: 'mixed', label: t('混合系列') },
+      {
+        value: 'all',
+        label: `${t('全部系列')} (${planSeriesCounts.all})`,
+        plainLabel: t('全部系列'),
+        count: planSeriesCounts.all,
+      },
+      {
+        value: 'claude',
+        label: `${t('Claude 系列')} (${planSeriesCounts.claude})`,
+        plainLabel: t('Claude 系列'),
+        count: planSeriesCounts.claude,
+      },
+      {
+        value: 'codex',
+        label: `${t('Codex 系列')} (${planSeriesCounts.codex})`,
+        plainLabel: t('Codex 系列'),
+        count: planSeriesCounts.codex,
+      },
+      {
+        value: 'mixed',
+        label: `${t('混合系列')} (${planSeriesCounts.mixed})`,
+        plainLabel: t('混合系列'),
+        count: planSeriesCounts.mixed,
+      },
     ],
-    [plans.length, t],
+    [planSeriesCounts, t],
   );
 
   const planSortOptions = useMemo(
@@ -4394,7 +4456,20 @@ const SubscriptionPlansCard = ({
                 <TabPane
                   key={option.value}
                   itemKey={option.value}
-                  tab={option.label}
+                  tab={
+                    <span className='inline-flex items-center gap-2'>
+                      <span>{option.plainLabel || option.label}</span>
+                      <Tag
+                        color={
+                          planSeriesFilter === option.value ? 'blue' : 'grey'
+                        }
+                        shape='circle'
+                        size='small'
+                      >
+                        {option.count ?? 0}
+                      </Tag>
+                    </span>
+                  }
                 />
               ))}
             </Tabs>

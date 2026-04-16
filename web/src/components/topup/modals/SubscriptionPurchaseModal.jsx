@@ -31,6 +31,7 @@ import { Crown, Package, Sparkles } from 'lucide-react';
 import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
 import {
+  formatSubscriptionSettlementPrice,
   formatSubscriptionSellingDuration,
   getClaudeMonthlyMarketingSubtitle,
   getSubscriptionDailyPriceDisplay,
@@ -116,9 +117,7 @@ const SubscriptionPurchaseModal = ({
   const { symbol, effectivePrice, originalPrice } =
     getSubscriptionPriceDisplay(plan);
   const hasActiveDiscount = isSubscriptionDiscountActive(plan);
-  const displayPrice = effectivePrice.toFixed(
-    Number.isInteger(effectivePrice) ? 0 : 2,
-  );
+  const displayPrice = formatSubscriptionSettlementPrice(effectivePrice);
   const computedSubtitle = getPlanComputedSubtitle(plan, t, symbol, effectivePrice);
   // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
   const hasStripe =
@@ -273,7 +272,7 @@ const SubscriptionPurchaseModal = ({
               {hasActiveDiscount ? (
                 <Text type='tertiary' delete className='subscription-purchase-modal__price-original'>
                   {symbol}
-                  {originalPrice.toFixed(Number.isInteger(originalPrice) ? 0 : 2)}
+                  {formatSubscriptionSettlementPrice(originalPrice)}
                 </Text>
               ) : null}
               <div className='subscription-purchase-modal__price-current'>

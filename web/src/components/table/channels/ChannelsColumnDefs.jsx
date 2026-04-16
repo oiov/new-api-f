@@ -351,6 +351,7 @@ const renderRequestLimit = (record, t) => {
 export const getChannelsColumns = ({
   t,
   COLUMN_KEYS,
+  isMobile = false,
   updateChannelBalance,
   manageChannel,
   manageTag,
@@ -844,6 +845,78 @@ export const getChannelsColumns = ({
               type: 'tertiary',
               onClick: () => checkOllamaVersion(record),
             });
+          }
+
+          if (record.channel_info?.is_multi_key) {
+            moreMenuItems.unshift({
+              node: 'item',
+              name: t('密钥管理'),
+              type: 'tertiary',
+              onClick: () => {
+                setCurrentMultiKeyChannel(record);
+                setShowMultiKeyManageModal(true);
+              },
+            });
+          }
+
+          if (isMobile) {
+            return (
+              <div className='flex w-full flex-wrap justify-end gap-2'>
+                <Button
+                  size='small'
+                  type='tertiary'
+                  onClick={() => testChannel(record, '')}
+                >
+                  {t('测试')}
+                </Button>
+                <Button
+                  type='tertiary'
+                  size='small'
+                  onClick={() => {
+                    setEditingChannel(record);
+                    setShowEdit(true);
+                  }}
+                >
+                  {t('编辑')}
+                </Button>
+                {record.channel_info?.is_multi_key && (
+                  <Button
+                    type='primary'
+                    theme='light'
+                    size='small'
+                    onClick={() => {
+                      setCurrentMultiKeyChannel(record);
+                      setShowMultiKeyManageModal(true);
+                    }}
+                  >
+                    {t('密钥管理')}
+                  </Button>
+                )}
+                {record.status === 1 ? (
+                  <Button
+                    type='danger'
+                    size='small'
+                    onClick={() => manageChannel(record.id, 'disable', record)}
+                  >
+                    {t('禁用')}
+                  </Button>
+                ) : (
+                  <Button
+                    size='small'
+                    onClick={() => manageChannel(record.id, 'enable', record)}
+                  >
+                    {t('启用')}
+                  </Button>
+                )}
+                <Dropdown
+                  trigger='click'
+                  position='bottomRight'
+                  menu={moreMenuItems}
+                >
+                  <Button icon={<IconMore />} type='tertiary' size='small' />
+                </Dropdown>
+              </div>
+            );
           }
 
           return (

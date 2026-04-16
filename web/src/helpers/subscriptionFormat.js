@@ -197,6 +197,18 @@ export function getSubscriptionPriceDisplay(plan) {
   };
 }
 
+export function formatSubscriptionSettlementPrice(amount) {
+  return Number(amount || 0).toFixed(2);
+}
+
+export function formatSubscriptionComputedPrice(amount) {
+  return Number(amount || 0).toFixed(4);
+}
+
+export function formatSubscriptionAdminPrice(amount) {
+  return Number(amount || 0).toFixed(4);
+}
+
 function getSubscriptionDurationDays(plan) {
   const unit = String(plan?.duration_unit || 'month');
   const value = Number(plan?.duration_value || 1);
@@ -215,10 +227,6 @@ function getSubscriptionDurationDays(plan) {
   return value * (dayMap[unit] || 0);
 }
 
-function formatSubscriptionPriceAmount(amount) {
-  return Number(amount || 0).toFixed(Number.isInteger(amount) ? 0 : 2);
-}
-
 export function getSubscriptionDailyPriceDisplay(plan) {
   const priceDisplay = getSubscriptionPriceDisplay(plan);
   const durationDays = getSubscriptionDurationDays(plan);
@@ -230,11 +238,11 @@ export function getSubscriptionDailyPriceDisplay(plan) {
     ...priceDisplay,
     durationDays,
     dailyPrice,
-    displayDailyPrice: formatSubscriptionPriceAmount(dailyPrice),
-    displayEffectivePrice: formatSubscriptionPriceAmount(
+    displayDailyPrice: formatSubscriptionComputedPrice(dailyPrice),
+    displayEffectivePrice: formatSubscriptionSettlementPrice(
       priceDisplay.effectivePrice,
     ),
-    displayOriginalPrice: formatSubscriptionPriceAmount(
+    displayOriginalPrice: formatSubscriptionSettlementPrice(
       priceDisplay.originalPrice,
     ),
   };
@@ -257,7 +265,7 @@ export function getSubscriptionPerRequestPriceDisplay(plan) {
   return {
     ...priceDisplay,
     perRequestPrice,
-    displayPerRequestPrice: formatSubscriptionPriceAmount(perRequestPrice),
+    displayPerRequestPrice: formatSubscriptionComputedPrice(perRequestPrice),
   };
 }
 

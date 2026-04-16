@@ -33,9 +33,16 @@ import {
   Col,
   Row,
 } from '@douyinfe/semi-ui';
-import { Save, X, FileText } from 'lucide-react';
+import {
+  Save,
+  X,
+  FileText,
+  Copy,
+  ClipboardPaste,
+  ClipboardPen,
+} from 'lucide-react';
 import { IconAlertTriangle, IconLink } from '@douyinfe/semi-icons';
-import { API, showError, showSuccess } from '../../../../helpers';
+import { API, copy, showError, showSuccess } from '../../../../helpers';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
@@ -58,6 +65,20 @@ const nameRuleOptions = [
   { label: '包含名称匹配', value: 2 },
   { label: '后缀名称匹配', value: 3 },
 ];
+
+const normalizeTags = (tags) => {
+  if (!Array.isArray(tags)) return [];
+  return [
+    ...new Set(
+      tags.flatMap((tag) =>
+        String(tag || '')
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    ),
+  ];
+};
 
 const EditModelModal = (props) => {
   const { t } = useTranslation();
@@ -128,6 +149,64 @@ const EditModelModal = (props) => {
 
   const handleCancel = () => {
     props.handleClose();
+  };
+
+  const handleCopyTags = async () => {
+    const currentTags = normalizeTags(formApiRef.current?.getValue('tags') || []);
+    if (currentTags.length === 0) {
+      showError(t('当前没有可复制的标签'));
+      return;
+    }
+    const ok = await copy(currentTags.join(','));
+    if (ok) {
+      showSuccess(t('标签已复制到剪贴板'));
+      return;
+    }
+    showError(t('复制标签失败'));
+  };
+
+  const handlePasteTags = async () => {
+    try {
+      if (!navigator?.clipboard?.readText) {
+        showError(t('当前环境不支持读取剪贴板'));
+        return;
+      }
+      const text = await navigator.clipboard.readText();
+      const incomingTags = normalizeTags([text]);
+      if (incomingTags.length === 0) {
+        showError(t('剪贴板中没有可用标签'));
+        return;
+      }
+      const currentTags = normalizeTags(formApiRef.current?.getValue('tags') || []);
+      const nextTags = normalizeTags([...currentTags, ...incomingTags]);
+      formApiRef.current?.setValue('tags', nextTags);
+      showSuccess(
+        t('已粘贴 {{count}} 个标签', { count: incomingTags.length }),
+      );
+    } catch (error) {
+      showError(error?.message || t('粘贴标签失败'));
+    }
+  };
+
+  const handleReplaceTags = async () => {
+    try {
+      if (!navigator?.clipboard?.readText) {
+        showError(t('当前环境不支持读取剪贴板'));
+        return;
+      }
+      const text = await navigator.clipboard.readText();
+      const nextTags = normalizeTags([text]);
+      if (nextTags.length === 0) {
+        showError(t('剪贴板中没有可用标签'));
+        return;
+      }
+      formApiRef.current?.setValue('tags', nextTags);
+      showSuccess(
+        t('已覆盖为 {{count}} 个标签', { count: nextTags.length }),
+      );
+    } catch (error) {
+      showError(error?.message || t('覆盖标签失败'));
+    }
   };
 
   const loadModel = async () => {
@@ -374,53 +453,58 @@ const EditModelModal = (props) => {
                       showClear
                       onChange={(newTags) => {
                         if (!formApiRef.current) return;
-                        const normalize = (tags) => {
-                          if (!Array.isArray(tags)) return [];
-                          return [
-                            ...new Set(
-                              tags.flatMap((tag) =>
-                                tag
-                                  .split(',')
-                                  .map((t) => t.trim())
-                                  .filter(Boolean),
-                              ),
-                            ),
-                          ];
-                        };
-                        const normalized = normalize(newTags);
+                        const normalized = normalizeTags(newTags);
                         formApiRef.current.setValue('tags', normalized);
                       }}
                       style={{ width: '100%' }}
-                      {...(tagGroups.length > 0 && {
-                        extraText: (
-                          <Space wrap>
-                            {tagGroups.map((group) => (
-                              <Button
-                                key={group.id}
-                                size='small'
-                                type='primary'
-                                onClick={() => {
-                                  if (formApiRef.current) {
-                                    const currentTags =
-                                      formApiRef.current.getValue('tags') || [];
-                                    const newTags = [
-                                      ...currentTags,
-                                      ...(group.items || []),
-                                    ];
-                                    const uniqueTags = [...new Set(newTags)];
-                                    formApiRef.current.setValue(
-                                      'tags',
-                                      uniqueTags,
-                                    );
-                                  }
-                                }}
-                              >
-                                {group.name}
-                              </Button>
-                            ))}
-                          </Space>
-                        ),
-                      })}
+                      extraText={
+                        <Space wrap>
+                          <Button
+                            size='small'
+                            theme='light'
+                            icon={<Copy size={14} />}
+                            onClick={handleCopyTags}
+                          >
+                            {t('复制标签')}
+                          </Button>
+                          <Button
+                            size='small'
+                            theme='light'
+                            icon={<ClipboardPaste size={14} />}
+                            onClick={handlePasteTags}
+                          >
+                            {t('粘贴标签')}
+                          </Button>
+                          <Button
+                            size='small'
+                            theme='light'
+                            icon={<ClipboardPen size={14} />}
+                            onClick={handleReplaceTags}
+                          >
+                            {t('覆盖粘贴')}
+                          </Button>
+                          {tagGroups.map((group) => (
+                            <Button
+                              key={group.id}
+                              size='small'
+                              type='primary'
+                              onClick={() => {
+                                if (formApiRef.current) {
+                                  const currentTags =
+                                    formApiRef.current.getValue('tags') || [];
+                                  const newTags = normalizeTags([
+                                    ...currentTags,
+                                    ...(group.items || []),
+                                  ]);
+                                  formApiRef.current.setValue('tags', newTags);
+                                }
+                              }}
+                            >
+                              {group.name}
+                            </Button>
+                          ))}
+                        </Space>
+                      }
                     />
                   </Col>
                   <Col span={24}>

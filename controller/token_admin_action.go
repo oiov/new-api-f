@@ -54,6 +54,23 @@ type adminTokenLastTestSummary struct {
 	Results []adminTokenTestResult `json:"results"`
 }
 
+func getDefaultTokenTestModels() (string, string) {
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+
+	claudeModel := strings.TrimSpace(common.OptionMap["TokenTestDefaultClaudeModel"])
+	if claudeModel == "" {
+		claudeModel = "claude-opus-4-6"
+	}
+
+	responsesModel := strings.TrimSpace(common.OptionMap["TokenTestDefaultResponsesModel"])
+	if responsesModel == "" {
+		responsesModel = "gpt-5.4"
+	}
+
+	return claudeModel, responsesModel
+}
+
 func runTokenRelayTest(tokenKey string, path string, relayFormat types.RelayFormat, headers map[string]string, body []byte) adminTokenTestResult {
 	internalRouter := gin.New()
 	internalRouter.Use(
@@ -99,26 +116,7 @@ func runTokenRelayTest(tokenKey string, path string, relayFormat types.RelayForm
 	}
 }
 
-// TestTokenByAdmin 对指定 token 发起最小测试请求，用于在管理台快速验证 token 是否可用。
-// 注意：该操作会走完整 relay 链路，可能产生实际调用与计费。
-func TestTokenByAdmin(c *gin.Context) {
-	tokenId, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
-	var req adminTokenTestRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
-	token, err := model.GetTokenById(tokenId)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
+func executeTokenAvailabilityTest(c *gin.Context, token *model.Token, req adminTokenTestRequest) {
 	if token == nil || strings.TrimSpace(token.Key) == "" {
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
 		return
@@ -136,18 +134,19 @@ func TestTokenByAdmin(c *gin.Context) {
 	stream := false
 
 	results := make([]adminTokenTestResult, 0, 2)
+	defaultClaudeModel, defaultResponsesModel := getDefaultTokenTestModels()
 
 	claudeModel := strings.TrimSpace(req.ClaudeModel)
 	if claudeModel == "" {
 		claudeModel = strings.TrimSpace(req.Model)
 	}
 	if claudeModel == "" {
-		claudeModel = "claude-opus-4-6"
+		claudeModel = defaultClaudeModel
 	}
 
 	responsesModel := strings.TrimSpace(req.ResponsesModel)
 	if responsesModel == "" {
-		responsesModel = "gpt-5.1-codex"
+		responsesModel = defaultResponsesModel
 	}
 
 	if mode == "claude" || mode == "both" {
@@ -242,6 +241,29 @@ func TestTokenByAdmin(c *gin.Context) {
 		"last_test_ok":      token.LastTestOK,
 		"last_test_summary": token.LastTestSummary,
 	})
+}
+
+// TestTokenByAdmin 对指定 token 发起最小测试请求，用于在管理台快速验证 token 是否可用。
+// 注意：该操作会走完整 relay 链路，可能产生实际调用与计费。
+func TestTokenByAdmin(c *gin.Context) {
+	tokenId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	var req adminTokenTestRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	token, err := model.GetTokenById(tokenId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	executeTokenAvailabilityTest(c, token, req)
 }
 
 func RotateTokenByAdmin(c *gin.Context) {

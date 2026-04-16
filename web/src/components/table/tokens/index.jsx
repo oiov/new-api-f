@@ -439,6 +439,7 @@ function TokensPage() {
               setEditingToken={setEditingToken}
               setShowEdit={setShowEdit}
               batchCopyTokens={batchCopyTokens}
+              batchTestTokens={tokensData.batchTestTokens}
               batchDeleteTokens={batchDeleteTokens}
               batchDeleteInvalidTokens={tokensData.batchDeleteInvalidTokens}
               t={t}
@@ -468,7 +469,14 @@ function TokensPage() {
         })}
         t={tokensData.t}
       >
-        <TokensTable {...tokensData} />
+        <TokensTable
+          {...tokensData}
+          showTestColumn={true}
+          testingTokenIds={tokensData.testingTokenIds}
+          testToken={tokensData.testToken}
+          showLastTestColumn={true}
+          lastTestResultsById={tokensData.lastTestResultsById}
+        />
       </CardPro>
     </>
   );
