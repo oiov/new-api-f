@@ -68,6 +68,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Wallet,
   Zap,
 } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
@@ -213,6 +214,22 @@ function getUsageDisplayText(summary, resourceType, t) {
     return `${summary.remain} ${t('次')}`;
   }
   return renderQuota(summary.remain);
+}
+
+function getAggregateAccessStatusText(enabled, t) {
+  return enabled ? t('已参与自动扣费') : t('已暂停自动扣费');
+}
+
+function getAggregateAccessHelpText(enabled, t) {
+  return enabled
+    ? t('请求命中订阅结算时，系统可以从这份订阅自动扣费。')
+    : t('当前不会从这份订阅自动扣费；开启后才会重新参与订阅结算。');
+}
+
+function getPreferredSubscriptionHelpText(enabled, t) {
+  return enabled
+    ? t('当有多份同类可用订阅时，系统会优先从这份订阅扣费。')
+    : t('开启后，当有多份同类可用订阅时，系统会优先从这份订阅扣费。');
 }
 
 function getUsageDetailText(summary, resourceType, t) {
@@ -936,7 +953,9 @@ const SubscriptionPlansCard = ({
       ? 'wallet_first'
       : billingPreference;
   const subscriptionPreferenceLabel =
-    billingPreference === 'subscription_only' ? t('仅用订阅') : t('优先订阅');
+    billingPreference === 'subscription_only'
+      ? t('只从订阅扣费')
+      : t('优先从订阅扣费');
 
   const planTitleMap = useMemo(() => {
     const map = new Map();
@@ -1712,12 +1731,12 @@ const SubscriptionPlansCard = ({
       value: activeRemainSummary,
       helper:
         displayBillingPreference === 'subscription_only'
-          ? t('仅使用订阅扣费')
+          ? t('只从订阅扣费，不使用钱包')
           : displayBillingPreference === 'wallet_only'
-            ? t('仅使用钱包扣费')
+            ? t('只从钱包扣费，不使用订阅')
             : displayBillingPreference === 'wallet_first'
-              ? t('优先使用钱包扣费')
-              : t('优先使用订阅扣费'),
+              ? t('先从钱包扣费，余额不足再尝试订阅')
+              : t('先从订阅扣费，不足时再按设置回退钱包'),
       icon: Crown,
       color: 'emerald',
       gradient: 'from-emerald-500/10 to-emerald-500/5',
@@ -1810,7 +1829,7 @@ const SubscriptionPlansCard = ({
           <div className='space-y-2 text-sm text-semi-color-text-1'>
             <div>
               {t(
-                '套餐购买成功后会立即生效，并进入“我的订阅”。生效中的套餐会直接参与后续请求结算。',
+                '套餐购买成功后会立即生效，并进入“我的订阅”。开启自动扣费后，生效中的套餐会参与后续请求结算。',
               )}
             </div>
             <div>
@@ -1833,7 +1852,7 @@ const SubscriptionPlansCard = ({
           <div className='space-y-2 text-sm text-semi-color-text-1'>
             <div>
               {t(
-                '如果你启用了订阅扣费，请求会优先尝试使用可用订阅；如果当前订阅不足，再按你的扣费偏好决定是否回退到钱包余额。',
+                '如果你开启了订阅自动扣费，请求会优先尝试使用可用订阅；如果当前订阅不足，再按你的扣费偏好决定是否回退到钱包余额。',
               )}
             </div>
             <div>
@@ -1856,12 +1875,12 @@ const SubscriptionPlansCard = ({
           <div className='space-y-2 text-sm text-semi-color-text-1'>
             <div>
               {t(
-                '多个生效套餐可以同时存在。系统会按“最早到期优先”使用订阅权益，先消耗最早过期的套餐，再消耗后到期的套餐。',
+                '多个生效套餐可以同时存在。系统会按“最早到期优先”使用订阅权益，先从最早过期的套餐扣费，再从后到期的套餐扣费。',
               )}
             </div>
             <div>
               {t(
-                '如果同时存在多个按次套餐，会优先消耗最早到期的按次套餐；如果存在多个按额度套餐，也会优先消耗最早到期的按额度套餐。',
+                '如果同时存在多个按次套餐，会优先从最早到期的按次套餐扣费；如果存在多个按额度套餐，也会优先从最早到期的按额度套餐扣费。',
               )}
             </div>
             <div>
@@ -2130,12 +2149,12 @@ const SubscriptionPlansCard = ({
         value: item.subscription?.upgrade_group || plan?.upgrade_group || '--',
       },
       {
-        label: t('聚合扣费'),
-        value: item.isAggregateEnabled ? t('参与中') : t('已暂停'),
+        label: t('自动扣费'),
+        value: getAggregateAccessStatusText(item.isAggregateEnabled, t),
       },
       {
-        label: t('优先消耗'),
-        value: item.isPreferred ? t('是') : t('否'),
+        label: t('优先扣费'),
+        value: item.isPreferred ? t('已开启') : t('未开启'),
       },
     ];
     if (item.isDerivedDayPass) {
@@ -2178,22 +2197,26 @@ const SubscriptionPlansCard = ({
           <div className='flex flex-wrap items-center gap-2'>
             {canGenerateDayPass(item) ? (
               <>
-                <Button
-                  size='small'
-                  theme='solid'
-                  type='primary'
-                  onClick={() => openCreateDayPass(item)}
-                >
-                  {t('生成天卡')}
-                </Button>
-                <Button
-                  size='small'
-                  theme='light'
-                  type='primary'
-                  onClick={() => openCreateDayPassPlan(item)}
-                >
-                  {t('按天拆分')}
-                </Button>
+                <Tooltip content={t('立即拆出一张独立天卡，适合单独使用或转赠。')}>
+                  <Button
+                    size='small'
+                    theme='solid'
+                    type='primary'
+                    onClick={() => openCreateDayPass(item)}
+                  >
+                    {t('生成天卡')}
+                  </Button>
+                </Tooltip>
+                <Tooltip content={t('按天创建连续拆分计划，系统会每天自动拆出一张天卡。')}>
+                  <Button
+                    size='small'
+                    theme='light'
+                    type='primary'
+                    onClick={() => openCreateDayPassPlan(item)}
+                  >
+                    {t('按天拆分')}
+                  </Button>
+                </Tooltip>
               </>
             ) : null}
             {activeDayPassPlan ? (
@@ -2207,66 +2230,85 @@ const SubscriptionPlansCard = ({
                 {t('取消拆分计划')}
               </Button>
             ) : null}
-            <Button
-              size='small'
-              theme={item.isAggregateEnabled ? 'light' : 'solid'}
-              type={item.isAggregateEnabled ? 'warning' : 'primary'}
-              loading={
-                subscriptionActionLoadingId === item.subscription?.id &&
-                subscriptionActionLoadingType ===
-                  (item.isAggregateEnabled
-                    ? 'disable_aggregate_access'
-                    : 'enable_aggregate_access')
-              }
-              onClick={() =>
-                operateSelfSubscription(
-                  item.subscription?.id,
-                  item.isAggregateEnabled
-                    ? 'disable_aggregate_access'
-                    : 'enable_aggregate_access',
-                  item.isAggregateEnabled
-                    ? t('已暂停该订阅参与聚合扣费')
-                    : t('该订阅已恢复参与聚合扣费'),
-                )
-              }
-            >
-              {item.isAggregateEnabled ? t('暂停聚合') : t('参与聚合')}
-            </Button>
-            <Button
-              size='small'
-              theme={item.isPreferred ? 'light' : 'outline'}
-              type='primary'
-              disabled={!item.isAggregateEnabled || item.state !== 'active'}
-              loading={
-                subscriptionActionLoadingId === item.subscription?.id &&
-                subscriptionActionLoadingType ===
-                  (item.isPreferred ? 'clear_preferred' : 'set_preferred')
-              }
-              onClick={() =>
-                operateSelfSubscription(
-                  item.subscription?.id,
-                  item.isPreferred ? 'clear_preferred' : 'set_preferred',
-                  item.isPreferred
-                    ? t('已取消优先消耗')
-                    : t('已设为优先消耗'),
-                )
+            <Tooltip content={getAggregateAccessHelpText(item.isAggregateEnabled, t)}>
+              <Button
+                size='small'
+                theme={item.isAggregateEnabled ? 'light' : 'solid'}
+                type={item.isAggregateEnabled ? 'warning' : 'primary'}
+                loading={
+                  subscriptionActionLoadingId === item.subscription?.id &&
+                  subscriptionActionLoadingType ===
+                    (item.isAggregateEnabled
+                      ? 'disable_aggregate_access'
+                      : 'enable_aggregate_access')
+                }
+                onClick={() =>
+                  operateSelfSubscription(
+                    item.subscription?.id,
+                    item.isAggregateEnabled
+                      ? 'disable_aggregate_access'
+                      : 'enable_aggregate_access',
+                    item.isAggregateEnabled
+                      ? t('已暂停这份订阅的自动扣费')
+                      : t('已开启这份订阅的自动扣费'),
+                  )
+                }
+              >
+                {item.isAggregateEnabled
+                  ? t('暂停自动扣费')
+                  : t('开启自动扣费')}
+              </Button>
+            </Tooltip>
+            <Tooltip
+              content={
+                !item.isAggregateEnabled || item.state !== 'active'
+                  ? t('只有生效中且已开启自动扣费的订阅，才能设置为优先扣费。')
+                  : getPreferredSubscriptionHelpText(item.isPreferred, t)
               }
             >
-              {item.isPreferred ? t('取消优先') : t('设为优先')}
-            </Button>
-            <Button
-              size='small'
-              type='tertiary'
-              theme='outline'
-              onClick={() =>
-                setConsumeLogsFilter({
-                  subscriptionId: item.subscription?.id,
-                  planId: item.subscription?.plan_id,
-                })
-              }
-            >
-              {t('查看历史消耗')}
-            </Button>
+              <Button
+                size='small'
+                theme={item.isPreferred ? 'light' : 'outline'}
+                type='primary'
+                disabled={!item.isAggregateEnabled || item.state !== 'active'}
+                loading={
+                  subscriptionActionLoadingId === item.subscription?.id &&
+                  subscriptionActionLoadingType ===
+                    (item.isPreferred ? 'clear_preferred' : 'set_preferred')
+                }
+                onClick={() =>
+                  operateSelfSubscription(
+                    item.subscription?.id,
+                    item.isPreferred ? 'clear_preferred' : 'set_preferred',
+                    item.isPreferred
+                      ? t('已取消优先扣费')
+                      : t('已设为优先扣费'),
+                  )
+                }
+              >
+                {item.isPreferred ? t('取消优先扣费') : t('设为优先扣费')}
+              </Button>
+            </Tooltip>
+            <Tooltip content={t('查看这份订阅的历史扣费记录和消耗明细。')}>
+              <Button
+                size='small'
+                type='tertiary'
+                theme='outline'
+                onClick={() =>
+                  setConsumeLogsFilter({
+                    subscriptionId: item.subscription?.id,
+                    planId: item.subscription?.plan_id,
+                  })
+                }
+              >
+                {t('查看扣费明细')}
+              </Button>
+            </Tooltip>
+          </div>
+          <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 px-3 py-2 text-xs text-semi-color-text-1'>
+            {getAggregateAccessStatusText(item.isAggregateEnabled, t)} ·{' '}
+            {getAggregateAccessHelpText(item.isAggregateEnabled, t)}
+            {item.isPreferred ? ` ${getPreferredSubscriptionHelpText(true, t)}` : ''}
           </div>
         </div>
         {!item.usageSummary.unlimited && (
@@ -3462,78 +3504,120 @@ const SubscriptionPlansCard = ({
             </Tag>
           )}
         </div>
-        <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
-          <Space wrap>
-            <Button
-              theme={subscriptionView === 'active' ? 'solid' : 'outline'}
-              type='primary'
-              size='small'
-              onClick={() => setSubscriptionView('active')}
-            >
-              {t('生效中')}
-            </Button>
-            <Button
-              theme={subscriptionView === 'history' ? 'solid' : 'outline'}
-              type='tertiary'
-              size='small'
-              onClick={() => setSubscriptionView('history')}
-            >
-              {t('历史订阅')}
-            </Button>
-            <Button
-              theme={subscriptionView === 'all' ? 'solid' : 'outline'}
-              type='tertiary'
-              size='small'
-              onClick={() => setSubscriptionView('all')}
-            >
-              {t('全部')}
-            </Button>
-            <Button
-              theme='outline'
-              type='tertiary'
-              size='small'
-              onClick={() => setConsumeLogsFilter({})}
-            >
-              {t('全部订阅消耗')}
-            </Button>
-          </Space>
-          <div className='flex items-center gap-2'>
-            <Select
-              value={displayBillingPreference}
-              onChange={onChangeBillingPreference}
-              size='small'
-              optionList={[
-                {
-                  value: 'subscription_first',
-                  label: disableSubscriptionPreference
-                    ? `${t('优先订阅')} (${t('无生效')})`
-                    : t('优先订阅'),
-                  disabled: disableSubscriptionPreference,
-                },
-                { value: 'wallet_first', label: t('优先钱包') },
-                {
-                  value: 'subscription_only',
-                  label: disableSubscriptionPreference
-                    ? `${t('仅用订阅')} (${t('无生效')})`
-                    : t('仅用订阅'),
-                  disabled: disableSubscriptionPreference,
-                },
-                { value: 'wallet_only', label: t('仅用钱包') },
-              ]}
-            />
-            <Button
-              size='small'
-              theme='light'
-              type='tertiary'
-              icon={
-                <RefreshCw
-                  size={12}
-                  className={refreshing ? 'animate-spin' : ''}
+        <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+          <div className='w-full lg:w-auto'>
+            <div className='flex w-full flex-col gap-3 rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:min-w-[360px] sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
+              <div className='flex min-w-0 items-start gap-2.5'>
+                <div className='mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[rgba(99,102,241,0.10)] text-indigo-600'>
+                  <LayoutGrid size={14} />
+                </div>
+                <div className='min-w-0'>
+                  <div className='text-xs font-semibold tracking-[0.01em] text-semi-color-text-0'>
+                    {t('订阅范围')}
+                  </div>
+                  <div className='mt-0.5 text-[11px] leading-4 text-semi-color-text-2'>
+                    {t('切换当前展示的订阅记录和消耗范围')}
+                  </div>
+                </div>
+              </div>
+              <div className='flex flex-wrap items-center gap-2'>
+                <Button
+                  theme={subscriptionView === 'active' ? 'solid' : 'light'}
+                  type='primary'
+                  size='small'
+                  className='!rounded-xl'
+                  onClick={() => setSubscriptionView('active')}
+                >
+                  {t('生效中')}
+                </Button>
+                <Button
+                  theme={subscriptionView === 'history' ? 'solid' : 'light'}
+                  type={subscriptionView === 'history' ? 'primary' : 'tertiary'}
+                  size='small'
+                  className='!rounded-xl'
+                  onClick={() => setSubscriptionView('history')}
+                >
+                  {t('历史订阅')}
+                </Button>
+                <Button
+                  theme={subscriptionView === 'all' ? 'solid' : 'light'}
+                  type={subscriptionView === 'all' ? 'primary' : 'tertiary'}
+                  size='small'
+                  className='!rounded-xl'
+                  onClick={() => setSubscriptionView('all')}
+                >
+                  {t('全部')}
+                </Button>
+                <Button
+                  theme='light'
+                  type='tertiary'
+                  size='small'
+                  className='!rounded-xl !border !border-[rgba(15,23,42,0.08)] !bg-white/80'
+                  onClick={() => setConsumeLogsFilter({})}
+                >
+                  {t('全部订阅消耗')}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className='w-full sm:w-auto'>
+            <div className='flex w-full flex-col gap-3 rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:min-w-[360px] sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
+              <div className='flex min-w-0 items-start gap-2.5'>
+                <div className='mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[rgba(59,130,246,0.10)] text-blue-600'>
+                  <Wallet size={14} />
+                </div>
+                <div className='min-w-0'>
+                  <div className='text-xs font-semibold tracking-[0.01em] text-semi-color-text-0'>
+                    {t('扣费顺序')}
+                  </div>
+                  <div className='mt-0.5 text-[11px] leading-4 text-semi-color-text-2'>
+                    {t('设置请求命中后，系统先尝试从哪里扣费')}
+                  </div>
+                </div>
+              </div>
+              <div className='flex w-full items-center gap-2 sm:w-auto'>
+                <Tooltip content={t('选择请求命中时优先从哪里扣费。')}>
+                  <Select
+                    value={displayBillingPreference}
+                    onChange={onChangeBillingPreference}
+                    size='small'
+                    className='w-full sm:min-w-[220px]'
+                    optionList={[
+                      {
+                        value: 'subscription_first',
+                        label: disableSubscriptionPreference
+                          ? `${t('先扣订阅，不足再扣钱包')} (${t('无生效')})`
+                          : t('先扣订阅，不足再扣钱包'),
+                        disabled: disableSubscriptionPreference,
+                      },
+                      { value: 'wallet_first', label: t('先扣钱包，不足再扣订阅') },
+                      {
+                        value: 'subscription_only',
+                        label: disableSubscriptionPreference
+                          ? `${t('只扣订阅，不扣钱包')} (${t('无生效')})`
+                          : t('只扣订阅，不扣钱包'),
+                        disabled: disableSubscriptionPreference,
+                      },
+                      { value: 'wallet_only', label: t('只扣钱包，不扣订阅') },
+                    ]}
+                  />
+                </Tooltip>
+                <Button
+                  size='small'
+                  theme='light'
+                  type='tertiary'
+                  className='!rounded-xl !border !border-[rgba(15,23,42,0.08)] !bg-white/80'
+                  icon={
+                    <RefreshCw
+                      size={12}
+                      className={refreshing ? 'animate-spin' : ''}
+                    />
+                  }
+                  onClick={handleRefresh}
+                  loading={refreshing}
                 />
-              }
-              onClick={handleRefresh}
-              loading={refreshing}
-            />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -3840,23 +3924,33 @@ const SubscriptionPlansCard = ({
       {normalizedManualDeliveryOrders.length > 0 ? (
         <Card
           className='!rounded-2xl border border-sky-200 bg-sky-50/70 shadow-none'
-          bodyStyle={{ padding: '16px' }}
+          bodyStyle={{ padding: '24px' }}
         >
-          <div className='space-y-3'>
-            <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
-              <div>
+          <div className='space-y-5'>
+            <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+              <div className='min-w-0'>
                 <div className='flex items-center gap-2'>
                   <Text strong>{t('人工发放订单')}</Text>
                   <Tag color='blue' shape='circle' size='small'>
                     {normalizedManualDeliveryOrders.length} {t('个订单')}
                   </Tag>
                 </div>
-                <div className='mt-3 grid gap-3 md:grid-cols-3'>
-                  <div className='rounded-xl border border-semi-color-border bg-white/80 p-3'>
-                    <Text strong>{t('交付说明')}</Text>
-                    <div className='mt-2 text-sm text-semi-color-text-2'>
+                <div className='mt-5 grid gap-4 xl:grid-cols-3'>
+                  <div className='h-full rounded-2xl border border-semi-color-border bg-white/90 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
+                    <div className='flex items-center gap-2.5'>
+                      <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[rgba(59,130,246,0.10)] text-blue-600'>
+                        <BookOpen size={16} />
+                      </div>
+                      <div>
+                        <Text strong>{t('交付说明')}</Text>
+                        <div className='mt-0.5 text-xs text-semi-color-text-2'>
+                          {t('查看订单发放状态与交付结果')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className='mt-3 space-y-2 text-sm leading-6 text-semi-color-text-2'>
                       <div>{t('这里会显示待发放或已发放完成的订单内容。')}</div>
-                      <div className='mt-1'>
+                      <div>
                         {t(
                           'Claude 系列人工发放完成后，系统会自动创建 Subscription Access Key、发送测试消息激活，并通过邮件和站内信通知。',
                         )}
@@ -3864,9 +3958,19 @@ const SubscriptionPlansCard = ({
                     </div>
                   </div>
 
-                  <div className='rounded-xl border border-semi-color-border bg-white/80 p-3'>
-                    <Text strong>{t('导入使用')}</Text>
-                    <div className='mt-2 text-sm text-semi-color-text-2'>
+                  <div className='h-full rounded-2xl border border-semi-color-border bg-white/90 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
+                    <div className='flex items-center gap-2.5'>
+                      <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[rgba(99,102,241,0.10)] text-indigo-600'>
+                        <Zap size={16} />
+                      </div>
+                      <div>
+                        <Text strong>{t('导入使用')}</Text>
+                        <div className='mt-0.5 text-xs text-semi-color-text-2'>
+                          {t('收到通知后，快速导入并开始使用')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className='mt-3 text-sm leading-6 text-semi-color-text-2'>
                       <span>{t('收到通知后，可前往')}</span>
                       <Text
                         link
@@ -3881,14 +3985,24 @@ const SubscriptionPlansCard = ({
                     </div>
                   </div>
 
-                  <div className='rounded-xl border border-red-200 bg-red-50/80 p-3 dark:border-red-500/30 dark:bg-red-500/10'>
-                    <Text strong type='danger'>
-                      {t('安全与限制')}
-                    </Text>
-                    <div className='mt-2 text-sm text-semi-color-text-2'>
+                  <div className='h-full rounded-2xl border border-red-200 bg-red-50/85 p-4 shadow-[0_8px_24px_rgba(239,68,68,0.06)] dark:border-red-500/30 dark:bg-red-500/10'>
+                    <div className='flex items-center gap-2.5'>
+                      <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[rgba(239,68,68,0.12)] text-red-500'>
+                        <ShieldCheck size={16} />
+                      </div>
+                      <div>
+                        <Text strong type='danger'>
+                          {t('安全与限制')}
+                        </Text>
+                        <div className='mt-0.5 text-xs text-red-500/80'>
+                          {t('请先了解该 Key 的保管与调用限制')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className='mt-3 space-y-2 text-sm leading-6 text-semi-color-text-2'>
                       <div>{t('请不要在任何地方泄露你的 Key。')}</div>
-                      <div className='mt-1'>{t('该 Key 每分钟最多 10 次请求。')}</div>
-                      <div className='mt-1'>
+                      <div>{t('该 Key 每分钟最多 10 次请求。')}</div>
+                      <div>
                         {t('该 Key 不可删除、不可重置、不可找回，请务必自行妥善保管。')}
                       </div>
                     </div>
@@ -3993,24 +4107,28 @@ const SubscriptionPlansCard = ({
                               ? t('已作废')
                               : t('已过期')}
                         </Tag>
-                        <Tag
-                          color={item.isAggregateEnabled ? 'blue' : 'grey'}
-                          shape='circle'
-                          size='small'
-                        >
-                          {item.isAggregateEnabled
-                            ? t('参与聚合')
-                            : t('暂停聚合')}
-                        </Tag>
+                        <Tooltip content={getAggregateAccessHelpText(item.isAggregateEnabled, t)}>
+                          <Tag
+                            color={item.isAggregateEnabled ? 'blue' : 'grey'}
+                            shape='circle'
+                            size='small'
+                          >
+                            {item.isAggregateEnabled
+                              ? t('自动扣费中')
+                              : t('已暂停自动扣费')}
+                          </Tag>
+                        </Tooltip>
                         {item.isDerivedDayPass ? (
                           <Tag color='violet' shape='circle' size='small'>
                             {t('天卡')}
                           </Tag>
                         ) : null}
                         {item.isPreferred ? (
-                          <Tag color='orange' shape='circle' size='small'>
-                            {t('优先消耗')}
-                          </Tag>
+                          <Tooltip content={getPreferredSubscriptionHelpText(true, t)}>
+                            <Tag color='orange' shape='circle' size='small'>
+                              {t('优先扣费')}
+                            </Tag>
+                          </Tooltip>
                         ) : null}
                       </div>
                       <div className='mt-1 text-xs text-semi-color-text-2'>
