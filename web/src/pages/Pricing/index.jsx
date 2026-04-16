@@ -31,6 +31,21 @@ import { StatusContext } from '../../context/Status';
 const PLAN_LIST_TAB = ['plan', 'list'].join('_');
 const PACKAGE_VARIANT = ['pack', 'age'].join('');
 
+function resolvePricingTab(searchParams) {
+  const explicitTab = searchParams.get('tab');
+  if (explicitTab) {
+    return explicitTab;
+  }
+  if (
+    searchParams.has('plan_series') ||
+    searchParams.has('plan_sort') ||
+    searchParams.has('plan_view')
+  ) {
+    return 'subscription-plans';
+  }
+  return 'model-pricing';
+}
+
 const SubscriptionPricingTab = ({ onPlansChange, t }) => {
   const [statusState] = useContext(StatusContext);
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
@@ -221,9 +236,7 @@ const Pricing = () => {
   const { t } = useTranslation();
   const pricingSeo = getPricingSeo(i18n.language);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(
-    searchParams.get('tab') || 'model-pricing',
-  );
+  const [activeTab, setActiveTab] = useState(() => resolvePricingTab(searchParams));
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
   const subscriptionCanonicalPath = useMemo(() => {
     const next = new URLSearchParams(searchParams);
@@ -241,6 +254,28 @@ const Pricing = () => {
       }),
     [i18n.language, searchParams, subscriptionCanonicalPath, subscriptionPlans],
   );
+
+  useEffect(() => {
+    const nextTab = resolvePricingTab(searchParams);
+    setActiveTab((prev) => (prev === nextTab ? prev : nextTab));
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get('tab')) {
+      return;
+    }
+    if (resolvePricingTab(searchParams) !== 'subscription-plans') {
+      return;
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', 'subscription-plans');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
 
   const handleTabChange = (key) => {
     setActiveTab(key);

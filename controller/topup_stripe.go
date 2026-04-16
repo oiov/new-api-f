@@ -236,6 +236,7 @@ func sessionCompleted(event stripe.Event) {
 			PaymentMethod: topUp.PaymentMethod,
 			Money:         topUp.Money,
 			Quota:         logger.FormatQuota(int(topUp.Money * common.QuotaPerUnit)),
+			CompletedAt:   topUp.CompleteTime,
 		})
 		model.NotifyTopUpSuccessToUserAsync(
 			topUp.UserId,

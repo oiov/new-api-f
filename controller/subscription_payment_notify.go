@@ -19,5 +19,6 @@ func notifySubscriptionPaymentSuccessAsync(tradeNo string) {
 		PaymentMethod: order.PaymentMethod,
 		Money:         order.Money,
 		Quota:         strings.TrimSpace(order.PlanTitle),
+		CompletedAt:   order.CompleteTime,
 	})
 }

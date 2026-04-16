@@ -738,6 +738,41 @@ html.dark .sbg-variant-green {
   min-height: 72px;
 }
 
+.subscription-plan-selling-card__scene {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  align-self: flex-start;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    135deg,
+    rgba(37, 99, 235, 0.08) 0%,
+    rgba(59, 130, 246, 0.14) 100%
+  );
+  border: 1px solid rgba(37, 99, 235, 0.12);
+}
+
+.subscription-plan-selling-card__scene-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--semi-color-primary);
+  white-space: nowrap;
+}
+
+.subscription-plan-selling-card__scene-text {
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .subscription-plan-selling-card__title-row {
   align-items: flex-start;
   min-height: 22px;
@@ -748,11 +783,11 @@ html.dark .sbg-variant-green {
 }
 
 .subscription-plan-selling-card__subtitle {
-  min-height: 32px;
+  min-height: 16px;
   font-size: 11px;
   line-height: 1.45 !important;
   display: -webkit-box !important;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -761,6 +796,77 @@ html.dark .sbg-variant-green {
   min-height: 16px;
   font-size: 11px;
   line-height: 1.35 !important;
+}
+
+.subscription-plan-selling-card__sale-panel {
+  min-width: 118px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.subscription-plan-selling-card__sale-kicker {
+  font-size: 10px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-plan-selling-card__sale-value {
+  margin-top: 6px;
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--semi-color-text-0);
+}
+
+.subscription-plan-selling-card__sale-subvalue {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-plan-selling-card__fact-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.subscription-plan-selling-card__fact-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.subscription-plan-selling-card__fact-pill--muted {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.subscription-plan-selling-card__fact-pill-label {
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-plan-selling-card__fact-pill-value {
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--semi-color-text-0);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .subscription-plan-selling-card__selling-point {
@@ -812,6 +918,14 @@ html.dark .sbg-variant-green {
   padding: 7px 8px;
   border: 1px solid color-mix(in srgb, var(--semi-color-border) 70%, transparent 30%);
   background: var(--semi-color-fill-0);
+}
+
+.subscription-plan-selling-card__metric--primary {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-primary-light-default) 32%, #ffffff 68%) 0%,
+    var(--semi-color-fill-0) 100%
+  );
 }
 
 .subscription-plan-selling-card__metric--secondary {
@@ -4398,8 +4512,16 @@ html.dark .pricing-plan-detail-empty-note {
     align-items: flex-end;
   }
 
-  .subscription-plan-selling-card__sale-meta {
-    min-width: 56px;
+  .subscription-plan-selling-card__sale-panel {
+    min-width: 92px;
+    padding: 8px 9px;
+  }
+
+  .subscription-plan-selling-card__sale-value {
+    font-size: 13px;
+  }
+
+  .subscription-plan-selling-card__sale-subvalue {
     font-size: 10px;
   }
 
@@ -4430,6 +4552,12 @@ html.dark .pricing-plan-detail-empty-note {
   .subscription-plan-selling-card__restriction-head,
   .subscription-plan-selling-card__discount-deadline {
     display: none;
+  }
+
+  .subscription-plan-selling-card__fact-strip {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-top: 8px;
   }
 
   .subscription-plan-selling-card__scope-summary {

@@ -364,6 +364,7 @@ func EpayNotify(c *gin.Context) {
 					PaymentMethod: topUp.PaymentMethod,
 					Money:         topUp.Money,
 					Quota:         logger.LogQuota(int(topUp.Amount) * int(common.QuotaPerUnit)),
+					CompletedAt:   topUp.CompleteTime,
 				})
 				model.NotifyTopUpSuccessToUserAsync(
 					topUp.UserId,

@@ -28,6 +28,7 @@ type PaymentSuccessNotification struct {
 	PaymentMethod string
 	Money         float64
 	Quota         string
+	CompletedAt   int64
 }
 
 func NotifyPaymentSuccessAsync(notification PaymentSuccessNotification) {
@@ -200,15 +201,23 @@ func buildPaymentSuccessMarkdown(notification PaymentSuccessNotification, uid st
 	if category == "" {
 		category = "支付"
 	}
+	completedAt := notification.CompletedAt
+	if completedAt <= 0 {
+		completedAt = common.GetTimestamp()
+	}
 
 	lines := []string{
 		"# 支付成功",
 		"",
+		"系统已完成本地订单处理。",
+		"",
 		fmt.Sprintf("- 类型：%s", category),
+		fmt.Sprintf("- 处理结果：%s", "success"),
 		fmt.Sprintf("- 用户 ID：%d", notification.UserID),
 		fmt.Sprintf("- 订单号：`%s`", notification.TradeNo),
 		fmt.Sprintf("- 支付方式：%s", fallbackText(notification.PaymentMethod)),
 		fmt.Sprintf("- 支付金额：%.2f", notification.Money),
+		fmt.Sprintf("- 完成时间：%s", time.Unix(completedAt, 0).In(time.Local).Format("2006-01-02 15:04:05 MST")),
 	}
 	if quota := strings.TrimSpace(notification.Quota); quota != "" {
 		label := "充值额度"

@@ -3074,6 +3074,17 @@ const SubscriptionPlansCard = ({
         : getPlanBenefitDescription(plan, t);
     const scopeSummary = getPlanScopeSummary(plan, restrictionSummary, t);
     const visibleMetricItems = metricItems.slice(0, isMobile ? 2 : 4);
+    const primaryMetricItems = visibleMetricItems.slice(0, 2);
+    const secondaryMetricItems = visibleMetricItems.slice(2);
+    const stockSummaryText = saleSummary.soldOut
+      ? t('已售罄')
+      : saleSummary.unlimited
+        ? t('已售出 {{count}} 份', { count: saleSummary.soldCount })
+        : t('剩余 {{count}} 份', { count: saleSummary.remainingSaleCount });
+    const limitSummaryText =
+      limit > 0
+        ? t('每人限购 {{count}} 份', { count: limit })
+        : t('不限购');
     const badgeItems = [
       marketingBadge
         ? {
@@ -3142,17 +3153,18 @@ const SubscriptionPlansCard = ({
                     {plan?.title || t('订阅套餐')}
                   </Text>
                 </div>
+                <div className='subscription-plan-selling-card__scene mt-2'>
+                  <span className='subscription-plan-selling-card__scene-label'>
+                    {t('适合场景')}
+                  </span>
+                  <span className='subscription-plan-selling-card__scene-text'>
+                    {planSubtitle}
+                  </span>
+                </div>
                 <Text
                   type='tertiary'
                   size='small'
                   className='subscription-plan-selling-card__subtitle mt-1.5 block'
-                >
-                  {planSubtitle}
-                </Text>
-                <Text
-                  type='secondary'
-                  size='small'
-                  className='subscription-plan-selling-card__hint mt-1.5 block'
                 >
                   {resourceSummaryText}
                 </Text>
@@ -3220,24 +3232,57 @@ const SubscriptionPlansCard = ({
                   </Text>
                 ) : null}
               </div>
-              <div className='subscription-plan-selling-card__sale-meta text-right text-xs text-semi-color-text-2'>
-                <div>
-                  {saleSummary.unlimited
-                    ? `${t('已售出')} ${saleSummary.soldCount} ${t('份')}`
-                    : `${t('还可购买')} ${saleSummary.remainingSaleCount} ${t('份')}`}
+              <div className='subscription-plan-selling-card__sale-panel'>
+                <div className='subscription-plan-selling-card__sale-kicker'>
+                  {t('售卖信息')}
                 </div>
-                {limit > 0 && <div>{`${t('每人限购')} ${limit} ${t('份')}`}</div>}
+                <div className='subscription-plan-selling-card__sale-value'>
+                  {stockSummaryText}
+                </div>
+                <div className='subscription-plan-selling-card__sale-subvalue'>
+                  {limitSummaryText}
+                </div>
+              </div>
+            </div>
+
+            <div className='subscription-plan-selling-card__fact-strip'>
+              <div className='subscription-plan-selling-card__fact-pill'>
+                <span className='subscription-plan-selling-card__fact-pill-label'>
+                  {t('购买后核心权益')}
+                </span>
+                <span className='subscription-plan-selling-card__fact-pill-value'>
+                  {resourceSummaryText}
+                </span>
+              </div>
+              <div className='subscription-plan-selling-card__fact-pill subscription-plan-selling-card__fact-pill--muted'>
+                <span className='subscription-plan-selling-card__fact-pill-label'>
+                  {t('可用范围')}
+                </span>
+                <span className='subscription-plan-selling-card__fact-pill-value'>
+                  {scopeSummary.primary}
+                </span>
               </div>
             </div>
           </div>
 
           <div className='subscription-plan-selling-card__metrics'>
-            {visibleMetricItems.map((item, metricIndex) => (
+            {primaryMetricItems.map((item) => (
               <div
                 key={item.key}
-                className={`subscription-plan-selling-card__metric${
-                  metricIndex > 1 ? ' subscription-plan-selling-card__metric--secondary' : ''
-                }`}
+                className='subscription-plan-selling-card__metric subscription-plan-selling-card__metric--primary'
+              >
+                <div className='subscription-plan-selling-card__metric-label'>
+                  {item.label}
+                </div>
+                <div className='subscription-plan-selling-card__metric-value'>
+                  {item.value}
+                </div>
+              </div>
+            ))}
+            {secondaryMetricItems.map((item) => (
+              <div
+                key={item.key}
+                className='subscription-plan-selling-card__metric subscription-plan-selling-card__metric--secondary'
               >
                 <div className='subscription-plan-selling-card__metric-label'>
                   {item.label}
