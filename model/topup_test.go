@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -60,4 +61,11 @@ func TestGetAllTopUpsByFilter(t *testing.T) {
 		require.Len(t, items, 1)
 		require.Equal(t, "t-u1-success", items[0].TradeNo)
 	})
+}
+
+func TestValidateTopUpPaidMoney(t *testing.T) {
+	topUp := &TopUp{Money: 12.345}
+	require.NoError(t, ValidateTopUpPaidMoney(topUp, decimal.RequireFromString("12.35")))
+	require.ErrorIs(t, ValidateTopUpPaidMoney(topUp, decimal.RequireFromString("12.36")), ErrPaymentAmountMismatch)
+	require.EqualError(t, ValidateTopUpPaidMoney(nil, decimal.RequireFromString("1.00")), "充值订单不存在")
 }

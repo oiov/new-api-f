@@ -27,6 +27,21 @@ type TopUp struct {
 	Invoiced      bool    `json:"invoiced" gorm:"default:false"` // 是否已开发票
 }
 
+var ErrPaymentMethodMismatch = errors.New("payment method mismatch")
+var ErrPaymentAmountMismatch = errors.New("payment amount mismatch")
+
+func ValidateTopUpPaidMoney(topUp *TopUp, paidMoney decimal.Decimal) error {
+	if topUp == nil {
+		return errors.New("充值订单不存在")
+	}
+	expectedMoney := decimal.NewFromFloat(topUp.Money).Round(2)
+	actualMoney := paidMoney.Round(2)
+	if !expectedMoney.Equal(actualMoney) {
+		return fmt.Errorf("%w: expected=%s actual=%s", ErrPaymentAmountMismatch, expectedMoney.StringFixed(2), actualMoney.StringFixed(2))
+	}
+	return nil
+}
+
 type TopUpAdminFilters struct {
 	UserID         int
 	Keyword        string
@@ -146,6 +161,10 @@ func Recharge(referenceId string, customerId string) (completed bool, err error)
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
+		}
+
+		if topUp.PaymentMethod != "stripe" {
+			return ErrPaymentMethodMismatch
 		}
 
 		if topUp.Status == common.TopUpStatusSuccess {
@@ -449,6 +468,10 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			return errors.New("充值订单不存在")
 		}
 
+		if topUp.PaymentMethod != "creem" {
+			return ErrPaymentMethodMismatch
+		}
+
 		if topUp.Status == common.TopUpStatusSuccess {
 			return nil
 		}
@@ -510,6 +533,16 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 }
 
 func RechargeWaffo(tradeNo string) (completed bool, err error) {
+	topUp := GetTopUpByTradeNo(tradeNo)
+	if topUp == nil {
+		common.SysError("waffo topup failed: 充值订单不存在")
+		return false, errors.New("充值失败，请稍后重试")
+	}
+	if topUp.PaymentMethod != "waffo" {
+		common.SysError("waffo topup failed: " + ErrPaymentMethodMismatch.Error())
+		return false, errors.New("充值失败，请稍后重试")
+	}
+
 	topUp, quotaToAdd, completed, err := rechargeAmountBasedTopUp(tradeNo)
 
 	if err != nil {
