@@ -43,10 +43,18 @@ export default function CheckinLotteryPage() {
             <span>{t('签到管理')}</span>
           </div>
           <div className='checkin-lottery-minimal-header__chips'>
-            <Tag color={checkinEnabled ? 'green' : 'grey'} type='light' shape='circle'>
+            <Tag
+              color={checkinEnabled ? 'green' : 'grey'}
+              type='light'
+              shape='circle'
+            >
               {t('签到')} · {checkinStatusText}
             </Tag>
-            <Tag color={turnstileEnabled ? 'blue' : 'grey'} type='light' shape='circle'>
+            <Tag
+              color={turnstileEnabled ? 'blue' : 'grey'}
+              type='light'
+              shape='circle'
+            >
               {turnstileEnabled ? t('验证开启') : t('无需验证')}
             </Tag>
             <Tag color='grey' type='light' shape='circle'>
@@ -62,7 +70,7 @@ export default function CheckinLotteryPage() {
             turnstileEnabled={turnstileEnabled}
             turnstileSiteKey={turnstileSiteKey}
             showActivityLottery={false}
-            showLeaderboard={false}
+            showLeaderboard={true}
             mode='full'
             className='checkin-lottery-calendar-card'
           />
