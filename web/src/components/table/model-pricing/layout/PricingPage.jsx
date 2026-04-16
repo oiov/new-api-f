@@ -27,6 +27,15 @@ import ModelDetailSideSheet from '../modal/ModelDetailSideSheet';
 import { useModelPricingData } from '../../../../hooks/model-pricing/useModelPricingData';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
+const SUBSCRIPTION_QUERY_KEYS = [
+  'plan_tab',
+  'plan_sort',
+  'plan_series',
+  'plan_page',
+  'plan_size',
+  'plan_view',
+];
+
 // 从 URL params 读取定价页初始值
 function readInitialValues(params) {
   const quota = params.get('quota');
@@ -72,8 +81,9 @@ const PricingPage = () => {
         set('currency', pricingData.currency, 'USD');
         set('unit', pricingData.tokenUnit, 'M');
         set('view', viewMode, 'list');
-        // PricingPage 只在 model-pricing tab 下渲染，确保 tab 参数被清除
+        // PricingPage 只在 model-pricing tab 下渲染，确保不会把订阅页参数带回 URL。
         next.delete('tab');
+        SUBSCRIPTION_QUERY_KEYS.forEach((key) => next.delete(key));
         return next;
       },
       { replace: true },

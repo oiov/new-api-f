@@ -30,6 +30,15 @@ import { StatusContext } from '../../context/Status';
 
 const PLAN_LIST_TAB = ['plan', 'list'].join('_');
 const PACKAGE_VARIANT = ['pack', 'age'].join('');
+const SUBSCRIPTION_QUERY_KEYS = [
+  'tab',
+  'plan_tab',
+  'plan_sort',
+  'plan_series',
+  'plan_page',
+  'plan_size',
+  'plan_view',
+];
 
 function resolvePricingTab(searchParams) {
   const explicitTab = searchParams.get('tab');
@@ -282,8 +291,11 @@ const Pricing = () => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (key === 'model-pricing') next.delete('tab');
-        else next.set('tab', key);
+        if (key === 'model-pricing') {
+          SUBSCRIPTION_QUERY_KEYS.forEach((queryKey) => next.delete(queryKey));
+        } else {
+          next.set('tab', key);
+        }
         return next;
       },
       { replace: true },
