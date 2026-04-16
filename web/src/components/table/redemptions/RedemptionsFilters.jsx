@@ -28,6 +28,7 @@ const RedemptionsFilters = ({
   searchRedemptions,
   loading,
   searching,
+  subscriptionPlanOptions,
   t,
 }) => {
   // Handle form reset and immediate search
@@ -70,6 +71,31 @@ const RedemptionsFilters = ({
             field='searchKeyword'
             prefix={<IconSearch />}
             placeholder={t('关键字(id/名称/前缀，如 fishxredemptionP)')}
+            showClear
+            pure
+            size='small'
+          />
+        </div>
+        <div className='w-full md:w-40'>
+          <Form.Select
+            field='redemptionType'
+            placeholder={t('兑换类型')}
+            optionList={[
+              { label: t('全部类型'), value: '' },
+              { label: t('订阅套餐'), value: 'subscription' },
+              { label: t('额度兑换'), value: 'quota' },
+            ]}
+            showClear
+            pure
+            size='small'
+          />
+        </div>
+        <div className='w-full md:w-56'>
+          <Form.Select
+            field='subscriptionPlanId'
+            placeholder={t('筛选订阅套餐')}
+            optionList={subscriptionPlanOptions || []}
+            filter
             showClear
             pure
             size='small'

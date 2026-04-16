@@ -27,6 +27,18 @@ import {
   getSubscriptionSaleSummary,
 } from '../../helpers/subscriptionFormat';
 
+const trimToMaxRunes = (value, maxRunes = 20) => {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+  const runes = Array.from(text);
+  if (runes.length <= maxRunes) {
+    return text;
+  }
+  return runes.slice(0, maxRunes).join('');
+};
+
 const PLAN_FILTER_INIT_VALUES = {
   keyword: '',
   // Admin: show all plans by default (including disabled) to avoid confusion
@@ -70,6 +82,10 @@ export const useSubscriptionsData = () => {
   const [showEdit, setShowEdit] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
   const [sheetPlacement, setSheetPlacement] = useState('left'); // 'left' | 'right'
+  const [showIssueCardCode, setShowIssueCardCode] = useState(false);
+  const [issuingRedemptionPreset, setIssuingRedemptionPreset] = useState({
+    id: undefined,
+  });
 
   // Load subscription plans
   const loadPlans = async () => {
@@ -346,6 +362,25 @@ export const useSubscriptionsData = () => {
     setShowEdit(true);
   };
 
+  const openIssuePlanRedemption = (planRecord) => {
+    const plan = planRecord?.plan || {};
+    setIssuingRedemptionPreset({
+      id: undefined,
+      redemption_type: 'subscription',
+      subscription_plan_id: plan?.id ? String(plan.id) : undefined,
+      name: trimToMaxRunes(plan?.title || ''),
+      count: 1,
+    });
+    setShowIssueCardCode(true);
+  };
+
+  const closeIssuePlanRedemption = () => {
+    setShowIssueCardCode(false);
+    setIssuingRedemptionPreset({
+      id: undefined,
+    });
+  };
+
   // Initialize data on component mount
   useEffect(() => {
     loadPlans();
@@ -474,6 +509,8 @@ export const useSubscriptionsData = () => {
     showEdit,
     editingPlan,
     sheetPlacement,
+    showIssueCardCode,
+    issuingRedemptionPreset,
     setShowEdit,
     setEditingPlan,
 
@@ -508,6 +545,8 @@ export const useSubscriptionsData = () => {
     closeEdit,
     openCreate,
     openEdit,
+    openIssuePlanRedemption,
+    closeIssuePlanRedemption,
 
     // Translation
     t,

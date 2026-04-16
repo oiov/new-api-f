@@ -68,6 +68,27 @@ const EditRedemptionModal = (props) => {
     expired_time: null,
   });
 
+  const getCreateInitValues = () => {
+    const base = getInitValues();
+    const preset = props.editingRedemption || {};
+    return {
+      ...base,
+      ...preset,
+      subscription_plan_id:
+        preset.subscription_plan_id === undefined
+          ? base.subscription_plan_id
+          : preset.subscription_plan_id,
+      quota:
+        preset.quota === undefined ? base.quota : Number(preset.quota || 0),
+      count:
+        preset.count === undefined ? base.count : Number(preset.count || 1),
+      expired_time:
+        preset.expired_time && !(preset.expired_time instanceof Date)
+          ? new Date(Number(preset.expired_time) * 1000)
+          : preset.expired_time || base.expired_time,
+    };
+  };
+
   const handleCancel = () => {
     props.handleClose();
   };
@@ -113,10 +134,10 @@ const EditRedemptionModal = (props) => {
       if (isEdit) {
         loadRedemption();
       } else {
-        formApiRef.current.setValues(getInitValues());
+        formApiRef.current.setValues(getCreateInitValues());
       }
     }
-  }, [props.editingRedemption.id]);
+  }, [isEdit, props.editingRedemption]);
 
   const submit = async (values) => {
     const redemptionType = values.redemption_type || 'quota';
@@ -245,7 +266,7 @@ const EditRedemptionModal = (props) => {
       >
         <Spin spinning={loading}>
           <Form
-            initValues={getInitValues()}
+            initValues={getCreateInitValues()}
             getFormApi={(api) => (formApiRef.current = api)}
             onSubmit={submit}
           >

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { API, showError, showSuccess, copy } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import {
@@ -28,6 +28,7 @@ import {
 } from '../../constants/redemption.constants';
 import { Modal } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 
 const mapKeywordToPrefix = (keyword) => {
@@ -58,6 +59,15 @@ const mapKeywordToPrefix = (keyword) => {
 
 export const useRedemptionsData = () => {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialFilters = useMemo(
+    () => ({
+      searchKeyword: searchParams.get('keyword') || '',
+      redemptionType: searchParams.get('redemption_type') || '',
+      subscriptionPlanId: searchParams.get('subscription_plan_id') || '',
+    }),
+    [],
+  );
 
   // Basic state
   const [redemptions, setRedemptions] = useState([]);
@@ -79,18 +89,40 @@ export const useRedemptionsData = () => {
 
   // UI state
   const [compactMode, setCompactMode] = useTableCompactMode('redemptions');
+  const [subscriptionPlanOptions, setSubscriptionPlanOptions] = useState([]);
 
   // Form state
-  const formInitValues = {
-    searchKeyword: '',
-  };
+  const formInitValues = initialFilters;
 
   // Get form values
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
     return {
       searchKeyword: formValues.searchKeyword || '',
+      redemptionType: formValues.redemptionType || '',
+      subscriptionPlanId: formValues.subscriptionPlanId || '',
     };
+  };
+
+  const buildFilterParams = (filters = {}) => {
+    const params = new URLSearchParams();
+    const keyword = String(filters.searchKeyword || '').trim();
+    const redemptionType = String(filters.redemptionType || '').trim();
+    const subscriptionPlanId = String(filters.subscriptionPlanId || '').trim();
+    if (keyword) {
+      params.set('keyword', keyword);
+    }
+    if (redemptionType) {
+      params.set('redemption_type', redemptionType);
+    }
+    if (subscriptionPlanId) {
+      params.set('subscription_plan_id', subscriptionPlanId);
+    }
+    return params;
+  };
+
+  const syncFilterParams = (filters = {}) => {
+    setSearchParams(buildFilterParams(filters), { replace: true });
   };
 
   // Set redemption data format
@@ -98,13 +130,35 @@ export const useRedemptionsData = () => {
     setRedemptions(redemptions);
   };
 
+  const loadSubscriptionPlans = async () => {
+    try {
+      const res = await API.get('/api/subscription/admin/plans');
+      if (res.data?.success) {
+        const plans = (res.data.data || []).map((item) => item.plan || item);
+        setSubscriptionPlanOptions(
+          plans.map((plan) => ({
+            label: `${plan.title} (#${plan.id})`,
+            value: String(plan.id),
+          })),
+        );
+        return;
+      }
+    } catch {}
+    setSubscriptionPlanOptions([]);
+  };
+
   // Load redemption list
-  const loadRedemptions = async (page = 1, pageSize) => {
+  const loadRedemptions = async (
+    page = 1,
+    pageSize,
+    filters = getFormValues(),
+  ) => {
     setLoading(true);
     try {
-      const res = await API.get(
-        `/api/redemption/?p=${page}&page_size=${pageSize}`,
-      );
+      const params = buildFilterParams(filters);
+      params.set('p', String(page));
+      params.set('page_size', String(pageSize));
+      const res = await API.get(`/api/redemption/?${params.toString()}`);
       const { success, message, data } = res.data;
       if (success) {
         const newPageData = data.items;
@@ -122,18 +176,24 @@ export const useRedemptionsData = () => {
 
   // Search redemption codes
   const searchRedemptions = async (page = 1, size = pageSize) => {
-    const { searchKeyword } = getFormValues();
+    const filters = getFormValues();
+    const { searchKeyword } = filters;
+    syncFilterParams(filters);
     if (searchKeyword === '') {
-      await loadRedemptions(page, size);
+      await loadRedemptions(page, size, filters);
       return;
     }
 
     setSearching(true);
     try {
       const normalizedKeyword = mapKeywordToPrefix(searchKeyword);
-      const res = await API.get(
-        `/api/redemption/search?keyword=${encodeURIComponent(normalizedKeyword)}&p=${page}&page_size=${size}`,
-      );
+      const params = buildFilterParams({
+        ...filters,
+        searchKeyword: normalizedKeyword,
+      });
+      params.set('p', String(page));
+      params.set('page_size', String(size));
+      const res = await API.get(`/api/redemption/search?${params.toString()}`);
       const { success, message, data } = res.data;
       if (success) {
         const newPageData = data.items;
@@ -192,9 +252,10 @@ export const useRedemptionsData = () => {
 
   // Refresh data
   const refresh = async (page = activePage) => {
-    const { searchKeyword } = getFormValues();
+    const filters = getFormValues();
+    const { searchKeyword } = filters;
     if (searchKeyword === '') {
-      await loadRedemptions(page, pageSize);
+      await loadRedemptions(page, pageSize, filters);
     } else {
       await searchRedemptions(page, pageSize);
     }
@@ -203,9 +264,10 @@ export const useRedemptionsData = () => {
   // Handle page change
   const handlePageChange = (page) => {
     setActivePage(page);
-    const { searchKeyword } = getFormValues();
+    const filters = getFormValues();
+    const { searchKeyword } = filters;
     if (searchKeyword === '') {
-      loadRedemptions(page, pageSize);
+      loadRedemptions(page, pageSize, filters);
     } else {
       searchRedemptions(page, pageSize);
     }
@@ -215,9 +277,10 @@ export const useRedemptionsData = () => {
   const handlePageSizeChange = (size) => {
     setPageSize(size);
     setActivePage(1);
-    const { searchKeyword } = getFormValues();
+    const filters = getFormValues();
+    const { searchKeyword } = filters;
     if (searchKeyword === '') {
-      loadRedemptions(1, size);
+      loadRedemptions(1, size, filters);
     } else {
       searchRedemptions(1, size);
     }
@@ -325,12 +388,13 @@ export const useRedemptionsData = () => {
 
   // Initialize data loading
   useEffect(() => {
-    loadRedemptions(1, pageSize)
+    loadSubscriptionPlans();
+    loadRedemptions(1, ITEMS_PER_PAGE, initialFilters)
       .then()
       .catch((reason) => {
         showError(reason);
       });
-  }, [pageSize]);
+  }, []);
 
   return {
     // Data state
@@ -349,6 +413,7 @@ export const useRedemptionsData = () => {
     // Form state
     formApi,
     formInitValues,
+    subscriptionPlanOptions,
 
     // UI state
     compactMode,
@@ -370,6 +435,7 @@ export const useRedemptionsData = () => {
     setShowEdit,
     setFormApi,
     setLoading,
+    setSearchParams,
 
     // Event handlers
     handlePageChange,

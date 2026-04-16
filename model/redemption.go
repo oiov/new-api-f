@@ -68,10 +68,17 @@ type RedemptionHistoryItem struct {
 }
 
 type RedemptionHistoryFilters struct {
-	Keyword        string
-	RedemptionType string
-	StartTimestamp int64
-	EndTimestamp   int64
+	Keyword            string
+	RedemptionType     string
+	SubscriptionPlanId int
+	StartTimestamp     int64
+	EndTimestamp       int64
+}
+
+type RedemptionFilters struct {
+	Keyword            string
+	RedemptionType     string
+	SubscriptionPlanId int
 }
 
 func NormalizeRedemptionType(redemptionType string) string {
@@ -85,7 +92,29 @@ func NormalizeRedemptionType(redemptionType string) string {
 	}
 }
 
-func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
+func applyRedemptionListFilters(query *gorm.DB, filters RedemptionFilters) *gorm.DB {
+	if query == nil {
+		return nil
+	}
+	keyword := strings.TrimSpace(filters.Keyword)
+	if keyword != "" {
+		likeKeyword := keyword + "%"
+		if id, convErr := strconv.Atoi(keyword); convErr == nil {
+			query = query.Where("id = ? OR name LIKE ? OR "+commonKeyCol+" LIKE ?", id, likeKeyword, likeKeyword)
+		} else {
+			query = query.Where("name LIKE ? OR "+commonKeyCol+" LIKE ?", likeKeyword, likeKeyword)
+		}
+	}
+	if rawType := strings.TrimSpace(filters.RedemptionType); rawType != "" {
+		query = query.Where("redemption_type = ?", NormalizeRedemptionType(rawType))
+	}
+	if filters.SubscriptionPlanId > 0 {
+		query = query.Where("subscription_plan_id = ?", filters.SubscriptionPlanId)
+	}
+	return query
+}
+
+func GetAllRedemptions(startIdx int, num int, filters RedemptionFilters) (redemptions []*Redemption, total int64, err error) {
 	// 开始事务
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -97,15 +126,21 @@ func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total 
 		}
 	}()
 
+	query := applyRedemptionListFilters(tx.Model(&Redemption{}), filters)
+	if query == nil {
+		tx.Rollback()
+		return nil, 0, errors.New("invalid redemption query")
+	}
+
 	// 获取总数
-	err = tx.Model(&Redemption{}).Count(&total).Error
+	err = query.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// 获取分页数据
-	err = tx.Order("id desc").Limit(num).Offset(startIdx).Find(&redemptions).Error
+	err = query.Order("id desc").Limit(num).Offset(startIdx).Find(&redemptions).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -121,7 +156,7 @@ func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total 
 	return redemptions, total, nil
 }
 
-func SearchRedemptions(keyword string, startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
+func SearchRedemptions(keyword string, startIdx int, num int, filters RedemptionFilters) (redemptions []*Redemption, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -131,15 +166,11 @@ func SearchRedemptions(keyword string, startIdx int, num int) (redemptions []*Re
 			tx.Rollback()
 		}
 	}()
-
-	// Build query based on keyword type
-	query := tx.Model(&Redemption{})
-
-	// Only try to convert to ID if the string represents a valid integer
-	if id, err := strconv.Atoi(keyword); err == nil {
-		query = query.Where("id = ? OR name LIKE ? OR "+commonKeyCol+" LIKE ?", id, keyword+"%", keyword+"%")
-	} else {
-		query = query.Where("name LIKE ? OR "+commonKeyCol+" LIKE ?", keyword+"%", keyword+"%")
+	filters.Keyword = keyword
+	query := applyRedemptionListFilters(tx.Model(&Redemption{}), filters)
+	if query == nil {
+		tx.Rollback()
+		return nil, 0, errors.New("invalid redemption query")
 	}
 
 	// Get total count
@@ -196,6 +227,9 @@ func GetRedemptionHistoryWithFilters(userId int, filters RedemptionHistoryFilter
 	}
 	if redemptionType := NormalizeRedemptionType(strings.TrimSpace(filters.RedemptionType)); strings.TrimSpace(filters.RedemptionType) != "" {
 		tx = tx.Where("redemptions.redemption_type = ?", redemptionType)
+	}
+	if filters.SubscriptionPlanId > 0 {
+		tx = tx.Where("redemptions.subscription_plan_id = ?", filters.SubscriptionPlanId)
 	}
 	if filters.StartTimestamp > 0 {
 		tx = tx.Where("redemptions.redeemed_time >= ?", filters.StartTimestamp)

@@ -350,7 +350,11 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
   );
 };
 
-const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
+const renderOperations = (
+  text,
+  record,
+  { openEdit, setPlanEnabled, openIssuePlanRedemption, t },
+) => {
   const isEnabled = record?.plan?.enabled;
   const soldCount = Number(record?.plan?.sold_count || 0);
   const canSafeRemove = soldCount === 0;
@@ -398,6 +402,14 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
       >
         {t('编辑')}
       </Button>
+      <Button
+        theme='light'
+        type='primary'
+        size='small'
+        onClick={() => openIssuePlanRedemption(record)}
+      >
+        {t('发卡')}
+      </Button>
       {isEnabled ? (
         <Button theme='light' type='danger' size='small' onClick={handleToggle}>
           {canSafeRemove ? t('安全删除') : t('禁用')}
@@ -420,6 +432,7 @@ export const getSubscriptionsColumns = ({
   t,
   openEdit,
   setPlanEnabled,
+  openIssuePlanRedemption,
   enableEpay,
 }) => {
   return [
@@ -522,9 +535,14 @@ export const getSubscriptionsColumns = ({
       title: t('操作'),
       dataIndex: 'operate',
       fixed: 'right',
-      width: 160,
+      width: 240,
       render: (text, record) =>
-        renderOperations(text, record, { openEdit, setPlanEnabled, t }),
+        renderOperations(text, record, {
+          openEdit,
+          setPlanEnabled,
+          openIssuePlanRedemption,
+          t,
+        }),
     },
   ];
 };
