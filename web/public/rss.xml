@@ -5,7 +5,7 @@
     <link>https://fishxcode.com/</link>
     <description>FishXCode AI 订阅套餐、价格更新与可售方案动态。 / FishXCode AI subscription plans, pricing updates, and availability feed.</description>
     <language>zh-CN</language>
-    <lastBuildDate>Wed, 15 Apr 2026 10:03:24 GMT</lastBuildDate>
+    <lastBuildDate>Thu, 16 Apr 2026 06:16:29 GMT</lastBuildDate>
     <ttl>300</ttl>
     <atom:link href="https://fishxcode.com/rss.xml" rel="self" type="application/rss+xml" />
     <image>
@@ -17,50 +17,82 @@
       <title>FishXCode AI 首页 / Home</title>
       <link>https://fishxcode.com/</link>
       <guid>https://fishxcode.com/</guid>
-      <pubDate>Wed, 15 Apr 2026 08:10:43 GMT</pubDate>
+      <pubDate>Thu, 16 Apr 2026 03:47:57 GMT</pubDate>
       <description><![CDATA[企业级 Claude API 官方通道中转，支持包月套餐、企业采购和常用模型接入。 / Enterprise Claude API gateway with subscriptions, enterprise purchasing, and common model access.]]></description>
     </item>
     <item>
       <title>FishXCode AI 订阅套餐列表 / Subscription Plans</title>
       <link>https://fishxcode.com/pricing?tab=subscription-plans</link>
       <guid>https://fishxcode.com/pricing?tab=subscription-plans</guid>
-      <pubDate>Wed, 15 Apr 2026 08:10:43 GMT</pubDate>
+      <pubDate>Thu, 16 Apr 2026 03:47:57 GMT</pubDate>
       <description><![CDATA[当前可售 11 个订阅套餐，覆盖 Claude、Codex 等系列。 / 11 active subscription plans are currently available, covering Claude, Codex series.]]></description>
     </item>
     <item>
       <title>价格方案 / Pricing</title>
       <link>https://fishxcode.com/pricing</link>
       <guid>https://fishxcode.com/pricing</guid>
-      <pubDate>Wed, 15 Apr 2026 08:10:43 GMT</pubDate>
+      <pubDate>Thu, 16 Apr 2026 03:47:57 GMT</pubDate>
       <description><![CDATA[查看模型价格与订阅套餐价格，支持公开访问和在线购买。 / Compare model pricing and subscription pricing with public access and online purchase.]]></description>
     </item>
     <item>
       <title>开发文档 / Docs</title>
       <link>https://fishxcode.com/docs</link>
       <guid>https://fishxcode.com/docs</guid>
-      <pubDate>Wed, 15 Apr 2026 10:03:24 GMT</pubDate>
+      <pubDate>Thu, 16 Apr 2026 06:16:29 GMT</pubDate>
       <description><![CDATA[阅读 Claude 接入文档、使用说明与配置指南。 / Read Claude integration docs, usage notes, and setup guides.]]></description>
     </item>
     <item>
       <title>系统状态 / Status</title>
       <link>https://fishxcode.com/status</link>
       <guid>https://fishxcode.com/status</guid>
-      <pubDate>Wed, 15 Apr 2026 10:03:24 GMT</pubDate>
+      <pubDate>Thu, 16 Apr 2026 06:16:29 GMT</pubDate>
       <description><![CDATA[查看当前服务状态、公告和站点说明。 / Check service status, announcements, and site information.]]></description>
     </item>
     <item>
       <title>联系我们 / Contact</title>
       <link>https://fishxcode.com/contact</link>
       <guid>https://fishxcode.com/contact</guid>
-      <pubDate>Wed, 15 Apr 2026 10:03:24 GMT</pubDate>
+      <pubDate>Thu, 16 Apr 2026 06:16:29 GMT</pubDate>
       <description><![CDATA[联系官方客服渠道，咨询售前、采购和售后问题。 / Contact official support for presales, purchasing, and after-sales questions.]]></description>
+    </item>
+    <item>
+      <title>Claude Nano Day</title>
+      <link>https://fishxcode.com/pricing/subscription-plans/24</link>
+      <guid>https://fishxcode.com/pricing/subscription-plans/24</guid>
+      <pubDate>Thu, 16 Apr 2026 03:47:57 GMT</pubDate>
+      <description><![CDATA[购买后至次日 08:00:00 前有效，共 100 次【单次成本 ￥0.05】]]></description>
+      <category>Claude</category>
+    </item>
+    <item>
+      <title>Claude Mini Plus</title>
+      <link>https://fishxcode.com/pricing/subscription-plans/20</link>
+      <guid>https://fishxcode.com/pricing/subscription-plans/20</guid>
+      <pubDate>Thu, 16 Apr 2026 02:47:31 GMT</pubDate>
+      <description><![CDATA[1000次/天，月共30000次，每月重置【单次成本 ¥0.0133】]]></description>
+      <category>Claude</category>
     </item>
     <item>
       <title>Claude Lite</title>
       <link>https://fishxcode.com/pricing/subscription-plans/19</link>
       <guid>https://fishxcode.com/pricing/subscription-plans/19</guid>
-      <pubDate>Wed, 15 Apr 2026 08:10:43 GMT</pubDate>
+      <pubDate>Thu, 16 Apr 2026 00:11:11 GMT</pubDate>
       <description><![CDATA[500次/天，月共15000次，每月重置【单次成本 ¥0.0112】]]></description>
+      <category>Claude</category>
+    </item>
+    <item>
+      <title>Claude Mini Max</title>
+      <link>https://fishxcode.com/pricing/subscription-plans/21</link>
+      <guid>https://fishxcode.com/pricing/subscription-plans/21</guid>
+      <pubDate>Thu, 16 Apr 2026 00:10:49 GMT</pubDate>
+      <description><![CDATA[2000次/天，月共60000次，每月重置【单次成本 ¥0.0108】]]></description>
+      <category>Claude</category>
+    </item>
+    <item>
+      <title>Claude Premium</title>
+      <link>https://fishxcode.com/pricing/subscription-plans/22</link>
+      <guid>https://fishxcode.com/pricing/subscription-plans/22</guid>
+      <pubDate>Thu, 16 Apr 2026 00:10:39 GMT</pubDate>
+      <description><![CDATA[3000次/天，月共90000次，每月重置 【单次成本 ¥0.0089】]]></description>
       <category>Claude</category>
     </item>
     <item>
@@ -72,14 +104,6 @@
       <category>Codex</category>
     </item>
     <item>
-      <title>Claude Nano Day</title>
-      <link>https://fishxcode.com/pricing/subscription-plans/24</link>
-      <guid>https://fishxcode.com/pricing/subscription-plans/24</guid>
-      <pubDate>Wed, 15 Apr 2026 05:25:12 GMT</pubDate>
-      <description><![CDATA[购买后至次日 08:00:00 前有效，共 100 次【单次成本 ￥0.05】]]></description>
-      <category>Claude</category>
-    </item>
-    <item>
       <title>Codex Mini 套餐</title>
       <link>https://fishxcode.com/pricing/subscription-plans/3</link>
       <guid>https://fishxcode.com/pricing/subscription-plans/3</guid>
@@ -88,36 +112,12 @@
       <category>Codex</category>
     </item>
     <item>
-      <title>Claude Mini Plus</title>
-      <link>https://fishxcode.com/pricing/subscription-plans/20</link>
-      <guid>https://fishxcode.com/pricing/subscription-plans/20</guid>
-      <pubDate>Tue, 14 Apr 2026 13:57:28 GMT</pubDate>
-      <description><![CDATA[1000次/天，月共30000次，每月重置【单次成本 ¥0.0133】]]></description>
-      <category>Claude</category>
-    </item>
-    <item>
       <title>Codex Basic 套餐</title>
       <link>https://fishxcode.com/pricing/subscription-plans/4</link>
       <guid>https://fishxcode.com/pricing/subscription-plans/4</guid>
       <pubDate>Tue, 14 Apr 2026 13:00:38 GMT</pubDate>
       <description><![CDATA[60 美金额度/天，按天重置，月累计约 1800 美金额度，原价 $1799，现价 $179.9，1 折内测价]]></description>
       <category>Codex</category>
-    </item>
-    <item>
-      <title>Claude Mini Max</title>
-      <link>https://fishxcode.com/pricing/subscription-plans/21</link>
-      <guid>https://fishxcode.com/pricing/subscription-plans/21</guid>
-      <pubDate>Mon, 13 Apr 2026 23:04:18 GMT</pubDate>
-      <description><![CDATA[2000次/天，月共60000次，每月重置【单次成本 ¥0.0108】]]></description>
-      <category>Claude</category>
-    </item>
-    <item>
-      <title>Claude Premium</title>
-      <link>https://fishxcode.com/pricing/subscription-plans/22</link>
-      <guid>https://fishxcode.com/pricing/subscription-plans/22</guid>
-      <pubDate>Mon, 13 Apr 2026 23:04:06 GMT</pubDate>
-      <description><![CDATA[3000次/天，月共90000次，每月重置 【单次成本 ¥0.0089】]]></description>
-      <category>Claude</category>
     </item>
     <item>
       <title>Codex Pro 套餐</title>

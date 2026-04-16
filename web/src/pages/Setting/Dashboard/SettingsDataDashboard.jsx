@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useContext, useEffect, useState, useRef } from 'react';
 import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import {
   compareObjects,
@@ -27,9 +27,11 @@ import {
   showWarning,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
+import { StatusContext } from '../../../context/Status';
 
 export default function DataDashboard(props) {
   const { t } = useTranslation();
+  const [, statusDispatch] = useContext(StatusContext);
 
   const optionsDataExportDefaultTime = [
     { key: 'hour', label: t('小时'), value: 'hour' },
@@ -39,6 +41,7 @@ export default function DataDashboard(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     DataExportEnabled: false,
+    LogExportEnabled: false,
     DataExportInterval: '',
     DataExportDefaultTime: '',
   });
@@ -62,7 +65,7 @@ export default function DataDashboard(props) {
     });
     setLoading(true);
     Promise.all(requestQueue)
-      .then((res) => {
+      .then(async (res) => {
         if (requestQueue.length === 1) {
           if (res.includes(undefined)) return;
         } else if (requestQueue.length > 1) {
@@ -70,6 +73,14 @@ export default function DataDashboard(props) {
             return showError(t('部分保存失败，请重试'));
         }
         showSuccess(t('保存成功'));
+        try {
+          const statusRes = await API.get('/api/status');
+          if (statusRes.data?.success) {
+            statusDispatch({ type: 'set', payload: statusRes.data.data });
+          }
+        } catch (error) {
+          console.error('刷新状态失败:', error);
+        }
         props.refresh();
       })
       .catch(() => {
@@ -106,6 +117,21 @@ export default function DataDashboard(props) {
         >
           <Form.Section text={t('数据看板设置')}>
             <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'LogExportEnabled'}
+                  label={t('允许日志导出')}
+                  size='default'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      LogExportEnabled: value,
+                    });
+                  }}
+                />
+              </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.Switch
                   field={'DataExportEnabled'}

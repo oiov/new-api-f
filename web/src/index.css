@@ -1263,6 +1263,10 @@ html.dark .sbg-variant-green {
   gap: 12px;
 }
 
+.package-console-search__header > .semi-typography {
+  max-width: 100%;
+}
+
 html.dark .package-page-shell {
   background: linear-gradient(
     180deg,
@@ -3968,6 +3972,129 @@ html.dark .pricing-plan-detail-empty-note {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .package-page-shell {
+    border-radius: 24px !important;
+  }
+
+  .package-page-shell .semi-card-body {
+    padding: 14px !important;
+  }
+
+  .package-page-shell .semi-tabs-bar {
+    margin-bottom: 14px;
+    padding: 4px;
+    border-radius: 18px;
+  }
+
+  .package-page-shell .semi-tabs-tab {
+    min-height: 38px;
+    padding-inline: 12px;
+  }
+
+  .package-console-stats-grid {
+    gap: 10px;
+  }
+
+  .package-console-stat-card {
+    border-radius: 18px;
+    padding: 12px;
+  }
+
+  .package-console-search {
+    gap: 10px;
+  }
+
+  .package-console-search__header {
+    gap: 10px;
+  }
+
+  .package-console-search__tabs {
+    width: 100%;
+  }
+
+  .package-console-search__tabs .semi-space {
+    width: 100%;
+  }
+
+  .package-console-search__tabs .semi-button {
+    flex: 1 1 0;
+  }
+
+  .package-console-search__filters {
+    gap: 10px;
+  }
+
+  .package-console-search__reset {
+    min-height: 34px;
+    padding: 0 10px;
+  }
+
+  .subscription-mobile-overview {
+    gap: 10px;
+  }
+
+  .subscription-mobile-overview__stats {
+    gap: 8px;
+  }
+
+  .subscription-mobile-overview__controls {
+    gap: 10px;
+  }
+
+  .subscription-mobile-panel {
+    border-radius: 18px !important;
+    padding: 12px !important;
+    gap: 10px !important;
+  }
+
+  .subscription-mobile-panel__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .subscription-mobile-panel__actions .semi-button {
+    width: 100%;
+    margin: 0 !important;
+  }
+
+  .subscription-mobile-panel__wide-action {
+    grid-column: 1 / -1;
+  }
+
+  .subscription-mobile-panel__billing {
+    align-items: stretch;
+  }
+
+  .subscription-mobile-panel__billing .semi-select {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .subscription-mobile-filters {
+    gap: 10px;
+    border-radius: 18px;
+    padding: 12px;
+  }
+
+  .subscription-mobile-filters__keyword .semi-input-wrapper,
+  .subscription-mobile-filters__selects .semi-select {
+    min-height: 34px;
+  }
+
+  .subscription-mobile-filters__selects {
+    grid-template-columns: 1fr;
+  }
+
+  .subscription-plan-selling-content {
+    padding-top: 10px;
+  }
+
+  .subscription-plan-selling-grid {
+    gap: 12px;
+  }
+
   .subscription-plan-selling-card__restriction-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 6px;
@@ -3979,15 +4106,61 @@ html.dark .pricing-plan-detail-empty-note {
 
   .subscription-plan-selling-card__inner,
   .subscription-plan-selling-card__top {
-    padding: 16px;
+    padding: 14px;
   }
 
   .subscription-plan-selling-card__price {
     font-size: 28px;
   }
 
+  .subscription-plan-selling-card__title-row {
+    gap: 6px;
+  }
+
+  .subscription-plan-selling-card__subtitle {
+    margin-top: 8px !important;
+    line-height: 1.55;
+  }
+
+  .subscription-plan-selling-card__price-row {
+    margin-top: 16px !important;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .subscription-plan-selling-card__sale-meta {
+    min-width: 72px;
+  }
+
   .subscription-plan-selling-card__metrics {
     grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+
+  .subscription-plan-selling-card__metric {
+    border-radius: 14px;
+    padding: 10px;
+  }
+
+  .subscription-plan-selling-card__bottom {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .subscription-plan-selling-card__cta-stack,
+  .subscription-plan-selling-card__bottom .semi-button {
+    width: 100%;
+  }
+
+  .subscription-plan-selling-card__bottom .grid.grid-cols-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .topup-page-tabs {
+    gap: 10px;
+  }
+
+  .topup-page-tabs > .semi-tabs-bar {
+    margin-bottom: 10px !important;
   }
 
   .subscription-plan-selling-pagination {
@@ -4001,6 +4174,10 @@ html.dark .pricing-plan-detail-empty-note {
 
   .subscription-plan-selling-toolbar__controls {
     justify-content: space-between;
+  }
+
+  .topup-page-tabs > .semi-tabs-content .semi-tabs-pane > div {
+    padding-top: 2px;
   }
 }
 

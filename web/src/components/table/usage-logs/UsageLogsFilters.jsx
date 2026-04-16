@@ -27,10 +27,13 @@ const LogsFilters = ({
   formInitValues,
   setFormApi,
   refresh,
+  exportLogs,
   setShowColumnSelector,
   formApi,
   setLogType,
   loading,
+  exporting,
+  logExportEnabled,
   isAdminUser,
   t,
 }) => {
@@ -220,6 +223,16 @@ const LogsFilters = ({
             >
               {t('重置')}
             </Button>
+            {logExportEnabled && (
+              <Button
+                type='tertiary'
+                onClick={exportLogs}
+                loading={exporting}
+                size='small'
+              >
+                {t('导出当前筛选结果')}
+              </Button>
+            )}
             <Button
               type='tertiary'
               onClick={() => setShowColumnSelector(true)}

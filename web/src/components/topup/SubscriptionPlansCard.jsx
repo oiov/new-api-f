@@ -2351,65 +2351,121 @@ const SubscriptionPlansCard = ({
           </div>
         ) : null}
         <div className='rounded-2xl border border-semi-color-border bg-white overflow-hidden'>
-          <Table
-            size='small'
-            pagination={false}
-            dataSource={[
-              {
-                key: 'usage',
-                category: t('使用概览'),
-                summary: `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
-                details: usageItems,
-              },
-              {
-                key: 'time',
-                category: t('时间与重置'),
-                summary: `${t('到期时间')} ${formatDateTime(item.subscription?.end_time)}`,
-                details: timeItems,
-              },
-              {
-                key: 'meta',
-                category: t('套餐信息'),
-                summary: plan?.subtitle || t('暂无说明'),
-                details: metaItems,
-              },
-            ]}
-            expandRowByClick
-            expandedRowRender={(record) => (
-              <div className='grid grid-cols-1 gap-3 p-1 md:grid-cols-2 xl:grid-cols-3'>
-                {record.details.map((detail) => (
-                  <div
-                    key={detail.label}
-                    className='rounded-xl bg-semi-color-fill-0 px-3 py-2.5'
-                  >
-                    <div className='text-xs text-gray-500'>{detail.label}</div>
-                    <div className='mt-1 break-all font-medium text-semi-color-text-0'>
-                      {detail.value}
+          {isMobile ? (
+            <div className='space-y-3 p-3'>
+              {[
+                {
+                  key: 'usage',
+                  category: t('使用概览'),
+                  summary: `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
+                  details: usageItems,
+                },
+                {
+                  key: 'time',
+                  category: t('时间与重置'),
+                  summary: `${t('到期时间')} ${formatDateTime(item.subscription?.end_time)}`,
+                  details: timeItems,
+                },
+                {
+                  key: 'meta',
+                  category: t('套餐信息'),
+                  summary: plan?.subtitle || t('暂无说明'),
+                  details: metaItems,
+                },
+              ].map((record) => (
+                <div
+                  key={record.key}
+                  className='rounded-2xl border border-semi-color-border bg-semi-color-fill-0/60 p-3'
+                >
+                  <div className='flex items-start justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <div className='text-sm font-semibold text-semi-color-text-0'>
+                        {record.category}
+                      </div>
+                      <div className='mt-1 text-xs leading-5 text-semi-color-text-2'>
+                        {record.summary}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-            columns={[
-              {
-                title: t('分类'),
-                dataIndex: 'category',
-                width: 180,
-                render: (value) => (
-                  <span className='font-semibold text-semi-color-text-0'>
-                    {value}
-                  </span>
-                ),
-              },
-              {
-                title: t('摘要'),
-                dataIndex: 'summary',
-                render: (value) => (
-                  <span className='text-sm text-semi-color-text-1'>{value}</span>
-                ),
-              },
-            ]}
-          />
+                  <div className='mt-3 grid grid-cols-1 gap-2'>
+                    {record.details.map((detail) => (
+                      <div
+                        key={detail.label}
+                        className='rounded-xl bg-white px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]'
+                      >
+                        <div className='text-[11px] text-gray-500'>
+                          {detail.label}
+                        </div>
+                        <div className='mt-1 break-all text-sm font-medium text-semi-color-text-0'>
+                          {detail.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Table
+              size='small'
+              pagination={false}
+              dataSource={[
+                {
+                  key: 'usage',
+                  category: t('使用概览'),
+                  summary: `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
+                  details: usageItems,
+                },
+                {
+                  key: 'time',
+                  category: t('时间与重置'),
+                  summary: `${t('到期时间')} ${formatDateTime(item.subscription?.end_time)}`,
+                  details: timeItems,
+                },
+                {
+                  key: 'meta',
+                  category: t('套餐信息'),
+                  summary: plan?.subtitle || t('暂无说明'),
+                  details: metaItems,
+                },
+              ]}
+              expandRowByClick
+              expandedRowRender={(record) => (
+                <div className='grid grid-cols-1 gap-3 p-1 md:grid-cols-2 xl:grid-cols-3'>
+                  {record.details.map((detail) => (
+                    <div
+                      key={detail.label}
+                      className='rounded-xl bg-semi-color-fill-0 px-3 py-2.5'
+                    >
+                      <div className='text-xs text-gray-500'>{detail.label}</div>
+                      <div className='mt-1 break-all font-medium text-semi-color-text-0'>
+                        {detail.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              columns={[
+                {
+                  title: t('分类'),
+                  dataIndex: 'category',
+                  width: 180,
+                  render: (value) => (
+                    <span className='font-semibold text-semi-color-text-0'>
+                      {value}
+                    </span>
+                  ),
+                },
+                {
+                  title: t('摘要'),
+                  dataIndex: 'summary',
+                  render: (value) => (
+                    <span className='text-sm text-semi-color-text-1'>{value}</span>
+                  ),
+                },
+              ]}
+            />
+          )}
         </div>
       </div>
     );
@@ -3354,13 +3410,13 @@ const SubscriptionPlansCard = ({
 
   const packageConsoleStatsArea = useMemo(
     () => (
-      <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4'>
+      <div className='package-console-stats-grid grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4'>
         {overviewItems.map((item) => {
           const Icon = item.icon;
           return (
             <div
               key={item.label}
-              className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'
+              className='package-console-stat-card rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'
             >
               <div className='flex items-start justify-between gap-3'>
                 <div className='min-w-0'>
@@ -3388,9 +3444,9 @@ const SubscriptionPlansCard = ({
 
   const packageConsoleSearchArea = useMemo(
     () => (
-      <div className='flex flex-col gap-3'>
-        <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
-          <Space wrap>
+      <div className='package-console-search flex flex-col gap-3'>
+        <div className='package-console-search__header flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
+          <Space wrap className='package-console-search__tabs'>
             {renderSubscriptionPanel && (
               <Button
                 theme={
@@ -3422,30 +3478,33 @@ const SubscriptionPlansCard = ({
         </div>
 
         {activeMainTab === 'plan_list' && (
-          <div className='grid grid-cols-1 gap-2 lg:grid-cols-12'>
-            <div className='lg:col-span-5'>
+          <div className='package-console-search__filters grid grid-cols-1 gap-2 lg:grid-cols-12'>
+            <div className='package-console-search__keyword lg:col-span-5'>
               <Input
                 value={planKeyword}
                 onChange={setPlanKeyword}
                 placeholder={t('搜索套餐名 / 副标题 / 模型 / 分组')}
                 showClear
+                size={isMobile ? 'small' : 'default'}
               />
             </div>
-            <div className='lg:col-span-3'>
+            <div className='package-console-search__series lg:col-span-3'>
               <Select
                 value={planSeriesFilter}
                 onChange={setPlanSeriesFilter}
                 optionList={planSeriesOptions}
+                size={isMobile ? 'small' : 'default'}
               />
             </div>
-            <div className='lg:col-span-2'>
+            <div className='package-console-search__sort lg:col-span-2'>
               <Select
                 value={planSort}
                 onChange={setPlanSort}
                 optionList={planSortOptions}
+                size={isMobile ? 'small' : 'default'}
               />
             </div>
-            <div className='lg:col-span-2 flex items-center justify-between gap-2 rounded-lg border border-semi-color-border bg-semi-color-bg-0 px-2'>
+            <div className='package-console-search__reset lg:col-span-2 flex items-center justify-between gap-2 rounded-lg border border-semi-color-border bg-semi-color-bg-0 px-2'>
               <Text type='tertiary' size='small'>
                 {t('表格模式')}
               </Text>
@@ -3485,8 +3544,8 @@ const SubscriptionPlansCard = ({
 
   const subscriptionPanelContent = (
     <div className='space-y-3'>
-      <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
-        <div className='flex flex-wrap items-center gap-2'>
+      <div className='subscription-mobile-overview flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
+        <div className='subscription-mobile-overview__stats flex flex-wrap items-center gap-2'>
           <Tag
             color={subscriptionView === 'active' ? 'green' : 'white'}
             shape='circle'
@@ -3504,9 +3563,9 @@ const SubscriptionPlansCard = ({
             </Tag>
           )}
         </div>
-        <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+        <div className='subscription-mobile-overview__controls flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
           <div className='w-full lg:w-auto'>
-            <div className='flex w-full flex-col gap-3 rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:min-w-[360px] sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
+            <div className='subscription-mobile-panel flex w-full flex-col gap-3 rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:min-w-[360px] sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
               <div className='flex min-w-0 items-start gap-2.5'>
                 <div className='mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[rgba(99,102,241,0.10)] text-indigo-600'>
                   <LayoutGrid size={14} />
@@ -3520,7 +3579,7 @@ const SubscriptionPlansCard = ({
                   </div>
                 </div>
               </div>
-              <div className='flex flex-wrap items-center gap-2'>
+              <div className='subscription-mobile-panel__actions flex flex-wrap items-center gap-2'>
                 <Button
                   theme={subscriptionView === 'active' ? 'solid' : 'light'}
                   type='primary'
@@ -3552,7 +3611,7 @@ const SubscriptionPlansCard = ({
                   theme='light'
                   type='tertiary'
                   size='small'
-                  className='!rounded-xl !border !border-[rgba(15,23,42,0.08)] !bg-white/80'
+                  className='subscription-mobile-panel__wide-action !rounded-xl !border !border-[rgba(15,23,42,0.08)] !bg-white/80'
                   onClick={() => setConsumeLogsFilter({})}
                 >
                   {t('全部订阅消耗')}
@@ -3561,7 +3620,7 @@ const SubscriptionPlansCard = ({
             </div>
           </div>
           <div className='w-full sm:w-auto'>
-            <div className='flex w-full flex-col gap-3 rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:min-w-[360px] sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
+            <div className='subscription-mobile-panel flex w-full flex-col gap-3 rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:min-w-[360px] sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
               <div className='flex min-w-0 items-start gap-2.5'>
                 <div className='mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[rgba(59,130,246,0.10)] text-blue-600'>
                   <Wallet size={14} />
@@ -3575,7 +3634,7 @@ const SubscriptionPlansCard = ({
                   </div>
                 </div>
               </div>
-              <div className='flex w-full items-center gap-2 sm:w-auto'>
+              <div className='subscription-mobile-panel__billing flex w-full items-center gap-2 sm:w-auto'>
                 <Tooltip content={t('选择请求命中时优先从哪里扣费。')}>
                   <Select
                     value={displayBillingPreference}
@@ -3622,15 +3681,15 @@ const SubscriptionPlansCard = ({
         </div>
       </div>
 
-      <div className='flex flex-col gap-2 rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3 xl:flex-row xl:items-center'>
+      <div className='subscription-mobile-filters flex flex-col gap-2 rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3 xl:flex-row xl:items-center'>
         <Input
           value={subscriptionKeyword}
           onChange={setSubscriptionKeyword}
           placeholder={t('搜索套餐名 / 说明 / 订阅 ID')}
           showClear
-          className='min-w-0 flex-1'
+          className='subscription-mobile-filters__keyword min-w-0 flex-1'
         />
-        <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3'>
+        <div className='subscription-mobile-filters__selects grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3'>
           <Select
             value={subscriptionPlanFilter}
             onChange={setSubscriptionPlanFilter}
@@ -3923,20 +3982,27 @@ const SubscriptionPlansCard = ({
 
       {normalizedManualDeliveryOrders.length > 0 ? (
         <Card
-          className='!rounded-2xl border border-sky-200 bg-sky-50/70 shadow-none'
-          bodyStyle={{ padding: '24px' }}
+          className='mt-4 !rounded-2xl border border-sky-200 bg-[linear-gradient(180deg,rgba(240,249,255,0.86),rgba(248,250,252,0.96))] shadow-none md:mt-5'
+          bodyStyle={{ padding: isMobile ? '16px' : '24px' }}
         >
-          <div className='space-y-5'>
-            <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
-              <div className='min-w-0'>
-                <div className='flex items-center gap-2'>
-                  <Text strong>{t('人工发放订单')}</Text>
-                  <Tag color='blue' shape='circle' size='small'>
-                    {normalizedManualDeliveryOrders.length} {t('个订单')}
-                  </Tag>
+          <div className='space-y-4'>
+            <div className='rounded-2xl border border-white/80 bg-white/80 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
+              <div className='flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
+                <div className='min-w-0'>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <Text strong>{t('人工发放订单')}</Text>
+                    <Tag color='blue' shape='circle' size='small'>
+                      {normalizedManualDeliveryOrders.length} {t('个订单')}
+                    </Tag>
+                  </div>
+                  <div className='mt-1 text-sm text-semi-color-text-2'>
+                    {t('支付成功后不会自动开通，需要管理员补充交付信息后再发放。')}
+                  </div>
                 </div>
-                <div className='mt-5 grid gap-4 xl:grid-cols-3'>
-                  <div className='h-full rounded-2xl border border-semi-color-border bg-white/90 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
+              </div>
+
+              <div className='mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'>
+                  <div className='h-full rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
                     <div className='flex items-center gap-2.5'>
                       <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[rgba(59,130,246,0.10)] text-blue-600'>
                         <BookOpen size={16} />
@@ -3948,7 +4014,7 @@ const SubscriptionPlansCard = ({
                         </div>
                       </div>
                     </div>
-                    <div className='mt-3 space-y-2 text-sm leading-6 text-semi-color-text-2'>
+                    <div className='mt-3 space-y-1.5 text-sm leading-6 text-semi-color-text-2'>
                       <div>{t('这里会显示待发放或已发放完成的订单内容。')}</div>
                       <div>
                         {t(
@@ -3958,7 +4024,7 @@ const SubscriptionPlansCard = ({
                     </div>
                   </div>
 
-                  <div className='h-full rounded-2xl border border-semi-color-border bg-white/90 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
+                  <div className='h-full rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
                     <div className='flex items-center gap-2.5'>
                       <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[rgba(99,102,241,0.10)] text-indigo-600'>
                         <Zap size={16} />
@@ -3985,7 +4051,7 @@ const SubscriptionPlansCard = ({
                     </div>
                   </div>
 
-                  <div className='h-full rounded-2xl border border-red-200 bg-red-50/85 p-4 shadow-[0_8px_24px_rgba(239,68,68,0.06)] dark:border-red-500/30 dark:bg-red-500/10'>
+                  <div className='h-full rounded-2xl border border-red-200/90 bg-red-50/85 p-3.5 shadow-[0_8px_24px_rgba(239,68,68,0.06)] dark:border-red-500/30 dark:bg-red-500/10'>
                     <div className='flex items-center gap-2.5'>
                       <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[rgba(239,68,68,0.12)] text-red-500'>
                         <ShieldCheck size={16} />
@@ -3999,7 +4065,7 @@ const SubscriptionPlansCard = ({
                         </div>
                       </div>
                     </div>
-                    <div className='mt-3 space-y-2 text-sm leading-6 text-semi-color-text-2'>
+                    <div className='mt-3 space-y-1.5 text-sm leading-6 text-semi-color-text-2'>
                       <div>{t('请不要在任何地方泄露你的 Key。')}</div>
                       <div>{t('该 Key 每分钟最多 10 次请求。')}</div>
                       <div>
@@ -4007,7 +4073,6 @@ const SubscriptionPlansCard = ({
                       </div>
                     </div>
                   </div>
-                </div>
               </div>
             </div>
             <div className='overflow-hidden rounded-2xl border border-semi-color-border bg-white/90'>

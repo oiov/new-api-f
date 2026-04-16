@@ -28,7 +28,6 @@ import ApiInfoPanel from './ApiInfoPanel';
 import AnnouncementsPanel from './AnnouncementsPanel';
 import FaqPanel from './FaqPanel';
 import UptimePanel from './UptimePanel';
-import SearchModal from './modals/SearchModal';
 import CheckinCalendar from '../settings/personal/cards/CheckinCalendar';
 const ChartsPanel = lazy(() => import('./ChartsPanel'));
 
@@ -138,22 +137,8 @@ const Dashboard = () => {
       <DashboardHeader
         getGreeting={dashboardData.getGreeting}
         greetingVisible={dashboardData.greetingVisible}
-        showSearchModal={dashboardData.showSearchModal}
         refresh={handleRefresh}
         loading={dashboardData.loading}
-        t={dashboardData.t}
-      />
-
-      <SearchModal
-        searchModalVisible={dashboardData.searchModalVisible}
-        handleSearchConfirm={handleSearchConfirm}
-        handleCloseModal={dashboardData.handleCloseModal}
-        isMobile={dashboardData.isMobile}
-        isAdminUser={dashboardData.isAdminUser}
-        inputs={dashboardData.inputs}
-        dataExportDefaultTime={dashboardData.dataExportDefaultTime}
-        timeOptions={dashboardData.timeOptions}
-        handleInputChange={dashboardData.handleInputChange}
         t={dashboardData.t}
       />
 
@@ -205,6 +190,13 @@ const Dashboard = () => {
               FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
               hasApiInfoPanel={dashboardData.hasApiInfoPanel}
               t={dashboardData.t}
+              inputs={dashboardData.inputs}
+              timeOptions={dashboardData.timeOptions}
+              handleInputChange={dashboardData.handleInputChange}
+              handleSearchConfirm={handleSearchConfirm}
+              resetSearchFilters={dashboardData.resetSearchFilters}
+              isAdminUser={dashboardData.isAdminUser}
+              loading={dashboardData.loading}
             />
           </Suspense>
 

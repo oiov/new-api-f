@@ -434,6 +434,26 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
+	tx := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	err = tx.Model(&Log{}).Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	if err = attachChannelNamesToLogs(logs); err != nil {
+		return logs, total, err
+	}
+
+	return logs, total, err
+}
+
+const logSearchCountLimit = 10000
+const logExportLimit = 10000
+
+func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) *gorm.DB {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -483,61 +503,10 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId in
 	if subscriptionPlanId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_plan_id", subscriptionPlanId)
 	}
-	err = tx.Model(&Log{}).Count(&total).Error
-	if err != nil {
-		return nil, 0, err
-	}
-	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
-	if err != nil {
-		return nil, 0, err
-	}
-
-	channelIds := types.NewSet[int]()
-	for _, log := range logs {
-		if log.ChannelId != 0 {
-			channelIds.Add(log.ChannelId)
-		}
-	}
-
-	if channelIds.Len() > 0 {
-		var channels []struct {
-			Id   int    `gorm:"column:id"`
-			Name string `gorm:"column:name"`
-		}
-		if common.MemoryCacheEnabled {
-			// Cache get channel
-			for _, channelId := range channelIds.Items() {
-				if cacheChannel, err := CacheGetChannel(channelId); err == nil {
-					channels = append(channels, struct {
-						Id   int    `gorm:"column:id"`
-						Name string `gorm:"column:name"`
-					}{
-						Id:   channelId,
-						Name: cacheChannel.Name,
-					})
-				}
-			}
-		} else {
-			// Bulk query channels from DB
-			if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
-				return logs, total, err
-			}
-		}
-		channelMap := make(map[int]string, len(channels))
-		for _, channel := range channels {
-			channelMap[channel.Id] = channel.Name
-		}
-		for i := range logs {
-			logs[i].ChannelName = channelMap[logs[i].ChannelId]
-		}
-	}
-
-	return logs, total, err
+	return tx
 }
 
-const logSearchCountLimit = 10000
-
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
+func buildUserLogsQuery(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -549,7 +518,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if modelName != "" {
 		modelNamePattern, err := sanitizeLikePattern(modelName)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		tx = tx.Where("logs.model_name LIKE ? ESCAPE '!'", modelNamePattern)
 	}
@@ -582,6 +551,57 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if subscriptionPlanId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_plan_id", subscriptionPlanId)
 	}
+	return tx, nil
+}
+
+func attachChannelNamesToLogs(logs []*Log) error {
+	channelIds := types.NewSet[int]()
+	for _, log := range logs {
+		if log.ChannelId != 0 {
+			channelIds.Add(log.ChannelId)
+		}
+	}
+
+	if channelIds.Len() == 0 {
+		return nil
+	}
+
+	var channels []struct {
+		Id   int    `gorm:"column:id"`
+		Name string `gorm:"column:name"`
+	}
+	if common.MemoryCacheEnabled {
+		for _, channelId := range channelIds.Items() {
+			if cacheChannel, err := CacheGetChannel(channelId); err == nil {
+				channels = append(channels, struct {
+					Id   int    `gorm:"column:id"`
+					Name string `gorm:"column:name"`
+				}{
+					Id:   channelId,
+					Name: cacheChannel.Name,
+				})
+			}
+		}
+	} else {
+		if err := DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
+			return err
+		}
+	}
+	channelMap := make(map[int]string, len(channels))
+	for _, channel := range channels {
+		channelMap[channel.Id] = channel.Name
+	}
+	for i := range logs {
+		logs[i].ChannelName = channelMap[logs[i].ChannelId]
+	}
+	return nil
+}
+
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
+	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	if err != nil {
+		return nil, 0, err
+	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count user logs: " + err.Error())
@@ -595,6 +615,48 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 
 	formatUserLogs(logs, startIdx)
 	return logs, total, err
+}
+
+func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, truncated bool, err error) {
+	tx := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	err = tx.Model(&Log{}).Count(&total).Error
+	if err != nil {
+		return nil, 0, false, err
+	}
+	limit := logExportLimit
+	truncated = total > int64(limit)
+	err = tx.Order("logs.id desc").Limit(limit).Find(&logs).Error
+	if err != nil {
+		return nil, 0, false, err
+	}
+	if err = attachChannelNamesToLogs(logs); err != nil {
+		return nil, 0, false, err
+	}
+	return logs, total, truncated, nil
+}
+
+func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, truncated bool, err error) {
+	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
+	if err != nil {
+		common.SysError("failed to count user logs for export: " + err.Error())
+		return nil, 0, false, errors.New("导出日志失败")
+	}
+	limit := logExportLimit
+	truncated = total > int64(limit)
+	err = tx.Order("logs.id desc").Limit(limit).Find(&logs).Error
+	if err != nil {
+		common.SysError("failed to export user logs: " + err.Error())
+		return nil, 0, false, errors.New("导出日志失败")
+	}
+	formatUserLogs(logs, 0)
+	for index := range logs {
+		logs[index].Id = 0
+	}
+	return logs, total, truncated, nil
 }
 
 func applyErrorLogVisibilityFilter(tx *gorm.DB, logType int, hideErrorLogs bool) *gorm.DB {
