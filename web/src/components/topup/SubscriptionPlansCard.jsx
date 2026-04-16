@@ -522,6 +522,16 @@ const SubscriptionPlansCard = ({
             ? t('立即订阅')
             : t('登录后购买');
 
+      const buttonText = !plan?.enabled
+        ? t('已下架')
+        : saleSummary.soldOut
+          ? t('已售罄')
+          : reached
+            ? t('已达上限')
+            : isLoggedIn
+              ? t('立即订阅')
+              : t('登录后购买');
+
       return {
         count,
         limit,
