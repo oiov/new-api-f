@@ -182,6 +182,7 @@ func StripeWebhook(c *gin.Context) {
 func sessionCompleted(event stripe.Event) {
 	customerId := event.GetObjectValue("customer")
 	referenceId := event.GetObjectValue("client_reference_id")
+	sessionId := event.GetObjectValue("id")
 	status := event.GetObjectValue("status")
 	if "complete" != status {
 		log.Println("错误的Stripe Checkout完成状态:", status, ",", referenceId)
@@ -207,33 +208,98 @@ func sessionCompleted(event stripe.Event) {
 		return
 	}
 
+	topUp := model.GetTopUpByTradeNo(referenceId)
+	if topUp == nil {
+		log.Println("Stripe充值订单不存在", referenceId)
+		return
+	}
+	paidTotal, err := strconv.ParseInt(event.GetObjectValue("amount_total"), 10, 64)
+	if err != nil {
+		log.Printf("Stripe支付金额解析失败: %v, order=%s", err, referenceId)
+		return
+	}
+	if err := validateStripeTopUpSession(sessionId, topUp, paidTotal); err != nil {
+		log.Printf("Stripe充值会话校验失败: %v, order=%s, session=%s", err, referenceId, sessionId)
+		return
+	}
+
 	completed, err := model.Recharge(referenceId, customerId)
 	if err != nil {
 		log.Println(err.Error(), referenceId)
 		return
 	}
 	if completed {
-		if topUp := model.GetTopUpByTradeNo(referenceId); topUp != nil {
-			service.NotifyPaymentSuccessAsync(service.PaymentSuccessNotification{
-				Category:      "充值",
-				TradeNo:       topUp.TradeNo,
-				UserID:        topUp.UserId,
-				PaymentMethod: topUp.PaymentMethod,
-				Money:         topUp.Money,
-				Quota:         logger.FormatQuota(int(topUp.Money * common.QuotaPerUnit)),
-			})
-			model.NotifyTopUpSuccessToUserAsync(
-				topUp.UserId,
-				topUp.PaymentMethod,
-				topUp.Money,
-				logger.FormatQuota(int(topUp.Money*common.QuotaPerUnit)),
-			)
-		}
+		service.NotifyPaymentSuccessAsync(service.PaymentSuccessNotification{
+			Category:      "充值",
+			TradeNo:       topUp.TradeNo,
+			UserID:        topUp.UserId,
+			PaymentMethod: topUp.PaymentMethod,
+			Money:         topUp.Money,
+			Quota:         logger.FormatQuota(int(topUp.Money * common.QuotaPerUnit)),
+		})
+		model.NotifyTopUpSuccessToUserAsync(
+			topUp.UserId,
+			topUp.PaymentMethod,
+			topUp.Money,
+			logger.FormatQuota(int(topUp.Money*common.QuotaPerUnit)),
+		)
 	}
 
 	total, _ := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)
 	currency := strings.ToUpper(event.GetObjectValue("currency"))
 	log.Printf("收到款项：%s, %.2f(%s)", referenceId, total/100, currency)
+}
+
+func validateStripeTopUpSession(sessionId string, topUp *model.TopUp, paidTotal int64) error {
+	if topUp == nil {
+		return errors.New("充值订单不存在")
+	}
+	if sessionId == "" {
+		return errors.New("缺少 Stripe session id")
+	}
+	if paidTotal <= 0 {
+		return fmt.Errorf("无效的 Stripe 支付金额: %d", paidTotal)
+	}
+	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
+		return errors.New("无效的 Stripe API 密钥")
+	}
+
+	stripe.Key = setting.StripeApiSecret
+	params := &stripe.CheckoutSessionListLineItemsParams{
+		Session: stripe.String(sessionId),
+	}
+	params.Limit = stripe.Int64(2)
+	params.AddExpand("data.price")
+
+	iter := session.ListLineItems(params)
+	lineItems := make([]*stripe.LineItem, 0, 2)
+	for iter.Next() {
+		lineItems = append(lineItems, iter.LineItem())
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("获取 Stripe line items 失败: %w", err)
+	}
+	if len(lineItems) != 1 {
+		return fmt.Errorf("Stripe line items 数量异常: %d", len(lineItems))
+	}
+
+	lineItem := lineItems[0]
+	if lineItem.Quantity != topUp.Amount {
+		return fmt.Errorf("Stripe 购买数量不匹配: expected=%d actual=%d", topUp.Amount, lineItem.Quantity)
+	}
+	if lineItem.Price == nil {
+		return errors.New("Stripe line item 缺少价格信息")
+	}
+
+	expectedSubtotal := lineItem.Price.UnitAmount * lineItem.Quantity
+	if lineItem.AmountSubtotal != expectedSubtotal {
+		return fmt.Errorf("Stripe 小计异常: expected=%d actual=%d", expectedSubtotal, lineItem.AmountSubtotal)
+	}
+	if lineItem.AmountTotal != paidTotal {
+		return fmt.Errorf("Stripe 实付金额不匹配: expected=%d actual=%d", lineItem.AmountTotal, paidTotal)
+	}
+
+	return nil
 }
 
 func sessionExpired(event stripe.Event) {

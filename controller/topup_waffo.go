@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/thanhpk/randstr"
 	waffo "github.com/waffo-com/waffo-go"
 	"github.com/waffo-com/waffo-go/config"
@@ -357,6 +358,23 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 
 	LockOrder(merchantOrderId)
 	defer UnlockOrder(merchantOrderId)
+	topUp := model.GetTopUpByTradeNo(merchantOrderId)
+	if topUp == nil {
+		log.Printf("Waffo充值订单不存在: %s", merchantOrderId)
+		sendWaffoWebhookResponse(c, wh, false, "topup not found")
+		return
+	}
+	paidMoney, err := decimal.NewFromString(result.OrderAmount)
+	if err != nil {
+		log.Printf("Waffo金额解析失败: %v, 订单: %s, amount=%s", err, merchantOrderId, result.OrderAmount)
+		sendWaffoWebhookResponse(c, wh, false, "invalid order amount")
+		return
+	}
+	if err := model.ValidateTopUpPaidMoney(topUp, paidMoney); err != nil {
+		log.Printf("Waffo金额校验失败: %v, 订单: %s", err, merchantOrderId)
+		sendWaffoWebhookResponse(c, wh, true, "")
+		return
+	}
 
 	completed, err := model.RechargeWaffo(merchantOrderId)
 	if err != nil {

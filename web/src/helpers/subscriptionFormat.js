@@ -240,6 +240,27 @@ export function getSubscriptionDailyPriceDisplay(plan) {
   };
 }
 
+export function getSubscriptionPerRequestPriceDisplay(plan) {
+  const priceDisplay = getSubscriptionPriceDisplay(plan);
+  const usageSummary = getSubscriptionUsageSummary(plan);
+
+  if (
+    usageSummary.resourceType !== 'request_count' ||
+    usageSummary.unlimited ||
+    Number(usageSummary.total || 0) <= 0 ||
+    Number(priceDisplay.effectivePrice || 0) <= 0
+  ) {
+    return null;
+  }
+
+  const perRequestPrice = priceDisplay.effectivePrice / usageSummary.total;
+  return {
+    ...priceDisplay,
+    perRequestPrice,
+    displayPerRequestPrice: formatSubscriptionPriceAmount(perRequestPrice),
+  };
+}
+
 export function isClaudeMonthlySubscriptionPlan(plan) {
   return (
     isSubscriptionClaudePlan(plan) &&
@@ -275,6 +296,158 @@ export function getClaudeMonthlyMarketingSubtitle(plan, t) {
   }
 
   return '';
+}
+
+export function getSubscriptionMarketingSubtitle(plan, t) {
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const durationText = formatSubscriptionSellingDuration(plan, t);
+  const resetPeriodText = formatSubscriptionResetPeriod(plan, t);
+
+  if (usageSummary.resourceType === 'request_count') {
+    const periodLimitText = usageSummary.periodUnlimited
+      ? t('不限次')
+      : `${usageSummary.periodTotal} ${t('次')}`;
+    const totalLimitText = usageSummary.unlimited
+      ? t('不限次')
+      : `${usageSummary.total} ${t('次')}`;
+
+    if (resetPeriodText === t('不重置')) {
+      return t('购买后整个 {{duration}} 内最多可用 {{total}}', {
+        duration: durationText,
+        total: totalLimitText,
+      });
+    }
+
+    return t('购买后每{{period}}可用 {{periodLimit}}，整个 {{duration}} 内最多 {{total}}', {
+      period: resetPeriodText,
+      periodLimit: periodLimitText,
+      duration: durationText,
+      total: totalLimitText,
+    });
+  }
+
+  const quotaText = usageSummary.unlimited
+    ? t('不限额度')
+    : renderQuota(usageSummary.total);
+
+  if (resetPeriodText === t('不重置')) {
+    return t('购买后整个 {{duration}} 内共可用 {{amount}}', {
+      duration: durationText,
+      amount: quotaText,
+    });
+  }
+
+  return t('购买后每{{period}}可用 {{amount}}，有效期 {{duration}}', {
+    period: resetPeriodText,
+    amount: quotaText,
+    duration: durationText,
+  });
+}
+
+export function getSubscriptionPlanMetricItemsForCommerce(plan, t) {
+  const usageSummary = getSubscriptionUsageSummary(plan);
+  const resourceType = getSubscriptionResourceType(plan);
+  const baseItems = getSubscriptionPlanMetricItems(plan, t);
+
+  return baseItems.map((item) => {
+    if (resourceType !== 'request_count') {
+      return item;
+    }
+    if (item.key === 'period_limit') {
+      return {
+        ...item,
+        label: t('每次重置后可用'),
+      };
+    }
+    if (item.key === 'total_limit') {
+      return {
+        ...item,
+        label: t('整个有效期最多'),
+        value: usageSummary.unlimited
+          ? t('不限次')
+          : `${usageSummary.total} ${t('次')}`,
+      };
+    }
+    if (item.key === 'reset_time') {
+      return {
+        ...item,
+        label: t('什么时候重置'),
+      };
+    }
+    if (item.key === 'duration') {
+      return {
+        ...item,
+        label: t('可用时长'),
+      };
+    }
+    return item;
+  });
+}
+
+export function getSubscriptionCommerceBadge(plan, plans = [], t) {
+  const normalizedPlans = (plans || [])
+    .map((item) => item?.plan || item)
+    .filter((item) => item && Number(item?.id || 0) > 0 && item?.enabled !== false);
+  const currentPlanId = Number(plan?.id || 0);
+  if (!currentPlanId || normalizedPlans.length === 0) {
+    return null;
+  }
+
+  const priceSortedPlans = [...normalizedPlans].sort((left, right) => {
+    const leftPrice = Number(getSubscriptionEffectivePrice(left) || 0);
+    const rightPrice = Number(getSubscriptionEffectivePrice(right) || 0);
+    if (leftPrice !== rightPrice) {
+      return leftPrice - rightPrice;
+    }
+    return Number(left?.id || 0) - Number(right?.id || 0);
+  });
+
+  const cheapestPlan = priceSortedPlans[0];
+  const medianPlan =
+    priceSortedPlans.length >= 3
+      ? priceSortedPlans[Math.floor(priceSortedPlans.length / 2)]
+      : null;
+  const perRequestPlans = normalizedPlans
+    .map((item) => ({
+      plan: item,
+      price: getSubscriptionPerRequestPriceDisplay(item)?.perRequestPrice || 0,
+    }))
+    .filter((item) => item.price > 0)
+    .sort((left, right) => left.price - right.price);
+  const bestValuePlan = perRequestPlans[0]?.plan || null;
+
+  if (medianPlan && Number(medianPlan?.id || 0) === currentPlanId) {
+    return {
+      key: 'recommended',
+      label: t('推荐'),
+      tone: 'blue',
+      description: t('更多用户会选这档'),
+    };
+  }
+
+  if (
+    bestValuePlan &&
+    Number(bestValuePlan?.id || 0) === currentPlanId &&
+    Number(cheapestPlan?.id || 0) !== currentPlanId
+  ) {
+    return {
+      key: 'value',
+      label: t('性价比'),
+      tone: 'green',
+      description: t('单次成本更低'),
+    };
+  }
+
+  if (Number(cheapestPlan?.id || 0) === currentPlanId) {
+    return {
+      key: 'starter',
+      label: t('入门'),
+      tone: 'orange',
+      description: t('适合第一次购买'),
+    };
+  }
+
+  return null;
 }
 
 export function formatSubscriptionResourceLabel(plan, t) {

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
@@ -41,10 +41,13 @@ import {
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
+import { StatusContext } from '../../context/Status';
 
 export const useLogsData = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const LOG_EXPORT_LIMIT = 10000;
+  const [statusState] = useContext(StatusContext);
 
   // Define column keys for selection
   const COLUMN_KEYS = {
@@ -77,6 +80,7 @@ export const useLogsData = () => {
 
   // User and admin
   const isAdminUser = isAdmin();
+  const logExportEnabled = !!statusState?.status?.enable_log_export;
   // Role-specific storage key to prevent different roles from overwriting each other
   const STORAGE_KEY = isAdminUser
     ? 'logs-table-columns-admin'
@@ -90,6 +94,7 @@ export const useLogsData = () => {
     quota: 0,
     token: 0,
   });
+  const [exporting, setExporting] = useState(false);
 
   // Form state
   const [formApi, setFormApi] = useState(null);
@@ -269,6 +274,128 @@ export const useLogsData = () => {
       subscription_plan_id: formValues.subscription_plan_id || '',
       logType: formValues.logType ? parseInt(formValues.logType) : 0,
     };
+  };
+
+  const buildLogQueryParams = (options = {}) => {
+    const {
+      user_id,
+      username,
+      token_name,
+      model_name,
+      start_timestamp,
+      end_timestamp,
+      channel,
+      group,
+      request_id,
+      error_message,
+      status_code,
+      subscription_id,
+      subscription_plan_id,
+      logType: formLogType,
+    } = getFormValues();
+
+    const currentLogType =
+      options.customLogType !== undefined && options.customLogType !== null
+        ? options.customLogType
+        : formLogType !== undefined
+          ? formLogType
+          : logType;
+
+    const localStartTimestamp = Date.parse(start_timestamp) / 1000;
+    const localEndTimestamp = Date.parse(end_timestamp) / 1000;
+
+    const params = new URLSearchParams({
+      type: String(currentLogType),
+      token_name: token_name || '',
+      model_name: model_name || '',
+      start_timestamp: String(localStartTimestamp),
+      end_timestamp: String(localEndTimestamp),
+      group: group || '',
+      request_id: request_id || '',
+      error_message: error_message || '',
+      status_code: status_code || '',
+      subscription_id: subscription_id || '',
+      subscription_plan_id: subscription_plan_id || '',
+    });
+
+    if (options.includePagination) {
+      params.set('p', String(options.page ?? 1));
+      params.set('page_size', String(options.pageSize ?? pageSize));
+    }
+
+    if (isAdminUser) {
+      params.set('user_id', user_id || '');
+      params.set('username', username || '');
+      params.set('channel', channel || '');
+    }
+
+    return params;
+  };
+
+  const exportLogs = async () => {
+    if (!logExportEnabled) {
+      showError(t('日志导出未启用'));
+      return;
+    }
+    if (exporting) {
+      return;
+    }
+    const runExport = async () => {
+      setExporting(true);
+      try {
+        const endpoint = isAdminUser ? '/api/log/export' : '/api/log/self/export';
+        const params = buildLogQueryParams();
+        const res = await API.get(`${endpoint}?${params.toString()}`, {
+          responseType: 'blob',
+        });
+
+        const contentDisposition = res.headers?.['content-disposition'] || '';
+        const filenameMatch =
+          contentDisposition.match(/filename\*=UTF-8''([^;]+)/i) ||
+          contentDisposition.match(/filename=([^;]+)/i);
+        const filename = filenameMatch
+          ? decodeURIComponent(filenameMatch[1].replace(/"/g, '').trim())
+          : `usage-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+
+        const url = URL.createObjectURL(res.data);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        if (res.headers?.['x-export-truncated'] === 'true') {
+          showSuccess(t('已导出当前筛选日志，超出上限的记录未包含'));
+        } else {
+          showSuccess(t('日志导出成功'));
+        }
+      } catch (error) {
+        showError(error?.message || t('导出日志失败'));
+      } finally {
+        setExporting(false);
+      }
+    };
+
+    if (logCount > LOG_EXPORT_LIMIT) {
+      Modal.confirm({
+        title: t('导出条数超出上限'),
+        content: t(
+          '当前筛选结果共 {{count}} 条，单次最多导出 {{limit}} 条，仅导出最新 {{limit}} 条，是否继续？',
+          {
+            count: logCount,
+            limit: LOG_EXPORT_LIMIT,
+          },
+        ),
+        confirmText: t('继续导出'),
+        cancelText: t('取消'),
+        onOk: runExport,
+      });
+      return;
+    }
+
+    await runExport();
   };
 
   // Statistics functions
@@ -729,73 +856,15 @@ export const useLogsData = () => {
   // Load logs function
   const loadLogs = async (startIdx, pageSize, customLogType = null) => {
     setLoading(true);
-
-    const {
-      user_id,
-      username,
-      token_name,
-      model_name,
-      start_timestamp,
-      end_timestamp,
-      channel,
-      group,
-      request_id,
-      error_message,
-      status_code,
-      subscription_id,
-      subscription_plan_id,
-      logType: formLogType,
-    } = getFormValues();
-
-    const currentLogType =
-      customLogType !== null
-        ? customLogType
-        : formLogType !== undefined
-          ? formLogType
-          : logType;
-
-    const localStartTimestamp = Date.parse(start_timestamp) / 1000;
-    const localEndTimestamp = Date.parse(end_timestamp) / 1000;
-
-    let url;
-    if (isAdminUser) {
-      const params = new URLSearchParams({
-        p: String(startIdx),
-        page_size: String(pageSize),
-        type: String(currentLogType),
-        user_id: user_id || '',
-        username: username || '',
-        token_name: token_name || '',
-        model_name: model_name || '',
-        start_timestamp: String(localStartTimestamp),
-        end_timestamp: String(localEndTimestamp),
-        channel: channel || '',
-        group: group || '',
-        request_id: request_id || '',
-        error_message: error_message || '',
-        status_code: status_code || '',
-        subscription_id: subscription_id || '',
-        subscription_plan_id: subscription_plan_id || '',
-      });
-      url = `/api/log/?${params.toString()}`;
-    } else {
-      const params = new URLSearchParams({
-        p: String(startIdx),
-        page_size: String(pageSize),
-        type: String(currentLogType),
-        token_name: token_name || '',
-        model_name: model_name || '',
-        start_timestamp: String(localStartTimestamp),
-        end_timestamp: String(localEndTimestamp),
-        group: group || '',
-        request_id: request_id || '',
-        error_message: error_message || '',
-        status_code: status_code || '',
-        subscription_id: subscription_id || '',
-        subscription_plan_id: subscription_plan_id || '',
-      });
-      url = `/api/log/self/?${params.toString()}`;
-    }
+    const params = buildLogQueryParams({
+      includePagination: true,
+      page: startIdx,
+      pageSize,
+      customLogType,
+    });
+    const url = isAdminUser
+      ? `/api/log/?${params.toString()}`
+      : `/api/log/self/?${params.toString()}`;
 
     const res = await API.get(url);
     const { success, message, data } = res.data;
@@ -922,7 +991,9 @@ export const useLogsData = () => {
     pageSize,
     logType,
     stat,
+    exporting,
     isAdminUser,
+    logExportEnabled,
 
     // Form state
     formApi,
@@ -965,6 +1036,7 @@ export const useLogsData = () => {
     handlePageChange,
     handlePageSizeChange,
     refresh,
+    exportLogs,
     applyLogFilter,
     jumpToChannelDetail,
     jumpToUserDetail,

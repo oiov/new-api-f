@@ -35,7 +35,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   // ========== 基础状态 ==========
   const [loading, setLoading] = useState(false);
   const [greetingVisible, setGreetingVisible] = useState(false);
-  const [searchModalVisible, setSearchModalVisible] = useState(false);
   const showLoading = useMinimumLoadingTime(loading);
 
   // ========== 输入状态 ==========
@@ -147,12 +146,19 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   }, []);
 
-  const showSearchModal = useCallback(() => {
-    setSearchModalVisible(true);
-  }, []);
-
-  const handleCloseModal = useCallback(() => {
-    setSearchModalVisible(false);
+  const resetSearchFilters = useCallback(() => {
+    const nextDefaultTime = getDefaultTime();
+    setInputs({
+      username: '',
+      token_name: '',
+      model_name: '',
+      start_timestamp: getInitialTimestamp(),
+      end_timestamp: timestamp2string(new Date().getTime() / 1000 + 3600),
+      channel: '',
+      data_export_default_time: '',
+    });
+    setDataExportDefaultTime(nextDefaultTime);
+    localStorage.setItem('data_export_default_time', nextDefaultTime);
   }, []);
 
   // ========== API 调用函数 ==========
@@ -235,7 +241,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       if (data && data.length > 0 && updateChartDataCallback) {
         updateChartDataCallback(data);
       }
-      setSearchModalVisible(false);
     },
     [refresh],
   );
@@ -259,7 +264,6 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     // 基础状态
     loading: showLoading,
     greetingVisible,
-    searchModalVisible,
 
     // 输入状态
     inputs,
@@ -308,8 +312,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
     // 函数
     handleInputChange,
-    showSearchModal,
-    handleCloseModal,
+    resetSearchFilters,
     loadQuotaData,
     loadUptimeData,
     getUserData,

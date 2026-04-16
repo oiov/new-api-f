@@ -68,6 +68,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Wallet,
   Zap,
 } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
@@ -82,10 +83,14 @@ import {
   getSubscriptionDailyPriceDisplay,
   formatSubscriptionSellingDuration,
   getSubscriptionPriceDisplay,
+  getSubscriptionPerRequestPriceDisplay,
   formatSubscriptionResetPeriod,
   formatSubscriptionResourceLabel,
   getSubscriptionEffectivePrice,
+  getSubscriptionMarketingSubtitle,
+  getSubscriptionCommerceBadge,
   getSubscriptionPlanMetricItems,
+  getSubscriptionPlanMetricItemsForCommerce,
   getSubscriptionRestrictionSummary,
   getSubscriptionResourceType,
   getSubscriptionSaleSummary,
@@ -215,6 +220,22 @@ function getUsageDisplayText(summary, resourceType, t) {
   return renderQuota(summary.remain);
 }
 
+function getAggregateAccessStatusText(enabled, t) {
+  return enabled ? t('已参与自动扣费') : t('已暂停自动扣费');
+}
+
+function getAggregateAccessHelpText(enabled, t) {
+  return enabled
+    ? t('请求命中订阅结算时，系统可以从这份订阅自动扣费。')
+    : t('当前不会从这份订阅自动扣费；开启后才会重新参与订阅结算。');
+}
+
+function getPreferredSubscriptionHelpText(enabled, t) {
+  return enabled
+    ? t('当有多份同类可用订阅时，系统会优先从这份订阅扣费。')
+    : t('开启后，当有多份同类可用订阅时，系统会优先从这份订阅扣费。');
+}
+
 function getUsageDetailText(summary, resourceType, t) {
   if (summary.unlimited) return t('不限');
   if (resourceType === 'request_count') {
@@ -265,6 +286,63 @@ function getPlanBenefitDescription(plan, t) {
   }
 
   return `${t('每个重置周期可用')} ${amountText} · ${t('重置')} ${resetPeriod}`;
+}
+
+function getScopedItemsSummary(items = [], t, type) {
+  const uniqueItems = Array.from(new Set((items || []).filter(Boolean)));
+  if (uniqueItems.length === 0) {
+    return '';
+  }
+  if (uniqueItems.length === 1) {
+    if (type === 'model') {
+      return t('{{name}} 1 个模型', { name: uniqueItems[0] });
+    }
+    if (type === 'vendor') {
+      return t('{{name}} 1 个供应商', { name: uniqueItems[0] });
+    }
+    return uniqueItems[0];
+  }
+  if (type === 'model') {
+    return t('{{name}} 等 {{count}} 个模型', {
+      name: uniqueItems[0],
+      count: uniqueItems.length,
+    });
+  }
+  if (type === 'vendor') {
+    return t('{{name}} 等 {{count}} 个供应商', {
+      name: uniqueItems[0],
+      count: uniqueItems.length,
+    });
+  }
+  return t('共 {{count}} 个可用分组', { count: uniqueItems.length });
+}
+
+function getPlanScopeSummary(plan, restrictionSummary, t) {
+  const groupItems = restrictionSummary?.groups?.filter(
+    (item) => item && item !== plan?.upgrade_group,
+  );
+  const modelSummary = getScopedItemsSummary(
+    restrictionSummary?.models,
+    t,
+    'model',
+  );
+  const vendorSummary = getScopedItemsSummary(
+    restrictionSummary?.vendors,
+    t,
+    'vendor',
+  );
+
+  const primaryScope = plan?.upgrade_group
+    ? t('升级分组 {{group}}', { group: plan.upgrade_group })
+    : getScopedItemsSummary(groupItems, t, 'group') || t('适用范围更灵活');
+  const secondaryScope = [modelSummary, vendorSummary]
+    .filter(Boolean)
+    .join(' · ');
+
+  return {
+    primary: primaryScope,
+    secondary: secondaryScope || t('详情页可查看全部权益'),
+  };
 }
 
 function inferSubscriptionPlanSeries(plan) {
@@ -969,7 +1047,9 @@ const SubscriptionPlansCard = ({
       ? 'wallet_first'
       : billingPreference;
   const subscriptionPreferenceLabel =
-    billingPreference === 'subscription_only' ? t('仅用订阅') : t('优先订阅');
+    billingPreference === 'subscription_only'
+      ? t('只从订阅扣费')
+      : t('优先从订阅扣费');
 
   const planTitleMap = useMemo(() => {
     const map = new Map();
@@ -1767,12 +1847,12 @@ const SubscriptionPlansCard = ({
       value: activeRemainSummary,
       helper:
         displayBillingPreference === 'subscription_only'
-          ? t('仅使用订阅扣费')
+          ? t('只从订阅扣费，不使用钱包')
           : displayBillingPreference === 'wallet_only'
-            ? t('仅使用钱包扣费')
+            ? t('只从钱包扣费，不使用订阅')
             : displayBillingPreference === 'wallet_first'
-              ? t('优先使用钱包扣费')
-              : t('优先使用订阅扣费'),
+              ? t('先从钱包扣费，余额不足再尝试订阅')
+              : t('先从订阅扣费，不足时再按设置回退钱包'),
       icon: Crown,
       color: 'emerald',
       gradient: 'from-emerald-500/10 to-emerald-500/5',
@@ -1865,7 +1945,7 @@ const SubscriptionPlansCard = ({
           <div className='space-y-2 text-sm text-semi-color-text-1'>
             <div>
               {t(
-                '套餐购买成功后会立即生效，并进入“我的订阅”。生效中的套餐会直接参与后续请求结算。',
+                '套餐购买成功后会立即生效，并进入“我的订阅”。开启自动扣费后，生效中的套餐会参与后续请求结算。',
               )}
             </div>
             <div>
@@ -1888,7 +1968,7 @@ const SubscriptionPlansCard = ({
           <div className='space-y-2 text-sm text-semi-color-text-1'>
             <div>
               {t(
-                '如果你启用了订阅扣费，请求会优先尝试使用可用订阅；如果当前订阅不足，再按你的扣费偏好决定是否回退到钱包余额。',
+                '如果你开启了订阅自动扣费，请求会优先尝试使用可用订阅；如果当前订阅不足，再按你的扣费偏好决定是否回退到钱包余额。',
               )}
             </div>
             <div>
@@ -1911,12 +1991,12 @@ const SubscriptionPlansCard = ({
           <div className='space-y-2 text-sm text-semi-color-text-1'>
             <div>
               {t(
-                '多个生效套餐可以同时存在。系统会按“最早到期优先”使用订阅权益，先消耗最早过期的套餐，再消耗后到期的套餐。',
+                '多个生效套餐可以同时存在。系统会按“最早到期优先”使用订阅权益，先从最早过期的套餐扣费，再从后到期的套餐扣费。',
               )}
             </div>
             <div>
               {t(
-                '如果同时存在多个按次套餐，会优先消耗最早到期的按次套餐；如果存在多个按额度套餐，也会优先消耗最早到期的按额度套餐。',
+                '如果同时存在多个按次套餐，会优先从最早到期的按次套餐扣费；如果存在多个按额度套餐，也会优先从最早到期的按额度套餐扣费。',
               )}
             </div>
             <div>
@@ -2177,7 +2257,7 @@ const SubscriptionPlansCard = ({
     const metaItems = [
       {
         label: t('套餐说明'),
-        value: plan?.subtitle || t('暂无说明'),
+        value: getSubscriptionMarketingSubtitle(plan, t) || t('暂无说明'),
       },
       {
         label: t('来源'),
@@ -2188,12 +2268,12 @@ const SubscriptionPlansCard = ({
         value: item.subscription?.upgrade_group || plan?.upgrade_group || '--',
       },
       {
-        label: t('聚合扣费'),
-        value: item.isAggregateEnabled ? t('参与中') : t('已暂停'),
+        label: t('自动扣费'),
+        value: getAggregateAccessStatusText(item.isAggregateEnabled, t),
       },
       {
-        label: t('优先消耗'),
-        value: item.isPreferred ? t('是') : t('否'),
+        label: t('优先扣费'),
+        value: item.isPreferred ? t('已开启') : t('未开启'),
       },
     ];
     if (item.isDerivedDayPass) {
@@ -2238,22 +2318,32 @@ const SubscriptionPlansCard = ({
           <div className='flex flex-wrap items-center gap-2'>
             {canGenerateDayPass(item) ? (
               <>
-                <Button
-                  size='small'
-                  theme='solid'
-                  type='primary'
-                  onClick={() => openCreateDayPass(item)}
+                <Tooltip
+                  content={t('立即拆出一张独立天卡，适合单独使用或转赠。')}
                 >
-                  {t('生成天卡')}
-                </Button>
-                <Button
-                  size='small'
-                  theme='light'
-                  type='primary'
-                  onClick={() => openCreateDayPassPlan(item)}
+                  <Button
+                    size='small'
+                    theme='solid'
+                    type='primary'
+                    onClick={() => openCreateDayPass(item)}
+                  >
+                    {t('生成天卡')}
+                  </Button>
+                </Tooltip>
+                <Tooltip
+                  content={t(
+                    '按天创建连续拆分计划，系统会每天自动拆出一张天卡。',
+                  )}
                 >
-                  {t('按天拆分')}
-                </Button>
+                  <Button
+                    size='small'
+                    theme='light'
+                    type='primary'
+                    onClick={() => openCreateDayPassPlan(item)}
+                  >
+                    {t('按天拆分')}
+                  </Button>
+                </Tooltip>
               </>
             ) : null}
             {activeDayPassPlan ? (
@@ -2269,64 +2359,89 @@ const SubscriptionPlansCard = ({
                 {t('取消拆分计划')}
               </Button>
             ) : null}
-            <Button
-              size='small'
-              theme={item.isAggregateEnabled ? 'light' : 'solid'}
-              type={item.isAggregateEnabled ? 'warning' : 'primary'}
-              loading={
-                subscriptionActionLoadingId === item.subscription?.id &&
-                subscriptionActionLoadingType ===
-                  (item.isAggregateEnabled
-                    ? 'disable_aggregate_access'
-                    : 'enable_aggregate_access')
-              }
-              onClick={() =>
-                operateSelfSubscription(
-                  item.subscription?.id,
-                  item.isAggregateEnabled
-                    ? 'disable_aggregate_access'
-                    : 'enable_aggregate_access',
-                  item.isAggregateEnabled
-                    ? t('已暂停该订阅参与聚合扣费')
-                    : t('该订阅已恢复参与聚合扣费'),
-                )
+            <Tooltip
+              content={getAggregateAccessHelpText(item.isAggregateEnabled, t)}
+            >
+              <Button
+                size='small'
+                theme={item.isAggregateEnabled ? 'light' : 'solid'}
+                type={item.isAggregateEnabled ? 'warning' : 'primary'}
+                loading={
+                  subscriptionActionLoadingId === item.subscription?.id &&
+                  subscriptionActionLoadingType ===
+                    (item.isAggregateEnabled
+                      ? 'disable_aggregate_access'
+                      : 'enable_aggregate_access')
+                }
+                onClick={() =>
+                  operateSelfSubscription(
+                    item.subscription?.id,
+                    item.isAggregateEnabled
+                      ? 'disable_aggregate_access'
+                      : 'enable_aggregate_access',
+                    item.isAggregateEnabled
+                      ? t('已暂停这份订阅的自动扣费')
+                      : t('已开启这份订阅的自动扣费'),
+                  )
+                }
+              >
+                {item.isAggregateEnabled
+                  ? t('暂停自动扣费')
+                  : t('开启自动扣费')}
+              </Button>
+            </Tooltip>
+            <Tooltip
+              content={
+                !item.isAggregateEnabled || item.state !== 'active'
+                  ? t('只有生效中且已开启自动扣费的订阅，才能设置为优先扣费。')
+                  : getPreferredSubscriptionHelpText(item.isPreferred, t)
               }
             >
-              {item.isAggregateEnabled ? t('暂停聚合') : t('参与聚合')}
-            </Button>
-            <Button
-              size='small'
-              theme={item.isPreferred ? 'light' : 'outline'}
-              type='primary'
-              disabled={!item.isAggregateEnabled || item.state !== 'active'}
-              loading={
-                subscriptionActionLoadingId === item.subscription?.id &&
-                subscriptionActionLoadingType ===
-                  (item.isPreferred ? 'clear_preferred' : 'set_preferred')
-              }
-              onClick={() =>
-                operateSelfSubscription(
-                  item.subscription?.id,
-                  item.isPreferred ? 'clear_preferred' : 'set_preferred',
-                  item.isPreferred ? t('已取消优先消耗') : t('已设为优先消耗'),
-                )
-              }
-            >
-              {item.isPreferred ? t('取消优先') : t('设为优先')}
-            </Button>
-            <Button
-              size='small'
-              type='tertiary'
-              theme='outline'
-              onClick={() =>
-                setConsumeLogsFilter({
-                  subscriptionId: item.subscription?.id,
-                  planId: item.subscription?.plan_id,
-                })
-              }
-            >
-              {t('查看历史消耗')}
-            </Button>
+              <Button
+                size='small'
+                theme={item.isPreferred ? 'light' : 'outline'}
+                type='primary'
+                disabled={!item.isAggregateEnabled || item.state !== 'active'}
+                loading={
+                  subscriptionActionLoadingId === item.subscription?.id &&
+                  subscriptionActionLoadingType ===
+                    (item.isPreferred ? 'clear_preferred' : 'set_preferred')
+                }
+                onClick={() =>
+                  operateSelfSubscription(
+                    item.subscription?.id,
+                    item.isPreferred ? 'clear_preferred' : 'set_preferred',
+                    item.isPreferred
+                      ? t('已取消优先扣费')
+                      : t('已设为优先扣费'),
+                  )
+                }
+              >
+                {item.isPreferred ? t('取消优先扣费') : t('设为优先扣费')}
+              </Button>
+            </Tooltip>
+            <Tooltip content={t('查看这份订阅的历史扣费记录和消耗明细。')}>
+              <Button
+                size='small'
+                type='tertiary'
+                theme='outline'
+                onClick={() =>
+                  setConsumeLogsFilter({
+                    subscriptionId: item.subscription?.id,
+                    planId: item.subscription?.plan_id,
+                  })
+                }
+              >
+                {t('查看扣费明细')}
+              </Button>
+            </Tooltip>
+          </div>
+          <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 px-3 py-2 text-xs text-semi-color-text-1'>
+            {getAggregateAccessStatusText(item.isAggregateEnabled, t)} ·{' '}
+            {getAggregateAccessHelpText(item.isAggregateEnabled, t)}
+            {item.isPreferred
+              ? ` ${getPreferredSubscriptionHelpText(true, t)}`
+              : ''}
           </div>
         </div>
         {!item.usageSummary.unlimited && (
@@ -2372,67 +2487,127 @@ const SubscriptionPlansCard = ({
           </div>
         ) : null}
         <div className='rounded-2xl border border-semi-color-border bg-white overflow-hidden'>
-          <Table
-            size='small'
-            pagination={false}
-            dataSource={[
-              {
-                key: 'usage',
-                category: t('使用概览'),
-                summary: `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
-                details: usageItems,
-              },
-              {
-                key: 'time',
-                category: t('时间与重置'),
-                summary: `${t('到期时间')} ${formatDateTime(item.subscription?.end_time)}`,
-                details: timeItems,
-              },
-              {
-                key: 'meta',
-                category: t('套餐信息'),
-                summary: plan?.subtitle || t('暂无说明'),
-                details: metaItems,
-              },
-            ]}
-            expandRowByClick
-            expandedRowRender={(record) => (
-              <div className='grid grid-cols-1 gap-3 p-1 md:grid-cols-2 xl:grid-cols-3'>
-                {record.details.map((detail) => (
-                  <div
-                    key={detail.label}
-                    className='rounded-xl bg-semi-color-fill-0 px-3 py-2.5'
-                  >
-                    <div className='text-xs text-gray-500'>{detail.label}</div>
-                    <div className='mt-1 break-all font-medium text-semi-color-text-0'>
-                      {detail.value}
+          {isMobile ? (
+            <div className='space-y-3 p-3'>
+              {[
+                {
+                  key: 'usage',
+                  category: t('使用概览'),
+                  summary: `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
+                  details: usageItems,
+                },
+                {
+                  key: 'time',
+                  category: t('时间与重置'),
+                  summary: `${t('到期时间')} ${formatDateTime(item.subscription?.end_time)}`,
+                  details: timeItems,
+                },
+                {
+                  key: 'meta',
+                  category: t('套餐信息'),
+                  summary:
+                    getSubscriptionMarketingSubtitle(plan, t) || t('暂无说明'),
+                  details: metaItems,
+                },
+              ].map((record) => (
+                <div
+                  key={record.key}
+                  className='rounded-2xl border border-semi-color-border bg-semi-color-fill-0/60 p-3'
+                >
+                  <div className='flex items-start justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <div className='text-sm font-semibold text-semi-color-text-0'>
+                        {record.category}
+                      </div>
+                      <div className='mt-1 text-xs leading-5 text-semi-color-text-2'>
+                        {record.summary}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-            columns={[
-              {
-                title: t('分类'),
-                dataIndex: 'category',
-                width: 180,
-                render: (value) => (
-                  <span className='font-semibold text-semi-color-text-0'>
-                    {value}
-                  </span>
-                ),
-              },
-              {
-                title: t('摘要'),
-                dataIndex: 'summary',
-                render: (value) => (
-                  <span className='text-sm text-semi-color-text-1'>
-                    {value}
-                  </span>
-                ),
-              },
-            ]}
-          />
+                  <div className='mt-3 grid grid-cols-1 gap-2'>
+                    {record.details.map((detail) => (
+                      <div
+                        key={detail.label}
+                        className='rounded-xl bg-white px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]'
+                      >
+                        <div className='text-[11px] text-gray-500'>
+                          {detail.label}
+                        </div>
+                        <div className='mt-1 break-all text-sm font-medium text-semi-color-text-0'>
+                          {detail.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Table
+              size='small'
+              pagination={false}
+              dataSource={[
+                {
+                  key: 'usage',
+                  category: t('使用概览'),
+                  summary: `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
+                  details: usageItems,
+                },
+                {
+                  key: 'time',
+                  category: t('时间与重置'),
+                  summary: `${t('到期时间')} ${formatDateTime(item.subscription?.end_time)}`,
+                  details: timeItems,
+                },
+                {
+                  key: 'meta',
+                  category: t('套餐信息'),
+                  summary:
+                    getSubscriptionMarketingSubtitle(plan, t) || t('暂无说明'),
+                  details: metaItems,
+                },
+              ]}
+              expandRowByClick
+              expandedRowRender={(record) => (
+                <div className='grid grid-cols-1 gap-3 p-1 md:grid-cols-2 xl:grid-cols-3'>
+                  {record.details.map((detail) => (
+                    <div
+                      key={detail.label}
+                      className='rounded-xl bg-semi-color-fill-0 px-3 py-2.5'
+                    >
+                      <div className='text-xs text-gray-500'>
+                        {detail.label}
+                      </div>
+                      <div className='mt-1 break-all font-medium text-semi-color-text-0'>
+                        {detail.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              columns={[
+                {
+                  title: t('分类'),
+                  dataIndex: 'category',
+                  width: 180,
+                  render: (value) => (
+                    <span className='font-semibold text-semi-color-text-0'>
+                      {value}
+                    </span>
+                  ),
+                },
+                {
+                  title: t('摘要'),
+                  dataIndex: 'summary',
+                  render: (value) => (
+                    <span className='text-sm text-semi-color-text-1'>
+                      {value}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          )}
         </div>
       </div>
     );
@@ -2452,7 +2627,7 @@ const SubscriptionPlansCard = ({
         <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'>
           <div className='text-xs text-gray-500'>{t('套餐说明')}</div>
           <div className='mt-1 text-sm text-semi-color-text-0 break-all'>
-            {plan?.subtitle || t('暂无说明')}
+            {getSubscriptionMarketingSubtitle(plan, t) || t('暂无说明')}
           </div>
         </div>
         <div className='rounded-lg border border-semi-color-border bg-semi-color-fill-0 p-3'>
@@ -2543,9 +2718,9 @@ const SubscriptionPlansCard = ({
           <div className='mt-1 text-sm text-semi-color-text-2'>
             #{order?.id || '--'} · {order?.trade_no || '--'}
           </div>
-          {item?.plan?.subtitle ? (
+          {getSubscriptionMarketingSubtitle(item?.plan || {}, t) ? (
             <div className='mt-1 text-sm text-semi-color-text-2 line-clamp-2'>
-              {item.plan.subtitle}
+              {getSubscriptionMarketingSubtitle(item?.plan || {}, t)}
             </div>
           ) : null}
         </div>
@@ -2718,7 +2893,8 @@ const SubscriptionPlansCard = ({
                   )}
                 </div>
                 <Text type='tertiary' size='small'>
-                  {plan?.subtitle || t('以套餐配置为准')}
+                  {getSubscriptionMarketingSubtitle(plan, t) ||
+                    t('以套餐配置为准')}
                 </Text>
               </div>
             </div>
@@ -2959,41 +3135,75 @@ const SubscriptionPlansCard = ({
   const renderPackagePlanCard = (record, index) => {
     const plan = record?.plan || {};
     const seriesMeta = getSubscriptionSeriesMeta(plan, t);
+    const marketingBadge = getSubscriptionCommerceBadge(
+      plan,
+      sortedPlans.map((item) => item?.plan || item),
+      t,
+    );
     const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
     const availability = getPlanPurchaseAvailability(plan);
     const limit = availability.limit;
     const reached = availability.reached;
     const saleSummary = availability.saleSummary;
     const restrictionSummary = getSubscriptionRestrictionSummary(plan);
-    const metricItems = getSubscriptionPlanMetricItems(plan, t);
+    const metricItems = getSubscriptionPlanMetricItemsForCommerce(plan, t);
     const { symbol, effectivePrice, originalPrice } =
       getSubscriptionPriceDisplay(plan);
+    const perRequestPriceDisplay = getSubscriptionPerRequestPriceDisplay(plan);
     const displayPrice = effectivePrice.toFixed(
       Number.isInteger(effectivePrice) ? 0 : 2,
     );
     const activeDiscount = isSubscriptionDiscountActive(plan);
     const disabled = availability.disabled;
     const tip = availability.reason;
-    const uniqueGroups = Array.from(
-      new Set(
-        restrictionSummary.groups.filter(
-          (item) => item && item !== plan?.upgrade_group,
-        ),
-      ),
-    );
-    const uniqueModels = Array.from(new Set(restrictionSummary.models)).slice(
-      0,
-      2,
-    );
-    const uniqueVendors = Array.from(new Set(restrictionSummary.vendors)).slice(
-      0,
-      1,
-    );
-    const remainingModelCount = Math.max(
-      0,
-      Array.from(new Set(restrictionSummary.models)).length -
-        uniqueModels.length,
-    );
+    const planSubtitle = getSubscriptionMarketingSubtitle(plan, t);
+    const durationText = formatSubscriptionSellingDuration(plan, t);
+    const resourceSummaryText = perRequestPriceDisplay?.displayPerRequestPrice
+      ? t('单次约 {{price}}', {
+          price: `${symbol}${perRequestPriceDisplay.displayPerRequestPrice}`,
+        })
+      : getPlanBenefitDescription(plan, t);
+    const scopeSummary = getPlanScopeSummary(plan, restrictionSummary, t);
+    const visibleMetricItems = metricItems.slice(0, isMobile ? 2 : 4);
+    const badgeItems = [
+      marketingBadge
+        ? {
+            key: `badge-${marketingBadge.key}`,
+            color: marketingBadge.tone,
+            text: marketingBadge.label,
+            className:
+              'subscription-plan-selling-card__badge subscription-plan-selling-card__badge--primary',
+          }
+        : null,
+      seriesMeta.label
+        ? {
+            key: `series-${seriesMeta.key}`,
+            color: seriesMeta.color,
+            text: seriesMeta.label,
+          }
+        : null,
+      activeDiscount
+        ? { key: 'discount', color: 'red', text: t('限时优惠') }
+        : null,
+      saleSummary.soldOut
+        ? { key: 'sold-out', color: 'red', text: t('已售罄') }
+        : null,
+      reached && !saleSummary.soldOut
+        ? { key: 'reached', color: 'orange', text: t('已达上限') }
+        : null,
+      availability.count > 0 && limit > 0
+        ? {
+            key: 'bought',
+            color: 'blue',
+            text: t('已购 {{count}} / {{limit}}', {
+              count: availability.count,
+              limit,
+            }),
+          }
+        : null,
+    ]
+      .filter(Boolean)
+      .slice(0, isMobile ? 2 : 3);
 
     return (
       <Card
@@ -3003,6 +3213,19 @@ const SubscriptionPlansCard = ({
       >
         <div className='subscription-plan-selling-card__inner'>
           <div className='subscription-plan-selling-card__top'>
+            <div className='subscription-plan-selling-card__badges'>
+              {badgeItems.map((item) => (
+                <Tag
+                  key={item.key}
+                  color={item.color}
+                  shape='circle'
+                  size='small'
+                  className={item.className}
+                >
+                  {item.text}
+                </Tag>
+              ))}
+            </div>
             <div className='flex items-start justify-between gap-3'>
               <div className='subscription-plan-selling-card__summary min-w-0 flex-1'>
                 <div className='subscription-plan-selling-card__title-row flex flex-wrap items-center gap-2'>
@@ -3012,85 +3235,75 @@ const SubscriptionPlansCard = ({
                   >
                     {plan?.title || t('订阅套餐')}
                   </Text>
-                  {seriesMeta.label && (
-                    <Tag color={seriesMeta.color} shape='circle' size='small'>
-                      {seriesMeta.label}
-                    </Tag>
-                  )}
-                  {saleSummary.soldOut && (
-                    <Tag color='red' shape='circle' size='small'>
-                      {t('已售罄')}
-                    </Tag>
-                  )}
-                  {reached && !saleSummary.soldOut && (
-                    <Tag color='orange' shape='circle' size='small'>
-                      {t('已达上限')}
-                    </Tag>
-                  )}
                 </div>
                 <Text
                   type='tertiary'
                   size='small'
-                  className='subscription-plan-selling-card__subtitle mt-2 block leading-6'
+                  className='subscription-plan-selling-card__subtitle mt-1.5 block'
                 >
-                  {plan?.subtitle || t('以套餐配置为准')}
+                  {planSubtitle}
                 </Text>
-                {seriesMeta.showDailyPrice ? (
+                <Text
+                  type='secondary'
+                  size='small'
+                  className='subscription-plan-selling-card__hint mt-1.5 block'
+                >
+                  {resourceSummaryText}
+                </Text>
+                {!isMobile && marketingBadge?.description ? (
                   <Text
-                    type='secondary'
+                    type='primary'
                     size='small'
-                    className='subscription-plan-selling-card__hint mt-2 block leading-5'
+                    className='subscription-plan-selling-card__selling-point mt-1 block'
                   >
-                    {t('支付成功后自动生效。')}
+                    {marketingBadge.description}
                   </Text>
-                ) : (
-                  <span className='subscription-plan-selling-card__hint-spacer' />
-                )}
+                ) : null}
               </div>
-              <div className='rounded-2xl bg-white/80 p-2 shadow-sm dark:bg-white/10'>
-                <Package size={18} className='text-semi-color-text-1' />
+              <div className='subscription-plan-selling-card__icon-wrap'>
+                <Package size={16} className='text-semi-color-text-1' />
               </div>
             </div>
 
-            <div className='subscription-plan-selling-card__price-row mt-5 flex items-end justify-between gap-3'>
+            <div className='subscription-plan-selling-card__price-row mt-4 flex items-end justify-between gap-3'>
               <div className='min-w-0 flex-1'>
                 <div className='subscription-plan-selling-card__price'>
-                  {seriesMeta.showDailyPrice && dailyPriceDisplay ? (
-                    <>
-                      {symbol}
-                      {dailyPriceDisplay.displayDailyPrice}
-                    </>
-                  ) : (
-                    <>
-                      {symbol}
-                      {displayPrice}
-                    </>
-                  )}
+                  {symbol}
+                  {displayPrice}
                   <span className='subscription-plan-selling-card__duration'>
-                    /{' '}
-                    {seriesMeta.showDailyPrice && dailyPriceDisplay
-                      ? t('天')
-                      : formatSubscriptionSellingDuration(plan, t)}
+                    / {durationText}
                   </span>
                 </div>
                 {seriesMeta.showDailyPrice && dailyPriceDisplay ? (
                   <Text type='secondary' size='small' className='block'>
-                    {t('合计 {{price}} / {{duration}}', {
-                      price: `${symbol}${displayPrice}`,
-                      duration: formatSubscriptionSellingDuration(plan, t),
+                    {t('折合每天约 {{price}}', {
+                      price: `${symbol}${dailyPriceDisplay.displayDailyPrice}`,
                     })}
                   </Text>
                 ) : null}
                 {activeDiscount ? (
-                  <Text type='tertiary' size='small' delete>
-                    {symbol}
-                    {originalPrice.toFixed(
-                      Number.isInteger(originalPrice) ? 0 : 2,
-                    )}
-                  </Text>
+                  <div className='mt-1 flex items-center gap-2'>
+                    <Text type='secondary' size='small'>
+                      {t('原价')}
+                    </Text>
+                    <Text
+                      size='small'
+                      delete
+                      className='font-medium text-semi-color-text-1'
+                    >
+                      {symbol}
+                      {originalPrice.toFixed(
+                        Number.isInteger(originalPrice) ? 0 : 2,
+                      )}
+                    </Text>
+                  </div>
                 ) : null}
                 {activeDiscount ? (
-                  <Text type='tertiary' size='small' className='block'>
+                  <Text
+                    type='tertiary'
+                    size='small'
+                    className='subscription-plan-selling-card__discount-deadline block'
+                  >
                     {t('优惠截止时间')}：{' '}
                     {new Date(
                       Number(plan?.discount_deadline || 0) * 1000,
@@ -3101,19 +3314,25 @@ const SubscriptionPlansCard = ({
               <div className='subscription-plan-selling-card__sale-meta text-right text-xs text-semi-color-text-2'>
                 <div>
                   {saleSummary.unlimited
-                    ? `${t('已售')} ${saleSummary.soldCount}`
-                    : `${t('剩余')} ${saleSummary.remainingSaleCount}`}
+                    ? `${t('已售出')} ${saleSummary.soldCount} ${t('份')}`
+                    : `${t('还可购买')} ${saleSummary.remainingSaleCount} ${t('份')}`}
                 </div>
-                {limit > 0 && <div>{`${t('限购')} ${limit}`}</div>}
+                {limit > 0 && (
+                  <div>{`${t('每人限购')} ${limit} ${t('份')}`}</div>
+                )}
               </div>
             </div>
           </div>
 
           <div className='subscription-plan-selling-card__metrics'>
-            {metricItems.slice(0, 4).map((item) => (
+            {visibleMetricItems.map((item, metricIndex) => (
               <div
                 key={item.key}
-                className='subscription-plan-selling-card__metric'
+                className={`subscription-plan-selling-card__metric${
+                  metricIndex > 1
+                    ? ' subscription-plan-selling-card__metric--secondary'
+                    : ''
+                }`}
               >
                 <div className='subscription-plan-selling-card__metric-label'>
                   {item.label}
@@ -3129,76 +3348,36 @@ const SubscriptionPlansCard = ({
             <div className='subscription-plan-selling-card__restriction-head'>
               <div className='subscription-plan-selling-card__restriction-title'>
                 <IconInfoCircle size='small' />
-                <span>{t('适用范围')}</span>
+                <span>{t('购买后可用范围')}</span>
               </div>
             </div>
-            {plan?.upgrade_group || uniqueGroups.length > 0 ? (
-              <div className='subscription-plan-selling-card__restriction-row'>
-                <div className='subscription-plan-selling-card__restriction-label'>
-                  {plan?.upgrade_group ? t('分组') : t('可用分组')}
-                </div>
-                <div className='subscription-plan-selling-card__tag-group'>
-                  {plan?.upgrade_group ? renderGroup(plan.upgrade_group) : null}
-                  {uniqueGroups.map((item) => (
-                    <React.Fragment key={`group-fragment-${item}`}>
-                      {renderGroup(item)}
-                    </React.Fragment>
-                  ))}
-                </div>
+            <div className='subscription-plan-selling-card__scope-summary'>
+              <div className='subscription-plan-selling-card__scope-primary subscription-plan-selling-card__scope-chip'>
+                {scopeSummary.primary}
               </div>
-            ) : null}
-            {uniqueModels.length > 0 || uniqueVendors.length > 0 ? (
-              <div className='subscription-plan-selling-card__restriction-row'>
-                <div className='subscription-plan-selling-card__restriction-label'>
-                  {t('模型与供应商')}
-                </div>
-                <div className='subscription-plan-selling-card__tag-group'>
-                  {uniqueModels.map((item) =>
-                    renderScopedValueTag({
-                      key: `model-${item}`,
-                      value: item,
-                      color: 'grey',
-                      onClick: (event) => copyRestrictionValue(event, item),
-                    }),
-                  )}
-                  {remainingModelCount > 0 ? (
-                    <Tag color='orange' shape='circle' size='small'>
-                      {t('另有 {{count}} 个模型', {
-                        count: remainingModelCount,
-                      })}
-                    </Tag>
-                  ) : null}
-                  {uniqueVendors.map((item) =>
-                    renderScopedValueTag({
-                      key: `vendor-${item}`,
-                      value: item,
-                      color: 'green',
-                      onClick: (event) => copyRestrictionValue(event, item),
-                    }),
-                  )}
-                </div>
+              <div className='subscription-plan-selling-card__scope-secondary subscription-plan-selling-card__scope-chip subscription-plan-selling-card__scope-chip--muted'>
+                {scopeSummary.secondary}
               </div>
-            ) : null}
-            {!plan?.upgrade_group &&
-            uniqueGroups.length === 0 &&
-            uniqueModels.length === 0 &&
-            uniqueVendors.length === 0 ? (
-              <div className='subscription-plan-selling-card__restriction-empty'>
-                {t('适用范围更灵活')}
-              </div>
-            ) : null}
+            </div>
             <div className='grid grid-cols-2 gap-2'>
               <Button
                 theme='outline'
                 type='tertiary'
+                size='small'
                 block
                 onClick={() => openPlanDetail(plan?.id)}
               >
-                {t('查看详情')}
+                {t('查看全部权益')}
               </Button>
               {disabled ? (
                 <Tooltip content={tip} position='top'>
-                  <Button theme='solid' type='primary' disabled block>
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    size='small'
+                    disabled
+                    block
+                  >
                     {availability.buttonText}
                   </Button>
                 </Tooltip>
@@ -3207,6 +3386,7 @@ const SubscriptionPlansCard = ({
                   <Button
                     theme='solid'
                     type='primary'
+                    size='small'
                     block
                     onClick={() => openBuy(record)}
                     icon={
@@ -3276,21 +3456,37 @@ const SubscriptionPlansCard = ({
             {recommendedEmptyStatePlans.map((record, index) => {
               const plan = record?.plan || {};
               const seriesMeta = getSubscriptionSeriesMeta(plan, t);
+              const marketingBadge = getSubscriptionCommerceBadge(
+                plan,
+                recommendedEmptyStatePlans.map((item) => item?.plan || item),
+                t,
+              );
               const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
               const { symbol, effectivePrice } =
                 getSubscriptionPriceDisplay(plan);
               const availability = getPlanPurchaseAvailability(plan);
+              const perRequestPriceDisplay =
+                getSubscriptionPerRequestPriceDisplay(plan);
               const displayPrice = Number(effectivePrice || 0).toFixed(
                 Number.isInteger(effectivePrice) ? 0 : 2,
               );
               return (
                 <div
                   key={plan?.id || index}
-                  className='rounded-2xl border border-[var(--semi-color-border)] bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)]'
+                  className='rounded-2xl border border-[var(--semi-color-border)] bg-white p-3.5 shadow-[0_12px_32px_rgba(15,23,42,0.05)]'
                 >
                   <div className='flex items-start justify-between gap-3'>
                     <div className='min-w-0'>
                       <div className='flex flex-wrap items-center gap-2'>
+                        {marketingBadge ? (
+                          <Tag
+                            color={marketingBadge.tone}
+                            shape='circle'
+                            size='small'
+                          >
+                            {marketingBadge.label}
+                          </Tag>
+                        ) : null}
                         <Text strong>{plan?.title || t('订阅套餐')}</Text>
                         {seriesMeta.label ? (
                           <Tag
@@ -3307,42 +3503,39 @@ const SubscriptionPlansCard = ({
                         size='small'
                         className='mt-2 block leading-6'
                       >
-                        {plan?.subtitle || getPlanBenefitDescription(plan, t)}
+                        {getSubscriptionMarketingSubtitle(plan, t) ||
+                          getPlanBenefitDescription(plan, t)}
                       </Text>
                     </div>
                     <div className='rounded-xl bg-blue-50 p-2 text-blue-600'>
                       <Package size={16} />
                     </div>
                   </div>
-                  <div className='mt-4'>
-                    <div className='text-3xl font-semibold text-semi-color-text-0'>
-                      {seriesMeta.showDailyPrice && dailyPriceDisplay
-                        ? `${symbol}${dailyPriceDisplay.displayDailyPrice}`
-                        : `${symbol}${displayPrice}`}
-                      <span className='ml-1 text-base font-medium text-semi-color-text-2'>
-                        /{' '}
-                        {seriesMeta.showDailyPrice && dailyPriceDisplay
-                          ? t('天')
-                          : formatSubscriptionSellingDuration(plan, t)}
+                  <div className='mt-3'>
+                    <div className='text-[28px] font-semibold leading-none text-semi-color-text-0'>
+                      {`${symbol}${displayPrice}`}
+                      <span className='ml-1 text-sm font-medium text-semi-color-text-2'>
+                        / {formatSubscriptionSellingDuration(plan, t)}
                       </span>
                     </div>
                     <Text type='tertiary' size='small' className='mt-1 block'>
-                      {seriesMeta.showDailyPrice && dailyPriceDisplay
-                        ? t('合计 {{price}} / {{duration}}', {
-                            price: `${symbol}${displayPrice}`,
-                            duration: formatSubscriptionSellingDuration(
-                              plan,
-                              t,
-                            ),
+                      {perRequestPriceDisplay?.displayPerRequestPrice
+                        ? t('单次约 {{price}}', {
+                            price: `${symbol}${perRequestPriceDisplay.displayPerRequestPrice}`,
                           })
-                        : getPlanBenefitDescription(plan, t)}
+                        : dailyPriceDisplay
+                          ? t('折合每天约 {{price}}', {
+                              price: `${symbol}${dailyPriceDisplay.displayDailyPrice}`,
+                            })
+                          : getPlanBenefitDescription(plan, t)}
                     </Text>
                   </div>
                   <Button
                     theme='solid'
                     type='primary'
+                    size='small'
                     block
-                    className='mt-4'
+                    className='mt-3'
                     disabled={availability.disabled}
                     onClick={() => openBuy(record)}
                   >
@@ -3400,13 +3593,13 @@ const SubscriptionPlansCard = ({
 
   const packageConsoleStatsArea = useMemo(
     () => (
-      <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4'>
+      <div className='package-console-stats-grid grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4'>
         {overviewItems.map((item) => {
           const Icon = item.icon;
           return (
             <div
               key={item.label}
-              className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'
+              className='package-console-stat-card rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'
             >
               <div className='flex items-start justify-between gap-3'>
                 <div className='min-w-0'>
@@ -3434,9 +3627,9 @@ const SubscriptionPlansCard = ({
 
   const packageConsoleSearchArea = useMemo(
     () => (
-      <div className='flex flex-col gap-3'>
-        <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
-          <Space wrap>
+      <div className='package-console-search flex flex-col gap-3'>
+        <div className='package-console-search__header flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
+          <Space wrap className='package-console-search__tabs'>
             {renderSubscriptionPanel && (
               <Button
                 theme={
@@ -3468,30 +3661,33 @@ const SubscriptionPlansCard = ({
         </div>
 
         {activeMainTab === 'plan_list' && (
-          <div className='grid grid-cols-1 gap-2 lg:grid-cols-12'>
-            <div className='lg:col-span-5'>
+          <div className='package-console-search__filters grid grid-cols-1 gap-2 lg:grid-cols-12'>
+            <div className='package-console-search__keyword lg:col-span-5'>
               <Input
                 value={planKeyword}
                 onChange={setPlanKeyword}
                 placeholder={t('搜索套餐名 / 副标题 / 模型 / 分组')}
                 showClear
+                size={isMobile ? 'small' : 'default'}
               />
             </div>
-            <div className='lg:col-span-3'>
+            <div className='package-console-search__series lg:col-span-3'>
               <Select
                 value={planSeriesFilter}
                 onChange={setPlanSeriesFilter}
                 optionList={planSeriesOptions}
+                size={isMobile ? 'small' : 'default'}
               />
             </div>
-            <div className='lg:col-span-2'>
+            <div className='package-console-search__sort lg:col-span-2'>
               <Select
                 value={planSort}
                 onChange={setPlanSort}
                 optionList={planSortOptions}
+                size={isMobile ? 'small' : 'default'}
               />
             </div>
-            <div className='lg:col-span-2 flex items-center justify-between gap-2 rounded-lg border border-semi-color-border bg-semi-color-bg-0 px-2'>
+            <div className='package-console-search__reset lg:col-span-2 flex items-center justify-between gap-2 rounded-lg border border-semi-color-border bg-semi-color-bg-0 px-2'>
               <Text type='tertiary' size='small'>
                 {t('表格模式')}
               </Text>
@@ -3531,8 +3727,8 @@ const SubscriptionPlansCard = ({
 
   const subscriptionPanelContent = (
     <div className='space-y-3'>
-      <div className='flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
-        <div className='flex flex-wrap items-center gap-2'>
+      <div className='subscription-mobile-overview flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
+        <div className='subscription-mobile-overview__stats flex flex-wrap items-center gap-2'>
           <Tag
             color={subscriptionView === 'active' ? 'green' : 'white'}
             shape='circle'
@@ -3550,91 +3746,136 @@ const SubscriptionPlansCard = ({
             </Tag>
           )}
         </div>
-        <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
-          <Space wrap>
-            <Button
-              theme={subscriptionView === 'active' ? 'solid' : 'outline'}
-              type='primary'
-              size='small'
-              onClick={() => setSubscriptionView('active')}
-            >
-              {t('生效中')}
-            </Button>
-            <Button
-              theme={subscriptionView === 'history' ? 'solid' : 'outline'}
-              type='tertiary'
-              size='small'
-              onClick={() => setSubscriptionView('history')}
-            >
-              {t('历史订阅')}
-            </Button>
-            <Button
-              theme={subscriptionView === 'all' ? 'solid' : 'outline'}
-              type='tertiary'
-              size='small'
-              onClick={() => setSubscriptionView('all')}
-            >
-              {t('全部')}
-            </Button>
-            <Button
-              theme='outline'
-              type='tertiary'
-              size='small'
-              onClick={() => setConsumeLogsFilter({})}
-            >
-              {t('全部订阅消耗')}
-            </Button>
-          </Space>
-          <div className='flex items-center gap-2'>
-            <Select
-              value={displayBillingPreference}
-              onChange={onChangeBillingPreference}
-              size='small'
-              optionList={[
-                {
-                  value: 'subscription_first',
-                  label: disableSubscriptionPreference
-                    ? `${t('优先订阅')} (${t('无生效')})`
-                    : t('优先订阅'),
-                  disabled: disableSubscriptionPreference,
-                },
-                { value: 'wallet_first', label: t('优先钱包') },
-                {
-                  value: 'subscription_only',
-                  label: disableSubscriptionPreference
-                    ? `${t('仅用订阅')} (${t('无生效')})`
-                    : t('仅用订阅'),
-                  disabled: disableSubscriptionPreference,
-                },
-                { value: 'wallet_only', label: t('仅用钱包') },
-              ]}
-            />
-            <Button
-              size='small'
-              theme='light'
-              type='tertiary'
-              icon={
-                <RefreshCw
-                  size={12}
-                  className={refreshing ? 'animate-spin' : ''}
+        <div className='subscription-mobile-overview__controls flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
+          <div className='w-full lg:w-auto'>
+            <div className='subscription-mobile-panel flex w-full flex-col gap-3 rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:min-w-[360px] sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
+              <div className='flex min-w-0 items-start gap-2.5'>
+                <div className='mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[rgba(99,102,241,0.10)] text-indigo-600'>
+                  <LayoutGrid size={14} />
+                </div>
+                <div className='min-w-0'>
+                  <div className='text-xs font-semibold tracking-[0.01em] text-semi-color-text-0'>
+                    {t('订阅范围')}
+                  </div>
+                  <div className='mt-0.5 text-[11px] leading-4 text-semi-color-text-2'>
+                    {t('切换当前展示的订阅记录和消耗范围')}
+                  </div>
+                </div>
+              </div>
+              <div className='subscription-mobile-panel__actions flex flex-wrap items-center gap-2'>
+                <Button
+                  theme={subscriptionView === 'active' ? 'solid' : 'light'}
+                  type='primary'
+                  size='small'
+                  className='!rounded-xl'
+                  onClick={() => setSubscriptionView('active')}
+                >
+                  {t('生效中')}
+                </Button>
+                <Button
+                  theme={subscriptionView === 'history' ? 'solid' : 'light'}
+                  type={subscriptionView === 'history' ? 'primary' : 'tertiary'}
+                  size='small'
+                  className='!rounded-xl'
+                  onClick={() => setSubscriptionView('history')}
+                >
+                  {t('历史订阅')}
+                </Button>
+                <Button
+                  theme={subscriptionView === 'all' ? 'solid' : 'light'}
+                  type={subscriptionView === 'all' ? 'primary' : 'tertiary'}
+                  size='small'
+                  className='!rounded-xl'
+                  onClick={() => setSubscriptionView('all')}
+                >
+                  {t('全部')}
+                </Button>
+                <Button
+                  theme='light'
+                  type='tertiary'
+                  size='small'
+                  className='subscription-mobile-panel__wide-action !rounded-xl !border !border-[rgba(15,23,42,0.08)] !bg-white/80'
+                  onClick={() => setConsumeLogsFilter({})}
+                >
+                  {t('全部订阅消耗')}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className='w-full sm:w-auto'>
+            <div className='subscription-mobile-panel flex w-full flex-col gap-3 rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:min-w-[360px] sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
+              <div className='flex min-w-0 items-start gap-2.5'>
+                <div className='mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[rgba(59,130,246,0.10)] text-blue-600'>
+                  <Wallet size={14} />
+                </div>
+                <div className='min-w-0'>
+                  <div className='text-xs font-semibold tracking-[0.01em] text-semi-color-text-0'>
+                    {t('扣费顺序')}
+                  </div>
+                  <div className='mt-0.5 text-[11px] leading-4 text-semi-color-text-2'>
+                    {t('设置请求命中后，系统先尝试从哪里扣费')}
+                  </div>
+                </div>
+              </div>
+              <div className='subscription-mobile-panel__billing flex w-full items-center gap-2 sm:w-auto'>
+                <Tooltip content={t('选择请求命中时优先从哪里扣费。')}>
+                  <Select
+                    value={displayBillingPreference}
+                    onChange={onChangeBillingPreference}
+                    size='small'
+                    className='w-full sm:min-w-[220px]'
+                    optionList={[
+                      {
+                        value: 'subscription_first',
+                        label: disableSubscriptionPreference
+                          ? `${t('先扣订阅，不足再扣钱包')} (${t('无生效')})`
+                          : t('先扣订阅，不足再扣钱包'),
+                        disabled: disableSubscriptionPreference,
+                      },
+                      {
+                        value: 'wallet_first',
+                        label: t('先扣钱包，不足再扣订阅'),
+                      },
+                      {
+                        value: 'subscription_only',
+                        label: disableSubscriptionPreference
+                          ? `${t('只扣订阅，不扣钱包')} (${t('无生效')})`
+                          : t('只扣订阅，不扣钱包'),
+                        disabled: disableSubscriptionPreference,
+                      },
+                      { value: 'wallet_only', label: t('只扣钱包，不扣订阅') },
+                    ]}
+                  />
+                </Tooltip>
+                <Button
+                  size='small'
+                  theme='light'
+                  type='tertiary'
+                  className='!rounded-xl !border !border-[rgba(15,23,42,0.08)] !bg-white/80'
+                  icon={
+                    <RefreshCw
+                      size={12}
+                      className={refreshing ? 'animate-spin' : ''}
+                    />
+                  }
+                  onClick={handleRefresh}
+                  loading={refreshing}
                 />
-              }
-              onClick={handleRefresh}
-              loading={refreshing}
-            />
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className='flex flex-col gap-2 rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3 xl:flex-row xl:items-center'>
+      <div className='subscription-mobile-filters flex flex-col gap-2 rounded-2xl border border-semi-color-border bg-semi-color-fill-0 p-3 xl:flex-row xl:items-center'>
         <Input
           value={subscriptionKeyword}
           onChange={setSubscriptionKeyword}
           placeholder={t('搜索套餐名 / 说明 / 订阅 ID')}
           showClear
-          className='min-w-0 flex-1'
+          className='subscription-mobile-filters__keyword min-w-0 flex-1'
         />
-        <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3'>
+        <div className='subscription-mobile-filters__selects grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3'>
           <Select
             value={subscriptionPlanFilter}
             onChange={setSubscriptionPlanFilter}
@@ -3917,64 +4158,98 @@ const SubscriptionPlansCard = ({
 
       {normalizedManualDeliveryOrders.length > 0 ? (
         <Card
-          className='!rounded-2xl border border-sky-200 bg-sky-50/70 shadow-none'
-          bodyStyle={{ padding: '16px' }}
+          className='mt-4 !rounded-2xl border border-sky-200 bg-[linear-gradient(180deg,rgba(240,249,255,0.86),rgba(248,250,252,0.96))] shadow-none md:mt-5'
+          bodyStyle={{ padding: isMobile ? '16px' : '24px' }}
         >
-          <div className='space-y-3'>
-            <div className='flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between'>
-              <div>
-                <div className='flex items-center gap-2'>
-                  <Text strong>{t('人工发放订单')}</Text>
-                  <Tag color='blue' shape='circle' size='small'>
-                    {normalizedManualDeliveryOrders.length} {t('个订单')}
-                  </Tag>
+          <div className='space-y-4'>
+            <div className='rounded-2xl border border-white/80 bg-white/80 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
+              <div className='flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
+                <div className='min-w-0'>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <Text strong>{t('人工发放订单')}</Text>
+                    <Tag color='blue' shape='circle' size='small'>
+                      {normalizedManualDeliveryOrders.length} {t('个订单')}
+                    </Tag>
+                  </div>
+                  <div className='mt-1 text-sm text-semi-color-text-2'>
+                    {t(
+                      '支付成功后不会自动开通，需要管理员补充交付信息后再发放。',
+                    )}
+                  </div>
                 </div>
-                <div className='mt-3 grid gap-3 md:grid-cols-3'>
-                  <div className='rounded-xl border border-semi-color-border bg-white/80 p-3'>
-                    <Text strong>{t('交付说明')}</Text>
-                    <div className='mt-2 text-sm text-semi-color-text-2'>
-                      <div>{t('这里会显示待发放或已发放完成的订单内容。')}</div>
-                      <div className='mt-1'>
-                        {t(
-                          'Claude 系列人工发放完成后，系统会自动创建 Subscription Access Key、发送测试消息激活，并通过邮件和站内信通知。',
-                        )}
+              </div>
+
+              <div className='mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'>
+                <div className='h-full rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
+                  <div className='flex items-center gap-2.5'>
+                    <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[rgba(59,130,246,0.10)] text-blue-600'>
+                      <BookOpen size={16} />
+                    </div>
+                    <div>
+                      <Text strong>{t('交付说明')}</Text>
+                      <div className='mt-0.5 text-xs text-semi-color-text-2'>
+                        {t('查看订单发放状态与交付结果')}
                       </div>
                     </div>
                   </div>
-
-                  <div className='rounded-xl border border-semi-color-border bg-white/80 p-3'>
-                    <Text strong>{t('导入使用')}</Text>
-                    <div className='mt-2 text-sm text-semi-color-text-2'>
-                      <span>{t('收到通知后，可前往')}</span>
-                      <Text
-                        link
-                        className='mx-1'
-                        onClick={() => navigate('/console/token')}
-                      >
-                        {t('令牌管理')}
-                      </Text>
-                      <span>
-                        {t(
-                          '选择 Subscription Access，使用 CC Switch 一键导入。',
-                        )}
-                      </span>
+                  <div className='mt-3 space-y-1.5 text-sm leading-6 text-semi-color-text-2'>
+                    <div>{t('这里会显示待发放或已发放完成的订单内容。')}</div>
+                    <div>
+                      {t(
+                        'Claude 系列人工发放完成后，系统会自动创建 Subscription Access Key、发送测试消息激活，并通过邮件和站内信通知。',
+                      )}
                     </div>
                   </div>
+                </div>
 
-                  <div className='rounded-xl border border-red-200 bg-red-50/80 p-3 dark:border-red-500/30 dark:bg-red-500/10'>
-                    <Text strong type='danger'>
-                      {t('安全与限制')}
+                <div className='h-full rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'>
+                  <div className='flex items-center gap-2.5'>
+                    <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[rgba(99,102,241,0.10)] text-indigo-600'>
+                      <Zap size={16} />
+                    </div>
+                    <div>
+                      <Text strong>{t('导入使用')}</Text>
+                      <div className='mt-0.5 text-xs text-semi-color-text-2'>
+                        {t('收到通知后，快速导入并开始使用')}
+                      </div>
+                    </div>
+                  </div>
+                  <div className='mt-3 text-sm leading-6 text-semi-color-text-2'>
+                    <span>{t('收到通知后，可前往')}</span>
+                    <Text
+                      link
+                      className='mx-1'
+                      onClick={() => navigate('/console/token')}
+                    >
+                      {t('令牌管理')}
                     </Text>
-                    <div className='mt-2 text-sm text-semi-color-text-2'>
-                      <div>{t('请不要在任何地方泄露你的 Key。')}</div>
-                      <div className='mt-1'>
-                        {t('该 Key 每分钟最多 10 次请求。')}
+                    <span>
+                      {t('选择 Subscription Access，使用 CC Switch 一键导入。')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className='h-full rounded-2xl border border-red-200/90 bg-red-50/85 p-3.5 shadow-[0_8px_24px_rgba(239,68,68,0.06)] dark:border-red-500/30 dark:bg-red-500/10'>
+                  <div className='flex items-center gap-2.5'>
+                    <div className='flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[rgba(239,68,68,0.12)] text-red-500'>
+                      <ShieldCheck size={16} />
+                    </div>
+                    <div>
+                      <Text strong type='danger'>
+                        {t('安全与限制')}
+                      </Text>
+                      <div className='mt-0.5 text-xs text-red-500/80'>
+                        {t('请先了解该 Key 的保管与调用限制')}
                       </div>
-                      <div className='mt-1'>
-                        {t(
-                          '该 Key 不可删除、不可重置、不可找回，请务必自行妥善保管。',
-                        )}
-                      </div>
+                    </div>
+                  </div>
+                  <div className='mt-3 space-y-1.5 text-sm leading-6 text-semi-color-text-2'>
+                    <div>{t('请不要在任何地方泄露你的 Key。')}</div>
+                    <div>{t('该 Key 每分钟最多 10 次请求。')}</div>
+                    <div>
+                      {t(
+                        '该 Key 不可删除、不可重置、不可找回，请务必自行妥善保管。',
+                      )}
                     </div>
                   </div>
                 </div>
@@ -4088,24 +4363,35 @@ const SubscriptionPlansCard = ({
                               ? t('已作废')
                               : t('已过期')}
                         </Tag>
-                        <Tag
-                          color={item.isAggregateEnabled ? 'blue' : 'grey'}
-                          shape='circle'
-                          size='small'
+                        <Tooltip
+                          content={getAggregateAccessHelpText(
+                            item.isAggregateEnabled,
+                            t,
+                          )}
                         >
-                          {item.isAggregateEnabled
-                            ? t('参与聚合')
-                            : t('暂停聚合')}
-                        </Tag>
+                          <Tag
+                            color={item.isAggregateEnabled ? 'blue' : 'grey'}
+                            shape='circle'
+                            size='small'
+                          >
+                            {item.isAggregateEnabled
+                              ? t('自动扣费中')
+                              : t('已暂停自动扣费')}
+                          </Tag>
+                        </Tooltip>
                         {item.isDerivedDayPass ? (
                           <Tag color='violet' shape='circle' size='small'>
                             {t('天卡')}
                           </Tag>
                         ) : null}
                         {item.isPreferred ? (
-                          <Tag color='orange' shape='circle' size='small'>
-                            {t('优先消耗')}
-                          </Tag>
+                          <Tooltip
+                            content={getPreferredSubscriptionHelpText(true, t)}
+                          >
+                            <Tag color='orange' shape='circle' size='small'>
+                              {t('优先扣费')}
+                            </Tag>
+                          </Tooltip>
                         ) : null}
                       </div>
                       <div className='mt-1 text-xs text-semi-color-text-2'>

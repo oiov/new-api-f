@@ -111,7 +111,11 @@ func normalizeAndValidateRedemption(c *gin.Context, redemption *model.Redemption
 
 func GetAllRedemptions(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	redemptions, total, err := model.GetAllRedemptions(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	redemptions, total, err := model.GetAllRedemptions(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), model.RedemptionFilters{
+		Keyword:            c.Query("keyword"),
+		RedemptionType:     c.Query("redemption_type"),
+		SubscriptionPlanId: parseQueryInt(c.Query("subscription_plan_id")),
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -162,10 +166,18 @@ func parseQueryInt64(raw string) int64 {
 	return value
 }
 
+func parseQueryInt(raw string) int {
+	value, _ := strconv.Atoi(raw)
+	return value
+}
+
 func SearchRedemptions(c *gin.Context) {
 	keyword := c.Query("keyword")
 	pageInfo := common.GetPageQuery(c)
-	redemptions, total, err := model.SearchRedemptions(keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	redemptions, total, err := model.SearchRedemptions(keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), model.RedemptionFilters{
+		RedemptionType:     c.Query("redemption_type"),
+		SubscriptionPlanId: parseQueryInt(c.Query("subscription_plan_id")),
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return

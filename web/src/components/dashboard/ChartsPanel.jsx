@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect } from 'react';
-import { Card, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Button, Card, DatePicker, Input, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { PieChart } from 'lucide-react';
 import { VChart } from '@visactor/react-vchart';
 import { useDashboardCharts } from '../../hooks/dashboard/useDashboardCharts';
@@ -40,7 +40,22 @@ const ChartsPanel = ({
   FLEX_CENTER_GAP2,
   hasApiInfoPanel,
   t,
+  inputs,
+  timeOptions,
+  handleInputChange,
+  handleSearchConfirm,
+  resetSearchFilters,
+  isAdminUser,
+  loading,
 }) => {
+  const safeInputs =
+    inputs ||
+    {
+      start_timestamp: null,
+      end_timestamp: null,
+      username: '',
+    };
+
   const { spec_line, spec_model_line, spec_pie, spec_rank_bar, updateChartData } =
     useDashboardCharts(
       dataExportDefaultTime,
@@ -65,21 +80,82 @@ const ChartsPanel = ({
       {...CARD_PROPS}
       className={`!rounded-2xl ${hasApiInfoPanel ? 'lg:col-span-3' : ''}`}
       title={
-        <div className='flex flex-col lg:flex-row lg:items-center lg:justify-between w-full gap-3'>
-          <div className={FLEX_CENTER_GAP2}>
-            <PieChart size={16} />
-            {t('模型数据分析')}
+        <div className='flex w-full flex-col gap-4'>
+          <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+            <div className={FLEX_CENTER_GAP2}>
+              <PieChart size={16} />
+              {t('模型数据分析')}
+            </div>
+            <Tabs
+              type='slash'
+              activeKey={activeChartTab}
+              onChange={setActiveChartTab}
+            >
+              <TabPane tab={<span>{t('消耗分布')}</span>} itemKey='1' />
+              <TabPane tab={<span>{t('消耗趋势')}</span>} itemKey='2' />
+              <TabPane tab={<span>{t('调用次数分布')}</span>} itemKey='3' />
+              <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
+            </Tabs>
           </div>
-          <Tabs
-            type='slash'
-            activeKey={activeChartTab}
-            onChange={setActiveChartTab}
-          >
-            <TabPane tab={<span>{t('消耗分布')}</span>} itemKey='1' />
-            <TabPane tab={<span>{t('消耗趋势')}</span>} itemKey='2' />
-            <TabPane tab={<span>{t('调用次数分布')}</span>} itemKey='3' />
-            <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
-          </Tabs>
+
+          <div className='flex flex-col gap-2.5 rounded-xl border border-semi-color-border bg-semi-color-fill-0/80 p-2.5'>
+            <div className='text-sm font-medium text-semi-color-text-0'>
+              {t('搜索条件')}
+            </div>
+            <div className='grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_140px_auto]'>
+              <DatePicker
+                size='small'
+                type='dateTime'
+                value={safeInputs.start_timestamp}
+                insetLabel={t('起始时间')}
+                onChange={(value) => handleInputChange(value, 'start_timestamp')}
+              />
+              <DatePicker
+                size='small'
+                type='dateTime'
+                value={safeInputs.end_timestamp}
+                insetLabel={t('结束时间')}
+                onChange={(value) => handleInputChange(value, 'end_timestamp')}
+              />
+              <Select
+                size='small'
+                value={dataExportDefaultTime || undefined}
+                placeholder={t('时间粒度')}
+                optionList={timeOptions}
+                onChange={(value) =>
+                  handleInputChange(value, 'data_export_default_time')
+                }
+              />
+              <div className='flex gap-2 md:justify-end'>
+                <Button
+                  size='small'
+                  type='primary'
+                  theme='light'
+                  loading={loading}
+                  onClick={handleSearchConfirm}
+                >
+                  {t('查询')}
+                </Button>
+                <Button
+                  size='small'
+                  type='tertiary'
+                  disabled={loading}
+                  onClick={resetSearchFilters}
+                >
+                  {t('重置')}
+                </Button>
+              </div>
+            </div>
+
+            {isAdminUser && (
+              <Input
+                size='small'
+                value={safeInputs.username}
+                placeholder={t('用户名称')}
+                onChange={(value) => handleInputChange(value, 'username')}
+              />
+            )}
+          </div>
         </div>
       }
       bodyStyle={{ padding: 0 }}

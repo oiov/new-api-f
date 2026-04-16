@@ -52,6 +52,7 @@ const RedemptionsPage = () => {
     searchRedemptions,
     loading,
     searching,
+    subscriptionPlanOptions,
 
     // UI state
     compactMode,
@@ -97,6 +98,7 @@ const RedemptionsPage = () => {
                 searchRedemptions={searchRedemptions}
                 loading={loading}
                 searching={searching}
+                subscriptionPlanOptions={subscriptionPlanOptions}
                 t={t}
               />
             </div>

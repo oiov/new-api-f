@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"encoding/csv"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -10,23 +13,53 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func GetAllLogs(c *gin.Context) {
-	pageInfo := common.GetPageQuery(c)
+type logQueryParams struct {
+	LogType            int
+	StartTimestamp     int64
+	EndTimestamp       int64
+	UserId             int
+	Username           string
+	TokenName          string
+	ModelName          string
+	Channel            int
+	Group              string
+	RequestId          string
+	ErrorMessage       string
+	StatusCode         string
+	SubscriptionId     int
+	SubscriptionPlanId int
+}
+
+func getLogQueryParams(c *gin.Context) logQueryParams {
 	logType, _ := strconv.Atoi(c.Query("type"))
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	userId, _ := strconv.Atoi(c.Query("user_id"))
-	username := c.Query("username")
-	tokenName := c.Query("token_name")
-	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
-	group := c.Query("group")
-	requestId := c.Query("request_id")
-	errorMessage := c.Query("error_message")
-	statusCode := c.Query("status_code")
 	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
 	subscriptionPlanId, _ := strconv.Atoi(c.Query("subscription_plan_id"))
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	return logQueryParams{
+		LogType:            logType,
+		StartTimestamp:     startTimestamp,
+		EndTimestamp:       endTimestamp,
+		UserId:             userId,
+		Username:           c.Query("username"),
+		TokenName:          c.Query("token_name"),
+		ModelName:          c.Query("model_name"),
+		Channel:            channel,
+		Group:              c.Query("group"),
+		RequestId:          c.Query("request_id"),
+		ErrorMessage:       c.Query("error_message"),
+		StatusCode:         c.Query("status_code"),
+		SubscriptionId:     subscriptionId,
+		SubscriptionPlanId: subscriptionPlanId,
+	}
+}
+
+func GetAllLogs(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	query := getLogQueryParams(c)
+	logs, total, err := model.GetAllLogs(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -40,18 +73,8 @@ func GetAllLogs(c *gin.Context) {
 func GetUserLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	userId := c.GetInt("id")
-	logType, _ := strconv.Atoi(c.Query("type"))
-	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
-	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	tokenName := c.Query("token_name")
-	modelName := c.Query("model_name")
-	group := c.Query("group")
-	requestId := c.Query("request_id")
-	errorMessage := c.Query("error_message")
-	statusCode := c.Query("status_code")
-	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
-	subscriptionPlanId, _ := strconv.Atoi(c.Query("subscription_plan_id"))
-	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	query := getLogQueryParams(c)
+	logs, total, err := model.GetUserLogs(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -60,6 +83,104 @@ func GetUserLogs(c *gin.Context) {
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
 	return
+}
+
+func writeLogsCSV(c *gin.Context, logs []*model.Log, total int64, truncated bool, filenamePrefix string) {
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s-%s.csv", filenamePrefix, time.Now().Format("2006-01-02")))
+	c.Header("X-Export-Total", strconv.FormatInt(total, 10))
+	if truncated {
+		c.Header("X-Export-Truncated", "true")
+	}
+
+	c.Status(http.StatusOK)
+	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
+
+	writer := csv.NewWriter(c.Writer)
+	defer writer.Flush()
+
+	headers := []string{
+		"id",
+		"created_at",
+		"type",
+		"user_id",
+		"username",
+		"token_name",
+		"model_name",
+		"quota",
+		"prompt_tokens",
+		"completion_tokens",
+		"use_time",
+		"is_stream",
+		"channel_id",
+		"channel_name",
+		"group",
+		"ip",
+		"request_id",
+		"content",
+		"other",
+	}
+	if err := writer.Write(headers); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	for _, logItem := range logs {
+		row := []string{
+			strconv.Itoa(logItem.Id),
+			strconv.FormatInt(logItem.CreatedAt, 10),
+			strconv.Itoa(logItem.Type),
+			strconv.Itoa(logItem.UserId),
+			logItem.Username,
+			logItem.TokenName,
+			logItem.ModelName,
+			strconv.Itoa(logItem.Quota),
+			strconv.Itoa(logItem.PromptTokens),
+			strconv.Itoa(logItem.CompletionTokens),
+			strconv.Itoa(logItem.UseTime),
+			strconv.FormatBool(logItem.IsStream),
+			strconv.Itoa(logItem.ChannelId),
+			logItem.ChannelName,
+			logItem.Group,
+			logItem.Ip,
+			logItem.RequestId,
+			logItem.Content,
+			logItem.Other,
+		}
+		if err := writer.Write(row); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+}
+
+func ExportAllLogs(c *gin.Context) {
+	if !common.LogExportEnabled {
+		common.ApiErrorMsg(c, "日志导出未启用")
+		return
+	}
+	query := getLogQueryParams(c)
+	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	writeLogsCSV(c, logs, total, truncated, "usage-logs")
+}
+
+func ExportUserLogs(c *gin.Context) {
+	if !common.LogExportEnabled {
+		common.ApiErrorMsg(c, "日志导出未启用")
+		return
+	}
+	userId := c.GetInt("id")
+	query := getLogQueryParams(c)
+	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	writeLogsCSV(c, logs, total, truncated, "usage-logs-self")
 }
 
 // Deprecated: SearchAllLogs 已废弃，前端未使用该接口。
@@ -103,20 +224,8 @@ func GetLogByKey(c *gin.Context) {
 }
 
 func GetLogsStat(c *gin.Context) {
-	logType, _ := strconv.Atoi(c.Query("type"))
-	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
-	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	userId, _ := strconv.Atoi(c.Query("user_id"))
-	tokenName := c.Query("token_name")
-	username := c.Query("username")
-	modelName := c.Query("model_name")
-	channel, _ := strconv.Atoi(c.Query("channel"))
-	group := c.Query("group")
-	errorMessage := c.Query("error_message")
-	statusCode := c.Query("status_code")
-	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
-	subscriptionPlanId, _ := strconv.Atoi(c.Query("subscription_plan_id"))
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	query := getLogQueryParams(c)
+	stat, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -136,18 +245,8 @@ func GetLogsStat(c *gin.Context) {
 
 func GetLogsSelfStat(c *gin.Context) {
 	username := c.GetString("username")
-	logType, _ := strconv.Atoi(c.Query("type"))
-	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
-	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	tokenName := c.Query("token_name")
-	modelName := c.Query("model_name")
-	channel, _ := strconv.Atoi(c.Query("channel"))
-	group := c.Query("group")
-	errorMessage := c.Query("error_message")
-	statusCode := c.Query("status_code")
-	subscriptionId, _ := strconv.Atoi(c.Query("subscription_id"))
-	subscriptionPlanId, _ := strconv.Atoi(c.Query("subscription_plan_id"))
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, 0, modelName, username, tokenName, channel, group, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	query := getLogQueryParams(c)
+	quotaNum, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, 0, query.ModelName, username, query.TokenName, query.Channel, query.Group, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

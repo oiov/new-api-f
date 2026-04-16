@@ -32,6 +32,7 @@ import SubscriptionConsumeLogsModal from './modals/SubscriptionConsumeLogsModal'
 import SubscriptionConversionRequestsPanel from './SubscriptionConversionRequestsPanel';
 import ManualDeliveryOrdersPanel from './ManualDeliveryOrdersPanel';
 import SubscriptionDayPassPlansPanel from './SubscriptionDayPassPlansPanel';
+import EditRedemptionModal from '../redemptions/modals/EditRedemptionModal';
 import { useSubscriptionsData } from '../../../hooks/subscriptions/useSubscriptionsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -49,8 +50,11 @@ const SubscriptionsPage = () => {
   const {
     showEdit,
     editingPlan,
+    showIssueCardCode,
+    issuingRedemptionPreset,
     sheetPlacement,
     closeEdit,
+    closeIssuePlanRedemption,
     refresh,
     openCreate,
     compactMode,
@@ -67,6 +71,12 @@ const SubscriptionsPage = () => {
         placement={sheetPlacement}
         refresh={refresh}
         t={t}
+      />
+      <EditRedemptionModal
+        refresh={() => Promise.resolve()}
+        editingRedemption={issuingRedemptionPreset}
+        visiable={showIssueCardCode}
+        handleClose={closeIssuePlanRedemption}
       />
       <SubscriptionMigrationModal
         visible={showMigration}
