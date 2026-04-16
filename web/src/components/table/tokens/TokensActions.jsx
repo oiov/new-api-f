@@ -18,13 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useState } from 'react';
-import { Button, Space } from '@douyinfe/semi-ui';
+import { Button } from '@douyinfe/semi-ui';
 import { showError } from '../../../helpers';
 import CopyTokensModal from './modals/CopyTokensModal';
 import DeleteTokensModal from './modals/DeleteTokensModal';
 
 const TokensActions = ({
   selectedKeys,
+  setSelectedKeys,
   setEditingToken,
   setShowEdit,
   batchCopyTokens,
@@ -33,6 +34,7 @@ const TokensActions = ({
   batchDeleteInvalidTokens,
   t,
 }) => {
+  const selectedCount = selectedKeys.length;
   // Modal states
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -74,58 +76,76 @@ const TokensActions = ({
 
   return (
     <>
-      <div className='flex flex-wrap gap-2 w-full md:w-auto order-2 md:order-1'>
-        <Button
-          type='primary'
-          className='flex-1 md:flex-initial'
-          onClick={() => {
-            setEditingToken({
-              id: undefined,
-            });
-            setShowEdit(true);
-          }}
-          size='small'
-        >
-          {t('添加令牌')}
-        </Button>
+      <div className='flex flex-col gap-2 w-full md:w-auto order-2 md:order-1'>
+        <div className='flex flex-wrap gap-2'>
+          <Button
+            type='primary'
+            className='flex-1 md:flex-initial'
+            onClick={() => {
+              setEditingToken({
+                id: undefined,
+              });
+              setShowEdit(true);
+            }}
+            size='small'
+          >
+            {t('添加令牌')}
+          </Button>
 
-        <Button
-          type='tertiary'
-          className='flex-1 md:flex-initial'
-          onClick={handleCopySelectedTokens}
-          size='small'
-        >
-          {t('复制所选令牌')}
-        </Button>
+          <Button
+            type='tertiary'
+            className='flex-1 md:flex-initial'
+            onClick={handleCopySelectedTokens}
+            size='small'
+            disabled={selectedCount === 0}
+          >
+            {t('复制所选令牌')}
+          </Button>
 
-        <Button
-          type='primary'
-          theme='light'
-          className='flex-1 md:flex-initial'
-          onClick={batchTestTokens}
-          size='small'
-        >
-          {t('测试所选令牌')}
-        </Button>
+          <Button
+            type='primary'
+            theme='light'
+            className='flex-1 md:flex-initial'
+            onClick={batchTestTokens}
+            size='small'
+            disabled={selectedCount === 0}
+          >
+            {t('测试所选令牌')} ({selectedCount})
+          </Button>
 
-        <Button
-          type='danger'
-          className='w-full md:w-auto'
-          onClick={handleDeleteSelectedTokens}
-          size='small'
-        >
-          {t('删除所选令牌')}
-        </Button>
+          <Button
+            type='danger'
+            className='w-full md:w-auto'
+            onClick={handleDeleteSelectedTokens}
+            size='small'
+            disabled={selectedCount === 0}
+          >
+            {t('删除所选令牌')}
+          </Button>
 
-        <Button
-          type='danger'
-          theme='borderless'
-          className='w-full md:w-auto'
-          onClick={handleDeleteInvalidTokens}
-          size='small'
-        >
-          {t('删除无效令牌')}
-        </Button>
+          <Button
+            type='danger'
+            theme='borderless'
+            className='w-full md:w-auto'
+            onClick={handleDeleteInvalidTokens}
+            size='small'
+          >
+            {t('删除无效令牌')}
+          </Button>
+        </div>
+
+        <div className='flex items-center justify-between gap-2 text-sm text-[var(--semi-color-text-2)]'>
+          <span>{t('已选择 {{count}} 项', { count: selectedCount })}</span>
+          <Button
+            theme='borderless'
+            type='tertiary'
+            size='small'
+            disabled={selectedCount === 0}
+            onClick={() => setSelectedKeys([])}
+          >
+            {t('清空选择')}
+          </Button>
+        </div>
       </div>
 
       <CopyTokensModal

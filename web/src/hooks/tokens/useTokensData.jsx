@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal } from '@douyinfe/semi-ui';
+import { Modal, Table, Tag } from '@douyinfe/semi-ui';
 import {
   API,
   copy,
@@ -79,6 +79,19 @@ const parsePersistedLastTestInfo = (token) => {
       mode: '',
     };
   }
+};
+
+const buildTokenTestRows = (results = []) => {
+  return (Array.isArray(results) ? results : []).map((item, index) => ({
+    key: `${item?.kind || 'unknown'}-${item?.path || 'path'}-${index}`,
+    kind: (item?.kind || '-').toUpperCase(),
+    path: item?.path || '-',
+    model: item?.model || '-',
+    http_code: item?.http_code ?? '-',
+    ok: Boolean(item?.ok),
+    x_oneapi_request_id: item?.x_oneapi_request_id || '',
+    error_type: item?.error_type || '',
+  }));
 };
 
 export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
@@ -166,6 +179,67 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     setActivePage(payload.page || 1);
     setPageSize(payload.page_size || pageSize);
     setShowKeys({});
+  };
+
+  const renderTokenTestTable = (results = []) => {
+    const dataSource = buildTokenTestRows(results);
+    if (!dataSource.length) {
+      return (
+        <div className='text-sm text-[var(--semi-color-text-2)]'>
+          {t('无返回结果')}
+        </div>
+      );
+    }
+
+    return (
+      <Table
+        size='small'
+        pagination={false}
+        dataSource={dataSource}
+        columns={[
+          {
+            title: t('类型'),
+            dataIndex: 'kind',
+            width: 92,
+          },
+          {
+            title: t('路径'),
+            dataIndex: 'path',
+            width: 140,
+          },
+          {
+            title: t('模型'),
+            dataIndex: 'model',
+          },
+          {
+            title: t('HTTP'),
+            dataIndex: 'http_code',
+            width: 88,
+          },
+          {
+            title: t('结果'),
+            dataIndex: 'ok',
+            width: 92,
+            render: (value) => (
+              <Tag color={value ? 'green' : 'red'} shape='circle'>
+                {value ? t('通过') : t('失败')}
+              </Tag>
+            ),
+          },
+          {
+            title: t('请求 ID'),
+            dataIndex: 'x_oneapi_request_id',
+            render: (value) => value || '-',
+          },
+          {
+            title: t('错误类型'),
+            dataIndex: 'error_type',
+            render: (value) => value || '-',
+          },
+        ]}
+        scroll={{ x: 'max-content' }}
+      />
+    );
   };
 
   // Load tokens function
@@ -450,9 +524,27 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     onSelect: (record, selected) => {},
     onSelectAll: (selected, selectedRows) => {},
     onChange: (selectedRowKeys, selectedRows) => {
-      setSelectedKeys(
-        selectedRows.filter((token) => !isProtectedSubscriptionAccessToken(token)),
-      );
+      setSelectedKeys((prev) => {
+        const nextMap = new Map(
+          prev
+            .filter((token) => token?.id && !isProtectedSubscriptionAccessToken(token))
+            .map((token) => [token.id, token]),
+        );
+        const currentPageIds = new Set(
+          tokens
+            .filter((token) => token?.id && !isProtectedSubscriptionAccessToken(token))
+            .map((token) => token.id),
+        );
+
+        currentPageIds.forEach((id) => nextMap.delete(id));
+        selectedRows
+          .filter((token) => !isProtectedSubscriptionAccessToken(token))
+          .forEach((token) => {
+            nextMap.set(token.id, token);
+          });
+
+        return Array.from(nextMap.values());
+      });
     },
   };
 
@@ -501,47 +593,11 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
         title: t('令牌测试结果'),
         size: 'small',
         content: (
-          <div className='flex flex-col gap-1'>
+          <div className='flex flex-col gap-3'>
             <div>
               {t('令牌')}: {record.name || '-'} ({t('令牌 ID')}: {tokenId})
             </div>
-            {results.length > 0 ? (
-              <div className='flex flex-col gap-2 mt-2'>
-                {results.map((item) => (
-                  <div
-                    key={`${item.kind || ''}-${item.path || ''}-${item.model || ''}`}
-                    className='p-2 rounded-md'
-                    style={{
-                      background: 'var(--semi-color-fill-0)',
-                      border: '1px solid var(--semi-color-border)',
-                    }}
-                  >
-                    <div className='font-medium'>
-                      {(item.kind || '-').toUpperCase()} · {item.path || '-'}
-                    </div>
-                    <div>
-                      {t('模型')}: {item.model || '-'}
-                    </div>
-                    <div>
-                      {t('HTTP')}: {item.http_code} / {t('通过')}:{' '}
-                      {item.ok ? '1' : '0'}
-                    </div>
-                    {item.x_oneapi_request_id ? (
-                      <div>
-                        {t('请求 ID')}: {item.x_oneapi_request_id}
-                      </div>
-                    ) : null}
-                    {item.error_type ? (
-                      <div>
-                        {t('错误类型')}: {item.error_type}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className='mt-2'>{t('无返回结果')}</div>
-            )}
+            {renderTokenTestTable(results)}
           </div>
         ),
       });
@@ -641,13 +697,12 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       title: t('批量测试结果'),
       size: 'large',
       content: (
-        <div className='flex flex-col gap-2'>
+        <div className='flex flex-col gap-3'>
           <div>
             {t('总计')}: {results.length}，{t('全通过')}: {okCount}
           </div>
           <div className='flex flex-col gap-2 max-h-[60vh] overflow-auto pr-1'>
             {results.map((item) => {
-              const list = Array.isArray(item?.results) ? item.results : [];
               const record = recordMap.get(item.token_id);
               return (
                 <div
@@ -666,26 +721,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
                       {t('错误')}: {item.error}
                     </div>
                   ) : null}
-                  {list.length ? (
-                    <div className='flex flex-col gap-1 mt-1'>
-                      {list.map((r) => (
-                        <div
-                          key={`${item.token_id}-${r.kind || ''}-${r.path || ''}`}
-                          className='text-sm'
-                        >
-                          {(r.kind || '-').toUpperCase()} {r.path} · {t('HTTP')}{' '}
-                          {r.http_code} · {t('通过')}:{r.ok ? '1' : '0'}
-                          {r.x_oneapi_request_id
-                            ? ` · ${t('请求 ID')}: ${r.x_oneapi_request_id}`
-                            : ''}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className='text-sm text-[var(--semi-color-text-2)] mt-1'>
-                      {t('无返回结果')}
-                    </div>
-                  )}
+                  <div className='mt-2'>{renderTokenTestTable(item?.results)}</div>
                 </div>
               );
             })}
@@ -697,15 +733,22 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
 
   // Handle row styling
   const handleRow = (record, index) => {
+    const isSelected = selectedKeys.some((token) => token?.id === record?.id);
     if (record.status !== 1) {
       return {
-        style: {
-          background: 'var(--semi-color-disabled-border)',
-        },
+        className: isSelected
+          ? 'token-row token-row--disabled token-row--selected'
+          : 'token-row token-row--disabled',
       };
-    } else {
-      return {};
     }
+    if (isSelected) {
+      return {
+        className: 'token-row token-row--selected',
+      };
+    }
+    return {
+      className: 'token-row',
+    };
   };
 
   const deleteTokensByIds = async (ids, successMessage) => {

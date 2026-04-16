@@ -24,6 +24,8 @@ import { Modal } from '@douyinfe/semi-ui';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 
+const HIDDEN_PUBLIC_PRICING_MODELS = new Set(['mmodel']);
+
 export const useModelPricingData = (initialValues = {}) => {
   const { t } = useTranslation();
   const [searchValue, setSearchValue] = useState(initialValues.searchValue ?? '');
@@ -200,6 +202,9 @@ export const useModelPricingData = (initialValues = {}) => {
 
     for (let i = 0; i < models.length; i++) {
       const m = models[i];
+      if (HIDDEN_PUBLIC_PRICING_MODELS.has(m.model_name)) {
+        continue;
+      }
       m.key = m.model_name;
       m.group_ratio = groupRatio[m.model_name];
       m.enable_groups = Array.isArray(m.enable_groups)

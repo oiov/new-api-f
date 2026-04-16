@@ -384,6 +384,8 @@ const renderOperations = (
   manageToken,
   refresh,
   rotateToken,
+  testToken,
+  testingTokenIds,
   t,
 ) => {
   const hasOpenLink = typeof onOpenLink === 'function';
@@ -398,6 +400,8 @@ const renderOperations = (
   const canToggleStatus = canManageToken && canRefresh;
   const canOpenChat = hasOpenLink;
   const canImport = hasOpenLink;
+  const canTest = typeof testToken === 'function';
+  const testing = Boolean(testingTokenIds?.[record?.id]);
   const rotateActionLabel = isProtectedSubscriptionAccessToken(record)
     ? t('重新签发')
     : t('重置令牌');
@@ -429,6 +433,26 @@ const renderOperations = (
 
   return (
     <Space wrap>
+      {canTest ? (
+        <Tooltip
+          content={t(
+            '同时测试 /v1/messages（Claude）与 /v1/responses（Codex），可能产生实际调用与计费',
+          )}
+        >
+          <Button
+            size='small'
+            theme='solid'
+            type='primary'
+            loading={testing}
+            onClick={async () => {
+              await testToken(record);
+            }}
+          >
+            {t('测试')}
+          </Button>
+        </Tooltip>
+      ) : null}
+
       {canOpenChat ? (
         <SplitButtonGroup
           className='overflow-hidden'
@@ -634,7 +658,6 @@ export const getTokensColumns = ({
     {
       title: '',
       dataIndex: 'operate',
-      fixed: 'right',
       render: (text, record, index) =>
         renderOperations(
           text,
@@ -645,6 +668,8 @@ export const getTokensColumns = ({
           manageToken,
           refresh,
           rotateToken,
+          testToken,
+          testingTokenIds,
           t,
         ),
     },
@@ -712,38 +737,6 @@ export const getTokensColumns = ({
               {summary}
             </Tag>
           </Popover>
-        );
-      },
-    });
-  }
-
-  if (showTestColumn) {
-    columns.push({
-      title: t('测试'),
-      key: 'test',
-      fixed: 'right',
-      width: 90,
-      render: (text, record) => {
-        const loading = Boolean(testingTokenIds?.[record?.id]);
-        return (
-          <Tooltip
-            content={t(
-              '同时测试 /v1/messages（Claude）与 /v1/responses（Codex），可能产生实际调用与计费',
-            )}
-          >
-            <Button
-              size='small'
-              theme='solid'
-              type='primary'
-              loading={loading}
-              onClick={async (e) => {
-                e.stopPropagation();
-                await testToken?.(record);
-              }}
-            >
-              {t('测试')}
-            </Button>
-          </Tooltip>
         );
       },
     });

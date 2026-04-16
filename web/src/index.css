@@ -4819,6 +4819,32 @@ html.dark .pricing-model-card--selected {
   ) !important;
 }
 
+.token-row > td {
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.token-row--selected > td {
+  background: rgba(var(--semi-blue-5), 0.12) !important;
+}
+
+.token-row--selected:hover > td {
+  background: rgba(var(--semi-blue-5), 0.16) !important;
+}
+
+.token-row--disabled > td {
+  background: var(--semi-color-disabled-border) !important;
+}
+
+.token-row--disabled.token-row--selected > td {
+  background: rgba(var(--semi-blue-5), 0.16) !important;
+}
+
+.token-row--disabled.token-row--selected:hover > td {
+  background: rgba(var(--semi-blue-5), 0.2) !important;
+}
+
 /* 价格行 */
 .pricing-price-label {
   color: var(--semi-color-text-3);

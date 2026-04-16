@@ -436,6 +436,7 @@ function TokensPage() {
           <div className='flex flex-col md:flex-row justify-between items-center gap-2 w-full'>
             <TokensActions
               selectedKeys={selectedKeys}
+              setSelectedKeys={tokensData.setSelectedKeys}
               setEditingToken={setEditingToken}
               setShowEdit={setShowEdit}
               batchCopyTokens={batchCopyTokens}
