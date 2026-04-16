@@ -84,13 +84,14 @@ type subscriptionConsumeSummaryRow struct {
 
 // don't use iota, avoid change log type value
 const (
-	LogTypeUnknown = 0
-	LogTypeTopup   = 1
-	LogTypeConsume = 2
-	LogTypeManage  = 3
-	LogTypeSystem  = 4
-	LogTypeError   = 5
-	LogTypeRefund  = 6
+	LogTypeUnknown      = 0
+	LogTypeTopup        = 1
+	LogTypeConsume      = 2
+	LogTypeManage       = 3
+	LogTypeSystem       = 4
+	LogTypeError        = 5
+	LogTypeRefund       = 6
+	LogTypeSubscription = 7
 )
 
 func formatUserLogs(logs []*Log, startIdx int) {

@@ -179,6 +179,10 @@ func sanitizeEcomAgentPlaceholderLocalPart(accountID string) string {
 	return strings.Trim(builder.String(), "-")
 }
 
+func buildDeletedEcomAgentAccountEmail(id int, now int64) string {
+	return fmt.Sprintf("ecomagent+deleted-%d-%d@%s", id, now, ecomAgentPlaceholderEmailDomain)
+}
+
 func (a *EcomAgentAccount) Validate() error {
 	if a.Email == "" && strings.TrimSpace(a.AccessToken) == "" && strings.TrimSpace(a.RefreshToken) == "" {
 		return errors.New("邮箱不能为空")
@@ -432,7 +436,7 @@ func GetEcomAgentChannelKeyBindingMap(channelId int) (map[int][]EcomAgentChannel
 func IsEcomAgentAccountEmailDuplicated(id int, email string) (bool, error) {
 	var count int64
 	err := DB.Model(&EcomAgentAccount{}).
-		Where("email = ? AND id <> ?", strings.TrimSpace(strings.ToLower(email)), id).
+		Where("email = ? AND id <> ? AND status <> ?", strings.TrimSpace(strings.ToLower(email)), id, ecomAgentAccountStatusDeleted).
 		Count(&count).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, nil
@@ -442,36 +446,29 @@ func IsEcomAgentAccountEmailDuplicated(id int, email string) (bool, error) {
 
 func DeleteEcomAgentAccountByID(id int) error {
 	now := common.GetTimestamp()
-	updates := map[string]any{
-		"status":                         ecomAgentAccountStatusDeleted,
-		"assignment_status":              "unassigned",
-		"assigned_plan":                  "",
-		"assigned_subscription_order_id": 0,
-		"assigned_channel_id":            0,
-		"assigned_channel_key_index":     -1,
-		"assigned_user_subscription_id":  0,
-		"assigned_at":                    0,
-		"updated_time":                   now,
-	}
-	tx := DB.Model(&EcomAgentAccount{}).
-		Where("id = ? AND status <> ?", id, ecomAgentAccountStatusDeleted).
-		Updates(updates)
-	if tx.Error != nil {
-		return tx.Error
-	}
-	if tx.RowsAffected > 0 {
-		return nil
-	}
-
-	// Idempotent delete: if already deleted, return nil; otherwise bubble "not found".
-	// This keeps semantics predictable for batch deletes and avoids "delete succeeded" on non-existing ids.
-	existing := &EcomAgentAccount{}
-	err := DB.Select("id", "status").Where("id = ?", id).Take(existing).Error
-	if err != nil {
-		return err
-	}
-	if strings.EqualFold(strings.TrimSpace(existing.Status), ecomAgentAccountStatusDeleted) {
-		return nil
-	}
-	return gorm.ErrRecordNotFound
+	return DB.Transaction(func(tx *gorm.DB) error {
+		account := &EcomAgentAccount{}
+		err := tx.Select("id", "status").Where("id = ?", id).Take(account).Error
+		if err != nil {
+			return err
+		}
+		if strings.EqualFold(strings.TrimSpace(account.Status), ecomAgentAccountStatusDeleted) {
+			return nil
+		}
+		updates := map[string]any{
+			"email":                          buildDeletedEcomAgentAccountEmail(id, now),
+			"status":                         ecomAgentAccountStatusDeleted,
+			"assignment_status":              "unassigned",
+			"assigned_plan":                  "",
+			"assigned_subscription_order_id": 0,
+			"assigned_channel_id":            0,
+			"assigned_channel_key_index":     -1,
+			"assigned_user_subscription_id":  0,
+			"assigned_at":                    0,
+			"updated_time":                   now,
+		}
+		return tx.Model(&EcomAgentAccount{}).
+			Where("id = ? AND status <> ?", id, ecomAgentAccountStatusDeleted).
+			Updates(updates).Error
+	})
 }

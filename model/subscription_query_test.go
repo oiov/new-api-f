@@ -329,6 +329,13 @@ func TestCompleteSubscriptionOrder_UsesOrderSnapshot(t *testing.T) {
 		var topup TopUp
 		require.NoError(t, DB.Where("trade_no = ?", "snapshot-order-1").First(&topup).Error)
 		require.Equal(t, common.TopUpStatusSuccess, topup.Status)
+
+		var logs []Log
+		require.NoError(t, DB.Where("user_id = ?", 30).Order("id asc").Find(&logs).Error)
+		require.Len(t, logs, 1)
+		require.Equal(t, LogTypeSubscription, logs[0].Type)
+		require.Contains(t, logs[0].Content, "订阅购买成功")
+		require.Contains(t, logs[0].Content, "snapshot-plan-v1")
 	})
 }
 
