@@ -30,13 +30,16 @@ type tokenPageResponse struct {
 }
 
 type tokenResponseItem struct {
-	ID       int    `json:"id"`
-	UserID   int    `json:"user_id"`
-	Username string `json:"username"`
-	Name     string `json:"name"`
-	Key      string `json:"key"`
-	Source   string `json:"source"`
-	Status   int    `json:"status"`
+	ID              int    `json:"id"`
+	UserID          int    `json:"user_id"`
+	Username        string `json:"username"`
+	Name            string `json:"name"`
+	Key             string `json:"key"`
+	Source          string `json:"source"`
+	Status          int    `json:"status"`
+	LastTestAt      int64  `json:"last_test_at"`
+	LastTestOK      bool   `json:"last_test_ok"`
+	LastTestSummary string `json:"last_test_summary"`
 }
 
 type tokenKeyResponse struct {
@@ -521,6 +524,50 @@ func TestGetAllTokensByAdminReturnsAllUsersWithMaskedKeys(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), tokenA.Key) || strings.Contains(recorder.Body.String(), tokenB.Key) {
 		t.Fatalf("admin list response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestGetAllTokensByAdminReturnsPersistedLastTestResult(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	admin := seedUser(t, db, 100, "admin", common.RoleAdminUser)
+	user := seedUser(t, db, 1, "alice", common.RoleCommonUser)
+	token := seedToken(t, db, user.Id, "alice-token", "alice1234token5678")
+	token.LastTestAt = 1710000000
+	token.LastTestOK = true
+	token.LastTestSummary = `{"mode":"both","results":[{"kind":"claude","path":"/v1/messages","model":"claude-opus-4-6","http_code":200,"ok":true}]}`
+	if err := db.Model(&model.Token{}).
+		Where("id = ?", token.Id).
+		Updates(map[string]interface{}{
+			"last_test_at":      token.LastTestAt,
+			"last_test_ok":      token.LastTestOK,
+			"last_test_summary": token.LastTestSummary,
+		}).Error; err != nil {
+		t.Fatalf("failed to persist last test result: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/admin?p=1&size=10", nil, admin.Id)
+	GetAllTokensByAdmin(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var page tokenPageResponse
+	if err := common.Unmarshal(response.Data, &page); err != nil {
+		t.Fatalf("failed to decode admin token page response: %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("expected 1 token, got %d", len(page.Items))
+	}
+	if page.Items[0].LastTestAt != token.LastTestAt {
+		t.Fatalf("expected last_test_at %d, got %d", token.LastTestAt, page.Items[0].LastTestAt)
+	}
+	if !page.Items[0].LastTestOK {
+		t.Fatalf("expected last_test_ok to be true")
+	}
+	if page.Items[0].LastTestSummary != token.LastTestSummary {
+		t.Fatalf("expected last_test_summary %q, got %q", token.LastTestSummary, page.Items[0].LastTestSummary)
 	}
 }
 

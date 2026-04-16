@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Badge,
   Banner,
@@ -51,6 +51,7 @@ import {
   renderGroup,
   renderGroupTextWithDescription,
   renderQuota,
+  getUserData,
 } from '../../helpers';
 import { primeGroupMetadata } from '../../helpers/group';
 import { getCurrencyConfig, renderQuotaWithAmount } from '../../helpers/render';
@@ -393,8 +394,11 @@ const SubscriptionPlansCard = ({
   mainPanelMode = 'tabs',
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
+  const currentUser = useMemo(() => getUserData(), []);
+  const isLoggedIn = !!currentUser?.id;
   const isPackageVariant = uiVariant === 'package';
   const usePackageConsoleLayout = isPackageVariant && showUserSubscriptions;
   const renderSubscriptionPanel =
@@ -513,17 +517,10 @@ const SubscriptionPlansCard = ({
       const reason = !plan?.enabled
         ? t('该套餐已下架')
         : reached
-          ? `${t('已达到购买上限')} (${count}/${limit})`
-          : saleSummary.soldOut
-            ? t('该套餐已售罄')
-            : '';
-      const buttonText = !plan?.enabled
-        ? t('已下架')
-        : saleSummary.soldOut
-          ? t('已售罄')
-          : reached
-            ? t('已达上限')
-            : t('立即订阅');
+          ? t('已达上限')
+          : isLoggedIn
+            ? t('立即订阅')
+            : t('登录后购买');
 
       return {
         count,
@@ -535,14 +532,29 @@ const SubscriptionPlansCard = ({
         buttonText,
       };
     },
-    [getPlanPurchaseCount, t],
+    [getPlanPurchaseCount, isLoggedIn, t],
   );
+
+  const redirectToLogin = useCallback(() => {
+    navigate('/login', {
+      state: {
+        from: {
+          pathname: location.pathname,
+          search: location.search,
+        },
+      },
+    });
+  }, [location.pathname, location.search, navigate]);
 
   const openBuy = (p) => {
     const plan = p?.plan || {};
     const availability = getPlanPurchaseAvailability(plan);
     if (availability.disabled) {
       showError(availability.reason || t('当前暂不可购买'));
+      return;
+    }
+    if (!isLoggedIn) {
+      redirectToLogin();
       return;
     }
     setSelectedPlan(p);
@@ -1014,7 +1026,9 @@ const SubscriptionPlansCard = ({
         if (a?.state !== 'active' && b?.state === 'active') return 1;
         if (a?.isDerivedDayPass && !b?.isDerivedDayPass) return -1;
         if (!a?.isDerivedDayPass && b?.isDerivedDayPass) return 1;
-        return (b?.subscription?.end_time || 0) - (a?.subscription?.end_time || 0);
+        return (
+          (b?.subscription?.end_time || 0) - (a?.subscription?.end_time || 0)
+        );
       });
   }, [allSubscriptions, planMap, planTitleMap, preferredSubscriptionId, t]);
 
@@ -1068,7 +1082,9 @@ const SubscriptionPlansCard = ({
     if (remain <= 0) {
       return 0;
     }
-    const periodTotal = Number(item?.subscription?.request_count_period_total || 0);
+    const periodTotal = Number(
+      item?.subscription?.request_count_period_total || 0,
+    );
     if (periodTotal > 0) {
       return Math.min(remain, periodTotal);
     }
@@ -1090,10 +1106,14 @@ const SubscriptionPlansCard = ({
       if (!item || item.state !== 'active') return false;
       if (item.isDerivedDayPass) return false;
       if (item.resourceType !== 'request_count') return false;
-      if (String(item?.subscription?.duration_unit || '') !== 'month') return false;
+      if (String(item?.subscription?.duration_unit || '') !== 'month')
+        return false;
       if (Number(item?.usageSummary?.remain || 0) <= 0) return false;
-      if (activeDayPassPlanMap.has(Number(item?.subscription?.id || 0))) return false;
-      return !activeDerivedDayPassParentIds.has(Number(item?.subscription?.id || 0));
+      if (activeDayPassPlanMap.has(Number(item?.subscription?.id || 0)))
+        return false;
+      return !activeDerivedDayPassParentIds.has(
+        Number(item?.subscription?.id || 0),
+      );
     },
     [activeDayPassPlanMap, activeDerivedDayPassParentIds],
   );
@@ -1136,7 +1156,9 @@ const SubscriptionPlansCard = ({
         showError(res.data?.message || t('生成天卡失败'));
       }
     } catch (error) {
-      showError(error?.response?.data?.message || error?.message || t('生成天卡失败'));
+      showError(
+        error?.response?.data?.message || error?.message || t('生成天卡失败'),
+      );
     } finally {
       setCreatingDayPass(false);
     }
@@ -1151,19 +1173,16 @@ const SubscriptionPlansCard = ({
     setDayPassRequestCount(0);
   }, [creatingDayPass]);
 
-  const getRecommendedDayPassPlanDays = useCallback(
-    (item, perDayCount) => {
-      const remain = Number(item?.usageSummary?.remain || 0);
-      const remainingDays = Math.max(1, Number(item?.remainingDays || 1));
-      const normalizedPerDayCount = Math.max(1, Number(perDayCount || 1));
-      const maxByCount = Math.max(
-        1,
-        Math.floor(remain / normalizedPerDayCount) || 1,
-      );
-      return Math.max(1, Math.min(remainingDays, 7, maxByCount));
-    },
-    [],
-  );
+  const getRecommendedDayPassPlanDays = useCallback((item, perDayCount) => {
+    const remain = Number(item?.usageSummary?.remain || 0);
+    const remainingDays = Math.max(1, Number(item?.remainingDays || 1));
+    const normalizedPerDayCount = Math.max(1, Number(perDayCount || 1));
+    const maxByCount = Math.max(
+      1,
+      Math.floor(remain / normalizedPerDayCount) || 1,
+    );
+    return Math.max(1, Math.min(remainingDays, 7, maxByCount));
+  }, []);
 
   const openCreateDayPassPlan = useCallback(
     (item) => {
@@ -1180,7 +1199,12 @@ const SubscriptionPlansCard = ({
       setDayPassPlanTotalDays(getRecommendedDayPassPlanDays(item, perDayCount));
       setDayPassPlanModalVisible(true);
     },
-    [canGenerateDayPass, getRecommendedDayPassCount, getRecommendedDayPassPlanDays, t],
+    [
+      canGenerateDayPass,
+      getRecommendedDayPassCount,
+      getRecommendedDayPassPlanDays,
+      t,
+    ],
   );
 
   const closeDayPassPlanModal = useCallback(() => {
@@ -1194,7 +1218,9 @@ const SubscriptionPlansCard = ({
   }, [creatingDayPassPlan]);
 
   const handleCreateDayPassPlan = useCallback(async () => {
-    const subscriptionId = Number(selectedDayPassPlanSource?.subscription?.id || 0);
+    const subscriptionId = Number(
+      selectedDayPassPlanSource?.subscription?.id || 0,
+    );
     const totalDays = Number(dayPassPlanTotalDays || 0);
     const requestCountPerDay = Number(dayPassPlanRequestCount || 0);
     if (subscriptionId <= 0 || totalDays <= 0 || requestCountPerDay <= 0) {
@@ -2170,7 +2196,8 @@ const SubscriptionPlansCard = ({
       metaItems.push({
         label: t('天卡独立 Key'),
         value:
-          item?.dedicated_access_token?.key_preview || t('已自动创建，请前往令牌页面查看'),
+          item?.dedicated_access_token?.key_preview ||
+          t('已自动创建，请前往令牌页面查看'),
       });
     }
 
@@ -2225,7 +2252,9 @@ const SubscriptionPlansCard = ({
                 theme='outline'
                 type='danger'
                 loading={cancellingDayPassPlanId === activeDayPassPlan.plan?.id}
-                onClick={() => handleCancelDayPassPlan(activeDayPassPlan.plan?.id)}
+                onClick={() =>
+                  handleCancelDayPassPlan(activeDayPassPlan.plan?.id)
+                }
               >
                 {t('取消拆分计划')}
               </Button>
@@ -2319,12 +2348,15 @@ const SubscriptionPlansCard = ({
                   })}
                   {' · '}
                   {t('每天 {{count}} 次', {
-                    count: Number(activeDayPassPlan.plan?.request_count_per_day || 0),
+                    count: Number(
+                      activeDayPassPlan.plan?.request_count_per_day || 0,
+                    ),
                   })}
                 </div>
               </div>
               <div className='text-xs text-violet-700/80'>
-                {t('下次生成')}：{formatDateTime(activeDayPassPlan.plan?.next_generate_at)}
+                {t('下次生成')}：
+                {formatDateTime(activeDayPassPlan.plan?.next_generate_at)}
               </div>
             </div>
           </div>
@@ -2878,12 +2910,28 @@ const SubscriptionPlansCard = ({
                 theme='solid'
                 type='primary'
                 onClick={() => openBuy(record)}
-                icon={<ChevronRight size={14} />}
+                icon={
+                  isLoggedIn ? (
+                    <ChevronRight size={14} />
+                  ) : (
+                    <ShieldCheck size={14} />
+                  )
+                }
                 iconPosition='right'
                 block
+                className={
+                  isLoggedIn
+                    ? undefined
+                    : 'subscription-plan-selling-card__login-cta'
+                }
               >
-                {t('立即订阅')}
+                {availability.buttonText}
               </Button>
+              {!isLoggedIn ? (
+                <div className='subscription-plan-selling-card__login-hint'>
+                  {t('先登录，再进入支付确认')}
+                </div>
+              ) : null}
             </div>
           );
         },
@@ -3145,16 +3193,34 @@ const SubscriptionPlansCard = ({
                   </Button>
                 </Tooltip>
               ) : (
-                <Button
-                  theme='solid'
-                  type='primary'
-                  block
-                  onClick={() => openBuy(record)}
-                  icon={<ChevronRight size={14} />}
-                  iconPosition='right'
-                >
-                  {t('立即订阅')}
-                </Button>
+                <div className='subscription-plan-selling-card__cta-stack'>
+                  <Button
+                    theme='solid'
+                    type='primary'
+                    block
+                    onClick={() => openBuy(record)}
+                    icon={
+                      isLoggedIn ? (
+                        <ChevronRight size={14} />
+                      ) : (
+                        <ShieldCheck size={14} />
+                      )
+                    }
+                    iconPosition='right'
+                    className={
+                      isLoggedIn
+                        ? undefined
+                        : 'subscription-plan-selling-card__login-cta'
+                    }
+                  >
+                    {availability.buttonText}
+                  </Button>
+                  {!isLoggedIn ? (
+                    <div className='subscription-plan-selling-card__login-hint'>
+                      {t('先登录，再进入支付确认')}
+                    </div>
+                  ) : null}
+                </div>
               )}
             </div>
           </div>
@@ -4458,7 +4524,10 @@ const SubscriptionPlansCard = ({
                   })}
                 </div>
                 <div className='mt-1 font-medium text-semi-color-text-0'>
-                  {t('到期时间')} {formatDateTime(selectedDayPassSource?.subscription?.end_time)}
+                  {t('到期时间')}{' '}
+                  {formatDateTime(
+                    selectedDayPassSource?.subscription?.end_time,
+                  )}
                 </div>
               </div>
             </div>
@@ -4539,7 +4608,9 @@ const SubscriptionPlansCard = ({
                 precision={0}
                 style={{ width: '100%' }}
                 placeholder={t('请输入拆分天数')}
-                onChange={(value) => setDayPassPlanTotalDays(Number(value || 0))}
+                onChange={(value) =>
+                  setDayPassPlanTotalDays(Number(value || 0))
+                }
               />
             </div>
             <div>

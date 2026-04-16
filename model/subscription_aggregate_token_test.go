@@ -289,6 +289,63 @@ func TestGetPreferredSubscriptionRouteForAggregateToken_SkipsUnavailableBoundKey
 	})
 }
 
+func TestTokenGetModelLimits_SupportsLegacyJSONValue(t *testing.T) {
+	token := &Token{
+		ModelLimits: `["claude-opus-4-6","claude-sonnet-4-6"]`,
+	}
+
+	require.Equal(t, []string{"claude-opus-4-6", "claude-sonnet-4-6"}, token.GetModelLimits())
+	require.True(t, token.GetModelLimitsMap()["claude-opus-4-6"])
+	require.True(t, token.GetModelLimitsMap()["claude-sonnet-4-6"])
+}
+
+func TestSyncDerivedDayPassAccessTokenTx_NormalizesModelLimits(t *testing.T) {
+	withSubscriptionAggregateTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       1201,
+			Username: "derived_user",
+			AffCode:  "derived_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+
+		sub := &UserSubscription{
+			Id:                       8201,
+			UserId:                   1201,
+			PlanId:                   7201,
+			ResourceType:             SubscriptionResourceRequestCount,
+			RequestCountTotal:        100,
+			RequestCountUsed:         0,
+			Status:                   "active",
+			StartTime:                now - 3600,
+			EndTime:                  now + 7200,
+			UpgradeGroup:             "sub_plan_claude_lite",
+			AllowedModelsJSON:        `["claude-opus-4-6","claude-sonnet-4-6"]`,
+			SpecificChannelId:        9201,
+			SpecificChannelKeyIndex:  0,
+			Source:                   SubscriptionSourceDerivedDayPass,
+			ParentUserSubscriptionId: 8101,
+			CreatedAt:                now - 3600,
+			UpdatedAt:                now - 3600,
+		}
+		require.NoError(t, DB.Create(sub).Error)
+
+		require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+			_, err := syncDerivedDayPassAccessTokenTx(tx, sub, false)
+			return err
+		}))
+
+		var token Token
+		require.NoError(t, DB.Where("user_subscription_id = ? AND source = ?", sub.Id, TokenSourceDerivedDayPassAccess).First(&token).Error)
+		require.True(t, token.ModelLimitsEnabled)
+		require.Equal(t, "claude-opus-4-6,claude-sonnet-4-6", token.ModelLimits)
+		require.True(t, token.GetModelLimitsMap()["claude-opus-4-6"])
+		require.True(t, token.GetModelLimitsMap()["claude-sonnet-4-6"])
+	})
+}
+
 func TestAllocateSubscriptionPlanChannelFromPoolTx_SkipsActiveSubscriptionBindingsWithoutToken(t *testing.T) {
 	withSubscriptionAggregateTestDB(t, func() {
 		now := common.GetTimestamp()

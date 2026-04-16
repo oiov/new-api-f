@@ -433,7 +433,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -456,6 +456,14 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId in
 	}
 	if requestId != "" {
 		tx = tx.Where("logs.request_id = ?", requestId)
+	}
+	if errorMessage != "" {
+		errorPattern := buildLogContentSearchPattern(errorMessage)
+		tx = tx.Where("(logs.content LIKE ? ESCAPE '!' OR logs.other LIKE ? ESCAPE '!')", errorPattern, errorPattern)
+	}
+	if statusCode != "" {
+		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns(statusCode)
+		tx = tx.Where("(logs.content = ? OR logs.content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
@@ -529,7 +537,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId in
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -550,6 +558,14 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	}
 	if requestId != "" {
 		tx = tx.Where("logs.request_id = ?", requestId)
+	}
+	if errorMessage != "" {
+		errorPattern := buildLogContentSearchPattern(errorMessage)
+		tx = tx.Where("(logs.content LIKE ? ESCAPE '!' OR logs.other LIKE ? ESCAPE '!')", errorPattern, errorPattern)
+	}
+	if statusCode != "" {
+		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns(statusCode)
+		tx = tx.Where("(logs.content = ? OR logs.content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
@@ -589,6 +605,20 @@ func applyErrorLogVisibilityFilter(tx *gorm.DB, logType int, hideErrorLogs bool)
 		return tx.Where("1 = 0")
 	}
 	return tx.Where("logs.type <> ?", LogTypeError)
+}
+
+func buildLogContentSearchPattern(input string) string {
+	escaped := strings.ReplaceAll(input, "!", "!!")
+	escaped = strings.ReplaceAll(escaped, "%", "!%")
+	escaped = strings.ReplaceAll(escaped, "_", "!_")
+	return "%" + escaped + "%"
+}
+
+func buildStatusCodeSearchPatterns(statusCode string) (string, string) {
+	escaped := strings.ReplaceAll(statusCode, "!", "!!")
+	escaped = strings.ReplaceAll(escaped, "%", "!%")
+	escaped = strings.ReplaceAll(escaped, "_", "!_")
+	return "status_code=" + escaped, "status_code=" + escaped + ",%"
 }
 
 func GetSubscriptionConsumeLogs(userId int, subscriptionId int, planId int, filterUserId int, startTimestamp int64, endTimestamp int64, startIdx int, num int) (logs []*Log, total int64, summary *SubscriptionConsumeSummary, err error) {
@@ -896,7 +926,7 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, subscriptionId int, subscriptionPlanId int) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -935,6 +965,16 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId 
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
 		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+	}
+	if errorMessage != "" {
+		errorPattern := buildLogContentSearchPattern(errorMessage)
+		tx = tx.Where("(content LIKE ? ESCAPE '!' OR other LIKE ? ESCAPE '!')", errorPattern, errorPattern)
+		rpmTpmQuery = rpmTpmQuery.Where("(content LIKE ? ESCAPE '!' OR other LIKE ? ESCAPE '!')", errorPattern, errorPattern)
+	}
+	if statusCode != "" {
+		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns(statusCode)
+		tx = tx.Where("(content = ? OR content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
+		rpmTpmQuery = rpmTpmQuery.Where("(content = ? OR content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
 	}
 	if subscriptionId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_id", subscriptionId)

@@ -34,6 +34,9 @@ type Token struct {
 	UsedQuota               int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group                   string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry         bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	LastTestAt              int64          `json:"last_test_at" gorm:"bigint;default:0"`
+	LastTestOK              bool           `json:"last_test_ok" gorm:"default:false"`
+	LastTestSummary         string         `json:"last_test_summary" gorm:"type:text"`
 	DeletedAt               gorm.DeletedAt `gorm:"index"`
 }
 
@@ -904,6 +907,19 @@ func (token *Token) Update() (err error) {
 	return err
 }
 
+func (token *Token) UpdateLastTestResult(lastTestAt int64, lastTestOK bool, lastTestSummary string) error {
+	if token == nil || token.Id <= 0 {
+		return errors.New("invalid token")
+	}
+	return DB.Model(&Token{}).
+		Where("id = ?", token.Id).
+		Updates(map[string]interface{}{
+			"last_test_at":      lastTestAt,
+			"last_test_ok":      lastTestOK,
+			"last_test_summary": lastTestSummary,
+		}).Error
+}
+
 func isTokenKeyDuplicateError(err error) bool {
 	if err == nil {
 		return false
@@ -993,10 +1009,17 @@ func (token *Token) IsModelLimitsEnabled() bool {
 }
 
 func (token *Token) GetModelLimits() []string {
-	if token.ModelLimits == "" {
+	raw := strings.TrimSpace(token.ModelLimits)
+	if raw == "" {
 		return []string{}
 	}
-	return strings.Split(token.ModelLimits, ",")
+	if strings.HasPrefix(raw, "[") {
+		var limits []string
+		if err := common.UnmarshalJsonStr(raw, &limits); err == nil {
+			return limits
+		}
+	}
+	return strings.Split(raw, ",")
 }
 
 func (token *Token) GetModelLimitsMap() map[string]bool {

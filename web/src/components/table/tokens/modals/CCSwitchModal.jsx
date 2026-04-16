@@ -28,7 +28,9 @@ import {
   TextArea,
   Toast,
   Typography,
+  Tag,
 } from '@douyinfe/semi-ui';
+import { ArrowUpRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { encodeToBase64, selectFilter } from '../../../../helpers';
 import { fetchTokenKey as fetchTokenKeyById } from '../../../../helpers/token';
@@ -74,6 +76,10 @@ const CCSWITCH_DEEPLINK_DOC_URL =
 const CCSWITCH_RELEASES_URL =
   'https://github.com/farion1231/cc-switch/releases';
 const CCSWITCH_PROTOCOL_PROBE_URL = 'ccswitch://';
+
+const TEST_STATUS_IDLE = 'idle';
+const TEST_STATUS_SUCCESS = 'success';
+const TEST_STATUS_ERROR = 'error';
 
 function getServerAddress() {
   try {
@@ -145,16 +151,21 @@ function inferAppFromGroup(group) {
 }
 
 function buildClaudeConfig(apiKey, baseUrl, models) {
-  return {
-    env: {
-      ANTHROPIC_AUTH_TOKEN: apiKey,
-      ANTHROPIC_BASE_URL: baseUrl,
-      ANTHROPIC_MODEL: models.model,
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: models.haikuModel,
-      ANTHROPIC_DEFAULT_SONNET_MODEL: models.sonnetModel,
-      ANTHROPIC_DEFAULT_OPUS_MODEL: models.opusModel,
-    },
+  const env = {
+    ANTHROPIC_AUTH_TOKEN: apiKey,
+    ANTHROPIC_BASE_URL: baseUrl,
+    ANTHROPIC_MODEL: models.model || '',
   };
+  if (models.haikuModel) {
+    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = models.haikuModel;
+  }
+  if (models.sonnetModel) {
+    env.ANTHROPIC_DEFAULT_SONNET_MODEL = models.sonnetModel;
+  }
+  if (models.opusModel) {
+    env.ANTHROPIC_DEFAULT_OPUS_MODEL = models.opusModel;
+  }
+  return { env };
 }
 
 function buildCodexConfig(apiKey, baseUrl, models) {
@@ -162,7 +173,7 @@ function buildCodexConfig(apiKey, baseUrl, models) {
 base_url = "${baseUrl}/v1"
 
 [general]
-model = "${models.model}"`;
+model = "${models.model || ''}"`;
 
   return {
     auth: {
@@ -321,6 +332,9 @@ export default function CCSwitchModal({
   const [submitting, setSubmitting] = useState(false);
   const [checkingClient, setCheckingClient] = useState(false);
   const [testingModelKey, setTestingModelKey] = useState('');
+  const [isBatchTesting, setIsBatchTesting] = useState(false);
+  const [modelTestResults, setModelTestResults] = useState({});
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   const [serverAddress, setServerAddress] = useState('');
 
   const currentConfig = effectiveAppConfigs[app] || effectiveAppConfigs.claude;
@@ -358,6 +372,10 @@ export default function CCSwitchModal({
       setModels(
         effectiveDefaultModels[nextApp] || effectiveDefaultModels.claude,
       );
+      setModelTestResults({});
+      setTestingModelKey('');
+      setIsBatchTesting(false);
+      setPreviewExpanded(false);
       setServerAddress(getServerAddress().replace(/\/$/, ''));
       setName(
         buildProviderName(
@@ -384,42 +402,75 @@ export default function CCSwitchModal({
       ),
     );
     setModels(effectiveDefaultModels[val] || {});
+    setModelTestResults({});
+    setTestingModelKey('');
+    setIsBatchTesting(false);
+    setPreviewExpanded(false);
   };
 
   const handleModelChange = (field, value) => {
     setModels((prev) => ({ ...prev, [field]: value }));
+    setModelTestResults((prev) => {
+      if (!prev[field]) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [field]: {
+          status: TEST_STATUS_IDLE,
+          modelName: value || currentDefaults[field] || '',
+          message: '',
+        },
+      };
+    });
   };
+
+  const resolvedModels = useMemo(
+    () =>
+      currentConfig.modelFields.reduce((acc, field) => {
+        acc[field.key] = models[field.key] || currentDefaults[field.key] || '';
+        return acc;
+      }, {}),
+    [currentConfig.modelFields, currentDefaults, models],
+  );
+
+  const importModels = useMemo(
+    () =>
+      currentConfig.modelFields.reduce((acc, field) => {
+        const modelName = resolvedModels[field.key];
+        if (!modelName) {
+          return acc;
+        }
+        if (modelTestResults[field.key]?.status === TEST_STATUS_SUCCESS) {
+          acc[field.key] = modelName;
+        }
+        return acc;
+      }, {}),
+    [currentConfig.modelFields, modelTestResults, resolvedModels],
+  );
+
+  const finalImportModels = useMemo(() => {
+    const nextModels = { ...importModels };
+    if (!nextModels.model && resolvedModels.model) {
+      nextModels.model = resolvedModels.model;
+    }
+    return nextModels;
+  }, [importModels, resolvedModels]);
+
+  const importableModelFields = useMemo(
+    () =>
+      currentConfig.modelFields.filter((field) =>
+        Boolean(finalImportModels[field.key]),
+      ),
+    [currentConfig.modelFields, finalImportModels],
+  );
 
   const previewConfig = useMemo(() => {
     const previewApiKey = 'sk-your-token-key';
     return app === 'codex'
-      ? buildCodexConfig(previewApiKey, serverAddress, {
-          ...currentDefaults,
-          ...models,
-        })
-      : buildClaudeConfig(previewApiKey, serverAddress, {
-          ...currentDefaults,
-          ...models,
-        });
-  }, [app, currentDefaults, models, serverAddress]);
-
-  const deepLinkPreview = useMemo(
-    () =>
-      JSON.stringify(
-        {
-          resource: 'provider',
-          app,
-          name:
-            name ||
-            buildProviderName(tokenRecord?.group, currentConfig.defaultName),
-          configFormat: 'json',
-          enabled: true,
-        },
-        null,
-        2,
-      ),
-    [app, currentConfig.defaultName, name, tokenRecord?.group],
-  );
+      ? buildCodexConfig(previewApiKey, serverAddress, finalImportModels)
+      : buildClaudeConfig(previewApiKey, serverAddress, finalImportModels);
+  }, [app, finalImportModels, serverAddress]);
 
   const configPreview = useMemo(
     () => JSON.stringify(previewConfig, null, 2),
@@ -431,24 +482,44 @@ export default function CCSwitchModal({
     return tokenKey.startsWith('sk-') ? tokenKey : `sk-${tokenKey}`;
   };
 
-  const testModelConnectivity = async (fieldKey) => {
-    if (submitting || checkingClient || testingModelKey) {
-      return;
-    }
+  const buildTestingFields = () =>
+    currentConfig.modelFields
+      .map((field) => ({
+        key: field.key,
+        label: field.label,
+        modelName: models[field.key] || currentDefaults[field.key] || '',
+      }))
+      .filter((field) => Boolean(field.modelName));
 
+  const runModelConnectivityTest = async (fieldKey, sharedApiKey) => {
     const modelName = models[fieldKey] || currentDefaults[fieldKey];
     if (!modelName) {
-      Toast.warning(t('未选择可测试的模型'));
-      return;
+      const message = t('未选择可测试的模型');
+      setModelTestResults((prev) => ({
+        ...prev,
+        [fieldKey]: {
+          status: TEST_STATUS_ERROR,
+          modelName: '',
+          message,
+        },
+      }));
+      return { ok: false, message, modelName: '' };
     }
     if (!tokenRecord?.id) {
-      Toast.error(t('令牌不存在'));
-      return;
+      const message = t('令牌不存在');
+      setModelTestResults((prev) => ({
+        ...prev,
+        [fieldKey]: {
+          status: TEST_STATUS_ERROR,
+          modelName,
+          message,
+        },
+      }));
+      return { ok: false, message, modelName };
     }
 
-    setTestingModelKey(fieldKey);
     try {
-      const apiKey = await fetchGatewayToken();
+      const apiKey = sharedApiKey || (await fetchGatewayToken());
       const latestServerAddress = getServerAddress().replace(/\/$/, '');
       setServerAddress(latestServerAddress);
 
@@ -489,17 +560,115 @@ export default function CCSwitchModal({
       const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
-        Toast.success(t('模型连通性测试成功：{{model}}', { model: modelName }));
-        return;
+        const message = t('模型连通性测试成功');
+        setModelTestResults((prev) => ({
+          ...prev,
+          [fieldKey]: {
+            status: TEST_STATUS_SUCCESS,
+            modelName,
+            message,
+          },
+        }));
+        return { ok: true, message, modelName };
       }
 
       const message =
         data?.error?.message || data?.message || t('模型连通性测试失败');
-      Toast.error(message);
+      setModelTestResults((prev) => ({
+        ...prev,
+        [fieldKey]: {
+          status: TEST_STATUS_ERROR,
+          modelName,
+          message,
+        },
+      }));
+      return { ok: false, message, modelName };
     } catch (error) {
-      Toast.error(error?.message || t('模型连通性测试失败'));
+      const message = error?.message || t('模型连通性测试失败');
+      setModelTestResults((prev) => ({
+        ...prev,
+        [fieldKey]: {
+          status: TEST_STATUS_ERROR,
+          modelName,
+          message,
+        },
+      }));
+      return { ok: false, message, modelName };
+    }
+  };
+
+  const testModelConnectivity = async (fieldKey) => {
+    if (submitting || checkingClient || testingModelKey || isBatchTesting) {
+      return;
+    }
+
+    const modelName = models[fieldKey] || currentDefaults[fieldKey];
+    if (!modelName) {
+      Toast.warning(t('未选择可测试的模型'));
+      return;
+    }
+
+    setTestingModelKey(fieldKey);
+    try {
+      const result = await runModelConnectivityTest(fieldKey);
+      if (result.ok) {
+        Toast.success(
+          t('模型连通性测试成功：{{model}}', { model: result.modelName }),
+        );
+        return;
+      }
+      Toast.error(result.message || t('模型连通性测试失败'));
     } finally {
       setTestingModelKey('');
+    }
+  };
+
+  const testAllModelConnectivity = async () => {
+    if (submitting || checkingClient || testingModelKey || isBatchTesting) {
+      return;
+    }
+    const fields = buildTestingFields();
+    if (fields.length === 0) {
+      Toast.warning(t('未选择可测试的模型'));
+      return;
+    }
+    if (!tokenRecord?.id) {
+      Toast.error(t('令牌不存在'));
+      return;
+    }
+
+    setIsBatchTesting(true);
+    setModelTestResults({});
+    try {
+      const apiKey = await fetchGatewayToken();
+      let successCount = 0;
+      for (const field of fields) {
+        setTestingModelKey(field.key);
+        const result = await runModelConnectivityTest(field.key, apiKey);
+        if (result.ok) {
+          successCount += 1;
+        }
+      }
+      if (successCount === fields.length) {
+        Toast.success(
+          t('全部模型连通性测试成功（{{count}}/{{total}}）', {
+            count: successCount,
+            total: fields.length,
+          }),
+        );
+        return;
+      }
+      Toast.warning(
+        t('模型测试完成，成功 {{count}} / {{total}}', {
+          count: successCount,
+          total: fields.length,
+        }),
+      );
+    } catch (error) {
+      Toast.error(error?.message || t('批量模型测试失败'));
+    } finally {
+      setTestingModelKey('');
+      setIsBatchTesting(false);
     }
   };
 
@@ -525,7 +694,14 @@ export default function CCSwitchModal({
         const latestServerAddress = getServerAddress().replace(/\/$/, '');
         setServerAddress(latestServerAddress);
         const apiKey = await fetchGatewayToken();
-        const url = buildCCSwitchURL(app, name, models, apiKey);
+        if (modelTestResults.model?.status !== TEST_STATUS_SUCCESS) {
+          Toast.warning(
+            t(
+              '主模型未测试通过，已按当前填写值导入；附加模型仍仅导入测试通过项',
+            ),
+          );
+        }
+        const url = buildCCSwitchURL(app, name, finalImportModels, apiKey);
         window.open(url, '_blank');
         onClose();
       } catch (error) {
@@ -539,8 +715,8 @@ export default function CCSwitchModal({
 
   const fieldLabelStyle = useMemo(
     () => ({
-      marginBottom: 8,
-      fontSize: 12,
+      marginBottom: 6,
+      fontSize: 11,
       fontWeight: 700,
       letterSpacing: '0.02em',
       color: 'var(--semi-color-text-1)',
@@ -550,20 +726,20 @@ export default function CCSwitchModal({
 
   const panelCardStyle = useMemo(
     () => ({
-      padding: 16,
-      borderRadius: 18,
-      background: 'rgba(255, 255, 255, 0.88)',
+      padding: 12,
+      borderRadius: 14,
+      background: 'rgba(255, 255, 255, 0.94)',
       border: '1px solid rgba(15, 23, 42, 0.08)',
-      boxShadow: '0 12px 28px rgba(15, 23, 42, 0.06)',
-      backdropFilter: 'blur(14px)',
+      boxShadow: '0 6px 18px rgba(15, 23, 42, 0.05)',
+      backdropFilter: 'blur(10px)',
     }),
     [],
   );
 
   const previewBlockStyle = useMemo(
     () => ({
-      padding: 12,
-      borderRadius: 14,
+      padding: 10,
+      borderRadius: 12,
       background: 'var(--semi-color-fill-0)',
       border: '1px solid var(--semi-color-border)',
     }),
@@ -572,6 +748,12 @@ export default function CCSwitchModal({
 
   const currentProviderName =
     name || buildProviderName(tokenRecord?.group, currentConfig.defaultName);
+  const canOpenCCSwitch =
+    Boolean(finalImportModels.model) &&
+    !submitting &&
+    !checkingClient &&
+    !testingModelKey &&
+    !isBatchTesting;
 
   return (
     <SideSheet
@@ -580,23 +762,27 @@ export default function CCSwitchModal({
           <div className='flex flex-col'>
             <Typography.Text
               strong
-              style={{ fontSize: 20, lineHeight: '28px', color: '#0f172a' }}
+              style={{ fontSize: 17, lineHeight: '24px', color: '#171717' }}
             >
               {t('填入 CC Switch')}
             </Typography.Text>
-            <Typography.Text type='tertiary' style={{ marginTop: 2 }}>
+            <Typography.Text
+              type='tertiary'
+              size='small'
+              style={{ marginTop: 2 }}
+            >
               {currentProviderName}
             </Typography.Text>
           </div>
           <div
             style={{
-              padding: '6px 10px',
+              padding: '4px 9px',
               borderRadius: 999,
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: 700,
-              color: '#0f766e',
-              background: 'rgba(20, 184, 166, 0.12)',
-              border: '1px solid rgba(20, 184, 166, 0.18)',
+              color: '#171717',
+              background: 'rgba(23, 23, 23, 0.06)',
+              border: '1px solid rgba(23, 23, 23, 0.08)',
             }}
           >
             {APP_CONFIGS[app]?.label || 'Claude'}
@@ -606,11 +792,10 @@ export default function CCSwitchModal({
       visible={visible}
       onCancel={onClose}
       placement='right'
-      width={isMobile ? '100%' : 760}
+      width={isMobile ? '100%' : 640}
       bodyStyle={{
         padding: 0,
-        background:
-          'linear-gradient(180deg, rgba(240, 249, 255, 0.94) 0%, rgba(248, 250, 252, 0.98) 24%, #f8fafc 100%)',
+        background: '#f8fafc',
       }}
       closeIcon={null}
       maskClosable={false}
@@ -629,13 +814,13 @@ export default function CCSwitchModal({
               theme='solid'
               onClick={handleSubmit}
               loading={submitting || checkingClient}
-              disabled={Boolean(testingModelKey)}
+              disabled={!canOpenCCSwitch}
               style={{
                 minWidth: 132,
                 borderRadius: 999,
-                background: 'linear-gradient(135deg, #0f766e 0%, #0891b2 100%)',
+                background: '#171717',
                 border: 'none',
-                boxShadow: '0 10px 24px rgba(8, 145, 178, 0.22)',
+                boxShadow: 'none',
               }}
             >
               {t('打开 CC Switch')}
@@ -645,13 +830,16 @@ export default function CCSwitchModal({
               type='tertiary'
               onClick={onClose}
               disabled={
-                submitting || checkingClient || Boolean(testingModelKey)
+                submitting ||
+                checkingClient ||
+                Boolean(testingModelKey) ||
+                isBatchTesting
               }
               style={{
                 minWidth: 88,
                 borderRadius: 999,
                 color: 'var(--semi-color-text-0)',
-                background: 'rgba(255, 255, 255, 0.72)',
+                background: 'rgba(255, 255, 255, 0.88)',
                 border: '1px solid rgba(15, 23, 42, 0.08)',
               }}
             >
@@ -661,34 +849,31 @@ export default function CCSwitchModal({
         </div>
       }
     >
-      <div className='flex flex-col gap-4 p-4 md:p-5'>
+      <div className='flex flex-col gap-2 p-3'>
         <div
           style={{
             ...panelCardStyle,
-            background:
-              'linear-gradient(135deg, rgba(236, 254, 255, 0.96) 0%, rgba(239, 246, 255, 0.98) 52%, rgba(255, 255, 255, 0.98) 100%)',
+            background: '#ffffff',
           }}
         >
-          <div className='flex flex-col gap-3'>
+          <div className='flex flex-col gap-2'>
             <div className='flex flex-wrap items-center gap-2'>
-              <div
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#155e75',
-                  background: 'rgba(34, 211, 238, 0.14)',
-                }}
+              <Tag
+                color={finalImportModels.model ? 'green' : 'orange'}
+                shape='circle'
               >
-                {t('导入类型')}
-              </div>
+                {modelTestResults.model?.status === TEST_STATUS_SUCCESS
+                  ? t('主模型已验证')
+                  : finalImportModels.model
+                    ? t('可直接导入')
+                    : t('待填写主模型')}
+              </Tag>
               {tokenRecord?.group ? (
                 <div
                   style={{
-                    padding: '6px 10px',
+                    padding: '4px 10px',
                     borderRadius: 999,
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: 600,
                     color: '#334155',
                     background: 'rgba(255, 255, 255, 0.76)',
@@ -704,163 +889,199 @@ export default function CCSwitchModal({
                 strong
                 style={{
                   display: 'block',
-                  fontSize: 22,
-                  lineHeight: '30px',
+                  fontSize: 18,
+                  lineHeight: '26px',
                   color: '#0f172a',
                 }}
               >
                 {currentProviderName}
               </Typography.Text>
-              {inferredApp ? (
-                <Typography.Text
-                  type='secondary'
-                  style={{ display: 'block', marginTop: 6 }}
-                >
-                  {t('已根据分组自动识别为')} {APP_CONFIGS[inferredApp].label}
-                </Typography.Text>
-              ) : (
-                <Typography.Text
-                  type='secondary'
-                  style={{ display: 'block', marginTop: 6 }}
-                >
-                  {t('当前分组未明确指向 Claude 或 Codex，请手动选择导入类型')}
-                </Typography.Text>
-              )}
+            </div>
+            <div className='flex flex-wrap gap-2'>
+              <Button
+                theme='outline'
+                type='tertiary'
+                size='small'
+                onClick={testAllModelConnectivity}
+                loading={isBatchTesting}
+                disabled={
+                  submitting || checkingClient || Boolean(testingModelKey)
+                }
+                style={{ borderRadius: 999, minWidth: 100 }}
+              >
+                {t('测试全部模型')}
+              </Button>
+              <a
+                href={CCSWITCH_RELEASES_URL}
+                target='_blank'
+                rel='noreferrer'
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  minWidth: 88,
+                  padding: '4px 2px',
+                  color: '#475569',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  lineHeight: '20px',
+                  textDecoration: 'underline',
+                  textUnderlineOffset: 3,
+                  transition: 'color 160ms ease, opacity 160ms ease',
+                }}
+              >
+                {t('下载客户端')}
+                <ArrowUpRight size={14} strokeWidth={2} />
+              </a>
+              <a
+                href={CCSWITCH_DEEPLINK_DOC_URL}
+                target='_blank'
+                rel='noreferrer'
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  minWidth: 88,
+                  padding: '4px 2px',
+                  color: '#475569',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  lineHeight: '20px',
+                  textDecoration: 'underline',
+                  textUnderlineOffset: 3,
+                  transition: 'color 160ms ease, opacity 160ms ease',
+                }}
+              >
+                {t('协议说明')}
+                <ArrowUpRight size={14} strokeWidth={2} />
+              </a>
             </div>
           </div>
         </div>
 
         <div style={panelCardStyle}>
-          {inferredApp ? null : (
-            <div style={{ marginBottom: 18 }}>
-              <div style={fieldLabelStyle}>{t('导入类型')}</div>
-              <RadioGroup
-                type='button'
-                value={app}
-                onChange={(e) => handleAppChange(e.target.value)}
-                style={{ width: '100%' }}
-              >
-                {Object.entries(APP_CONFIGS).map(([key, cfg]) => (
-                  <Radio key={key} value={key}>
-                    {cfg.label}
-                  </Radio>
-                ))}
-              </RadioGroup>
-            </div>
-          )}
-
-          <div>
-            <div style={fieldLabelStyle}>{t('导入类型')}</div>
-            <Typography.Text type='secondary'>
-              {APP_CONFIGS[app]?.label || APP_CONFIGS.claude.label}
-            </Typography.Text>
-          </div>
-
-          <div style={{ marginTop: 18 }}>
-            <div style={fieldLabelStyle}>{t('名称')}</div>
-            <Input
-              value={name}
-              onChange={setName}
-              placeholder={buildProviderName(
-                tokenRecord?.group,
-                currentConfig.defaultName,
-              )}
-              style={{
-                borderRadius: 14,
-                background: 'rgba(248, 250, 252, 0.92)',
-                border: '1px solid rgba(148, 163, 184, 0.18)',
-              }}
-            />
-            <Typography.Text
-              type='tertiary'
-              style={{ display: 'block', marginTop: 8 }}
-            >
-              {t('建议使用供应商名来区分来源，例如 Nbility (claude)')}
-            </Typography.Text>
-          </div>
-        </div>
-
-        <div style={panelCardStyle}>
-          <Typography.Text
-            strong
-            style={{ display: 'block', marginBottom: 10, fontSize: 15 }}
-          >
-            {t('官方链接')}
-          </Typography.Text>
-          <div className='grid gap-3 md:grid-cols-2'>
-            <a
-              href={CCSWITCH_DEEPLINK_DOC_URL}
-              target='_blank'
-              rel='noreferrer'
-              style={{
-                ...previewBlockStyle,
-                display: 'block',
-                textDecoration: 'none',
-                color: 'inherit',
-              }}
-            >
-              <Typography.Text
-                strong
-                style={{ display: 'block', marginBottom: 4 }}
-              >
-                {t('CC Switch 深度链接协议')}
-              </Typography.Text>
-              <Typography.Text type='tertiary' size='small'>
-                {t('查看 CC Switch 官方深度链接协议说明')}
-              </Typography.Text>
-            </a>
-            <a
-              href={CCSWITCH_RELEASES_URL}
-              target='_blank'
-              rel='noreferrer'
-              style={{
-                ...previewBlockStyle,
-                display: 'block',
-                textDecoration: 'none',
-                color: 'inherit',
-              }}
-            >
-              <Typography.Text
-                strong
-                style={{ display: 'block', marginBottom: 4 }}
-              >
-                {t('CC Switch 客户端下载')}
-              </Typography.Text>
-              <Typography.Text type='tertiary' size='small'>
-                {t('前往官方发布页下载对应平台客户端')}
-              </Typography.Text>
-            </a>
-          </div>
-          <Typography.Text
-            type='tertiary'
-            style={{ display: 'block', marginTop: 10 }}
-          >
-            {t(
-              '导入前会检测本地是否已安装 CC Switch；模型测试会发起一次最小化请求，用于校验当前模型和令牌是否可用。',
+          <div className='grid gap-2 md:grid-cols-[160px_minmax(0,1fr)]'>
+            {inferredApp ? (
+              <div>
+                <div style={fieldLabelStyle}>{t('导入类型')}</div>
+                <div
+                  style={{
+                    height: 32,
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '0 10px',
+                    borderRadius: 12,
+                    background: 'rgba(248, 250, 252, 0.92)',
+                    border: '1px solid rgba(148, 163, 184, 0.18)',
+                    fontSize: 12,
+                    color: '#334155',
+                    fontWeight: 600,
+                  }}
+                >
+                  {APP_CONFIGS[app]?.label || APP_CONFIGS.claude.label}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={fieldLabelStyle}>{t('导入类型')}</div>
+                <RadioGroup
+                  type='button'
+                  value={app}
+                  onChange={(e) => handleAppChange(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  {Object.entries(APP_CONFIGS).map(([key, cfg]) => (
+                    <Radio key={key} value={key}>
+                      {cfg.label}
+                    </Radio>
+                  ))}
+                </RadioGroup>
+              </div>
             )}
-          </Typography.Text>
+
+            <div>
+              <div style={fieldLabelStyle}>{t('名称')}</div>
+              <Input
+                value={name}
+                onChange={setName}
+                placeholder={buildProviderName(
+                  tokenRecord?.group,
+                  currentConfig.defaultName,
+                )}
+                style={{
+                  borderRadius: 12,
+                  background: 'rgba(248, 250, 252, 0.92)',
+                  border: '1px solid rgba(148, 163, 184, 0.18)',
+                }}
+              />
+            </div>
+          </div>
         </div>
 
         <div style={panelCardStyle}>
+          <div
+            className='flex items-center justify-between gap-2'
+            style={{ marginBottom: 10 }}
+          >
+            <div>
+              <Typography.Text
+                strong
+                style={{ display: 'block', fontSize: 15 }}
+              >
+                {t('模型配置')}
+              </Typography.Text>
+            </div>
+            <Tag
+              size='small'
+              color={importableModelFields.length > 0 ? 'green' : 'orange'}
+              shape='circle'
+            >
+              {t('已通过 {{count}} 项', {
+                count: importableModelFields.length,
+              })}
+            </Tag>
+          </div>
           {currentConfig.modelFields.map((field, index) => (
             <div
               key={field.key}
               style={{
                 paddingBottom:
-                  index === currentConfig.modelFields.length - 1 ? 0 : 18,
+                  index === currentConfig.modelFields.length - 1 ? 0 : 14,
                 marginBottom:
-                  index === currentConfig.modelFields.length - 1 ? 0 : 18,
+                  index === currentConfig.modelFields.length - 1 ? 0 : 14,
                 borderBottom:
                   index === currentConfig.modelFields.length - 1
                     ? 'none'
                     : '1px solid rgba(148, 163, 184, 0.14)',
               }}
             >
-              <div style={fieldLabelStyle}>
-                {t(field.label)}
-                {field.key === 'model' && (
-                  <Typography.Text type='danger'> *</Typography.Text>
-                )}
+              <div
+                className='flex items-center justify-between gap-2'
+                style={{ marginBottom: 8 }}
+              >
+                <div style={{ ...fieldLabelStyle, marginBottom: 0 }}>
+                  {t(field.label)}
+                  {field.key === 'model' && (
+                    <Typography.Text type='danger'> *</Typography.Text>
+                  )}
+                </div>
+                {modelTestResults[field.key]?.status &&
+                modelTestResults[field.key]?.status !== TEST_STATUS_IDLE ? (
+                  <Tag
+                    color={
+                      modelTestResults[field.key]?.status ===
+                      TEST_STATUS_SUCCESS
+                        ? 'green'
+                        : 'red'
+                    }
+                    shape='circle'
+                    size='small'
+                  >
+                    {modelTestResults[field.key]?.status === TEST_STATUS_SUCCESS
+                      ? t('测试通过')
+                      : t('测试失败')}
+                  </Tag>
+                ) : null}
               </div>
               <div className='flex items-start gap-2'>
                 <Select
@@ -879,20 +1100,44 @@ export default function CCSwitchModal({
                 <Button
                   theme='outline'
                   type='tertiary'
+                  size='small'
                   onClick={() => testModelConnectivity(field.key)}
                   loading={testingModelKey === field.key}
                   disabled={
-                    submitting || checkingClient || Boolean(testingModelKey)
+                    submitting ||
+                    checkingClient ||
+                    Boolean(testingModelKey) ||
+                    isBatchTesting
                   }
-                  style={{ borderRadius: 12, minWidth: 104 }}
+                  style={{ borderRadius: 10, minWidth: 92, marginTop: 2 }}
                 >
-                  {t('测试连通性')}
+                  {t('测试')}
                 </Button>
               </div>
+              {modelTestResults[field.key]?.status &&
+              modelTestResults[field.key]?.status !== TEST_STATUS_IDLE ? (
+                <div
+                  className='flex flex-wrap items-center gap-2'
+                  style={{ marginTop: 8 }}
+                >
+                  <Typography.Text
+                    type={
+                      modelTestResults[field.key]?.status ===
+                      TEST_STATUS_SUCCESS
+                        ? 'success'
+                        : 'danger'
+                    }
+                    size='small'
+                  >
+                    {modelTestResults[field.key]?.message}
+                  </Typography.Text>
+                </div>
+              ) : null}
               {field.key === 'model' && recommendedModels.length > 0 ? (
                 <Typography.Text
                   type='tertiary'
-                  style={{ display: 'block', marginTop: 8 }}
+                  size='small'
+                  style={{ display: 'block', marginTop: 6 }}
                 >
                   {t('推荐模型')}: {recommendedModels.join(' / ')}
                 </Typography.Text>
@@ -902,40 +1147,86 @@ export default function CCSwitchModal({
         </div>
 
         <div style={panelCardStyle}>
-          <div style={fieldLabelStyle}>{t('导入预览')}</div>
-          <div style={previewBlockStyle}>
-            <Typography.Text
-              type='tertiary'
-              style={{ display: 'block', marginBottom: 8 }}
-            >
-              {t(
-                '下面分开展示 Deep Link 参数和实际写入 config 的内容。Claude 使用当前站点地址，不额外追加 /v1；Codex 保持 OpenAI 兼容地址。',
-              )}
-            </Typography.Text>
-            <div style={{ marginBottom: 12 }}>
-              <Typography.Text
-                strong
-                style={{ display: 'block', marginBottom: 6 }}
-              >
-                {t('Deep Link 参数')}
-              </Typography.Text>
-              <TextArea
-                value={deepLinkPreview}
-                autosize={{ minRows: 5, maxRows: 10 }}
-                readOnly
-              />
+          <div
+            className='flex items-center justify-between gap-2'
+            style={{ marginBottom: 8 }}
+          >
+            <div style={{ ...fieldLabelStyle, marginBottom: 0 }}>
+              {t('导入预览')}
             </div>
-            <Typography.Text
-              strong
-              style={{ display: 'block', marginBottom: 6 }}
+            <div className='flex items-center gap-2'>
+              {modelTestResults.model?.status === TEST_STATUS_SUCCESS ? (
+                <Tag color='green' size='small' shape='circle'>
+                  {t('主模型已验证')}
+                </Tag>
+              ) : finalImportModels.model ? (
+                <Tag color='orange' size='small' shape='circle'>
+                  {t('主模型未验证')}
+                </Tag>
+              ) : (
+                <Tag color='red' size='small' shape='circle'>
+                  {t('主模型未填写')}
+                </Tag>
+              )}
+              <Button
+                theme='borderless'
+                type='tertiary'
+                size='small'
+                onClick={() => setPreviewExpanded((prev) => !prev)}
+                style={{
+                  borderRadius: 999,
+                  background: 'rgba(248,250,252,0.92)',
+                }}
+              >
+                {previewExpanded ? t('收起') : t('展开')}
+              </Button>
+            </div>
+          </div>
+          <div style={previewBlockStyle}>
+            <div
+              className='flex flex-wrap items-center gap-2'
+              style={{ marginBottom: 12 }}
             >
-              {t('Config 内容')}
-            </Typography.Text>
-            <TextArea
-              value={configPreview}
-              autosize={{ minRows: 14, maxRows: 24 }}
-              readOnly
-            />
+              {importableModelFields.length > 0 ? (
+                importableModelFields.map((field) => (
+                  <Tag key={field.key} color='green' shape='circle'>
+                    {t(field.label)}: {finalImportModels[field.key]}
+                  </Tag>
+                ))
+              ) : (
+                <Tag color='orange' shape='circle'>
+                  {t('当前没有可导入模型，请先测试主模型')}
+                </Tag>
+              )}
+            </div>
+            {previewExpanded ? (
+              <>
+                <Typography.Text
+                  strong
+                  style={{ display: 'block', marginBottom: 6 }}
+                >
+                  {t('Config 内容')}
+                </Typography.Text>
+                <TextArea
+                  value={configPreview}
+                  autosize={{ minRows: 6, maxRows: 10 }}
+                  readOnly
+                />
+                <Typography.Text
+                  type='tertiary'
+                  size='small'
+                  style={{ display: 'block', marginTop: 8 }}
+                >
+                  {t(
+                    'Deep Link 参数会随导入时实时生成；这里只保留最终写入的配置内容预览。',
+                  )}
+                </Typography.Text>
+              </>
+            ) : (
+              <Typography.Text type='tertiary' size='small'>
+                {t('默认隐藏详细配置，点击展开查看最终写入内容。')}
+              </Typography.Text>
+            )}
           </div>
         </div>
       </div>

@@ -48,6 +48,12 @@ type adminTokenTestResult struct {
 	ErrorType        string `json:"error_type,omitempty"`
 }
 
+type adminTokenLastTestSummary struct {
+	Mode    string                 `json:"mode"`
+	Error   string                 `json:"error,omitempty"`
+	Results []adminTokenTestResult `json:"results"`
+}
+
 func runTokenRelayTest(tokenKey string, path string, relayFormat types.RelayFormat, headers map[string]string, body []byte) adminTokenTestResult {
 	internalRouter := gin.New()
 	internalRouter.Use(
@@ -203,11 +209,38 @@ func TestTokenByAdmin(c *gin.Context) {
 		results = append(results, r)
 	}
 
+	allOK := len(results) > 0
+	for _, result := range results {
+		if !result.Ok {
+			allOK = false
+			break
+		}
+	}
+	summaryPayload, err := common.Marshal(adminTokenLastTestSummary{
+		Mode:    mode,
+		Results: results,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	lastTestAt := common.GetTimestamp()
+	if err := token.UpdateLastTestResult(lastTestAt, allOK, string(summaryPayload)); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	token.LastTestAt = lastTestAt
+	token.LastTestOK = allOK
+	token.LastTestSummary = string(summaryPayload)
+
 	common.ApiSuccess(c, gin.H{
-		"token_id": token.Id,
-		"user_id":  token.UserId,
-		"mode":     mode,
-		"results":  results,
+		"token_id":          token.Id,
+		"user_id":           token.UserId,
+		"mode":              mode,
+		"results":           results,
+		"last_test_at":      token.LastTestAt,
+		"last_test_ok":      token.LastTestOK,
+		"last_test_summary": token.LastTestSummary,
 	})
 }
 

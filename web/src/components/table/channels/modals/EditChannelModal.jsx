@@ -272,7 +272,9 @@ const EditChannelModal = (props) => {
       return '';
     }
     const matchedGroup = inputs.groups.find((group) =>
-      String(group || '').trim().startsWith('sub_plan_'),
+      String(group || '')
+        .trim()
+        .startsWith('sub_plan_'),
     );
     return String(matchedGroup || '').trim();
   }, [inputs.groups]);
@@ -1213,6 +1215,9 @@ const EditChannelModal = (props) => {
         });
       }
     } catch (error) {
+      if (error?.secureVerificationHandled) {
+        return;
+      }
       console.error('Failed to view channel key:', error);
       showError(error.message || t('获取密钥失败'));
     }
@@ -2445,7 +2450,8 @@ const EditChannelModal = (props) => {
                           extraText={
                             <div className='flex items-center gap-2 flex-wrap'>
                               {isEdit &&
-                                (isMultiKeyChannel || (batch && multiToSingle)) &&
+                                (isMultiKeyChannel ||
+                                  (batch && multiToSingle)) &&
                                 keyMode === 'append' && (
                                   <Text type='warning' size='small'>
                                     {t(
@@ -2660,7 +2666,8 @@ const EditChannelModal = (props) => {
                                       {t('请输入完整的 JSON 格式密钥内容')}
                                     </Text>
                                     {isEdit &&
-                                      (isMultiKeyChannel || (batch && multiToSingle)) &&
+                                      (isMultiKeyChannel ||
+                                        (batch && multiToSingle)) &&
                                       keyMode === 'append' && (
                                         <Text type='warning' size='small'>
                                           {t(
@@ -2668,13 +2675,15 @@ const EditChannelModal = (props) => {
                                           )}
                                         </Text>
                                       )}
-                                    {isEdit && (isMultiKeyChannel || (batch && multiToSingle)) && (
-                                      <Text type='tertiary' size='small'>
-                                        {t(
-                                          '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
-                                        )}
-                                      </Text>
-                                    )}
+                                    {isEdit &&
+                                      (isMultiKeyChannel ||
+                                        (batch && multiToSingle)) && (
+                                        <Text type='tertiary' size='small'>
+                                          {t(
+                                            '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
+                                          )}
+                                        </Text>
+                                      )}
                                     {isEdit && (
                                       <Button
                                         size='small'
@@ -2748,7 +2757,8 @@ const EditChannelModal = (props) => {
                             extraText={
                               <div className='flex items-center gap-2'>
                                 {isEdit &&
-                                  (isMultiKeyChannel || (batch && multiToSingle)) &&
+                                  (isMultiKeyChannel ||
+                                    (batch && multiToSingle)) &&
                                   keyMode === 'append' && (
                                     <Text type='warning' size='small'>
                                       {t(
@@ -2756,13 +2766,15 @@ const EditChannelModal = (props) => {
                                       )}
                                     </Text>
                                   )}
-                                {isEdit && (isMultiKeyChannel || (batch && multiToSingle)) && (
-                                  <Text type='tertiary' size='small'>
-                                    {t(
-                                      '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
-                                    )}
-                                  </Text>
-                                )}
+                                {isEdit &&
+                                  (isMultiKeyChannel ||
+                                    (batch && multiToSingle)) && (
+                                    <Text type='tertiary' size='small'>
+                                      {t(
+                                        '这里输入的是要新增或替换的密钥；当前已保存的密钥请点右侧按钮查看。',
+                                      )}
+                                    </Text>
+                                  )}
                                 {isEdit && (
                                   <Button
                                     size='small'
@@ -2782,31 +2794,32 @@ const EditChannelModal = (props) => {
                       </>
                     )}
 
-                    {isEdit && (isMultiKeyChannel || (batch && multiToSingle)) && (
-                      <Form.Select
-                        field='key_mode'
-                        label={t('密钥修改方式')}
-                        placeholder={t('请选择密钥修改方式')}
-                        optionList={[
-                          { label: t('追加到现有密钥'), value: 'append' },
-                          { label: t('覆盖现有密钥'), value: 'replace' },
-                        ]}
-                        style={{ width: '100%' }}
-                        value={keyMode}
-                        onChange={(value) => setKeyMode(value)}
-                        extraText={
-                          <Text type='tertiary' size='small'>
-                            {keyMode === 'replace'
-                              ? t(
-                                  '覆盖模式：会用上方输入的新密钥完整替换现有密钥列表。',
-                                )
-                              : t(
-                                  '追加模式：会把上方输入的新密钥追加到现有密钥列表末尾。',
-                                )}
-                          </Text>
-                        }
-                      />
-                    )}
+                    {isEdit &&
+                      (isMultiKeyChannel || (batch && multiToSingle)) && (
+                        <Form.Select
+                          field='key_mode'
+                          label={t('密钥修改方式')}
+                          placeholder={t('请选择密钥修改方式')}
+                          optionList={[
+                            { label: t('追加到现有密钥'), value: 'append' },
+                            { label: t('覆盖现有密钥'), value: 'replace' },
+                          ]}
+                          style={{ width: '100%' }}
+                          value={keyMode}
+                          onChange={(value) => setKeyMode(value)}
+                          extraText={
+                            <Text type='tertiary' size='small'>
+                              {keyMode === 'replace'
+                                ? t(
+                                    '覆盖模式：会用上方输入的新密钥完整替换现有密钥列表。',
+                                  )
+                                : t(
+                                    '追加模式：会把上方输入的新密钥追加到现有密钥列表末尾。',
+                                  )}
+                            </Text>
+                          }
+                        />
+                      )}
                     {batch && (multiToSingle || isEdit) && (
                       <>
                         <Form.Select
@@ -3493,16 +3506,16 @@ const EditChannelModal = (props) => {
                           <div className='flex flex-col gap-2 text-sm'>
                             <div className='flex flex-wrap items-center gap-2'>
                               <Tag color='blue' shape='circle' type='light'>
-                                {t('{{name}} 套餐池', { name: packagePoolName })}
+                                {t('{{name}} 套餐池', {
+                                  name: packagePoolName,
+                                })}
                               </Tag>
                               <Tag color='white' shape='circle' type='ghost'>
                                 {inputs.tag}
                               </Tag>
                             </div>
                             <div className='flex flex-wrap items-center gap-2'>
-                              <Text type='secondary'>
-                                {t('套餐专属分组')}
-                              </Text>
+                              <Text type='secondary'>{t('套餐专属分组')}</Text>
                               <Tag color='orange' shape='circle' type='light'>
                                 {packagePoolGroup || t('未设置')}
                               </Tag>
