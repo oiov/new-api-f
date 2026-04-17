@@ -162,6 +162,10 @@ func GetStatus(c *gin.Context) {
 			data["ccswitch_defaults"] = payload
 		}
 	}
+	data["token_test_defaults"] = gin.H{
+		"claude_model":    strings.TrimSpace(common.OptionMap["TokenTestDefaultClaudeModel"]),
+		"responses_model": strings.TrimSpace(common.OptionMap["TokenTestDefaultResponsesModel"]),
+	}
 
 	// 根据启用状态注入可选内容
 	if cs.ApiInfoEnabled {

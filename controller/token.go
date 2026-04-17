@@ -153,6 +153,33 @@ func GetTokenKey(c *gin.Context) {
 	})
 }
 
+func TestToken(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	userId := c.GetInt("id")
+	if err != nil {
+		common.SysError(fmt.Sprintf("[token-test] scope=user-entry requester_user_id=%d invalid_token_id raw=%q err=%s", userId, c.Param("id"), err.Error()))
+		common.ApiError(c, err)
+		return
+	}
+
+	var req adminTokenTestRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.SysError(fmt.Sprintf("[token-test] scope=user-entry requester_user_id=%d token_id=%d decode_request_failed err=%s", userId, id, err.Error()))
+		common.ApiError(c, err)
+		return
+	}
+
+	logTokenTestEvent("user-entry", id, userId, userId, req, "request accepted")
+
+	token, err := model.GetTokenByIds(id, userId)
+	if err != nil {
+		common.SysError(fmt.Sprintf("[token-test] scope=user-entry requester_user_id=%d token_id=%d load_token_failed err=%s", userId, id, err.Error()))
+		common.ApiError(c, err)
+		return
+	}
+	executeTokenAvailabilityTest(c, token, req)
+}
+
 func GetTokenStatus(c *gin.Context) {
 	tokenId := c.GetInt("token_id")
 	userId := c.GetInt("id")

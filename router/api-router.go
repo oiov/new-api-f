@@ -220,6 +220,16 @@ func SetApiRouter(router *gin.Engine) {
 			invoiceAdminRoute.POST("/:id/send", controller.SendInvoiceEmail)
 			invoiceAdminRoute.POST("/upload", controller.UploadInvoiceFile)
 		}
+		storageAdminRoute := apiRouter.Group("/storage/admin")
+		storageAdminRoute.Use(middleware.RootAuth())
+		{
+			storageAdminRoute.GET("/objects", controller.ListStorageObjects)
+			storageAdminRoute.GET("/objects/content", controller.GetStorageObjectContent)
+			storageAdminRoute.POST("/objects", controller.UploadStorageObject)
+			storageAdminRoute.POST("/objects/batch-delete", controller.BatchDeleteStorageObjects)
+			storageAdminRoute.PUT("/objects/rename", controller.RenameStorageObject)
+			storageAdminRoute.DELETE("/objects", controller.DeleteStorageObject)
+		}
 		financeRoute := apiRouter.Group("/finance")
 		financeRoute.Use(middleware.AdminAuth())
 		{
@@ -367,6 +377,7 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
+			tokenRoute.POST("/:id/test", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.TestToken)
 			tokenRoute.POST("/batch/invalid", controller.DeleteInvalidTokenBatch)
 			tokenRoute.POST("/", controller.AddToken)
 			tokenRoute.PUT("/", controller.UpdateToken)

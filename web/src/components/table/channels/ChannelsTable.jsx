@@ -25,8 +25,10 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { getChannelsColumns } from './ChannelsColumnDefs';
+import { useIsMobile } from '../../../hooks/common/useIsMobile';
 
 const ChannelsTable = (channelsData) => {
+  const isMobile = useIsMobile();
   const {
     channels,
     loading,
@@ -70,6 +72,7 @@ const ChannelsTable = (channelsData) => {
     return getChannelsColumns({
       t,
       COLUMN_KEYS,
+      isMobile,
       updateChannelBalance,
       manageChannel,
       manageTag,
@@ -94,6 +97,7 @@ const ChannelsTable = (channelsData) => {
   }, [
     t,
     COLUMN_KEYS,
+    isMobile,
     updateChannelBalance,
     manageChannel,
     manageTag,
@@ -122,8 +126,28 @@ const ChannelsTable = (channelsData) => {
   };
 
   const visibleColumnsList = useMemo(() => {
-    return getVisibleColumns();
-  }, [visibleColumns, allColumns]);
+    const nextColumns = getVisibleColumns();
+    if (!isMobile) {
+      return nextColumns;
+    }
+    const mobileColumnOrder = [
+      COLUMN_KEYS.NAME,
+      COLUMN_KEYS.GROUP,
+      COLUMN_KEYS.TYPE,
+      COLUMN_KEYS.STATUS,
+      COLUMN_KEYS.RESPONSE_TIME,
+      COLUMN_KEYS.BALANCE,
+      COLUMN_KEYS.REQUEST_COUNT_TODAY,
+      COLUMN_KEYS.OPERATE,
+    ];
+    const mobileColumnSet = new Set(mobileColumnOrder);
+    const mobileColumns = allColumns.filter((column) =>
+      mobileColumnSet.has(column.key),
+    );
+    return mobileColumnOrder
+      .map((key) => mobileColumns.find((column) => column.key === key))
+      .filter(Boolean);
+  }, [visibleColumns, allColumns, isMobile, COLUMN_KEYS]);
 
   const tableColumns = useMemo(() => {
     return compactMode

@@ -432,9 +432,11 @@ function TokensPage() {
           <div className='flex flex-col md:flex-row justify-between items-center gap-2 w-full'>
             <TokensActions
               selectedKeys={selectedKeys}
+              setSelectedKeys={tokensData.setSelectedKeys}
               setEditingToken={setEditingToken}
               setShowEdit={setShowEdit}
               batchCopyTokens={batchCopyTokens}
+              batchTestTokens={tokensData.batchTestTokens}
               batchDeleteTokens={batchDeleteTokens}
               batchDeleteInvalidTokens={tokensData.batchDeleteInvalidTokens}
               t={t}
@@ -464,7 +466,14 @@ function TokensPage() {
         })}
         t={tokensData.t}
       >
-        <TokensTable {...tokensData} />
+        <TokensTable
+          {...tokensData}
+          showTestColumn={true}
+          testingTokenIds={tokensData.testingTokenIds}
+          testToken={tokensData.testToken}
+          showLastTestColumn={true}
+          lastTestResultsById={tokensData.lastTestResultsById}
+        />
       </CardPro>
     </>
   );

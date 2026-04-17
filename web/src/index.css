@@ -619,6 +619,7 @@ html.dark .sbg-variant-green {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
   gap: 16px;
+  align-items: stretch;
 }
 
 .subscription-plan-selling-toolbar {
@@ -685,6 +686,7 @@ html.dark .sbg-variant-green {
   border-radius: 18px !important;
   border: 1px solid var(--semi-color-border) !important;
   overflow: hidden;
+  height: 100%;
   background: var(--semi-color-bg-0) !important;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06) !important;
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
@@ -738,6 +740,41 @@ html.dark .sbg-variant-green {
   min-height: 72px;
 }
 
+.subscription-plan-selling-card__scene {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  align-self: flex-start;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    135deg,
+    rgba(37, 99, 235, 0.08) 0%,
+    rgba(59, 130, 246, 0.14) 100%
+  );
+  border: 1px solid rgba(37, 99, 235, 0.12);
+}
+
+.subscription-plan-selling-card__scene-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--semi-color-primary);
+  white-space: nowrap;
+}
+
+.subscription-plan-selling-card__scene-text {
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .subscription-plan-selling-card__title-row {
   align-items: flex-start;
   min-height: 22px;
@@ -748,19 +785,106 @@ html.dark .sbg-variant-green {
 }
 
 .subscription-plan-selling-card__subtitle {
-  min-height: 32px;
+  min-height: 16px;
   font-size: 11px;
   line-height: 1.45 !important;
   display: -webkit-box !important;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.subscription-plan-selling-card__price-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 0;
 }
 
 .subscription-plan-selling-card__hint {
   min-height: 16px;
   font-size: 11px;
   line-height: 1.35 !important;
+}
+
+.subscription-plan-selling-card__sale-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 124px;
+  min-height: 0;
+  padding: 9px 10px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.subscription-plan-selling-card__sale-kicker {
+  font-size: 10px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-plan-selling-card__sale-value {
+  margin-top: 6px;
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--semi-color-text-0);
+}
+
+.subscription-plan-selling-card__sale-subvalue {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--semi-color-text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.subscription-plan-selling-card__fact-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.subscription-plan-selling-card__fact-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.subscription-plan-selling-card__fact-pill--muted {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.subscription-plan-selling-card__fact-pill-label {
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--semi-color-text-2);
+}
+
+.subscription-plan-selling-card__fact-pill-value {
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--semi-color-text-0);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .subscription-plan-selling-card__selling-point {
@@ -808,10 +932,22 @@ html.dark .sbg-variant-green {
 }
 
 .subscription-plan-selling-card__metric {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 0;
   border-radius: 10px;
   padding: 7px 8px;
   border: 1px solid color-mix(in srgb, var(--semi-color-border) 70%, transparent 30%);
   background: var(--semi-color-fill-0);
+}
+
+.subscription-plan-selling-card__metric--primary {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-primary-light-default) 32%, #ffffff 68%) 0%,
+    var(--semi-color-fill-0) 100%
+  );
 }
 
 .subscription-plan-selling-card__metric--secondary {
@@ -856,6 +992,7 @@ html.dark .sbg-variant-green {
 }
 
 .subscription-plan-selling-card__scope-summary {
+  min-height: 0;
   padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
@@ -909,6 +1046,10 @@ html.dark .sbg-variant-green {
 .subscription-plan-selling-card__bottom .semi-button {
   min-height: 30px;
   font-size: 12px;
+}
+
+.subscription-plan-selling-card__actions {
+  align-items: stretch;
 }
 
 .subscription-plan-selling-card__discount-deadline {
@@ -3401,26 +3542,45 @@ html.dark .with-pastel-balls::before {
 
 .pricing-plan-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 316px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 348px;
+  gap: 24px;
   align-items: start;
 }
 
 .pricing-plan-detail-main {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   min-width: 0;
 }
 
 .pricing-plan-detail-sidebar {
   position: sticky;
-  top: 84px;
+  top: 96px;
+}
+
+.pricing-plan-detail-toolbar {
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--semi-color-border) 74%, transparent 26%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--semi-color-bg-0) 94%, #ffffff 6%) 0%,
+    color-mix(in srgb, var(--semi-color-fill-0) 76%, #ffffff 24%) 100%
+  );
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.pricing-plan-detail-content-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 @media (max-width: 1024px) {
   .pricing-plan-detail-layout {
     grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
   }
   .pricing-plan-detail-sidebar {
     position: relative;
@@ -3437,8 +3597,8 @@ html.dark .with-pastel-balls::before {
 .pricing-plan-detail-hero {
   position: relative;
   overflow: hidden;
-  border-radius: 22px;
-  padding: 20px;
+  border-radius: 26px;
+  padding: 24px;
   border: 1px solid
     color-mix(in srgb, var(--semi-color-border) 76%, rgba(255, 255, 255, 0.4) 24%);
   box-shadow: 0 22px 54px rgba(15, 23, 42, 0.08);
@@ -3448,7 +3608,7 @@ html.dark .with-pastel-balls::before {
   position: relative;
   z-index: 1;
   display: flex;
-  gap: 16px;
+  gap: 20px;
   align-items: flex-start;
   justify-content: space-between;
 }
@@ -3472,10 +3632,10 @@ html.dark .with-pastel-balls::before {
 
 .pricing-plan-detail-hero__subtitle {
   display: block;
-  max-width: 760px;
+  max-width: 720px;
   margin-top: 8px;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .pricing-plan-detail-hero__selling-point {
@@ -3484,6 +3644,18 @@ html.dark .with-pastel-balls::before {
   font-size: 13px;
   line-height: 1.45;
   font-weight: 600;
+}
+
+.pricing-plan-detail-hero__tag-row {
+  align-items: center;
+}
+
+.pricing-plan-detail-hero__schedule {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 10px 20px rgba(15, 23, 42, 0.05);
 }
 
 .pricing-plan-detail-hero__summary {
@@ -3523,8 +3695,8 @@ html.dark .with-pastel-balls::before {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  min-width: 96px;
-  padding: 12px 14px;
+  min-width: 112px;
+  padding: 14px 16px;
   border-radius: 18px;
   background: linear-gradient(
     180deg,
@@ -3565,12 +3737,13 @@ html.dark .with-pastel-balls::before {
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .pricing-plan-detail-stat {
-  padding: 14px 16px;
+  min-height: 126px;
+  padding: 16px 18px;
   border-radius: 18px;
   background: color-mix(in srgb, var(--semi-color-bg-0) 88%, #ffffff 12%);
   border: 1px solid color-mix(in srgb, var(--semi-color-border) 64%, transparent 36%);
@@ -3606,17 +3779,23 @@ html.dark .with-pastel-balls::before {
     color-mix(in srgb, var(--semi-color-bg-0) 92%, #ffffff 8%) 0%,
     var(--semi-color-bg-0) 100%
   );
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
 }
 
 .pricing-plan-detail-section__header {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .pricing-plan-detail-mini-card {
-  padding: 12px 14px;
+  min-height: 96px;
+  padding: 14px 16px;
   border-radius: 16px;
   border: 1px solid color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
   background: color-mix(in srgb, var(--semi-color-fill-0) 62%, #ffffff 38%);
+}
+
+.pricing-plan-detail-mini-grid--rules {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .pricing-plan-detail-highlights {
@@ -3697,6 +3876,7 @@ html.dark .with-pastel-balls::before {
   border-radius: 18px;
   overflow: hidden;
   background: color-mix(in srgb, var(--semi-color-fill-0) 52%, #ffffff 48%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
 }
 
 .pricing-plan-detail-restrictions-descriptions .semi-descriptions-item {
@@ -3915,6 +4095,7 @@ html.dark .with-pastel-balls::before {
     color-mix(in srgb, var(--semi-color-bg-0) 90%, #ffffff 10%) 0%,
     color-mix(in srgb, var(--semi-color-bg-1) 92%, #ffffff 8%) 100%
   );
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
 }
 
 .pricing-plan-detail-buy-card__header {
@@ -3953,6 +4134,8 @@ html.dark .with-pastel-balls::before {
   flex-direction: column;
   gap: 8px;
   margin: 12px 0 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--semi-color-border) 72%, transparent 28%);
 }
 
 .pricing-plan-detail-buy-card__checklist-item {
@@ -3974,7 +4157,7 @@ html.dark .with-pastel-balls::before {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 0 14px;
+  padding: 14px 0 16px;
 }
 
 .pricing-plan-detail-buy-card__meta-row {
@@ -4161,6 +4344,11 @@ html.dark .pricing-plan-detail-empty-note {
     padding: 20px;
   }
 
+  .pricing-plan-detail-toolbar {
+    padding: 10px;
+    border-radius: 16px;
+  }
+
   .pricing-plan-detail-hero__top {
     flex-direction: column;
   }
@@ -4169,6 +4357,10 @@ html.dark .pricing-plan-detail-empty-note {
   .pricing-plan-detail-stats,
   .pricing-plan-detail-highlights,
   .pricing-plan-detail-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pricing-plan-detail-mini-grid--rules {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -4398,8 +4590,17 @@ html.dark .pricing-plan-detail-empty-note {
     align-items: flex-end;
   }
 
-  .subscription-plan-selling-card__sale-meta {
-    min-width: 56px;
+  .subscription-plan-selling-card__sale-panel {
+    min-width: 92px;
+    min-height: 0;
+    padding: 8px 9px;
+  }
+
+  .subscription-plan-selling-card__sale-value {
+    font-size: 13px;
+  }
+
+  .subscription-plan-selling-card__sale-subvalue {
     font-size: 10px;
   }
 
@@ -4430,6 +4631,12 @@ html.dark .pricing-plan-detail-empty-note {
   .subscription-plan-selling-card__restriction-head,
   .subscription-plan-selling-card__discount-deadline {
     display: none;
+  }
+
+  .subscription-plan-selling-card__fact-strip {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-top: 8px;
   }
 
   .subscription-plan-selling-card__scope-summary {
@@ -4474,7 +4681,7 @@ html.dark .pricing-plan-detail-empty-note {
     width: 100%;
   }
 
-  .subscription-plan-selling-card__bottom .grid.grid-cols-2 {
+  .subscription-plan-selling-card__actions {
     grid-template-columns: 1fr;
   }
 
@@ -4610,6 +4817,32 @@ html.dark .pricing-model-card--selected {
     color-mix(in srgb, var(--card-accent) 14%, var(--semi-color-bg-1) 86%) 0%,
     var(--semi-color-bg-1) 100%
   ) !important;
+}
+
+.token-row > td {
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.token-row--selected > td {
+  background: rgba(var(--semi-blue-5), 0.12) !important;
+}
+
+.token-row--selected:hover > td {
+  background: rgba(var(--semi-blue-5), 0.16) !important;
+}
+
+.token-row--disabled > td {
+  background: var(--semi-color-disabled-border) !important;
+}
+
+.token-row--disabled.token-row--selected > td {
+  background: rgba(var(--semi-blue-5), 0.16) !important;
+}
+
+.token-row--disabled.token-row--selected:hover > td {
+  background: rgba(var(--semi-blue-5), 0.2) !important;
 }
 
 /* 价格行 */

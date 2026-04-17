@@ -54,6 +54,47 @@ type adminTokenLastTestSummary struct {
 	Results []adminTokenTestResult `json:"results"`
 }
 
+func logTokenTestEvent(scope string, tokenID int, ownerUserID int, requesterUserID int, req adminTokenTestRequest, message string) {
+	mode := strings.TrimSpace(req.Mode)
+	if mode == "" {
+		mode = "both"
+	}
+	maxTokens := uint(16)
+	if req.MaxTokens != nil && *req.MaxTokens > 0 {
+		maxTokens = *req.MaxTokens
+	}
+	common.SysLog(fmt.Sprintf(
+		"[token-test] scope=%s requester_user_id=%d token_id=%d owner_user_id=%d mode=%s claude_model=%s responses_model=%s model=%s max_tokens=%d %s",
+		scope,
+		requesterUserID,
+		tokenID,
+		ownerUserID,
+		mode,
+		strings.TrimSpace(req.ClaudeModel),
+		strings.TrimSpace(req.ResponsesModel),
+		strings.TrimSpace(req.Model),
+		maxTokens,
+		message,
+	))
+}
+
+func getDefaultTokenTestModels() (string, string) {
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+
+	claudeModel := strings.TrimSpace(common.OptionMap["TokenTestDefaultClaudeModel"])
+	if claudeModel == "" {
+		claudeModel = "claude-opus-4-6"
+	}
+
+	responsesModel := strings.TrimSpace(common.OptionMap["TokenTestDefaultResponsesModel"])
+	if responsesModel == "" {
+		responsesModel = "gpt-5.4"
+	}
+
+	return claudeModel, responsesModel
+}
+
 func runTokenRelayTest(tokenKey string, path string, relayFormat types.RelayFormat, headers map[string]string, body []byte) adminTokenTestResult {
 	internalRouter := gin.New()
 	internalRouter.Use(
@@ -99,27 +140,9 @@ func runTokenRelayTest(tokenKey string, path string, relayFormat types.RelayForm
 	}
 }
 
-// TestTokenByAdmin 对指定 token 发起最小测试请求，用于在管理台快速验证 token 是否可用。
-// 注意：该操作会走完整 relay 链路，可能产生实际调用与计费。
-func TestTokenByAdmin(c *gin.Context) {
-	tokenId, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
-	var req adminTokenTestRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
-	token, err := model.GetTokenById(tokenId)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
+func executeTokenAvailabilityTest(c *gin.Context, token *model.Token, req adminTokenTestRequest) {
 	if token == nil || strings.TrimSpace(token.Key) == "" {
+		logTokenTestEvent("execute", 0, 0, c.GetInt("id"), req, "failed: token is nil or key is empty")
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
 		return
 	}
@@ -136,19 +159,35 @@ func TestTokenByAdmin(c *gin.Context) {
 	stream := false
 
 	results := make([]adminTokenTestResult, 0, 2)
+	defaultClaudeModel, defaultResponsesModel := getDefaultTokenTestModels()
 
 	claudeModel := strings.TrimSpace(req.ClaudeModel)
 	if claudeModel == "" {
 		claudeModel = strings.TrimSpace(req.Model)
 	}
 	if claudeModel == "" {
-		claudeModel = "claude-opus-4-6"
+		claudeModel = defaultClaudeModel
 	}
 
 	responsesModel := strings.TrimSpace(req.ResponsesModel)
 	if responsesModel == "" {
-		responsesModel = "gpt-5.1-codex"
+		responsesModel = defaultResponsesModel
 	}
+
+	logTokenTestEvent(
+		"execute",
+		token.Id,
+		token.UserId,
+		c.GetInt("id"),
+		adminTokenTestRequest{
+			Mode:           mode,
+			Model:          req.Model,
+			MaxTokens:      req.MaxTokens,
+			ClaudeModel:    claudeModel,
+			ResponsesModel: responsesModel,
+		},
+		"start relay test",
+	)
 
 	if mode == "claude" || mode == "both" {
 		claudeReq := &dto.ClaudeRequest{
@@ -211,6 +250,19 @@ func TestTokenByAdmin(c *gin.Context) {
 
 	allOK := len(results) > 0
 	for _, result := range results {
+		common.SysLog(fmt.Sprintf(
+			"[token-test] scope=execute requester_user_id=%d token_id=%d owner_user_id=%d kind=%s path=%s model=%s http_code=%d ok=%t request_id=%s error_type=%s",
+			c.GetInt("id"),
+			token.Id,
+			token.UserId,
+			result.Kind,
+			result.Path,
+			result.Model,
+			result.HttpCode,
+			result.Ok,
+			result.XOneAPIRequestID,
+			result.ErrorType,
+		))
 		if !result.Ok {
 			allOK = false
 			break
@@ -226,12 +278,29 @@ func TestTokenByAdmin(c *gin.Context) {
 	}
 	lastTestAt := common.GetTimestamp()
 	if err := token.UpdateLastTestResult(lastTestAt, allOK, string(summaryPayload)); err != nil {
+		common.SysError(fmt.Sprintf(
+			"[token-test] scope=execute requester_user_id=%d token_id=%d owner_user_id=%d failed_to_persist_last_test err=%s",
+			c.GetInt("id"),
+			token.Id,
+			token.UserId,
+			err.Error(),
+		))
 		common.ApiError(c, err)
 		return
 	}
 	token.LastTestAt = lastTestAt
 	token.LastTestOK = allOK
 	token.LastTestSummary = string(summaryPayload)
+
+	common.SysLog(fmt.Sprintf(
+		"[token-test] scope=execute requester_user_id=%d token_id=%d owner_user_id=%d finished all_ok=%t result_count=%d last_test_at=%d",
+		c.GetInt("id"),
+		token.Id,
+		token.UserId,
+		allOK,
+		len(results),
+		token.LastTestAt,
+	))
 
 	common.ApiSuccess(c, gin.H{
 		"token_id":          token.Id,
@@ -242,6 +311,34 @@ func TestTokenByAdmin(c *gin.Context) {
 		"last_test_ok":      token.LastTestOK,
 		"last_test_summary": token.LastTestSummary,
 	})
+}
+
+// TestTokenByAdmin 对指定 token 发起最小测试请求，用于在管理台快速验证 token 是否可用。
+// 注意：该操作会走完整 relay 链路，可能产生实际调用与计费。
+func TestTokenByAdmin(c *gin.Context) {
+	tokenId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.SysError(fmt.Sprintf("[token-test] scope=admin-entry requester_user_id=%d invalid_token_id raw=%q err=%s", c.GetInt("id"), c.Param("id"), err.Error()))
+		common.ApiError(c, err)
+		return
+	}
+
+	var req adminTokenTestRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.SysError(fmt.Sprintf("[token-test] scope=admin-entry requester_user_id=%d token_id=%d decode_request_failed err=%s", c.GetInt("id"), tokenId, err.Error()))
+		common.ApiError(c, err)
+		return
+	}
+
+	logTokenTestEvent("admin-entry", tokenId, 0, c.GetInt("id"), req, "request accepted")
+
+	token, err := model.GetTokenById(tokenId)
+	if err != nil {
+		common.SysError(fmt.Sprintf("[token-test] scope=admin-entry requester_user_id=%d token_id=%d load_token_failed err=%s", c.GetInt("id"), tokenId, err.Error()))
+		common.ApiError(c, err)
+		return
+	}
+	executeTokenAvailabilityTest(c, token, req)
 }
 
 func RotateTokenByAdmin(c *gin.Context) {

@@ -172,13 +172,13 @@ const renderPlanTitle = (text, record, t) => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <Text type='tertiary'>{t('价格')}</Text>
         <Text strong style={{ color: 'var(--semi-color-success)' }}>
-          {convertUSDToCurrency(getSubscriptionEffectivePrice(plan), 2)}
+          {convertUSDToCurrency(getSubscriptionEffectivePrice(plan), 4)}
         </Text>
         {isSubscriptionDiscountActive(plan) ? (
           <>
             <Text type='tertiary'>{t('原价')}</Text>
             <Text delete>
-              {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+              {convertUSDToCurrency(Number(plan?.price_amount || 0), 4)}
             </Text>
             <Text type='tertiary'>{t('优惠截止')}</Text>
             <Text>
@@ -235,7 +235,7 @@ const renderPlanTitle = (text, record, t) => {
 const renderPrice = (text) => {
   return (
     <Text strong style={{ color: 'var(--semi-color-success)' }}>
-      {convertUSDToCurrency(Number(text || 0), 2)}
+      {convertUSDToCurrency(Number(text || 0), 4)}
     </Text>
   );
 };
@@ -466,7 +466,7 @@ export const getSubscriptionsColumns = ({
                 delete
                 style={{ display: 'block' }}
               >
-                {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+                {convertUSDToCurrency(Number(plan?.price_amount || 0), 4)}
               </Text>
             ) : null}
           </div>

@@ -48,6 +48,7 @@ import SubscriptionPurchaseModal from '../../components/topup/modals/Subscriptio
 import { StatusContext } from '../../context/Status';
 import { API, copy, getUserData, renderGroup, renderQuota, showError, showSuccess } from '../../helpers';
 import {
+  formatSubscriptionSettlementPrice,
   getSubscriptionDailyPriceDisplay,
   formatSubscriptionDuration,
   formatSubscriptionSellingDuration,
@@ -580,10 +581,8 @@ export default function SubscriptionPlanDetail() {
   const dailyPriceDisplay = getSubscriptionDailyPriceDisplay(plan);
   const perRequestPriceDisplay = getSubscriptionPerRequestPriceDisplay(plan);
   const { symbol, effectivePrice, originalPrice } = getSubscriptionPriceDisplay(plan);
-  const displayPrice = effectivePrice.toFixed(Number.isInteger(effectivePrice) ? 0 : 2);
-  const displayOriginalPrice = originalPrice.toFixed(
-    Number.isInteger(originalPrice) ? 0 : 2,
-  );
+  const displayPrice = formatSubscriptionSettlementPrice(effectivePrice);
+  const displayOriginalPrice = formatSubscriptionSettlementPrice(originalPrice);
   const activeDiscount = isSubscriptionDiscountActive(plan);
   const resetHint = formatSubscriptionResetHint(plan, t);
   const scheduleHint = isSubscriptionFixedDeadlineDayPlan(plan)
@@ -600,29 +599,6 @@ export default function SubscriptionPlanDetail() {
     limit,
     count,
   };
-  const buyCardHighlights = [
-    {
-      label: t('到手价'),
-      value: `${symbol}${displayPrice}`,
-      sub: t('按 {{duration}} 计费', {
-        duration: formatSubscriptionSellingDuration(plan, t),
-      }),
-    },
-    {
-      label: t('买到什么'),
-      value: getPlanResourceAmountText(plan, t),
-      sub: perRequestPriceDisplay?.displayPerRequestPrice
-        ? t('单次约 {{price}}', {
-            price: `${symbol}${perRequestPriceDisplay.displayPerRequestPrice}`,
-          })
-        : getPlanBenefitDescription(plan, t),
-    },
-    {
-      label: t('什么时候重置'),
-      value: scheduleHint,
-      sub: t('付款成功后立即开始生效'),
-    },
-  ];
   const heroStats = [
     {
       label: t('套餐价格'),
@@ -660,7 +636,7 @@ export default function SubscriptionPlanDetail() {
         canonicalPath={`/pricing/subscription-plans/${plan.id}`}
       />
       <div className='pricing-landing-page pricing-plan-detail-page mx-auto w-full max-w-[1120px] px-3 pb-8 md:px-6 pt-[96px] md:pt-[72px]'>
-        <div className='mb-3 flex flex-wrap items-center gap-2'>
+        <div className='pricing-plan-detail-toolbar mb-3 flex flex-wrap items-center gap-2'>
           <Button
             theme='outline'
             type='tertiary'
@@ -729,7 +705,7 @@ export default function SubscriptionPlanDetail() {
                       {marketingBadge.description}
                     </Text>
                   ) : null}
-                  <div className='mt-4 flex flex-wrap gap-2'>
+                  <div className='pricing-plan-detail-hero__tag-row mt-4 flex flex-wrap gap-2'>
                     {activeDiscount ? (
                       <Tag color='red' shape='circle'>
                         {t('原价')} {symbol}{displayOriginalPrice}
@@ -750,7 +726,7 @@ export default function SubscriptionPlanDetail() {
                       </Tag>
                     ) : null}
                   </div>
-                  <div className='mt-2 inline-flex max-w-full items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-xs font-medium text-semi-color-text-1 shadow-sm dark:bg-white/10'>
+                  <div className='pricing-plan-detail-hero__schedule mt-2 inline-flex max-w-full items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-xs font-medium text-semi-color-text-1 shadow-sm dark:bg-white/10'>
                     <Clock3 size={14} className='flex-shrink-0' />
                     <span>{scheduleHint}</span>
                   </div>
@@ -774,168 +750,145 @@ export default function SubscriptionPlanDetail() {
               </div>
             </div>
 
-            <Card className='pricing-plan-detail-section !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 18 }}>
-              <div className='pricing-plan-detail-section__header'>
-                <div>
-                  <Text strong>{t('购买后你会得到')}</Text>
-                  <Text type='tertiary' className='block mt-1'>
-                    {t('把价格、权益、重置规则拆开看，避免误解。')}
-                  </Text>
-                </div>
-              </div>
-              <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
-                {buyCardHighlights.map((item) => (
-                  <div
-                    key={item.label}
-                    className='pricing-plan-detail-mini-card'
-                  >
-                    <div className='text-xs text-semi-color-text-2'>{item.label}</div>
-                    <div className='mt-2 text-lg font-semibold text-semi-color-text-0'>
-                      {item.value}
-                    </div>
-                    <div className='mt-2 text-sm text-semi-color-text-1'>{item.sub}</div>
+            <div className='pricing-plan-detail-content-stack'>
+              <Card className='pricing-plan-detail-section pricing-plan-detail-section--rules !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 18 }}>
+                <div className='pricing-plan-detail-section__header'>
+                  <div>
+                    <Text strong>{t('套餐规则')}</Text>
+                    <Text type='tertiary' className='block mt-1'>
+                      {t('重点看可用时长、重置时间和整个有效期内最多可用多少。')}
+                    </Text>
                   </div>
-                ))}
-              </div>
-            </Card>
-
-            <Card className='pricing-plan-detail-section !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 18 }}>
-              <div className='pricing-plan-detail-section__header'>
-                <div>
-                  <Text strong>{t('套餐规则')}</Text>
-                  <Text type='tertiary' className='block mt-1'>
-                    {t('重点看可用时长、重置时间和整个有效期内最多可用多少。')}
-                  </Text>
                 </div>
-              </div>
-              <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4'>
-                {planMetricItems.map((item) => (
-                  <div
-                    key={item.key}
-                    className='pricing-plan-detail-mini-card'
-                  >
-                    <div className='text-xs text-semi-color-text-2'>{item.label}</div>
-                    <div className='mt-2 text-base font-semibold text-semi-color-text-0'>
-                      {item.value}
+                <div className='pricing-plan-detail-mini-grid pricing-plan-detail-mini-grid--rules grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4'>
+                  {planMetricItems.map((item) => (
+                    <div
+                      key={item.key}
+                      className='pricing-plan-detail-mini-card'
+                    >
+                      <div className='text-xs text-semi-color-text-2'>{item.label}</div>
+                      <div className='mt-2 text-base font-semibold text-semi-color-text-0'>
+                        {item.value}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <Card className='pricing-plan-detail-section !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 18 }}>
-              <div className='pricing-plan-detail-section__header'>
-                <div>
-                  <Text strong>{t('购买后可用范围')}</Text>
-                  <Text type='tertiary' className='block mt-1'>
-                    {t('购买前请确认这个套餐能用在哪些分组、模型和供应商上。')}
-                  </Text>
+                  ))}
                 </div>
-              </div>
-              {(restrictionSummary.groups.length > 0 ||
-                restrictionSummary.models.length > 0 ||
-                restrictionSummary.vendors.length > 0 ||
-                plan?.upgrade_group) ? (
-                <Descriptions
-                  className='pricing-plan-detail-restrictions-descriptions'
-                  align='left'
-                  data={[
-                    plan?.upgrade_group
-                      ? {
-                          key: t('升级分组'),
-                          value: renderTagList([
-                            <div key={`upgrade-${plan.upgrade_group}`}>
-                              {renderGroup(plan.upgrade_group)}
-                            </div>,
-                          ], {
-                            variant: 'highlight',
-                            lead: {
-                              icon: <Layers3 size={13} />,
-                              text: t('升级后进入这个分组'),
-                            },
-                          }),
-                        }
-                      : null,
-                    uniqueRestrictionGroups.length > 0
-                      ? {
-                          key: t('可用分组'),
-                          value: renderTagList(
-                            uniqueRestrictionGroups.map((group) => (
-                              <div key={`group-${group}`}>{renderGroup(group)}</div>
-                            )),
-                            {
-                              variant: 'group',
+              </Card>
+
+              <Card className='pricing-plan-detail-section pricing-plan-detail-section--scope !rounded-3xl border-0 shadow-sm' bodyStyle={{ padding: 18 }}>
+                <div className='pricing-plan-detail-section__header'>
+                  <div>
+                    <Text strong>{t('购买后可用范围')}</Text>
+                    <Text type='tertiary' className='block mt-1'>
+                      {t('购买前请确认这个套餐能用在哪些分组、模型和供应商上。')}
+                    </Text>
+                  </div>
+                </div>
+                {(restrictionSummary.groups.length > 0 ||
+                  restrictionSummary.models.length > 0 ||
+                  restrictionSummary.vendors.length > 0 ||
+                  plan?.upgrade_group) ? (
+                  <Descriptions
+                    className='pricing-plan-detail-restrictions-descriptions'
+                    align='left'
+                    data={[
+                      plan?.upgrade_group
+                        ? {
+                            key: t('升级分组'),
+                            value: renderTagList([
+                              <div key={`upgrade-${plan.upgrade_group}`}>
+                                {renderGroup(plan.upgrade_group)}
+                              </div>,
+                            ], {
+                              variant: 'highlight',
                               lead: {
                                 icon: <Layers3 size={13} />,
-                                text: t('这些分组可直接使用'),
+                                text: t('升级后进入这个分组'),
                               },
-                            },
-                          ),
-                        }
-                      : null,
-                    uniqueRestrictionModels.length > 0
-                      ? {
-                          key: t('可用模型'),
-                          value: renderTagList(
-                            uniqueRestrictionModels.map((modelName) =>
-                              renderScopedTag(
-                                `model-${modelName}`,
-                                modelName,
-                                {
-                                  color: 'grey',
-                                  icon: <Package size={12} />,
-                                  className: 'pricing-plan-detail-scope-tag--model',
-                                  onClick: (event) =>
-                                    copyRestrictionValue(event, modelName),
+                            }),
+                          }
+                        : null,
+                      uniqueRestrictionGroups.length > 0
+                        ? {
+                            key: t('可用分组'),
+                            value: renderTagList(
+                              uniqueRestrictionGroups.map((group) => (
+                                <div key={`group-${group}`}>{renderGroup(group)}</div>
+                              )),
+                              {
+                                variant: 'group',
+                                lead: {
+                                  icon: <Layers3 size={13} />,
+                                  text: t('这些分组可直接使用'),
                                 },
-                              ),
-                            ),
-                            {
-                              variant: 'model',
-                              lead: {
-                                icon: <Package size={13} />,
-                                text: t('支持以下模型'),
                               },
-                            },
-                          ),
-                        }
-                      : null,
-                    uniqueRestrictionVendors.length > 0
-                      ? {
-                          key: t('供应商'),
-                          value: renderTagList(
-                            uniqueRestrictionVendors.map((vendorName) =>
-                              renderScopedTag(
-                                `vendor-${vendorName}`,
-                                vendorName,
-                                {
-                                  color: 'green',
-                                  icon: <BadgeCheck size={12} />,
-                                  className: 'pricing-plan-detail-scope-tag--vendor',
-                                  onClick: (event) =>
-                                    copyRestrictionValue(event, vendorName),
+                            ),
+                          }
+                        : null,
+                      uniqueRestrictionModels.length > 0
+                        ? {
+                            key: t('可用模型'),
+                            value: renderTagList(
+                              uniqueRestrictionModels.map((modelName) =>
+                                renderScopedTag(
+                                  `model-${modelName}`,
+                                  modelName,
+                                  {
+                                    color: 'grey',
+                                    icon: <Package size={12} />,
+                                    className: 'pricing-plan-detail-scope-tag--model',
+                                    onClick: (event) =>
+                                      copyRestrictionValue(event, modelName),
+                                  },
+                                ),
+                              ),
+                              {
+                                variant: 'model',
+                                lead: {
+                                  icon: <Package size={13} />,
+                                  text: t('支持以下模型'),
                                 },
-                              ),
-                            ),
-                            {
-                              variant: 'vendor',
-                              lead: {
-                                icon: <BadgeCheck size={13} />,
-                                text: t('由这些供应商提供'),
                               },
-                            },
-                          ),
-                        }
-                      : null,
-                  ].filter(Boolean)}
-                />
-              ) : (
-                <div className='pricing-plan-detail-empty-note'>
-                  <ShieldCheck size={16} />
-                  <span>{t('无额外限制')}</span>
-                </div>
-              )}
-            </Card>
+                            ),
+                          }
+                        : null,
+                      uniqueRestrictionVendors.length > 0
+                        ? {
+                            key: t('供应商'),
+                            value: renderTagList(
+                              uniqueRestrictionVendors.map((vendorName) =>
+                                renderScopedTag(
+                                  `vendor-${vendorName}`,
+                                  vendorName,
+                                  {
+                                    color: 'green',
+                                    icon: <BadgeCheck size={12} />,
+                                    className: 'pricing-plan-detail-scope-tag--vendor',
+                                    onClick: (event) =>
+                                      copyRestrictionValue(event, vendorName),
+                                  },
+                                ),
+                              ),
+                              {
+                                variant: 'vendor',
+                                lead: {
+                                  icon: <BadgeCheck size={13} />,
+                                  text: t('由这些供应商提供'),
+                                },
+                              },
+                            ),
+                          }
+                        : null,
+                    ].filter(Boolean)}
+                  />
+                ) : (
+                  <div className='pricing-plan-detail-empty-note'>
+                    <ShieldCheck size={16} />
+                    <span>{t('无额外限制')}</span>
+                  </div>
+                )}
+              </Card>
+            </div>
           </div>
 
           <div className='pricing-plan-detail-sidebar'>

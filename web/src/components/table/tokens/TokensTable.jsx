@@ -123,6 +123,7 @@ const TokensTable = (tokensData) => {
     <CardTable
       columns={tableColumns}
       dataSource={tokens}
+      rowKey='id'
       scroll={
         compactMode
           ? undefined

@@ -17,12 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
+  Input,
   Modal,
   Select,
   Space,
+  Tag,
   TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
@@ -40,6 +42,13 @@ import { API, isRoot, showError, showSuccess } from '../../../helpers';
 const { Text } = Typography;
 
 const CCSWITCH_DEFAULTS_OPTION_KEY = 'console_setting.ccswitch_defaults';
+const TOKEN_TEST_DEFAULT_CLAUDE_MODEL_OPTION_KEY = 'TokenTestDefaultClaudeModel';
+const TOKEN_TEST_DEFAULT_RESPONSES_MODEL_OPTION_KEY =
+  'TokenTestDefaultResponsesModel';
+const BUILTIN_TOKEN_TEST_DEFAULTS = {
+  claude_model: 'claude-opus-4-6',
+  responses_model: 'gpt-5.4',
+};
 const BUILTIN_CCSWITCH_DEFAULTS = {
   claude: {
     defaultName: 'Claude Provider',
@@ -168,11 +177,60 @@ const AdminTokensPage = () => {
   const [ccswitchDefaultsLoading, setCCSwitchDefaultsLoading] = useState(false);
   const [ccswitchDefaultsSaving, setCCSwitchDefaultsSaving] = useState(false);
   const [ccswitchDefaultsJson, setCCSwitchDefaultsJson] = useState('');
+  const [tokenTestDefaultsVisible, setTokenTestDefaultsVisible] = useState(false);
+  const [tokenTestDefaultsLoading, setTokenTestDefaultsLoading] = useState(false);
+  const [tokenTestDefaultsSaving, setTokenTestDefaultsSaving] = useState(false);
+  const [tokenTestDefaults, setTokenTestDefaults] = useState(
+    BUILTIN_TOKEN_TEST_DEFAULTS,
+  );
+  const [tokenTestDefaultsSnapshot, setTokenTestDefaultsSnapshot] = useState(
+    BUILTIN_TOKEN_TEST_DEFAULTS,
+  );
 
   const builtinDefaultsText = useMemo(
     () => JSON.stringify(BUILTIN_CCSWITCH_DEFAULTS, null, 2),
     [],
   );
+
+  const loadTokenTestDefaults = useCallback(async () => {
+    const res = await API.get('/api/option/');
+    if (!res?.data?.success) {
+      throw new Error(res?.data?.message || tokensData.t('加载配置失败'));
+    }
+    const items = Array.isArray(res.data.data) ? res.data.data : [];
+    const claudeOption = items.find(
+      (item) => item?.key === TOKEN_TEST_DEFAULT_CLAUDE_MODEL_OPTION_KEY,
+    );
+    const responsesOption = items.find(
+      (item) => item?.key === TOKEN_TEST_DEFAULT_RESPONSES_MODEL_OPTION_KEY,
+    );
+    return {
+      claude_model:
+        String(claudeOption?.value || '').trim() ||
+        BUILTIN_TOKEN_TEST_DEFAULTS.claude_model,
+      responses_model:
+        String(responsesOption?.value || '').trim() ||
+        BUILTIN_TOKEN_TEST_DEFAULTS.responses_model,
+    };
+  }, [tokensData.t]);
+
+  useEffect(() => {
+    if (!canManageCCSwitchDefaults) {
+      return;
+    }
+    let cancelled = false;
+    loadTokenTestDefaults()
+      .then((defaults) => {
+        if (cancelled) {
+          return;
+        }
+        setTokenTestDefaultsSnapshot(defaults);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageCCSwitchDefaults, loadTokenTestDefaults]);
 
   const openCCSwitchDefaultsModal = useCallback(async () => {
     if (!canManageCCSwitchDefaults) {
@@ -241,6 +299,77 @@ const AdminTokensPage = () => {
     }
   }, [canManageCCSwitchDefaults, ccswitchDefaultsJson, tokensData.t]);
 
+  const openTokenTestDefaultsModal = useCallback(async () => {
+    if (!canManageCCSwitchDefaults) {
+      showError(tokensData.t('仅 Root 用户可配置'));
+      return;
+    }
+    setTokenTestDefaultsVisible(true);
+    setTokenTestDefaultsLoading(true);
+    try {
+      const defaults = await loadTokenTestDefaults();
+      setTokenTestDefaults(defaults);
+      setTokenTestDefaultsSnapshot(defaults);
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          tokensData.t('加载配置失败'),
+      );
+    } finally {
+      setTokenTestDefaultsLoading(false);
+    }
+  }, [canManageCCSwitchDefaults, loadTokenTestDefaults, tokensData.t]);
+
+  const saveTokenTestDefaults = useCallback(async () => {
+    if (!canManageCCSwitchDefaults) {
+      showError(tokensData.t('仅 Root 用户可配置'));
+      return;
+    }
+    const claudeModel =
+      String(tokenTestDefaults?.claude_model || '').trim() ||
+      BUILTIN_TOKEN_TEST_DEFAULTS.claude_model;
+    const responsesModel =
+      String(tokenTestDefaults?.responses_model || '').trim() ||
+      BUILTIN_TOKEN_TEST_DEFAULTS.responses_model;
+    setTokenTestDefaultsSaving(true);
+    try {
+      const requests = [
+        API.put('/api/option/', {
+          key: TOKEN_TEST_DEFAULT_CLAUDE_MODEL_OPTION_KEY,
+          value: claudeModel,
+        }),
+        API.put('/api/option/', {
+          key: TOKEN_TEST_DEFAULT_RESPONSES_MODEL_OPTION_KEY,
+          value: responsesModel,
+        }),
+      ];
+      const [claudeRes, responsesRes] = await Promise.all(requests);
+      if (claudeRes?.data?.success && responsesRes?.data?.success) {
+        setTokenTestDefaultsSnapshot({
+          claude_model: claudeModel,
+          responses_model: responsesModel,
+        });
+        showSuccess(tokensData.t('已保存，刷新页面后生效'));
+        setTokenTestDefaultsVisible(false);
+      } else {
+        showError(
+          claudeRes?.data?.message ||
+            responsesRes?.data?.message ||
+            tokensData.t('保存失败'),
+        );
+      }
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          tokensData.t('保存失败'),
+      );
+    } finally {
+      setTokenTestDefaultsSaving(false);
+    }
+  }, [canManageCCSwitchDefaults, tokenTestDefaults, tokensData.t]);
+
   return (
     <CardPro
       type='type1'
@@ -281,19 +410,47 @@ const AdminTokensPage = () => {
           />
 
           {canManageCCSwitchDefaults ? (
-            <div className='flex items-center justify-between gap-2 flex-wrap w-full'>
-              <div className='text-sm text-[var(--semi-color-text-2)]'>
-                {tokensData.t(
-                  '可在此配置 /console/token 导入配置的默认参数（CCSwitch）',
-                )}
+            <div className='flex flex-col gap-3 w-full rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3'>
+              <div className='flex items-center justify-between gap-2 flex-wrap w-full'>
+                <div className='text-sm text-[var(--semi-color-text-2)]'>
+                  {tokensData.t(
+                    '可在此配置 /console/token 的默认测试模型与导入默认参数（CCSwitch）',
+                  )}
+                </div>
+                <Space spacing='tight' wrap>
+                  <Button
+                    type='tertiary'
+                    onClick={openTokenTestDefaultsModal}
+                    size='small'
+                  >
+                    {tokensData.t('配置默认测试模型')}
+                  </Button>
+                  <Button
+                    type='tertiary'
+                    onClick={openCCSwitchDefaultsModal}
+                    size='small'
+                  >
+                    {tokensData.t('配置导入默认参数')}
+                  </Button>
+                </Space>
               </div>
-              <Button
-                type='tertiary'
-                onClick={openCCSwitchDefaultsModal}
-                size='small'
-              >
-                {tokensData.t('配置导入默认参数')}
-              </Button>
+              <div className='flex flex-col gap-2'>
+                <div className='text-xs text-[var(--semi-color-text-2)]'>
+                  {tokensData.t(
+                    '当前生效的默认测试模型会通过 /api/status 下发，管理员令牌和用户令牌测试都会统一使用这里的配置。',
+                  )}
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  <Tag color='blue' size='large' shape='circle'>
+                    {tokensData.t('Claude 默认模型')}：{' '}
+                    {tokenTestDefaultsSnapshot.claude_model}
+                  </Tag>
+                  <Tag color='cyan' size='large' shape='circle'>
+                    {tokensData.t('Responses 默认模型')}：{' '}
+                    {tokenTestDefaultsSnapshot.responses_model}
+                  </Tag>
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
@@ -333,6 +490,60 @@ const AdminTokensPage = () => {
         title={tokensData.secureVerificationState?.title}
         description={tokensData.secureVerificationState?.description}
       />
+
+      <Modal
+        title={tokensData.t('配置 /console/token 默认测试模型')}
+        visible={tokenTestDefaultsVisible}
+        onCancel={() => setTokenTestDefaultsVisible(false)}
+        onOk={saveTokenTestDefaults}
+        okText={tokensData.t('保存')}
+        cancelText={tokensData.t('取消')}
+        confirmLoading={tokenTestDefaultsSaving}
+        width={isMobile ? '100%' : 640}
+      >
+        <div className='flex flex-col gap-3'>
+          <div className='text-sm text-[var(--semi-color-text-2)]'>
+            {tokensData.t(
+              '该配置会通过 /api/status 下发到前端，普通用户与管理员测试令牌时都会使用这里的默认模型。',
+            )}
+          </div>
+          <Input
+            value={tokenTestDefaults.claude_model}
+            onChange={(value) =>
+              setTokenTestDefaults((prev) => ({
+                ...prev,
+                claude_model: value,
+              }))
+            }
+            placeholder={BUILTIN_TOKEN_TEST_DEFAULTS.claude_model}
+            disabled={tokenTestDefaultsLoading}
+            addonBefore={tokensData.t('Claude 默认模型')}
+          />
+          <Input
+            value={tokenTestDefaults.responses_model}
+            onChange={(value) =>
+              setTokenTestDefaults((prev) => ({
+                ...prev,
+                responses_model: value,
+              }))
+            }
+            placeholder={BUILTIN_TOKEN_TEST_DEFAULTS.responses_model}
+            disabled={tokenTestDefaultsLoading}
+            addonBefore={tokensData.t('Responses 默认模型')}
+          />
+          <Space spacing='tight' wrap>
+            <Button
+              type='tertiary'
+              size='small'
+              onClick={() =>
+                setTokenTestDefaults({ ...BUILTIN_TOKEN_TEST_DEFAULTS })
+              }
+            >
+              {tokensData.t('恢复默认')}
+            </Button>
+          </Space>
+        </div>
+      </Modal>
 
       <Modal
         title={tokensData.t('配置 /console/token 默认导入参数')}

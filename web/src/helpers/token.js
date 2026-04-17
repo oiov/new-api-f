@@ -80,3 +80,31 @@ export function getServerAddress() {
 
   return serverAddress;
 }
+
+const DEFAULT_TOKEN_TEST_MODELS = {
+  claude_model: 'claude-opus-4-6',
+  responses_model: 'gpt-5.4',
+};
+
+export function getTokenTestDefaults() {
+  let status = localStorage.getItem('status');
+  if (status) {
+    try {
+      status = JSON.parse(status);
+      const defaults = status?.token_test_defaults;
+      if (defaults && typeof defaults === 'object') {
+        return {
+          claude_model:
+            String(defaults.claude_model || '').trim() ||
+            DEFAULT_TOKEN_TEST_MODELS.claude_model,
+          responses_model:
+            String(defaults.responses_model || '').trim() ||
+            DEFAULT_TOKEN_TEST_MODELS.responses_model,
+        };
+      }
+    } catch (error) {
+      console.error('Failed to parse token test defaults:', error);
+    }
+  }
+  return { ...DEFAULT_TOKEN_TEST_MODELS };
+}

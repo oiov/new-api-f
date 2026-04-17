@@ -46,6 +46,7 @@ import {
   Landmark,
   CalendarCheck,
   Gift,
+  Cloud,
 } from 'lucide-react';
 
 export function getLucideIcon(key, selected = false) {
@@ -119,6 +120,8 @@ export function getLucideIcon(key, selected = false) {
       return <Settings {...commonProps} color={iconColor} />;
     case 'financeAdmin':
       return <Landmark {...commonProps} color={iconColor} />;
+    case 'r2Storage':
+      return <Cloud {...commonProps} color={iconColor} />;
     default:
       return <CircleUser {...commonProps} color={iconColor} />;
   }

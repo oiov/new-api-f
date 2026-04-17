@@ -67,6 +67,7 @@ const PageLayout = () => {
     '/console/task',
     '/console/models',
     '/console/invoice-admin',
+    '/console/r2-storage',
     '/pricing',
   ];
 

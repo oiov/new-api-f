@@ -43,6 +43,7 @@ const routerMap = {
   invoiceAdmin: '/console/invoice-admin',
   checkinAdmin: '/console/checkin-admin',
   financeAdmin: '/console/finance',
+  r2Storage: '/console/r2-storage',
   invite: '/console/invite',
   user: '/console/user',
   subscription: '/console/subscription',
@@ -292,6 +293,12 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         itemKey: 'financeAdmin',
         to: '/console/finance',
         className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('R2 存储'),
+        itemKey: 'r2Storage',
+        to: '/console/r2-storage',
+        className: isRoot() ? '' : 'tableHiddle',
       },
       {
         text: t('签到管理'),

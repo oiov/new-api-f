@@ -72,6 +72,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     invoiceAdmin: true,
     financeAdmin: true,
     checkinAdmin: true,
+    r2Storage: true,
   },
 };
 

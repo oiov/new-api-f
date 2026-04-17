@@ -273,3 +273,82 @@ func TestGetEcomAgentAccountReturnsEditableAuthFields(t *testing.T) {
 		t.Fatalf("expected session_json to include account id, got %q", sessionJSON)
 	}
 }
+
+func TestDeleteEcomAgentAccountAllowsRecreateWithSameEmail(t *testing.T) {
+	setupEcomAgentAccountControllerTestDB(t)
+
+	account := &model.EcomAgentAccount{
+		Email:           "recreate@example.com",
+		Password:        "password123",
+		BaseURL:         "https://ecomagent.in",
+		SupabaseAuthURL: "https://example.supabase.co/auth/v1",
+		SupabaseAnonKey: "anon-key",
+	}
+	if err := account.Insert(); err != nil {
+		t.Fatalf("failed to create seed account: %v", err)
+	}
+
+	if err := model.DeleteEcomAgentAccountByID(account.Id); err != nil {
+		t.Fatalf("failed to delete account: %v", err)
+	}
+
+	var deleted model.EcomAgentAccount
+	if err := model.DB.Where("id = ?", account.Id).First(&deleted).Error; err != nil {
+		t.Fatalf("failed to load deleted account: %v", err)
+	}
+	if deleted.Status != "deleted" {
+		t.Fatalf("expected deleted status, got %q", deleted.Status)
+	}
+	if deleted.Email == "recreate@example.com" {
+		t.Fatalf("expected deleted account email to be released, got %q", deleted.Email)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/ecomagent/accounts", map[string]any{
+		"email":             "recreate@example.com",
+		"password":          "new-password-123",
+		"base_url":          "https://ecomagent.in",
+		"supabase_auth_url": "https://example.supabase.co/auth/v1",
+		"supabase_anon_key": "anon-key",
+	}, 1)
+
+	CreateEcomAgentAccount(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected recreate to succeed, got message: %s", response.Message)
+	}
+
+	recreated, err := model.GetEcomAgentAccountByEmail("recreate@example.com")
+	if err != nil {
+		t.Fatalf("failed to reload recreated account: %v", err)
+	}
+	if recreated.Id == account.Id {
+		t.Fatalf("expected recreated account to use a new row, got same id %d", recreated.Id)
+	}
+}
+
+func TestIsEcomAgentAccountEmailDuplicatedIgnoresDeletedAccount(t *testing.T) {
+	setupEcomAgentAccountControllerTestDB(t)
+
+	account := &model.EcomAgentAccount{
+		Email:           "deleted-check@example.com",
+		Password:        "password123",
+		BaseURL:         "https://ecomagent.in",
+		SupabaseAuthURL: "https://example.supabase.co/auth/v1",
+		SupabaseAnonKey: "anon-key",
+	}
+	if err := account.Insert(); err != nil {
+		t.Fatalf("failed to create seed account: %v", err)
+	}
+	if err := model.DeleteEcomAgentAccountByID(account.Id); err != nil {
+		t.Fatalf("failed to delete account: %v", err)
+	}
+
+	duplicated, err := model.IsEcomAgentAccountEmailDuplicated(0, "deleted-check@example.com")
+	if err != nil {
+		t.Fatalf("failed to check duplicated email: %v", err)
+	}
+	if duplicated {
+		t.Fatalf("expected deleted account to be ignored by duplicate check")
+	}
+}
