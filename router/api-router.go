@@ -224,7 +224,9 @@ func SetApiRouter(router *gin.Engine) {
 		storageAdminRoute.Use(middleware.RootAuth())
 		{
 			storageAdminRoute.GET("/objects", controller.ListStorageObjects)
+			storageAdminRoute.GET("/objects/access-url", controller.GetStorageObjectAccessURL)
 			storageAdminRoute.GET("/objects/content", controller.GetStorageObjectContent)
+			storageAdminRoute.POST("/directories", controller.CreateStorageDirectory)
 			storageAdminRoute.POST("/objects", controller.UploadStorageObject)
 			storageAdminRoute.POST("/objects/batch-delete", controller.BatchDeleteStorageObjects)
 			storageAdminRoute.PUT("/objects/rename", controller.RenameStorageObject)
