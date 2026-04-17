@@ -33,11 +33,17 @@ import CardPro from '../../common/ui/CardPro';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
 import SecureVerificationModal from '../../common/modals/SecureVerificationModal';
 import TokensTable from '../tokens/TokensTable';
+import TokenTestConfigModal from '../tokens/modals/TokenTestConfigModal';
 import AdminTokensFilters from './AdminTokensFilters';
 import { useAdminTokensData } from '../../../hooks/tokens/useAdminTokensData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
 import { API, isRoot, showError, showSuccess } from '../../../helpers';
+import {
+  normalizeTokenTestGroupDefaults,
+  TOKEN_TEST_GROUP_DEFAULTS_OPTION_KEY,
+  validateTokenTestGroupDefaults,
+} from '../../../helpers/token';
 
 const { Text } = Typography;
 
@@ -48,6 +54,13 @@ const TOKEN_TEST_DEFAULT_RESPONSES_MODEL_OPTION_KEY =
 const BUILTIN_TOKEN_TEST_DEFAULTS = {
   claude_model: 'claude-opus-4-6',
   responses_model: 'gpt-5.4',
+};
+const BUILTIN_TOKEN_TEST_GROUP_DEFAULTS = {
+  default: {
+    mode: 'both',
+    claude_model: 'claude-opus-4-6',
+    responses_model: 'gpt-5.4',
+  },
 };
 const BUILTIN_CCSWITCH_DEFAULTS = {
   claude: {
@@ -186,9 +199,25 @@ const AdminTokensPage = () => {
   const [tokenTestDefaultsSnapshot, setTokenTestDefaultsSnapshot] = useState(
     BUILTIN_TOKEN_TEST_DEFAULTS,
   );
+  const [tokenTestGroupDefaultsVisible, setTokenTestGroupDefaultsVisible] =
+    useState(false);
+  const [tokenTestGroupDefaultsLoading, setTokenTestGroupDefaultsLoading] =
+    useState(false);
+  const [tokenTestGroupDefaultsSaving, setTokenTestGroupDefaultsSaving] =
+    useState(false);
+  const [tokenTestGroupDefaultsJson, setTokenTestGroupDefaultsJson] =
+    useState('');
+  const [tokenTestGroupDefaultsSnapshot, setTokenTestGroupDefaultsSnapshot] =
+    useState({});
+  const [testConfigVisible, setTestConfigVisible] = useState(false);
+  const [testingRecord, setTestingRecord] = useState(null);
 
   const builtinDefaultsText = useMemo(
     () => JSON.stringify(BUILTIN_CCSWITCH_DEFAULTS, null, 2),
+    [],
+  );
+  const builtinTokenTestGroupDefaultsText = useMemo(
+    () => JSON.stringify(BUILTIN_TOKEN_TEST_GROUP_DEFAULTS, null, 2),
     [],
   );
 
@@ -214,6 +243,22 @@ const AdminTokensPage = () => {
     };
   }, [tokensData.t]);
 
+  const loadTokenTestDefaultsByGroup = useCallback(async () => {
+    const res = await API.get('/api/option/');
+    if (!res?.data?.success) {
+      throw new Error(res?.data?.message || tokensData.t('加载配置失败'));
+    }
+    const items = Array.isArray(res.data.data) ? res.data.data : [];
+    const found = items.find(
+      (item) => item?.key === TOKEN_TEST_GROUP_DEFAULTS_OPTION_KEY,
+    );
+    const value = String(found?.value || '').trim();
+    if (!value) {
+      return {};
+    }
+    return normalizeTokenTestGroupDefaults(JSON.parse(value));
+  }, [tokensData.t]);
+
   useEffect(() => {
     if (!canManageCCSwitchDefaults) {
       return;
@@ -227,10 +272,22 @@ const AdminTokensPage = () => {
         setTokenTestDefaultsSnapshot(defaults);
       })
       .catch(() => {});
+    loadTokenTestDefaultsByGroup()
+      .then((defaults) => {
+        if (cancelled) {
+          return;
+        }
+        setTokenTestGroupDefaultsSnapshot(defaults);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [canManageCCSwitchDefaults, loadTokenTestDefaults]);
+  }, [
+    canManageCCSwitchDefaults,
+    loadTokenTestDefaults,
+    loadTokenTestDefaultsByGroup,
+  ]);
 
   const openCCSwitchDefaultsModal = useCallback(async () => {
     if (!canManageCCSwitchDefaults) {
@@ -370,6 +427,105 @@ const AdminTokensPage = () => {
     }
   }, [canManageCCSwitchDefaults, tokenTestDefaults, tokensData.t]);
 
+  const openTokenTestGroupDefaultsModal = useCallback(async () => {
+    if (!canManageCCSwitchDefaults) {
+      showError(tokensData.t('仅 Root 用户可配置'));
+      return;
+    }
+    setTokenTestGroupDefaultsVisible(true);
+    setTokenTestGroupDefaultsLoading(true);
+    try {
+      const defaults = await loadTokenTestDefaultsByGroup();
+      setTokenTestGroupDefaultsSnapshot(defaults);
+      setTokenTestGroupDefaultsJson(
+        Object.keys(defaults || {}).length
+          ? JSON.stringify(defaults, null, 2)
+          : builtinTokenTestGroupDefaultsText,
+      );
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          tokensData.t('加载配置失败'),
+      );
+    } finally {
+      setTokenTestGroupDefaultsLoading(false);
+    }
+  }, [
+    builtinTokenTestGroupDefaultsText,
+    canManageCCSwitchDefaults,
+    loadTokenTestDefaultsByGroup,
+    tokensData.t,
+  ]);
+
+  const saveTokenTestGroupDefaults = useCallback(async () => {
+    if (!canManageCCSwitchDefaults) {
+      showError(tokensData.t('仅 Root 用户可配置'));
+      return;
+    }
+    const trimmed = String(tokenTestGroupDefaultsJson || '').trim();
+    let parsed = {};
+    if (trimmed) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        showError(tokensData.t('JSON 格式不正确'));
+        return;
+      }
+      const validation = validateTokenTestGroupDefaults(parsed, tokensData.t);
+      if (!validation.ok) {
+        showError(validation.message || tokensData.t('保存失败'));
+        return;
+      }
+      parsed = validation.value || {};
+    }
+    setTokenTestGroupDefaultsSaving(true);
+    try {
+      const res = await API.put('/api/option/', {
+        key: TOKEN_TEST_GROUP_DEFAULTS_OPTION_KEY,
+        value: trimmed,
+      });
+      if (res?.data?.success) {
+        setTokenTestGroupDefaultsSnapshot(parsed);
+        showSuccess(tokensData.t('已保存，刷新页面后生效'));
+        setTokenTestGroupDefaultsVisible(false);
+      } else {
+        showError(res?.data?.message || tokensData.t('保存失败'));
+      }
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          tokensData.t('保存失败'),
+      );
+    } finally {
+      setTokenTestGroupDefaultsSaving(false);
+    }
+  }, [
+    canManageCCSwitchDefaults,
+    tokenTestGroupDefaultsJson,
+    tokensData.t,
+  ]);
+
+  const openTokenTestConfigModal = useCallback((record) => {
+    setTestingRecord(record || null);
+    setTestConfigVisible(true);
+  }, []);
+
+  const handleConfirmTokenTest = useCallback(
+    async (config) => {
+      if (!testingRecord?.id) {
+        return;
+      }
+      const success = await tokensData.testToken(testingRecord, config);
+      if (success) {
+        setTestConfigVisible(false);
+        setTestingRecord(null);
+      }
+    },
+    [testingRecord, tokensData],
+  );
+
   return (
     <CardPro
       type='type1'
@@ -427,6 +583,13 @@ const AdminTokensPage = () => {
                   </Button>
                   <Button
                     type='tertiary'
+                    onClick={openTokenTestGroupDefaultsModal}
+                    size='small'
+                  >
+                    {tokensData.t('配置分组测试策略')}
+                  </Button>
+                  <Button
+                    type='tertiary'
                     onClick={openCCSwitchDefaultsModal}
                     size='small'
                   >
@@ -448,6 +611,15 @@ const AdminTokensPage = () => {
                   <Tag color='cyan' size='large' shape='circle'>
                     {tokensData.t('Responses 默认模型')}：{' '}
                     {tokenTestDefaultsSnapshot.responses_model}
+                  </Tag>
+                  <Tag color='purple' size='large' shape='circle'>
+                    {Object.keys(tokenTestGroupDefaultsSnapshot || {}).length > 0
+                      ? tokensData.t('已配置 {{count}} 个分组测试策略', {
+                          count: Object.keys(tokenTestGroupDefaultsSnapshot).filter(
+                            (key) => key !== 'default',
+                          ).length,
+                        })
+                      : tokensData.t('暂未配置分组测试策略')}
                   </Tag>
                 </div>
               </div>
@@ -473,10 +645,24 @@ const AdminTokensPage = () => {
         allowSensitiveActions={false}
         showTestColumn={true}
         testingTokenIds={tokensData.testingTokenIds}
-        testToken={tokensData.testToken}
+        testToken={openTokenTestConfigModal}
         showLastTestColumn={true}
         lastTestResultsById={tokensData.lastTestResultsById}
         forceFullWidth={true}
+      />
+
+      <TokenTestConfigModal
+        visible={testConfigVisible}
+        onCancel={() => {
+          setTestConfigVisible(false);
+          setTestingRecord(null);
+        }}
+        onConfirm={handleConfirmTokenTest}
+        confirmLoading={Boolean(
+          testingRecord?.id && tokensData.testingTokenIds?.[testingRecord.id],
+        )}
+        tokenRecord={testingRecord}
+        t={tokensData.t}
       />
 
       <SecureVerificationModal
@@ -490,6 +676,55 @@ const AdminTokensPage = () => {
         title={tokensData.secureVerificationState?.title}
         description={tokensData.secureVerificationState?.description}
       />
+
+      <Modal
+        title={tokensData.t('配置 /console/token 分组测试策略')}
+        visible={tokenTestGroupDefaultsVisible}
+        onCancel={() => setTokenTestGroupDefaultsVisible(false)}
+        onOk={saveTokenTestGroupDefaults}
+        okText={tokensData.t('保存')}
+        cancelText={tokensData.t('取消')}
+        confirmLoading={tokenTestGroupDefaultsSaving}
+        width={isMobile ? '100%' : 820}
+      >
+        <div className='flex flex-col gap-3'>
+          <div className='text-sm text-[var(--semi-color-text-2)]'>
+            {tokensData.t(
+              '该配置会通过 /api/status 下发到前端。命中分组时会优先使用分组策略，未命中时回退到全局默认模型。',
+            )}
+          </div>
+          <div className='text-sm text-[var(--semi-color-text-2)]'>
+            {tokensData.t(
+              '支持使用 default 作为全局回退，也可为具体分组单独指定 mode、claude_model、responses_model。例如：',
+            )}
+          </div>
+          <TextArea
+            value={tokenTestGroupDefaultsJson}
+            onChange={(value) => setTokenTestGroupDefaultsJson(value)}
+            autosize={{ minRows: 12, maxRows: 24 }}
+            disabled={tokenTestGroupDefaultsLoading}
+            placeholder={builtinTokenTestGroupDefaultsText}
+          />
+          <div className='text-xs text-[var(--semi-color-text-2)]'>
+            {tokensData.t('可用分组')}：
+            {(tokensData.groupOptions || [])
+              .map((item) => item?.value)
+              .filter(Boolean)
+              .join(', ') || '-'}
+          </div>
+          <Space spacing='tight' wrap>
+            <Button
+              type='tertiary'
+              size='small'
+              onClick={() =>
+                setTokenTestGroupDefaultsJson(builtinTokenTestGroupDefaultsText)
+              }
+            >
+              {tokensData.t('恢复默认')}
+            </Button>
+          </Space>
+        </div>
+      </Modal>
 
       <Modal
         title={tokensData.t('配置 /console/token 默认测试模型')}

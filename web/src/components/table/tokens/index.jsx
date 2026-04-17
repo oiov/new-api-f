@@ -39,6 +39,7 @@ import TokensFilters from './TokensFilters';
 import TokensDescription from './TokensDescription';
 import EditTokenModal from './modals/EditTokenModal';
 import CCSwitchModal from './modals/CCSwitchModal';
+import TokenTestConfigModal from './modals/TokenTestConfigModal';
 import { useTokensData } from '../../../hooks/tokens/useTokensData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -68,6 +69,8 @@ function TokensPage() {
   const [prefillKey, setPrefillKey] = useState('');
   const [ccSwitchVisible, setCCSwitchVisible] = useState(false);
   const [ccSwitchToken, setCCSwitchToken] = useState(null);
+  const [testConfigVisible, setTestConfigVisible] = useState(false);
+  const [testingRecord, setTestingRecord] = useState(null);
 
   // Keep latest data for handlers inside notifications
   useEffect(() => {
@@ -227,6 +230,22 @@ function TokensPage() {
     setCCSwitchVisible(true);
   }
   openCCSwitchModalRef.current = openCCSwitchModal;
+
+  const openTokenTestConfigModal = (record) => {
+    setTestingRecord(record || null);
+    setTestConfigVisible(true);
+  };
+
+  const handleConfirmTokenTest = async (config) => {
+    if (!testingRecord?.id) {
+      return;
+    }
+    const success = await tokensData.testToken(testingRecord, config);
+    if (success) {
+      setTestConfigVisible(false);
+      setTestingRecord(null);
+    }
+  };
 
   // Prefill to Fluent handler
   const handlePrefillToFluent = async () => {
@@ -422,6 +441,20 @@ function TokensPage() {
         modelOptions={modelOptions}
       />
 
+      <TokenTestConfigModal
+        visible={testConfigVisible}
+        onCancel={() => {
+          setTestConfigVisible(false);
+          setTestingRecord(null);
+        }}
+        onConfirm={handleConfirmTokenTest}
+        confirmLoading={Boolean(
+          testingRecord?.id && tokensData.testingTokenIds?.[testingRecord.id],
+        )}
+        tokenRecord={testingRecord}
+        t={t}
+      />
+
       <CardPro
         type='type1'
         descriptionArea={
@@ -474,7 +507,7 @@ function TokensPage() {
           {...tokensData}
           showTestColumn={true}
           testingTokenIds={tokensData.testingTokenIds}
-          testToken={tokensData.testToken}
+          testToken={openTokenTestConfigModal}
           showLastTestColumn={true}
           lastTestResultsById={tokensData.lastTestResultsById}
         />

@@ -163,8 +163,15 @@ func GetStatus(c *gin.Context) {
 		}
 	}
 	data["token_test_defaults"] = gin.H{
+		"mode":             "both",
 		"claude_model":    strings.TrimSpace(common.OptionMap["TokenTestDefaultClaudeModel"]),
 		"responses_model": strings.TrimSpace(common.OptionMap["TokenTestDefaultResponsesModel"]),
+	}
+	if rawDefaults := strings.TrimSpace(common.OptionMap["console_setting.token_test_defaults_by_group"]); rawDefaults != "" {
+		var payload any
+		if err := common.UnmarshalJsonStr(rawDefaults, &payload); err == nil {
+			data["token_test_defaults_by_group"] = payload
+		}
 	}
 
 	// 根据启用状态注入可选内容

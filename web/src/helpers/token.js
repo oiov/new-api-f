@@ -86,25 +86,196 @@ const DEFAULT_TOKEN_TEST_MODELS = {
   responses_model: 'gpt-5.4',
 };
 
+export const TOKEN_TEST_GROUP_DEFAULTS_OPTION_KEY =
+  'console_setting.token_test_defaults_by_group';
+
+export const TOKEN_TEST_MODES = {
+  both: 'both',
+  claude: 'claude',
+  responses: 'responses',
+};
+
+export const TOKEN_TEST_DEFAULT_MAX_TOKENS = 16;
+
+function getStatusCache() {
+  const status = localStorage.getItem('status');
+  if (!status) {
+    return null;
+  }
+  try {
+    return JSON.parse(status);
+  } catch (error) {
+    console.error('Failed to parse status from localStorage:', error);
+    return null;
+  }
+}
+
 export function getTokenTestDefaults() {
-  let status = localStorage.getItem('status');
-  if (status) {
-    try {
-      status = JSON.parse(status);
-      const defaults = status?.token_test_defaults;
-      if (defaults && typeof defaults === 'object') {
-        return {
-          claude_model:
-            String(defaults.claude_model || '').trim() ||
-            DEFAULT_TOKEN_TEST_MODELS.claude_model,
-          responses_model:
-            String(defaults.responses_model || '').trim() ||
-            DEFAULT_TOKEN_TEST_MODELS.responses_model,
-        };
-      }
-    } catch (error) {
-      console.error('Failed to parse token test defaults:', error);
-    }
+  const status = getStatusCache();
+  const defaults = status?.token_test_defaults;
+  if (defaults && typeof defaults === 'object') {
+    return {
+      claude_model:
+        String(defaults.claude_model || '').trim() ||
+        DEFAULT_TOKEN_TEST_MODELS.claude_model,
+      responses_model:
+        String(defaults.responses_model || '').trim() ||
+        DEFAULT_TOKEN_TEST_MODELS.responses_model,
+    };
   }
   return { ...DEFAULT_TOKEN_TEST_MODELS };
+}
+
+export function getTokenTestDefaultsByGroup() {
+  const status = getStatusCache();
+  return normalizeTokenTestGroupDefaults(status?.token_test_defaults_by_group);
+}
+
+export function getDefaultTokenTestConfig() {
+  return {
+    mode: TOKEN_TEST_MODES.both,
+    ...getTokenTestDefaults(),
+    max_tokens: TOKEN_TEST_DEFAULT_MAX_TOKENS,
+  };
+}
+
+export function normalizeTokenTestConfig(config = {}) {
+  const defaults = getDefaultTokenTestConfig();
+  const nextMode = String(config?.mode || defaults.mode).trim();
+  return {
+    mode: Object.values(TOKEN_TEST_MODES).includes(nextMode)
+      ? nextMode
+      : TOKEN_TEST_MODES.both,
+    claude_model:
+      String(config?.claude_model || '').trim() || defaults.claude_model,
+    responses_model:
+      String(config?.responses_model || '').trim() || defaults.responses_model,
+    max_tokens:
+      Number.isFinite(Number(config?.max_tokens)) && Number(config?.max_tokens) > 0
+        ? Number(config.max_tokens)
+        : defaults.max_tokens,
+  };
+}
+
+export function resolveTokenTestConfig(groupName, overrides = {}) {
+  const groupDefaults = getTokenTestDefaultsByGroup();
+  const normalizedGroup = String(groupName || '').trim();
+  const mergedConfig = {
+    ...getDefaultTokenTestConfig(),
+    ...(groupDefaults.default || {}),
+    ...(normalizedGroup ? groupDefaults[normalizedGroup] || {} : {}),
+    ...(overrides || {}),
+  };
+  return normalizeTokenTestConfig(mergedConfig);
+}
+
+export function normalizeTokenTestGroupDefaults(rawDefaults) {
+  if (
+    !rawDefaults ||
+    typeof rawDefaults !== 'object' ||
+    Array.isArray(rawDefaults)
+  ) {
+    return {};
+  }
+
+  return Object.entries(rawDefaults).reduce((acc, [groupName, config]) => {
+    const normalizedGroup = String(groupName || '').trim();
+    if (
+      !normalizedGroup ||
+      !config ||
+      typeof config !== 'object' ||
+      Array.isArray(config)
+    ) {
+      return acc;
+    }
+    acc[normalizedGroup] = {
+      mode: String(config.mode || '').trim(),
+      claude_model: String(config.claude_model || '').trim(),
+      responses_model: String(config.responses_model || '').trim(),
+    };
+    return acc;
+  }, {});
+}
+
+export function validateTokenTestGroupDefaults(rawDefaults, t = (key) => key) {
+  if (
+    !rawDefaults ||
+    typeof rawDefaults !== 'object' ||
+    Array.isArray(rawDefaults)
+  ) {
+    return {
+      ok: false,
+      message: t('分组测试策略必须是 JSON 对象'),
+    };
+  }
+
+  for (const [groupName, config] of Object.entries(rawDefaults)) {
+    const normalizedGroup = String(groupName || '').trim();
+    if (!normalizedGroup) {
+      return {
+        ok: false,
+        message: t('分组名称不能为空'),
+      };
+    }
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return {
+        ok: false,
+        message: t('分组 {{group}} 的配置必须是 JSON 对象', {
+          group: normalizedGroup,
+        }),
+      };
+    }
+
+    const mode = String(config.mode || '').trim();
+    if (mode && !Object.values(TOKEN_TEST_MODES).includes(mode)) {
+      return {
+        ok: false,
+        message: t(
+          '分组 {{group}} 的 mode 仅支持 both、claude、responses',
+          {
+            group: normalizedGroup,
+          },
+        ),
+      };
+    }
+
+    const claudeModel = String(config.claude_model || '').trim();
+    const responsesModel = String(config.responses_model || '').trim();
+    if (!mode && !claudeModel && !responsesModel) {
+      return {
+        ok: false,
+        message: t('分组 {{group}} 至少需要配置 mode 或模型', {
+          group: normalizedGroup,
+        }),
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    value: normalizeTokenTestGroupDefaults(rawDefaults),
+  };
+}
+
+export function buildTokenTestPayload(config = {}) {
+  const normalized = normalizeTokenTestConfig(config);
+  const payload = {
+    mode: normalized.mode,
+    max_tokens: normalized.max_tokens,
+  };
+
+  if (
+    normalized.mode === TOKEN_TEST_MODES.both ||
+    normalized.mode === TOKEN_TEST_MODES.claude
+  ) {
+    payload.claude_model = normalized.claude_model;
+  }
+  if (
+    normalized.mode === TOKEN_TEST_MODES.both ||
+    normalized.mode === TOKEN_TEST_MODES.responses
+  ) {
+    payload.responses_model = normalized.responses_model;
+  }
+
+  return payload;
 }

@@ -30,7 +30,10 @@ import {
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { useSecureVerification } from '../common/useSecureVerification';
-import { getTokenTestDefaults } from '../../helpers/token';
+import {
+  buildTokenTestPayload,
+  resolveTokenTestConfig,
+} from '../../helpers/token';
 
 const parsePersistedLastTestInfo = (token) => {
   const tokenId = token?.id;
@@ -82,6 +85,7 @@ export const useAdminTokensData = () => {
   const [testingTokenIds, setTestingTokenIds] = useState({});
   const [lastTestResultsById, setLastTestResultsById] = useState({});
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [selectedRowsById, setSelectedRowsById] = useState({});
   const [appliedFilters, setAppliedFilters] = useState({
     username: '',
     token_name: '',
@@ -280,12 +284,47 @@ export const useAdminTokensData = () => {
   const rowSelection = useMemo(
     () => ({
       selectedRowKeys,
-      onChange: (keys) => {
-        setSelectedRowKeys(keys || []);
+      onChange: (keys, rows) => {
+        const nextKeys = keys || [];
+        setSelectedRowKeys(nextKeys);
+        setSelectedRowsById((prev) => {
+          const next = { ...prev };
+          const currentPageIds = new Set(
+            (tokens || []).map((item) => item?.id).filter(Boolean),
+          );
+          currentPageIds.forEach((id) => {
+            delete next[id];
+          });
+          (rows || []).forEach((row) => {
+            if (row?.id) {
+              next[row.id] = row;
+            }
+          });
+          Object.keys(next).forEach((id) => {
+            const numericId = Number(id);
+            if (!nextKeys.includes(id) && !nextKeys.includes(numericId)) {
+              delete next[id];
+            }
+          });
+          return next;
+        });
       },
     }),
-    [selectedRowKeys],
+    [selectedRowKeys, tokens],
   );
+
+  useEffect(() => {
+    setSelectedRowsById((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((id) => {
+        const numericId = Number(id);
+        if (!selectedRowKeys.includes(id) && !selectedRowKeys.includes(numericId)) {
+          delete next[id];
+        }
+      });
+      return next;
+    });
+  }, [selectedRowKeys]);
 
   const handleRow = (record) => {
     if (record.status !== 1) {
@@ -298,19 +337,17 @@ export const useAdminTokensData = () => {
     return {};
   };
 
-  const testToken = async (record) => {
+  const testToken = async (record, options = null) => {
     const tokenId = record?.id;
-    if (!tokenId) return;
-    const testDefaults = getTokenTestDefaults();
+    if (!tokenId) return false;
+    const testConfig = options || resolveTokenTestConfig(record?.group);
 
     setTestingTokenIds((prev) => ({ ...prev, [tokenId]: true }));
     try {
-      const res = await API.post(`/api/token/admin/${tokenId}/test`, {
-        mode: 'both',
-        claude_model: testDefaults.claude_model,
-        responses_model: testDefaults.responses_model,
-        max_tokens: 16,
-      });
+      const res = await API.post(
+        `/api/token/admin/${tokenId}/test`,
+        buildTokenTestPayload(testConfig),
+      );
       const { success, message, data } = res.data || {};
       if (!success) {
         showError(message || t('测试失败'));
@@ -323,7 +360,7 @@ export const useAdminTokensData = () => {
             results: [],
           },
         }));
-        return;
+        return false;
       }
 
       const results = Array.isArray(data?.results) ? data.results : [];
@@ -391,8 +428,10 @@ export const useAdminTokensData = () => {
           </div>
         ),
       });
+      return true;
     } catch (error) {
       showError(error?.message || t('测试失败'));
+      return false;
     } finally {
       setTestingTokenIds((prev) => ({ ...prev, [tokenId]: false }));
     }
@@ -403,10 +442,19 @@ export const useAdminTokensData = () => {
       showError(t('请先选择要测试的令牌！'));
       return;
     }
-    const testDefaults = getTokenTestDefaults();
-
     const tokenIds = [...selectedRowKeys];
     const results = [];
+    const recordMap = new Map();
+    Object.values(selectedRowsById || {}).forEach((item) => {
+      if (item?.id) {
+        recordMap.set(item.id, item);
+      }
+    });
+    tokens.forEach((item) => {
+      if (item?.id && !recordMap.has(item.id)) {
+        recordMap.set(item.id, item);
+      }
+    });
 
     const concurrency = 3;
     let cursor = 0;
@@ -417,12 +465,11 @@ export const useAdminTokensData = () => {
         cursor += 1;
         setTestingTokenIds((prev) => ({ ...prev, [current]: true }));
         try {
-          const res = await API.post(`/api/token/admin/${current}/test`, {
-            mode: 'both',
-            claude_model: testDefaults.claude_model,
-            responses_model: testDefaults.responses_model,
-            max_tokens: 16,
-          });
+          const currentRecord = recordMap.get(current);
+          const res = await API.post(
+            `/api/token/admin/${current}/test`,
+            buildTokenTestPayload(resolveTokenTestConfig(currentRecord?.group)),
+          );
           if (res?.data?.success) {
             const payload = res.data.data || {};
             results.push({ token_id: current, ...payload });
@@ -558,6 +605,7 @@ export const useAdminTokensData = () => {
         );
         await loadTokens(1, pageSize);
         setSelectedRowKeys([]);
+        setSelectedRowsById({});
       } else {
         showError(res?.data?.message || t('更新失败'));
       }
@@ -719,6 +767,7 @@ export const useAdminTokensData = () => {
     handleRow,
     selectedRowKeys,
     setSelectedRowKeys,
+    selectedRowsById,
     rowSelection,
     testingTokenIds,
     lastTestResultsById,

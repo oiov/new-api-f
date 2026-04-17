@@ -31,7 +31,8 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import {
   fetchTokenKey as fetchTokenKeyById,
-  getTokenTestDefaults,
+  buildTokenTestPayload,
+  resolveTokenTestConfig,
 } from '../../helpers/token';
 
 const SUBSCRIPTION_ACCESS_TOKEN_NAME = 'Subscription Access';
@@ -548,19 +549,17 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     },
   };
 
-  const testToken = async (record) => {
+  const testToken = async (record, options = null) => {
     const tokenId = record?.id;
-    if (!tokenId) return;
-    const testDefaults = getTokenTestDefaults();
+    if (!tokenId) return false;
+    const testConfig = options || resolveTokenTestConfig(record?.group);
 
     setTestingTokenIds((prev) => ({ ...prev, [tokenId]: true }));
     try {
-      const res = await API.post(`/api/token/${tokenId}/test`, {
-        mode: 'both',
-        claude_model: testDefaults.claude_model,
-        responses_model: testDefaults.responses_model,
-        max_tokens: 16,
-      });
+      const res = await API.post(
+        `/api/token/${tokenId}/test`,
+        buildTokenTestPayload(testConfig),
+      );
       const { success, message, data } = res.data || {};
       if (!success) {
         showError(message || t('测试失败'));
@@ -573,7 +572,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
             results: [],
           },
         }));
-        return;
+        return false;
       }
 
       const results = Array.isArray(data?.results) ? data.results : [];
@@ -601,8 +600,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
           </div>
         ),
       });
+      return true;
     } catch (error) {
       showError(error?.message || t('测试失败'));
+      return false;
     } finally {
       setTestingTokenIds((prev) => ({ ...prev, [tokenId]: false }));
     }
@@ -613,8 +614,6 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       showError(t('请先选择要测试的令牌！'));
       return;
     }
-    const testDefaults = getTokenTestDefaults();
-
     const tokenRecords = [...selectedKeys];
     const tokenIds = tokenRecords.map((item) => item.id);
     const results = [];
@@ -628,12 +627,11 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
         cursor += 1;
         setTestingTokenIds((prev) => ({ ...prev, [current]: true }));
         try {
-          const res = await API.post(`/api/token/${current}/test`, {
-            mode: 'both',
-            claude_model: testDefaults.claude_model,
-            responses_model: testDefaults.responses_model,
-            max_tokens: 16,
-          });
+          const currentRecord = recordMap.get(current);
+          const res = await API.post(
+            `/api/token/${current}/test`,
+            buildTokenTestPayload(resolveTokenTestConfig(currentRecord?.group)),
+          );
           if (res?.data?.success) {
             const payload = res.data.data || {};
             results.push({ token_id: current, ...payload });
