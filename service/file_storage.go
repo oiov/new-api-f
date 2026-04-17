@@ -63,6 +63,12 @@ type StorageObjectBatchDeleteResult struct {
 	FailedKeys  map[string]string `json:"failed_keys,omitempty"`
 }
 
+type StorageDirectoryCreateResult struct {
+	Key     string `json:"key"`
+	Name    string `json:"name"`
+	Created bool   `json:"created"`
+}
+
 type StorageObjectContent struct {
 	Body               io.ReadCloser
 	ContentType        string
@@ -89,7 +95,10 @@ type storageConfig struct {
 type listBucketResult struct {
 	IsTruncated           bool   `xml:"IsTruncated"`
 	NextContinuationToken string `xml:"NextContinuationToken"`
-	Contents              []struct {
+	CommonPrefixes        []struct {
+		Prefix string `xml:"Prefix"`
+	} `xml:"CommonPrefixes"`
+	Contents []struct {
 		Key          string `xml:"Key"`
 		LastModified string `xml:"LastModified"`
 		ETag         string `xml:"ETag"`
@@ -140,9 +149,13 @@ func ListStorageObjects(prefix, continuationToken, search string, maxKeys int) (
 	var parsed listBucketResult
 
 	for {
+		parsed = listBucketResult{}
 		queryParams := map[string]string{
 			"list-type": "2",
 			"max-keys":  strconv.Itoa(maxKeys),
+		}
+		if normalizedSearch == "" {
+			queryParams["delimiter"] = "/"
 		}
 		if normalizedPrefix != "" {
 			queryParams["prefix"] = normalizedPrefix
@@ -174,8 +187,27 @@ func ListStorageObjects(prefix, continuationToken, search string, maxKeys int) (
 			return nil, fmt.Errorf("解析 R2 列表响应失败：%w", err)
 		}
 
+		for _, prefixItem := range parsed.CommonPrefixes {
+			if prefixItem.Prefix == "" || prefixItem.Prefix == normalizedPrefix {
+				continue
+			}
+			items = append(items, buildStorageDirectoryInfo(prefixItem.Prefix))
+			if len(items) >= maxKeys {
+				return &StorageObjectListResult{
+					Backend:               cfg.Backend,
+					Bucket:                cfg.Bucket,
+					Endpoint:              cfg.Endpoint,
+					PublicURL:             cfg.PublicURL,
+					Prefix:                normalizedPrefix,
+					Items:                 items,
+					IsTruncated:           parsed.IsTruncated,
+					NextContinuationToken: parsed.NextContinuationToken,
+				}, nil
+			}
+		}
+
 		for _, item := range parsed.Contents {
-			if item.Key == "" || !matchesStorageSearch(item.Key, normalizedSearch) {
+			if item.Key == "" || strings.HasSuffix(item.Key, "/") || !matchesStorageSearch(item.Key, normalizedSearch) {
 				continue
 			}
 			items = append(items, buildStorageObjectInfo(cfg, item.Key, item.Size, item.LastModified, strings.Trim(item.ETag, `"`)))
@@ -311,6 +343,63 @@ func GetStorageObjectContent(key string, requestHeaders map[string]string) (*Sto
 		ETag:               strings.TrimSpace(resp.Header.Get("ETag")),
 		StatusCode:         resp.StatusCode,
 	}, nil
+}
+
+func GetStorageObjectAccessURL(key string, expiresSeconds int) (string, int64, error) {
+	cfg, err := getR2StorageConfig()
+	if err != nil {
+		return "", 0, err
+	}
+	normalizedKey := normalizeStorageKey(key)
+	if normalizedKey == "" {
+		return "", 0, fmt.Errorf("对象 Key 不能为空")
+	}
+	if strings.HasSuffix(normalizedKey, "/") {
+		return "", 0, fmt.Errorf("目录不支持生成访问链接")
+	}
+	if cfg.PublicURL != "" {
+		return buildStorageObjectURL(cfg, normalizedKey), 0, nil
+	}
+
+	expiresAt := time.Now().UTC().Add(5 * time.Minute)
+	url, err := presignStorageObjectURL(cfg, normalizedKey, expiresAt)
+	if err != nil {
+		return "", 0, err
+	}
+	return url, expiresAt.Unix(), nil
+}
+
+func CreateStorageDirectory(prefix, name string) (*StorageObjectInfo, error) {
+	cfg, err := getR2StorageConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	directoryName := sanitizeStorageDirectoryName(name)
+	if directoryName == "" {
+		return nil, fmt.Errorf("目录名不能为空")
+	}
+
+	baseKey := normalizeStorageKey(buildStorageObjectKey(prefix, directoryName))
+	if baseKey == "" {
+		return nil, fmt.Errorf("目录 Key 不能为空")
+	}
+	directoryKey := baseKey + "/"
+
+	exists, err := storageObjectExists(cfg, directoryKey)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, fmt.Errorf("目录已存在：%s", directoryKey)
+	}
+
+	if err = putBytesToR2(cfg, directoryKey, []byte{}, "application/x-directory"); err != nil {
+		return nil, err
+	}
+
+	result := buildStorageDirectoryInfo(directoryKey)
+	return &result, nil
 }
 
 func DeleteStorageObject(key string) error {
@@ -664,18 +753,41 @@ func putObjectToR2(cfg storageConfig, file *multipart.FileHeader, key, contentTy
 		return fmt.Errorf("重置临时上传文件失败：%w", err)
 	}
 
+	return putObjectReaderToR2(
+		cfg,
+		normalizedKey,
+		tmpFile,
+		written,
+		hex.EncodeToString(hasher.Sum(nil)),
+		contentType,
+	)
+}
+
+func putBytesToR2(cfg storageConfig, key string, body []byte, contentType string) error {
+	payloadHash := sha256Hex(body)
+	return putObjectReaderToR2(
+		cfg,
+		key,
+		bytes.NewReader(body),
+		int64(len(body)),
+		payloadHash,
+		contentType,
+	)
+}
+
+func putObjectReaderToR2(cfg storageConfig, key string, body io.Reader, contentLength int64, payloadHash, contentType string) error {
 	req, err := s3v4SignWithPayloadReader(
 		"PUT",
 		cfg.Endpoint,
 		cfg.Bucket,
-		normalizedKey,
+		key,
 		cfg.Region,
 		cfg.AccessKey,
 		cfg.SecretKey,
 		nil,
-		tmpFile,
-		written,
-		hex.EncodeToString(hasher.Sum(nil)),
+		body,
+		contentLength,
+		payloadHash,
 		contentType,
 		nil,
 	)
@@ -702,6 +814,22 @@ func buildStorageObjectURL(cfg storageConfig, key string) string {
 		return cfg.PublicURL + "/" + normalizedKey
 	}
 	return cfg.Endpoint + "/" + awsEncodePath(cfg.Bucket) + "/" + awsEncodePath(normalizedKey)
+}
+
+func buildStorageDirectoryInfo(prefix string) StorageObjectInfo {
+	normalizedPrefix := normalizeStoragePrefix(prefix)
+	name := strings.TrimSuffix(normalizedPrefix, "/")
+	name = path.Base(name)
+	if name == "." || name == "/" || name == "" {
+		name = normalizedPrefix
+	}
+	return StorageObjectInfo{
+		Key:      normalizedPrefix,
+		Name:     name,
+		FileType: "directory",
+		Size:     0,
+		URL:      "",
+	}
 }
 
 func buildStorageObjectInfo(cfg storageConfig, key string, size int64, lastModified, etag string) StorageObjectInfo {
@@ -768,6 +896,19 @@ func sanitizeStorageFilename(filename string) string {
 	return base
 }
 
+func sanitizeStorageDirectoryName(name string) string {
+	normalized := strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
+	normalized = strings.Trim(normalized, "/")
+	if normalized == "" {
+		return ""
+	}
+	base := path.Base(normalized)
+	if base == "." || base == "/" || base == "" {
+		return ""
+	}
+	return base
+}
+
 func detectContentType(file *multipart.FileHeader) string {
 	if file == nil {
 		return "application/octet-stream"
@@ -790,6 +931,9 @@ func detectContentType(file *multipart.FileHeader) string {
 }
 
 func detectStorageObjectType(key string) string {
+	if strings.HasSuffix(strings.TrimSpace(key), "/") {
+		return "directory"
+	}
 	ext := strings.ToLower(filepath.Ext(key))
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg":
@@ -805,6 +949,75 @@ func detectStorageObjectType(key string) string {
 	default:
 		return "file"
 	}
+}
+
+func presignStorageObjectURL(cfg storageConfig, key string, expiresAt time.Time) (string, error) {
+	host, err := extractHost(cfg.Endpoint)
+	if err != nil {
+		return "", err
+	}
+
+	now := time.Now().UTC()
+	if expiresAt.Before(now) {
+		expiresAt = now.Add(5 * time.Minute)
+	}
+	expiresIn := int(expiresAt.Sub(now).Seconds())
+	if expiresIn <= 0 {
+		expiresIn = 300
+	}
+	if expiresIn > 3600 {
+		expiresIn = 3600
+	}
+
+	dateStamp := now.Format("20060102")
+	amzDate := now.Format("20060102T150405Z")
+	credentialScope := strings.Join([]string{dateStamp, cfg.Region, "s3", "aws4_request"}, "/")
+	canonicalURI := "/" + awsEncodePath(cfg.Bucket) + "/" + awsEncodePath(normalizeStorageKey(key))
+
+	queryParams := map[string]string{
+		"X-Amz-Algorithm":     "AWS4-HMAC-SHA256",
+		"X-Amz-Credential":    cfg.AccessKey + "/" + credentialScope,
+		"X-Amz-Date":          amzDate,
+		"X-Amz-Expires":       strconv.Itoa(expiresIn),
+		"X-Amz-SignedHeaders": "host",
+	}
+	canonicalQuery := buildCanonicalQueryString(queryParams)
+	canonicalHeaders := "host:" + host + "\n"
+	signedHeaders := "host"
+	payloadHash := "UNSIGNED-PAYLOAD"
+
+	canonicalRequest := strings.Join([]string{
+		"GET",
+		canonicalURI,
+		canonicalQuery,
+		canonicalHeaders,
+		signedHeaders,
+		payloadHash,
+	}, "\n")
+
+	stringToSign := strings.Join([]string{
+		"AWS4-HMAC-SHA256",
+		amzDate,
+		credentialScope,
+		sha256Hex([]byte(canonicalRequest)),
+	}, "\n")
+
+	signingKey := hmacSHA256(
+		hmacSHA256(
+			hmacSHA256(
+				hmacSHA256(
+					[]byte("AWS4"+cfg.SecretKey),
+					[]byte(dateStamp),
+				),
+				[]byte(cfg.Region),
+			),
+			[]byte("s3"),
+		),
+		[]byte("aws4_request"),
+	)
+	signature := hex.EncodeToString(hmacSHA256(signingKey, []byte(stringToSign)))
+
+	return strings.TrimSuffix(cfg.Endpoint, "/") + canonicalURI + "?" + canonicalQuery + "&X-Amz-Signature=" + signature, nil
 }
 
 func normalizeConflictStrategy(value string) string {

@@ -18,6 +18,16 @@ type renameStorageObjectRequest struct {
 	NewKey string `json:"new_key"`
 }
 
+type createStorageDirectoryRequest struct {
+	Prefix string `json:"prefix"`
+	Name   string `json:"name"`
+}
+
+type storageObjectAccessURLResponse struct {
+	URL       string `json:"url"`
+	ExpiresAt int64  `json:"expires_at,omitempty"`
+}
+
 func ListStorageObjects(c *gin.Context) {
 	maxKeys, _ := strconv.Atoi(c.DefaultQuery("max_keys", "50"))
 	data, err := service.ListStorageObjects(
@@ -90,6 +100,34 @@ func GetStorageObjectContent(c *gin.Context) {
 		statusCode = http.StatusOK
 	}
 	c.DataFromReader(statusCode, data.ContentLength, data.ContentType, data.Body, headers)
+}
+
+func GetStorageObjectAccessURL(c *gin.Context) {
+	url, expiresAt, err := service.GetStorageObjectAccessURL(c.Query("key"), 300)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, storageObjectAccessURLResponse{
+		URL:       url,
+		ExpiresAt: expiresAt,
+	})
+}
+
+func CreateStorageDirectory(c *gin.Context) {
+	var req createStorageDirectoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "请求参数错误："+err.Error())
+		return
+	}
+
+	data, err := service.CreateStorageDirectory(req.Prefix, req.Name)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, data)
 }
 
 func DeleteStorageObject(c *gin.Context) {

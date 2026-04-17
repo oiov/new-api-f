@@ -6213,6 +6213,15 @@
     "最后修改时间": "Thời gian sửa đổi lần cuối",
     "Bucket": "Bucket",
     "Endpoint": "Điểm cuối",
-    "R2 存储管理": "Quản lý lưu trữ R2"
+    "R2 存储管理": "Quản lý lưu trữ R2",
+    "目录": "Thư mục",
+    "获取访问链接失败": "Không thể lấy liên kết truy cập",
+    "新建目录": "Thư mục mới",
+    "目录名不能为空": "Tên thư mục không được để trống",
+    "新建目录失败": "Tạo thư mục thất bại",
+    "新建目录成功": "Tạo thư mục thành công",
+    "当前目录": "Thư mục hiện tại",
+    "根目录": "Thư mục gốc",
+    "目录名称": "Tên thư mục"
   }
 }

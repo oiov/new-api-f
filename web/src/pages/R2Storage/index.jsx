@@ -51,6 +51,8 @@ function buildUploadObjectKey(prefix, fileName) {
 
 function getFileTypeTagConfig(fileType) {
   switch (fileType) {
+    case 'directory':
+      return { color: 'violet', label: '目录' };
     case 'image':
       return { color: 'green', label: '图片' };
     case 'pdf':
@@ -98,16 +100,28 @@ const R2StoragePage = () => {
     oldKey: '',
     newKey: '',
   });
+  const [directoryModal, setDirectoryModal] = useState({
+    visible: false,
+    name: '',
+  });
   const [uploadModal, setUploadModal] = useState({
     visible: false,
     files: [],
   });
   const [uploadConflictStrategy, setUploadConflictStrategy] = useState('error');
+  const [accessUrlMap, setAccessUrlMap] = useState({});
+  const [previewState, setPreviewState] = useState({ loading: false, url: '' });
 
   const getObjectProxyUrl = (objectKey) =>
     `/api/storage/admin/objects/content?key=${encodeURIComponent(objectKey || '')}`;
 
-  const getObjectOpenUrl = (item) => getObjectProxyUrl(item?.key);
+  const getObjectOpenUrl = (item) => {
+    if (!item) return '';
+    if (data?.public_url && item?.url) {
+      return item.url;
+    }
+    return accessUrlMap[item.key]?.url || '';
+  };
 
   const getObjectCopyUrl = (item) => {
     if (data?.public_url && item?.url) {
@@ -118,6 +132,91 @@ const R2StoragePage = () => {
       return proxyUrl;
     }
     return new URL(proxyUrl, window.location.origin).toString();
+  };
+
+  const sanitizeSelectedRowKeys = (keys = [], sourceItems = items) => {
+    const selectableKeySet = new Set(
+      (sourceItems || [])
+        .filter((item) => item.file_type !== 'directory')
+        .map((item) => item.key),
+    );
+    return (keys || []).filter((key) => selectableKeySet.has(key));
+  };
+
+  const resolveAccessUrl = async (item) => {
+    if (!item || item.file_type === 'directory') return '';
+    if (data?.public_url && item?.url) {
+      return item.url;
+    }
+
+    const cached = accessUrlMap[item.key];
+    if (cached?.url && (!cached.expiresAt || cached.expiresAt * 1000 > Date.now() + 5000)) {
+      return cached.url;
+    }
+
+    try {
+      const res = await API.get('/api/storage/admin/objects/access-url', {
+        params: { key: item.key },
+        skipErrorHandler: true,
+      });
+      const { success, message, data: responseData } = res.data;
+      if (!success || !responseData?.url) {
+        throw new Error(message || t('获取访问链接失败'));
+      }
+      setAccessUrlMap((prev) => ({
+        ...prev,
+        [item.key]: {
+          url: responseData.url,
+          expiresAt: responseData.expires_at || 0,
+        },
+      }));
+      return responseData.url;
+    } catch (error) {
+      showError(error?.message || t('获取访问链接失败'));
+      return '';
+    }
+  };
+
+  const navigateToPrefix = (nextPrefix) => {
+    const normalized = normalizePrefix(nextPrefix);
+    setPrefixInput(normalized);
+    setSearchInput('');
+    loadObjects({
+      nextPrefix: normalized,
+      nextSearch: '',
+      nextToken: '',
+      append: false,
+    });
+  };
+
+  const handleEnterDirectory = (item) => {
+    if (item?.file_type !== 'directory') return;
+    navigateToPrefix(item.key);
+  };
+
+  const handleGoParent = () => {
+    const currentPrefix = normalizePrefix(query.prefix || prefixInput.trim());
+    if (!currentPrefix) return;
+    const trimmed = currentPrefix.replace(/\/$/, '');
+    const index = trimmed.lastIndexOf('/');
+    navigateToPrefix(index >= 0 ? trimmed.slice(0, index + 1) : '');
+  };
+
+  const handleOpenItem = async (item) => {
+    if (!item) return;
+    if (item.file_type === 'directory') {
+      handleEnterDirectory(item);
+      return;
+    }
+    const url = await resolveAccessUrl(item);
+    if (url) {
+      openPage(url);
+    }
+  };
+
+  const handlePreviewOpen = (item) => {
+    if (!item || !isPreviewable(item)) return;
+    setPreviewModal({ visible: true, item });
   };
 
   const loadObjects = async ({
@@ -144,6 +243,8 @@ const R2StoragePage = () => {
 
       setData(responseData);
       setQuery({ prefix: nextPrefix, search: nextSearch });
+      setAccessUrlMap({});
+      setPreviewState({ loading: false, url: '' });
       setItems((prev) =>
         append ? [...prev, ...(responseData.items || [])] : responseData.items || [],
       );
@@ -172,6 +273,35 @@ const R2StoragePage = () => {
     return items.filter((item) => selectedSet.has(item.key));
   }, [items, selectedRowKeys]);
 
+  useEffect(() => {
+    if (viewMode !== 'card' || data?.public_url) return;
+    pagedItems
+      .filter((item) => item.file_type === 'image')
+      .forEach((item) => {
+        void resolveAccessUrl(item);
+      });
+  }, [data?.public_url, pagedItems, viewMode]);
+
+  useEffect(() => {
+    const item = previewModal.item;
+    if (!previewModal.visible || !item || item.file_type === 'directory') {
+      setPreviewState({ loading: false, url: '' });
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewState({ loading: true, url: '' });
+    resolveAccessUrl(item).then((url) => {
+      if (!cancelled) {
+        setPreviewState({ loading: false, url });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewModal.item, previewModal.visible]);
+
   const handleSearch = () => {
     loadObjects({
       nextPrefix: prefixInput.trim(),
@@ -193,6 +323,13 @@ const R2StoragePage = () => {
       files: [],
     });
     setUploadConflictStrategy('error');
+  };
+
+  const handleOpenDirectoryModal = () => {
+    setDirectoryModal({
+      visible: true,
+      name: '',
+    });
   };
 
   const handleChooseUploadFile = () => {
@@ -293,6 +430,40 @@ const R2StoragePage = () => {
         visible: failedEntries.length > 0,
         files: failedEntries,
       });
+      loadObjects({
+        nextPrefix: query.prefix,
+        nextSearch: query.search,
+        nextToken: '',
+        append: false,
+      });
+    } catch (error) {
+      showError(error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleCreateDirectory = async () => {
+    const directoryName = directoryModal.name.trim();
+    if (!directoryName) {
+      showError(t('目录名不能为空'));
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const res = await API.post('/api/storage/admin/directories', {
+        prefix: query.prefix,
+        name: directoryName,
+      });
+      const { success, message } = res.data;
+      if (!success) {
+        showError(message || t('新建目录失败'));
+        return;
+      }
+
+      showSuccess(t('新建目录成功'));
+      setDirectoryModal({ visible: false, name: '' });
       loadObjects({
         nextPrefix: query.prefix,
         nextSearch: query.search,
@@ -450,28 +621,34 @@ const R2StoragePage = () => {
             <Button
               theme='light'
               size='small'
-              onClick={() => setPreviewModal({ visible: true, item: record })}
+              onClick={() => handlePreviewOpen(record)}
               disabled={!isPreviewable(record)}
             >
               {t('预览')}
             </Button>
+            {record.file_type === 'directory' ? (
+              <Button theme='light' size='small' onClick={() => handleEnterDirectory(record)}>
+                {t('进入')}
+              </Button>
+            ) : (
+              <Button
+                theme='light'
+                size='small'
+                onClick={() =>
+                  setRenameModal({
+                    visible: true,
+                    oldKey: record.key,
+                    newKey: record.key,
+                  })
+                }
+              >
+                {t('重命名')}
+              </Button>
+            )}
             <Button
               theme='light'
               size='small'
-              onClick={() =>
-                setRenameModal({
-                  visible: true,
-                  oldKey: record.key,
-                  newKey: record.key,
-                })
-              }
-            >
-              {t('重命名')}
-            </Button>
-            <Button
-              theme='light'
-              size='small'
-              disabled={!data?.public_url}
+              disabled={!data?.public_url || record.file_type === 'directory'}
               onClick={async () => {
                 const copied = await copy(getObjectCopyUrl(record));
                 if (copied) {
@@ -486,41 +663,49 @@ const R2StoragePage = () => {
             <Button
               theme='borderless'
               size='small'
-              onClick={() => openPage(getObjectOpenUrl(record))}
+              onClick={() => handleOpenItem(record)}
             >
-              {t('打开链接')}
+              {record.file_type === 'directory' ? t('进入') : t('打开链接')}
             </Button>
-            <Popconfirm
-              title={t('确认删除')}
-              content={t('删除后无法恢复，是否继续？')}
-              okText={t('删除')}
-              cancelText={t('取消')}
-              okType='danger'
-              onConfirm={() => handleDelete(record.key)}
-            >
-              <Button
-                type='danger'
-                size='small'
-                loading={deletingKey === record.key}
+            {record.file_type !== 'directory' ? (
+              <Popconfirm
+                title={t('确认删除')}
+                content={t('删除后无法恢复，是否继续？')}
+                okText={t('删除')}
+                cancelText={t('取消')}
+                okType='danger'
+                onConfirm={() => handleDelete(record.key)}
               >
-                {t('删除')}
-              </Button>
-            </Popconfirm>
+                <Button
+                  type='danger'
+                  size='small'
+                  loading={deletingKey === record.key}
+                >
+                  {t('删除')}
+                </Button>
+              </Popconfirm>
+            ) : null}
           </Space>
         ),
       },
     ],
-    [data?.public_url, deletingKey, t],
+    [accessUrlMap, data?.public_url, deletingKey, t],
   );
 
   const previewContent = useMemo(() => {
     const item = previewModal.item;
     if (!item) return null;
+    if (previewState.loading) {
+      return <Text type='secondary'>{t('加载中')}</Text>;
+    }
+    if (!previewState.url) {
+      return <Text type='secondary'>{t('获取访问链接失败')}</Text>;
+    }
 
     if (item.file_type === 'image') {
       return (
         <img
-          src={getObjectOpenUrl(item)}
+          src={previewState.url}
           alt={item.name}
           style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain' }}
         />
@@ -529,7 +714,7 @@ const R2StoragePage = () => {
     if (item.file_type === 'pdf') {
       return (
         <iframe
-          src={getObjectOpenUrl(item)}
+          src={previewState.url}
           title={item.name}
           style={{ width: '100%', height: '70vh', border: 'none' }}
         />
@@ -538,30 +723,30 @@ const R2StoragePage = () => {
     if (item.file_type === 'video') {
       return (
         <video
-          src={getObjectOpenUrl(item)}
+          src={previewState.url}
           controls
           style={{ width: '100%', maxHeight: '70vh', background: '#000' }}
         />
       );
     }
     if (item.file_type === 'audio') {
-      return <audio src={getObjectOpenUrl(item)} controls style={{ width: '100%' }} />;
+      return <audio src={previewState.url} controls style={{ width: '100%' }} />;
     }
     if (item.file_type === 'text') {
       return (
         <div className='flex flex-col gap-3'>
           <Text type='secondary'>{t('文本类型文件建议在新窗口中查看。')}</Text>
-          <Button onClick={() => openPage(getObjectOpenUrl(item))}>{t('打开文件')}</Button>
+          <Button onClick={() => openPage(previewState.url)}>{t('打开文件')}</Button>
         </div>
       );
     }
     return (
       <div className='flex flex-col gap-3'>
         <Text type='secondary'>{t('当前文件类型不支持内嵌预览。')}</Text>
-        <Button onClick={() => openPage(getObjectOpenUrl(item))}>{t('打开文件')}</Button>
+        <Button onClick={() => openPage(previewState.url)}>{t('打开文件')}</Button>
       </div>
     );
-  }, [previewModal.item, t]);
+  }, [previewModal.item, previewState, t]);
 
   const renderCardItem = (item) => {
     const tag = getFileTypeTagConfig(item.file_type);
@@ -592,6 +777,7 @@ const R2StoragePage = () => {
           </div>
           <Checkbox
             checked={checked}
+            disabled={item.file_type === 'directory'}
             onChange={(event) => {
               const isChecked = event.target.checked;
               setSelectedRowKeys((prev) =>
@@ -605,11 +791,17 @@ const R2StoragePage = () => {
 
         {item.file_type === 'image' && (
           <div className='mt-3 rounded-xl overflow-hidden border border-dashed border-[var(--semi-color-border)]'>
-            <img
-              src={getObjectOpenUrl(item)}
-              alt={item.name}
-              style={{ width: '100%', height: 180, objectFit: 'cover' }}
-            />
+            {getObjectOpenUrl(item) ? (
+              <img
+                src={getObjectOpenUrl(item)}
+                alt={item.name}
+                style={{ width: '100%', height: 180, objectFit: 'cover' }}
+              />
+            ) : (
+              <div className='flex h-[180px] items-center justify-center text-[var(--semi-color-text-2)]'>
+                {t('加载中')}
+              </div>
+            )}
           </div>
         )}
 
@@ -622,43 +814,51 @@ const R2StoragePage = () => {
           <Button
             size='small'
             theme='light'
-            onClick={() => setPreviewModal({ visible: true, item })}
+            onClick={() => handlePreviewOpen(item)}
             disabled={!isPreviewable(item)}
           >
             {t('预览')}
           </Button>
-          <Button
-            size='small'
-            theme='light'
-            onClick={() =>
-              setRenameModal({
-                visible: true,
-                oldKey: item.key,
-                newKey: item.key,
-              })
-            }
-          >
-            {t('重命名')}
-          </Button>
-          <Button size='small' theme='light' onClick={() => openPage(getObjectOpenUrl(item))}>
-            {t('打开')}
-          </Button>
-          <Popconfirm
-            title={t('确认删除')}
-            content={t('删除后无法恢复，是否继续？')}
-            okText={t('删除')}
-            cancelText={t('取消')}
-            okType='danger'
-            onConfirm={() => handleDelete(item.key)}
-          >
-            <Button
-              size='small'
-              type='danger'
-              loading={deletingKey === item.key}
-            >
-              {t('删除')}
+          {item.file_type === 'directory' ? (
+            <Button size='small' theme='light' onClick={() => handleEnterDirectory(item)}>
+              {t('进入')}
             </Button>
-          </Popconfirm>
+          ) : (
+            <>
+              <Button
+                size='small'
+                theme='light'
+                onClick={() =>
+                  setRenameModal({
+                    visible: true,
+                    oldKey: item.key,
+                    newKey: item.key,
+                  })
+                }
+              >
+                {t('重命名')}
+              </Button>
+              <Button size='small' theme='light' onClick={() => handleOpenItem(item)}>
+                {t('打开')}
+              </Button>
+              <Popconfirm
+                title={t('确认删除')}
+                content={t('删除后无法恢复，是否继续？')}
+                okText={t('删除')}
+                cancelText={t('取消')}
+                okType='danger'
+                onConfirm={() => handleDelete(item.key)}
+              >
+                <Button
+                  size='small'
+                  type='danger'
+                  loading={deletingKey === item.key}
+                >
+                  {t('删除')}
+                </Button>
+              </Popconfirm>
+            </>
+          )}
         </div>
       </Card>
     );
@@ -699,6 +899,9 @@ const R2StoragePage = () => {
             {t('查询')}
           </Button>
           <Button onClick={handleReset}>{t('重置')}</Button>
+          <Button onClick={handleGoParent} disabled={!query.prefix && !prefixInput.trim()}>
+            {t('返回上级')}
+          </Button>
           <Button
             icon={<IconRefresh />}
             loading={loading}
@@ -725,6 +928,9 @@ const R2StoragePage = () => {
               onClick={() => setViewMode('card')}
             >
               {t('卡片列表')}
+            </Button>
+            <Button onClick={handleOpenDirectoryModal} disabled={!isR2} type='tertiary'>
+              {t('新建目录')}
             </Button>
             <Button
               type='tertiary'
@@ -806,7 +1012,10 @@ const R2StoragePage = () => {
                 hidePagination
                 rowSelection={{
                   selectedRowKeys,
-                  onChange: (nextKeys) => setSelectedRowKeys(nextKeys),
+                  onChange: (nextKeys) => setSelectedRowKeys(sanitizeSelectedRowKeys(nextKeys)),
+                  getCheckboxProps: (record) => ({
+                    disabled: record.file_type === 'directory',
+                  }),
                 }}
               />
             ) : (
@@ -962,14 +1171,34 @@ const R2StoragePage = () => {
       </Modal>
 
       <Modal
+        title={t('新建目录')}
+        visible={directoryModal.visible}
+        onCancel={() => setDirectoryModal({ visible: false, name: '' })}
+        onOk={handleCreateDirectory}
+        okText={t('创建')}
+        cancelText={t('取消')}
+        confirmLoading={uploading}
+      >
+        <div className='flex flex-col gap-3'>
+          <Text type='secondary'>{`${t('当前目录')}: ${query.prefix || t('根目录')}`}</Text>
+          <Input
+            value={directoryModal.name}
+            onChange={(value) =>
+              setDirectoryModal((prev) => ({ ...prev, name: value }))
+            }
+            placeholder={t('目录名称')}
+            onEnterPress={handleCreateDirectory}
+          />
+        </div>
+      </Modal>
+
+      <Modal
         title={previewModal.item ? `${t('文件预览')} · ${previewModal.item.name}` : t('文件预览')}
         visible={previewModal.visible}
         footer={
           <Space>
             <Button
-              onClick={() =>
-                previewModal.item && openPage(getObjectOpenUrl(previewModal.item))
-              }
+              onClick={() => previewModal.item && handleOpenItem(previewModal.item)}
             >
               {t('新窗口打开')}
             </Button>

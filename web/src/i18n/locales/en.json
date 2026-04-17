@@ -5857,6 +5857,17 @@
     "最后修改时间": "Last Modified",
     "Bucket": "Bucket",
     "Endpoint": "Endpoint",
-    "R2 存储管理": "R2 Storage Manager"
+    "R2 存储管理": "R2 Storage Manager",
+    "目录": "Directory",
+    "进入": "Open",
+    "返回上级": "Up One Level",
+    "获取访问链接失败": "Failed to get access URL",
+    "新建目录": "New Folder",
+    "目录名不能为空": "Folder name cannot be empty",
+    "新建目录失败": "Failed to create folder",
+    "新建目录成功": "Folder created",
+    "当前目录": "Current Folder",
+    "根目录": "Root",
+    "目录名称": "Folder Name"
   }
 }

@@ -45,11 +45,7 @@ function resolvePricingTab(searchParams) {
   if (explicitTab) {
     return explicitTab;
   }
-  if (
-    searchParams.has('plan_series') ||
-    searchParams.has('plan_sort') ||
-    searchParams.has('plan_view')
-  ) {
+  if (SUBSCRIPTION_QUERY_KEYS.some((key) => key !== 'tab' && searchParams.has(key))) {
     return 'subscription-plans';
   }
   return 'model-pricing';

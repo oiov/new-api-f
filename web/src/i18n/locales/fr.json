@@ -5747,6 +5747,17 @@
     "最后修改时间": "Dernière modification",
     "Bucket": "Bucket",
     "Endpoint": "Point de terminaison",
-    "R2 存储管理": "Gestion du stockage R2"
+    "R2 存储管理": "Gestion du stockage R2",
+    "目录": "Dossier",
+    "进入": "Entrer",
+    "返回上级": "Niveau supérieur",
+    "获取访问链接失败": "Échec de récupération du lien d'accès",
+    "新建目录": "Nouveau dossier",
+    "目录名不能为空": "Le nom du dossier ne peut pas être vide",
+    "新建目录失败": "Échec de la création du dossier",
+    "新建目录成功": "Dossier créé",
+    "当前目录": "Dossier actuel",
+    "根目录": "Racine",
+    "目录名称": "Nom du dossier"
   }
 }
