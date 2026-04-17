@@ -5758,6 +5758,10 @@
     "新建目录成功": "Dossier créé",
     "当前目录": "Dossier actuel",
     "根目录": "Racine",
-    "目录名称": "Nom du dossier"
+    "目录名称": "Nom du dossier",
+    "拖拽文件、压缩包或文件夹到这里": "Glissez ici des fichiers, archives ou dossiers",
+    "也支持直接粘贴剪贴板中的文件": "Vous pouvez aussi coller des fichiers depuis le presse-papiers",
+    "上传进度": "Progression du téléversement",
+    "当前文件": "Fichier en cours"
   }
 }

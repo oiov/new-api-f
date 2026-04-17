@@ -5868,6 +5868,10 @@
     "新建目录成功": "Folder created",
     "当前目录": "Current Folder",
     "根目录": "Root",
-    "目录名称": "Folder Name"
+    "目录名称": "Folder Name",
+    "拖拽文件、压缩包或文件夹到这里": "Drag files, archives, or folders here",
+    "也支持直接粘贴剪贴板中的文件": "You can also paste files from the clipboard",
+    "上传进度": "Upload Progress",
+    "当前文件": "Current File"
   }
 }

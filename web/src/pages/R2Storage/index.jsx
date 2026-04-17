@@ -9,6 +9,7 @@ import {
   Modal,
   Pagination,
   Popconfirm,
+  Progress,
   Select,
   Space,
   Tag,
@@ -76,6 +77,8 @@ const R2StoragePage = () => {
   const { t, i18n } = useTranslation();
   const uploadInputRef = useRef(null);
   const uploadDirectoryInputRef = useRef(null);
+  const uploadModalContentRef = useRef(null);
+  const uploadDropzoneRef = useRef(null);
 
   const [prefixInput, setPrefixInput] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -109,6 +112,14 @@ const R2StoragePage = () => {
     files: [],
   });
   const [uploadConflictStrategy, setUploadConflictStrategy] = useState('error');
+  const [uploadDragActive, setUploadDragActive] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({
+    totalPercent: 0,
+    currentPercent: 0,
+    currentName: '',
+    currentIndex: 0,
+    totalCount: 0,
+  });
   const [accessUrlMap, setAccessUrlMap] = useState({});
   const [previewState, setPreviewState] = useState({ loading: false, url: '' });
 
@@ -323,6 +334,13 @@ const R2StoragePage = () => {
       files: [],
     });
     setUploadConflictStrategy('error');
+    setUploadProgress({
+      totalPercent: 0,
+      currentPercent: 0,
+      currentName: '',
+      currentIndex: 0,
+      totalCount: 0,
+    });
   };
 
   const handleOpenDirectoryModal = () => {
@@ -340,10 +358,12 @@ const R2StoragePage = () => {
     uploadDirectoryInputRef.current?.click();
   };
 
-  const buildUploadEntries = (fileList) => {
+  const buildUploadEntries = (fileList, pathResolver) => {
     const currentPrefix = query.prefix || prefixInput.trim();
     return Array.from(fileList || []).map((file, index) => {
-      const relativePath = String(file.webkitRelativePath || file.name || '').trim();
+      const relativePath = String(
+        pathResolver?.(file, index) || file.webkitRelativePath || file.name || '',
+      ).trim();
       const preferredName = relativePath || file.name || `file-${index + 1}`;
       return {
         id: `${preferredName}-${index}-${file.size}-${file.lastModified}`,
@@ -354,20 +374,136 @@ const R2StoragePage = () => {
     });
   };
 
+  const applyUploadEntries = (fileList, pathResolver) => {
+    const nextEntries = buildUploadEntries(fileList, pathResolver);
+    if (!nextEntries.length) return;
+
+    setUploadConflictStrategy(nextEntries.length > 1 ? 'skip' : 'error');
+    setUploadModal((prev) => ({
+      ...prev,
+      files: nextEntries,
+    }));
+  };
+
   const handleUploadFileChange = (event) => {
-    const files = event.target.files;
+    const files = Array.from(event.target.files || []);
     event.target.value = '';
     if (!files?.length) return;
 
-    setUploadModal((prev) => {
-      const nextEntries = buildUploadEntries(files);
-      setUploadConflictStrategy(nextEntries.length > 1 ? 'skip' : 'error');
-      return {
-        ...prev,
-        files: nextEntries,
-      };
-    });
+    applyUploadEntries(files);
   };
+
+  const readDroppedEntry = async (entry, parentPath = '') => {
+    if (!entry) return [];
+    if (entry.isFile) {
+      return new Promise((resolve) => {
+        entry.file(
+          (file) => resolve([{ file, relativePath: `${parentPath}${file.name}` }]),
+          () => resolve([]),
+        );
+      });
+    }
+    if (!entry.isDirectory) {
+      return [];
+    }
+
+    const dirPath = `${parentPath}${entry.name}/`;
+    const reader = entry.createReader();
+    const children = [];
+
+    while (true) {
+      const entries = await new Promise((resolve) => {
+        reader.readEntries((batch) => resolve(batch || []), () => resolve([]));
+      });
+      if (!entries.length) {
+        break;
+      }
+      children.push(...entries);
+    }
+
+    const nested = await Promise.all(
+      children.map((childEntry) => readDroppedEntry(childEntry, dirPath)),
+    );
+    return nested.flat();
+  };
+
+  const readDroppedHandle = async (handle, parentPath = '') => {
+    if (!handle) return [];
+    if (handle.kind === 'file') {
+      const file = await handle.getFile();
+      return [{ file, relativePath: `${parentPath}${file.name}` }];
+    }
+    if (handle.kind !== 'directory') {
+      return [];
+    }
+
+    const dirPath = `${parentPath}${handle.name}/`;
+    const children = [];
+    for await (const childHandle of handle.values()) {
+      const nested = await readDroppedHandle(childHandle, dirPath);
+      children.push(...nested);
+    }
+    return children;
+  };
+
+  const collectDroppedFiles = async (dataTransfer) => {
+    const items = Array.from(dataTransfer?.items || []);
+    const handleItems = items.filter(
+      (item) =>
+        item.kind === 'file' && typeof item.getAsFileSystemHandle === 'function',
+    );
+
+    if (handleItems.length > 0) {
+      const nested = await Promise.all(
+        handleItems.map(async (item) => readDroppedHandle(await item.getAsFileSystemHandle())),
+      );
+      return nested.flat();
+    }
+
+    const entryItems = items
+      .map((item) => ({
+        entry:
+          item.kind === 'file' && typeof item.webkitGetAsEntry === 'function'
+            ? item.webkitGetAsEntry()
+            : null,
+      }))
+      .filter((item) => item.entry);
+
+    if (entryItems.length > 0) {
+      const nested = await Promise.all(
+        entryItems.map(({ entry }) => readDroppedEntry(entry)),
+      );
+      return nested.flat();
+    }
+
+    return Array.from(dataTransfer?.files || []).map((file) => ({
+      file,
+      relativePath: file.webkitRelativePath || file.name,
+    }));
+  };
+
+  const handleUploadDrop = async (event) => {
+    event.preventDefault();
+    setUploadDragActive(false);
+    const droppedFiles = await collectDroppedFiles(event.dataTransfer);
+    if (!droppedFiles.length) return;
+    applyUploadEntries(
+      droppedFiles.map((item) => item.file),
+      (_, index) => droppedFiles[index]?.relativePath,
+    );
+  };
+
+  const handleUploadPaste = (clipboardData) => {
+    const pastedFiles = Array.from(clipboardData?.files || []);
+    if (!pastedFiles.length) return false;
+    applyUploadEntries(pastedFiles);
+    return true;
+  };
+
+  useEffect(() => {
+    if (!uploadModal.visible) return;
+    uploadDropzoneRef.current?.focus?.();
+  }, [uploadModal.visible]);
 
   const handleUploadSubmit = async () => {
     if (!uploadModal.files.length) {
@@ -376,13 +512,29 @@ const R2StoragePage = () => {
     }
 
     setUploading(true);
+    const totalBytes = uploadModal.files.reduce(
+      (sum, item) => sum + Number(item?.file?.size || 0),
+      0,
+    );
     try {
       let uploadedCount = 0;
       let overwrittenCount = 0;
       let skippedCount = 0;
       const failedFiles = [];
       const failedEntries = [];
-      for (const item of uploadModal.files) {
+      let uploadedBytes = 0;
+      for (const [index, item] of uploadModal.files.entries()) {
+        const currentFileSize = Number(item?.file?.size || 0);
+        setUploadProgress({
+          totalPercent:
+            totalBytes > 0
+              ? Math.min(100, Math.round((uploadedBytes / totalBytes) * 100))
+              : 0,
+          currentPercent: 0,
+          currentName: item.displayName,
+          currentIndex: index + 1,
+          totalCount: uploadModal.files.length,
+        });
         const formData = new FormData();
         formData.append('file', item.file);
         if (query.prefix) {
@@ -397,8 +549,31 @@ const R2StoragePage = () => {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
+          onUploadProgress: (progressEvent) => {
+            const loaded = Math.min(
+              Number(progressEvent?.loaded || 0),
+              currentFileSize || Number(progressEvent?.loaded || 0),
+            );
+            const currentPercent =
+              currentFileSize > 0 ? Math.min(100, Math.round((loaded / currentFileSize) * 100)) : 100;
+            const totalPercent =
+              totalBytes > 0
+                ? Math.min(
+                    100,
+                    Math.round(((uploadedBytes + loaded) / totalBytes) * 100),
+                  )
+                : currentPercent;
+            setUploadProgress({
+              totalPercent,
+              currentPercent,
+              currentName: item.displayName,
+              currentIndex: index + 1,
+              totalCount: uploadModal.files.length,
+            });
+          },
         });
         const { success, message, data: responseData } = res.data;
+        uploadedBytes += currentFileSize;
         if (!success) {
           const errorMessage = message || item.displayName;
           failedFiles.push(errorMessage);
@@ -412,6 +587,16 @@ const R2StoragePage = () => {
         } else {
           uploadedCount += 1;
         }
+        setUploadProgress({
+          totalPercent:
+            totalBytes > 0
+              ? Math.min(100, Math.round((uploadedBytes / totalBytes) * 100))
+              : 100,
+          currentPercent: 100,
+          currentName: item.displayName,
+          currentIndex: index + 1,
+          totalCount: uploadModal.files.length,
+        });
       }
 
       if (uploadedCount > 0 || overwrittenCount > 0 || skippedCount > 0) {
@@ -429,6 +614,13 @@ const R2StoragePage = () => {
       setUploadModal({
         visible: failedEntries.length > 0,
         files: failedEntries,
+      });
+      setUploadProgress({
+        totalPercent: failedEntries.length > 0 ? 0 : 100,
+        currentPercent: failedEntries.length > 0 ? 0 : 100,
+        currentName: failedEntries.length > 0 ? '' : t('上传完成'),
+        currentIndex: failedEntries.length > 0 ? 0 : uploadModal.files.length,
+        totalCount: uploadModal.files.length,
       });
       loadObjects({
         nextPrefix: query.prefix,
@@ -1068,16 +1260,64 @@ const R2StoragePage = () => {
       <Modal
         title={t('上传文件')}
         visible={uploadModal.visible}
-        onCancel={() => setUploadModal({ visible: false, files: [] })}
+        onCancel={() => {
+          if (uploading) return;
+          setUploadModal({ visible: false, files: [] });
+          setUploadProgress({
+            totalPercent: 0,
+            currentPercent: 0,
+            currentName: '',
+            currentIndex: 0,
+            totalCount: 0,
+          });
+        }}
         onOk={handleUploadSubmit}
         okText={t('上传')}
         cancelText={t('取消')}
         confirmLoading={uploading}
+        cancelButtonProps={{ disabled: uploading }}
       >
-        <div className='flex flex-col gap-3'>
+        <div
+          ref={uploadModalContentRef}
+          className='flex flex-col gap-3'
+          onPaste={(event) => {
+            if (handleUploadPaste(event.clipboardData)) {
+              event.preventDefault();
+            }
+          }}
+        >
           <div className='flex flex-wrap gap-2'>
             <Button onClick={handleChooseUploadFile}>{t('选择文件/压缩包')}</Button>
             <Button onClick={handleChooseUploadDirectory}>{t('选择文件夹')}</Button>
+          </div>
+          <div
+            ref={uploadDropzoneRef}
+            tabIndex={0}
+            role='button'
+            className={`rounded-xl border border-dashed p-4 text-center outline-none transition ${
+              uploadDragActive
+                ? 'border-[var(--semi-color-primary)] bg-[var(--semi-color-fill-0)]'
+                : 'border-[var(--semi-color-border)]'
+            }`}
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setUploadDragActive(true);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setUploadDragActive(true);
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              if (event.currentTarget.contains(event.relatedTarget)) return;
+              setUploadDragActive(false);
+            }}
+            onDrop={handleUploadDrop}
+          >
+            <Text>{t('拖拽文件、压缩包或文件夹到这里')}</Text>
+            <div className='mt-1'>
+              <Text type='secondary'>{t('也支持直接粘贴剪贴板中的文件')}</Text>
+            </div>
           </div>
           <input
             ref={uploadInputRef}
@@ -1109,6 +1349,36 @@ const R2StoragePage = () => {
               </Select>
             </div>
           </div>
+          {(uploading || uploadProgress.totalPercent > 0 || uploadProgress.currentName) && (
+            <div className='rounded-xl border border-[var(--semi-color-border)] p-3'>
+              <div className='flex items-center justify-between gap-3'>
+                <Text strong>{t('上传进度')}</Text>
+                <Text type='secondary'>
+                  {uploadProgress.currentIndex > 0 && uploadProgress.totalCount > 0
+                    ? `${uploadProgress.currentIndex}/${uploadProgress.totalCount}`
+                    : '-'}
+                </Text>
+              </div>
+              <Progress
+                percent={uploadProgress.totalPercent}
+                showInfo
+                stroke='var(--semi-color-primary)'
+                style={{ marginTop: 8 }}
+              />
+              <div className='mt-2 flex items-center justify-between gap-3'>
+                <Text type='secondary'>{t('当前文件')}</Text>
+                <Text type='secondary' style={{ wordBreak: 'break-all', textAlign: 'right' }}>
+                  {uploadProgress.currentName || '-'}
+                </Text>
+              </div>
+              <Progress
+                percent={uploadProgress.currentPercent}
+                showInfo
+                stroke='var(--semi-color-success)'
+                style={{ marginTop: 8 }}
+              />
+            </div>
+          )}
           <div>
             <Text type='secondary'>{t('待上传文件')}</Text>
             <div className='mt-2 flex flex-col gap-2 max-h-[320px] overflow-auto'>

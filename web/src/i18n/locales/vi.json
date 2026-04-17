@@ -6222,6 +6222,10 @@
     "新建目录成功": "Tạo thư mục thành công",
     "当前目录": "Thư mục hiện tại",
     "根目录": "Thư mục gốc",
-    "目录名称": "Tên thư mục"
+    "目录名称": "Tên thư mục",
+    "拖拽文件、压缩包或文件夹到这里": "Kéo tệp, gói nén hoặc thư mục vào đây",
+    "也支持直接粘贴剪贴板中的文件": "Cũng hỗ trợ dán trực tiếp tệp từ bộ nhớ tạm",
+    "上传进度": "Tiến độ tải lên",
+    "当前文件": "Tệp hiện tại"
   }
 }
