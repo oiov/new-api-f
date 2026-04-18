@@ -5,7 +5,7 @@
     <link>https://fishxcode.com/</link>
     <description>FishXCode AI 订阅套餐、价格更新与可售方案动态。 / FishXCode AI subscription plans, pricing updates, and availability feed.</description>
     <language>zh-CN</language>
-    <lastBuildDate>Sat, 18 Apr 2026 05:50:33 GMT</lastBuildDate>
+    <lastBuildDate>Sat, 18 Apr 2026 07:26:37 GMT</lastBuildDate>
     <ttl>300</ttl>
     <atom:link href="https://fishxcode.com/rss.xml" rel="self" type="application/rss+xml" />
     <image>
@@ -38,21 +38,21 @@
       <title>开发文档 / Docs</title>
       <link>https://fishxcode.com/docs</link>
       <guid>https://fishxcode.com/docs</guid>
-      <pubDate>Sat, 18 Apr 2026 05:50:33 GMT</pubDate>
+      <pubDate>Sat, 18 Apr 2026 07:26:37 GMT</pubDate>
       <description><![CDATA[阅读 Claude 接入文档、使用说明与配置指南。 / Read Claude integration docs, usage notes, and setup guides.]]></description>
     </item>
     <item>
       <title>系统状态 / Status</title>
       <link>https://fishxcode.com/status</link>
       <guid>https://fishxcode.com/status</guid>
-      <pubDate>Sat, 18 Apr 2026 05:50:33 GMT</pubDate>
+      <pubDate>Sat, 18 Apr 2026 07:26:37 GMT</pubDate>
       <description><![CDATA[查看当前服务状态、公告和站点说明。 / Check service status, announcements, and site information.]]></description>
     </item>
     <item>
       <title>联系我们 / Contact</title>
       <link>https://fishxcode.com/contact</link>
       <guid>https://fishxcode.com/contact</guid>
-      <pubDate>Sat, 18 Apr 2026 05:50:33 GMT</pubDate>
+      <pubDate>Sat, 18 Apr 2026 07:26:37 GMT</pubDate>
       <description><![CDATA[联系官方客服渠道，咨询售前、采购和售后问题。 / Contact official support for presales, purchasing, and after-sales questions.]]></description>
     </item>
     <item>

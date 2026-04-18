@@ -5858,6 +5858,8 @@
     "分组名称不能为空": "分組名稱不能為空",
     "分组 {{group}} 的配置必须是 JSON 对象": "分組 {{group}} 的配置必須是 JSON 物件",
     "分组 {{group}} 的 mode 仅支持 both、claude、responses": "分組 {{group}} 的 mode 僅支援 both、claude、responses",
-    "分组 {{group}} 至少需要配置 mode 或模型": "分組 {{group}} 至少需要配置 mode 或模型"
+    "分组 {{group}} 至少需要配置 mode 或模型": "分組 {{group}} 至少需要配置 mode 或模型",
+    "透传时写回模型名": "透傳時寫回模型名",
+    "仅在透传请求体时生效，仍会将最终模型名写回请求体的 model 字段，适用于需要兼容模型映射的特殊 Claude 上游": "僅在透傳請求體時生效，仍會將最終模型名寫回請求體的 model 欄位，適用於需要相容模型映射的特殊 Claude 上游"
   }
 }
