@@ -165,20 +165,26 @@ func TestSyncActiveSubscriptionsForPlanTx(t *testing.T) {
 			QuotaResetPeriod:        SubscriptionResetDaily,
 			QuotaResetCustomSeconds: 0,
 			UpgradeGroup:            "vip",
+			AllowedGroupsJSON:       `["default"]`,
+			AllowedModelsJSON:       `["claude-opus-4-7"]`,
+			AllowedVendorIDsJSON:    `[11,22]`,
 		}).Error)
 		require.NoError(t, DB.Create(&UserSubscription{
-			Id:                301,
-			UserId:            10,
-			PlanId:            201,
-			ResourceType:      SubscriptionResourceQuota,
-			RequestCountTotal: 10,
-			ResetPeriod:       SubscriptionResetNever,
-			UpgradeGroup:      "",
-			Status:            "active",
-			StartTime:         now - 7200,
-			EndTime:           now + 86400,
-			LastResetTime:     0,
-			NextResetTime:     0,
+			Id:                   301,
+			UserId:               10,
+			PlanId:               201,
+			ResourceType:         SubscriptionResourceQuota,
+			RequestCountTotal:    10,
+			ResetPeriod:          SubscriptionResetNever,
+			UpgradeGroup:         "",
+			AllowedGroupsJSON:    `["legacy"]`,
+			AllowedModelsJSON:    `["claude-opus-4-6"]`,
+			AllowedVendorIDsJSON: `[9]`,
+			Status:               "active",
+			StartTime:            now - 7200,
+			EndTime:              now + 86400,
+			LastResetTime:        0,
+			NextResetTime:        0,
 		}).Error)
 
 		require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
@@ -190,7 +196,10 @@ func TestSyncActiveSubscriptionsForPlanTx(t *testing.T) {
 		require.Equal(t, SubscriptionResourceRequestCount, sub.ResourceType)
 		require.EqualValues(t, 300, sub.RequestCountTotal)
 		require.Equal(t, SubscriptionResetDaily, sub.ResetPeriod)
-		require.Empty(t, sub.UpgradeGroup)
+		require.Equal(t, "vip", sub.UpgradeGroup)
+		require.Equal(t, `["default"]`, sub.AllowedGroupsJSON)
+		require.Equal(t, `["claude-opus-4-7"]`, sub.AllowedModelsJSON)
+		require.Equal(t, `[11,22]`, sub.AllowedVendorIDsJSON)
 		require.NotZero(t, sub.NextResetTime)
 	})
 }

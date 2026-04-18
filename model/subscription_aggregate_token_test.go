@@ -215,6 +215,71 @@ func TestRefreshSubscriptionAggregateAccessTokenTx_OnlyUsesEligibleRequestCountS
 	})
 }
 
+func TestSyncActiveSubscriptionsForPlanTx_RefreshesAggregateTokenModelLimits(t *testing.T) {
+	withSubscriptionAggregateTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       1004,
+			Username: "plan_sync_user",
+			AffCode:  "plan_sync_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:                2004,
+			Title:             "Claude Opus",
+			Enabled:           true,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 200,
+			DurationUnit:      SubscriptionDurationMonth,
+			DurationValue:     1,
+			UpgradeGroup:      "sub_plan_claude_opus",
+			AllowedModelsJSON: `["claude-opus-4-6"]`,
+		}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                      5004,
+			UserId:                  1004,
+			PlanId:                  2004,
+			ResourceType:            SubscriptionResourceRequestCount,
+			RequestCountTotal:       200,
+			RequestCountUsed:        0,
+			Status:                  "active",
+			StartTime:               now - 3600,
+			EndTime:                 now + 7200,
+			UpgradeGroup:            "sub_plan_claude_opus",
+			AllowedModelsJSON:       `["claude-opus-4-6"]`,
+			SpecificChannelId:       9104,
+			SpecificChannelKeyIndex: 0,
+			CreatedAt:               now - 3600,
+			UpdatedAt:               now - 3600,
+		}).Error)
+
+		token, err := EnsureSubscriptionAggregateAccessTokenForUser(1004)
+		require.NoError(t, err)
+		require.NotNil(t, token)
+		require.True(t, token.ModelLimitsEnabled)
+		require.Equal(t, "claude-opus-4-6", token.ModelLimits)
+
+		require.NoError(t, DB.Model(&SubscriptionPlan{}).Where("id = ?", 2004).Updates(map[string]any{
+			"allowed_models_json": `["claude-opus-4-6","claude-opus-4-7"]`,
+		}).Error)
+
+		require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+			return SyncActiveSubscriptionsForPlanTx(tx, 2004)
+		}))
+
+		var refreshedSub UserSubscription
+		require.NoError(t, DB.Where("id = ?", 5004).First(&refreshedSub).Error)
+		require.Equal(t, `["claude-opus-4-6","claude-opus-4-7"]`, refreshedSub.AllowedModelsJSON)
+
+		var refreshedToken Token
+		require.NoError(t, DB.Where("user_id = ? AND name = ?", 1004, SubscriptionAggregateAccessTokenName).First(&refreshedToken).Error)
+		require.True(t, refreshedToken.ModelLimitsEnabled)
+		require.Equal(t, "claude-opus-4-6,claude-opus-4-7", refreshedToken.ModelLimits)
+	})
+}
+
 func TestGetPreferredSubscriptionRouteForAggregateToken_SkipsUnavailableBoundKey(t *testing.T) {
 	withSubscriptionAggregateTestDB(t, func() {
 		now := common.GetTimestamp()
@@ -286,6 +351,12 @@ func TestGetPreferredSubscriptionRouteForAggregateToken_SkipsUnavailableBoundKey
 		require.NotNil(t, decision)
 		require.Equal(t, 8102, decision.UserSubscriptionId)
 		require.Equal(t, 9102, decision.SpecificChannelId)
+
+		var aggregateToken Token
+		require.NoError(t, DB.Where("user_id = ? AND name = ?", 1101, SubscriptionAggregateAccessTokenName).First(&aggregateToken).Error)
+		require.Equal(t, common.TokenStatusEnabled, aggregateToken.Status)
+		require.True(t, aggregateToken.ModelLimitsEnabled)
+		require.Equal(t, "claude-sonnet-4-6", aggregateToken.ModelLimits)
 	})
 }
 
@@ -333,7 +404,7 @@ func TestSyncDerivedDayPassAccessTokenTx_NormalizesModelLimits(t *testing.T) {
 		require.NoError(t, DB.Create(sub).Error)
 
 		require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
-			_, err := syncDerivedDayPassAccessTokenTx(tx, sub, false)
+			_, _, err := syncDerivedDayPassAccessTokenTx(tx, sub, false)
 			return err
 		}))
 

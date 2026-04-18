@@ -147,7 +147,11 @@ func shouldSyncActiveSubscriptionsForPlanUpdate(currentPlan, nextPlan *model.Sub
 			model.NormalizeResetPeriod(nextPlan.QuotaResetPeriod) ||
 		currentPlan.QuotaResetCustomSeconds != nextPlan.QuotaResetCustomSeconds ||
 		currentPlan.QuotaResetUseFixedClock != nextPlan.QuotaResetUseFixedClock ||
-		currentPlan.QuotaResetFixedSeconds != nextPlan.QuotaResetFixedSeconds
+		currentPlan.QuotaResetFixedSeconds != nextPlan.QuotaResetFixedSeconds ||
+		strings.TrimSpace(currentPlan.UpgradeGroup) != strings.TrimSpace(nextPlan.UpgradeGroup) ||
+		strings.TrimSpace(currentPlan.AllowedGroupsJSON) != strings.TrimSpace(nextPlan.AllowedGroupsJSON) ||
+		strings.TrimSpace(currentPlan.AllowedModelsJSON) != strings.TrimSpace(nextPlan.AllowedModelsJSON) ||
+		strings.TrimSpace(currentPlan.AllowedVendorIDsJSON) != strings.TrimSpace(nextPlan.AllowedVendorIDsJSON)
 }
 
 func normalizeSubscriptionPlanResetFields(plan *model.SubscriptionPlan) error {
@@ -863,6 +867,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	needSyncActiveSubscriptions := shouldSyncActiveSubscriptionsForPlanUpdate(currentPlan, &req.Plan)
+	affectedAggregateUserIDs := make([]int, 0)
 
 	err = model.DB.Transaction(func(tx *gorm.DB) error {
 		var actualIssuedCount int64
@@ -913,13 +918,19 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return err
 		}
 		if needSyncActiveSubscriptions {
-			if err := model.SyncActiveSubscriptionsForPlanTx(tx, id); err != nil {
+			userIDs, err := model.SyncActiveSubscriptionsForPlanUsersTx(tx, id)
+			if err != nil {
 				return fmt.Errorf("同步活跃订阅快照失败: %w", err)
 			}
+			affectedAggregateUserIDs = userIDs
 		}
 		return nil
 	})
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.SyncSubscriptionAccessTokenCachesForUsers(affectedAggregateUserIDs); err != nil {
 		common.ApiError(c, err)
 		return
 	}
