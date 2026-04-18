@@ -47,7 +47,10 @@
   Cache-Control: public, max-age=2592000
 
 /index.html
-  Cache-Control: no-cache
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/*.html
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 
 /
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0

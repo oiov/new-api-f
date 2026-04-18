@@ -23,8 +23,11 @@ import { Typography } from '@douyinfe/semi-ui';
 import { getFooterHTML, getLogo, getSystemName } from '../../helpers';
 import { StatusContext } from '../../context/Status';
 
+const APP_DEPLOYED_AT =
+  typeof __APP_DEPLOYED_AT__ === 'string' ? __APP_DEPLOYED_AT__ : '';
+
 const FooterBar = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [footer, setFooter] = useState(getFooterHTML());
   const systemName = getSystemName();
   const logo = getLogo();
@@ -39,6 +42,18 @@ const FooterBar = () => {
   };
 
   const currentYear = new Date().getFullYear();
+  const deployedTimeText = useMemo(() => {
+    if (!APP_DEPLOYED_AT) {
+      return '';
+    }
+
+    const deployedDate = new Date(APP_DEPLOYED_AT);
+    if (Number.isNaN(deployedDate.getTime())) {
+      return APP_DEPLOYED_AT;
+    }
+
+    return deployedDate.toLocaleString(i18n.language, { hour12: false });
+  }, [i18n.language]);
   const seoLinks = useMemo(
     () => [
       { href: '/rss.xml', label: t('RSS') },
@@ -196,23 +211,30 @@ const FooterBar = () => {
         )}
 
         <div className='flex flex-col md:flex-row items-center justify-between w-full max-w-[1110px] gap-6'>
-          <div className='flex flex-wrap items-center gap-2 md:gap-4'>
-            <Typography.Text className='text-sm !text-semi-color-text-1'>
-              © {currentYear} {systemName}. {t('版权所有')}
-            </Typography.Text>
-            <div className='flex items-center gap-3 text-sm'>
-              {seoLinks.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  target='_blank'
-                  rel='noopener noreferrer'
-                  className='!text-semi-color-text-1 hover:!text-semi-color-primary transition-colors'
-                >
-                  {item.label}
-                </a>
-              ))}
+          <div className='flex flex-col gap-2'>
+            <div className='flex flex-wrap items-center gap-2 md:gap-4'>
+              <Typography.Text className='text-sm !text-semi-color-text-1'>
+                © {currentYear} {systemName}. {t('版权所有')}
+              </Typography.Text>
+              <div className='flex items-center gap-3 text-sm'>
+                {seoLinks.map((item) => (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    className='!text-semi-color-text-1 hover:!text-semi-color-primary transition-colors'
+                  >
+                    {item.label}
+                  </a>
+                ))}
+              </div>
             </div>
+            {deployedTimeText ? (
+              <Typography.Text className='text-xs !text-semi-color-text-2 opacity-80'>
+                {t('部署时间')}：{deployedTimeText}
+              </Typography.Text>
+            ) : null}
           </div>
 
           <div className='text-sm'>
@@ -246,7 +268,12 @@ const FooterBar = () => {
             className='custom-footer'
             dangerouslySetInnerHTML={{ __html: footer }}
           ></div>
-          <div className='absolute bottom-2 right-4 flex items-center gap-3 text-xs !text-semi-color-text-2 opacity-70'>
+          <div className='absolute bottom-2 right-4 flex flex-wrap items-center justify-end gap-3 text-xs !text-semi-color-text-2 opacity-70'>
+            {deployedTimeText ? (
+              <span>
+                {t('部署时间')}：{deployedTimeText}
+              </span>
+            ) : null}
             {seoLinks.map((item) => (
               <a
                 key={item.href}

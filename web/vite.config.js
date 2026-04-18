@@ -24,6 +24,10 @@ import path from 'path';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
 const DEFAULT_PROXY_TARGET = 'https://api.fishxcode.com';
+const deployedAt =
+  process.env.VITE_DEPLOYED_AT ||
+  process.env.DEPLOYED_AT ||
+  new Date().toISOString();
 const proxyTarget =
   process.env.BACKEND_ORIGIN ||
   process.env.VITE_REACT_APP_BACKEND_ORIGIN ||
@@ -69,6 +73,9 @@ function createManualChunk(id) {
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => ({
+  define: {
+    __APP_DEPLOYED_AT__: JSON.stringify(deployedAt),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
