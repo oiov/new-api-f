@@ -33,9 +33,7 @@ func validUserInfo(username string, role int) bool {
 func authHelper(c *gin.Context, minRole int) {
 	session := sessions.Default(c)
 	username := session.Get("username")
-	role := session.Get("role")
 	id := session.Get("id")
-	status := session.Get("status")
 	useAccessToken := false
 	if username == nil {
 		// Check access token
@@ -47,24 +45,22 @@ func authHelper(c *gin.Context, minRole int) {
 			})
 			c.Abort()
 			return
-		}
-		user := model.ValidateAccessToken(accessToken)
-		if user != nil && user.Username != "" {
-			if !validUserInfo(user.Username, user.Role) {
+			}
+			user := model.ValidateAccessToken(accessToken)
+			if user != nil && user.Username != "" {
+				if !validUserInfo(user.Username, user.Role) {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,
 					"message": "无权进行此操作，用户信息无效",
 				})
 				c.Abort()
 				return
-			}
-			// Token is valid
-			username = user.Username
-			role = user.Role
-			id = user.Id
-			status = user.Status
-			useAccessToken = true
-		} else {
+				}
+				// Token is valid
+				username = user.Username
+				id = user.Id
+				useAccessToken = true
+			} else {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "无权进行此操作，access token 无效",
@@ -108,8 +104,6 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	role = userCache.Role
-	status = userCache.Status
 	username = userCache.Username
 	if userCache.Status == common.UserStatusDisabled {
 		c.JSON(http.StatusOK, gin.H{
