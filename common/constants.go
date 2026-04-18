@@ -200,6 +200,11 @@ var (
 	CriticalRateLimitNum            = 20
 	CriticalRateLimitDuration int64 = 20 * 60
 
+	// Per-user token test rate limit (applies after authentication, keyed by user ID)
+	TokenTestRateLimitEnable         = true
+	TokenTestRateLimitNum            = 60
+	TokenTestRateLimitDuration int64 = 20 * 60
+
 	UploadRateLimitNum            = 10
 	UploadRateLimitDuration int64 = 60
 

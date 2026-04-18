@@ -36,6 +36,12 @@ import {
 } from '../../helpers/token';
 
 const SUBSCRIPTION_ACCESS_TOKEN_NAME = 'Subscription Access';
+const BATCH_TOKEN_TEST_INTERVAL_MS = 400;
+
+const waitForBatchTokenTest = (duration = BATCH_TOKEN_TEST_INTERVAL_MS) =>
+  new Promise((resolve) => {
+    window.setTimeout(resolve, duration);
+  });
 
 const isProtectedSubscriptionAccessToken = (token) => {
   if (!token) {
@@ -618,73 +624,69 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     const tokenIds = tokenRecords.map((item) => item.id);
     const results = [];
     const recordMap = new Map(tokenRecords.map((item) => [item.id, item]));
-    const concurrency = 3;
-    let cursor = 0;
-
-    const worker = async () => {
-      while (cursor < tokenIds.length) {
-        const current = tokenIds[cursor];
-        cursor += 1;
-        setTestingTokenIds((prev) => ({ ...prev, [current]: true }));
-        try {
-          const currentRecord = recordMap.get(current);
-          const res = await API.post(
-            `/api/token/${current}/test`,
-            buildTokenTestPayload(resolveTokenTestConfig(currentRecord?.group)),
-          );
-          if (res?.data?.success) {
-            const payload = res.data.data || {};
-            results.push({ token_id: current, ...payload });
-            const list = Array.isArray(payload?.results) ? payload.results : [];
-            const allOk = list.length > 0 && list.every((item) => item?.ok);
-            setLastTestResultsById((prev) => ({
-              ...prev,
-              [current]: {
-                at: Number(payload?.last_test_at || 0) * 1000 || Date.now(),
-                ok: allOk,
-                error: '',
-                results: list,
-                mode: String(payload?.mode || 'both'),
-              },
-            }));
-          } else {
-            results.push({
-              token_id: current,
-              results: [],
-              error: res?.data?.message || t('测试失败'),
-            });
-            setLastTestResultsById((prev) => ({
-              ...prev,
-              [current]: {
-                at: Date.now(),
-                ok: false,
-                error: res?.data?.message || t('测试失败'),
-                results: [],
-              },
-            }));
-          }
-        } catch (error) {
+    for (let index = 0; index < tokenIds.length; index += 1) {
+      const current = tokenIds[index];
+      setTestingTokenIds((prev) => ({ ...prev, [current]: true }));
+      try {
+        const currentRecord = recordMap.get(current);
+        const res = await API.post(
+          `/api/token/${current}/test`,
+          buildTokenTestPayload(resolveTokenTestConfig(currentRecord?.group)),
+        );
+        if (res?.data?.success) {
+          const payload = res.data.data || {};
+          results.push({ token_id: current, ...payload });
+          const list = Array.isArray(payload?.results) ? payload.results : [];
+          const allOk = list.length > 0 && list.every((item) => item?.ok);
+          setLastTestResultsById((prev) => ({
+            ...prev,
+            [current]: {
+              at: Number(payload?.last_test_at || 0) * 1000 || Date.now(),
+              ok: allOk,
+              error: '',
+              results: list,
+              mode: String(payload?.mode || 'both'),
+            },
+          }));
+        } else {
           results.push({
             token_id: current,
             results: [],
-            error: error?.message || t('测试失败'),
+            error: res?.data?.message || t('测试失败'),
           });
           setLastTestResultsById((prev) => ({
             ...prev,
             [current]: {
               at: Date.now(),
               ok: false,
-              error: error?.message || t('测试失败'),
+              error: res?.data?.message || t('测试失败'),
               results: [],
             },
           }));
-        } finally {
-          setTestingTokenIds((prev) => ({ ...prev, [current]: false }));
         }
+      } catch (error) {
+        results.push({
+          token_id: current,
+          results: [],
+          error: error?.message || t('测试失败'),
+        });
+        setLastTestResultsById((prev) => ({
+          ...prev,
+          [current]: {
+            at: Date.now(),
+            ok: false,
+            error: error?.message || t('测试失败'),
+            results: [],
+          },
+        }));
+      } finally {
+        setTestingTokenIds((prev) => ({ ...prev, [current]: false }));
       }
-    };
 
-    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+      if (index < tokenIds.length - 1) {
+        await waitForBatchTokenTest();
+      }
+    }
 
     const okCount = results.filter((item) => {
       const list = Array.isArray(item?.results) ? item.results : [];

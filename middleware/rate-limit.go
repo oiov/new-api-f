@@ -108,6 +108,15 @@ func CriticalRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+// TokenTestRateLimit returns a per-user rate limiter for token test endpoints.
+// Configurable via TOKEN_TEST_RATE_LIMIT_ENABLE / TOKEN_TEST_RATE_LIMIT / TOKEN_TEST_RATE_LIMIT_DURATION.
+func TokenTestRateLimit() func(c *gin.Context) {
+	if !common.TokenTestRateLimitEnable {
+		return defNext
+	}
+	return userRateLimitFactory(common.TokenTestRateLimitNum, common.TokenTestRateLimitDuration, "TT")
+}
+
 func DownloadRateLimit() func(c *gin.Context) {
 	return rateLimitFactory(common.DownloadRateLimitNum, common.DownloadRateLimitDuration, "DW")
 }
