@@ -43,6 +43,8 @@ const waitForBatchTokenTest = (duration = BATCH_TOKEN_TEST_INTERVAL_MS) =>
     window.setTimeout(resolve, duration);
   });
 
+const normalizeTokenName = (value) => String(value || '').trim().toLowerCase();
+
 const isProtectedSubscriptionAccessToken = (token) => {
   if (!token) {
     return false;
@@ -103,6 +105,21 @@ const buildTokenTestRows = (results = []) => {
 
 export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const { t } = useTranslation();
+  const COLUMN_KEYS = {
+    NAME: 'name',
+    STATUS: 'status',
+    QUOTA_USAGE: 'quota_usage',
+    GROUP: 'group',
+    TOKEN_KEY: 'token_key',
+    MODEL_LIMITS: 'model_limits',
+    ALLOW_IPS: 'allow_ips',
+    CREATED_TIME: 'created_time',
+    EXPIRED_TIME: 'expired_time',
+    LAST_TEST: 'last_test',
+    USERNAME: 'username',
+    OPERATE: 'operate',
+  };
+  const COLUMN_STORAGE_KEY = 'tokens-table-columns-v1';
   const emptyFilters = {
     searchKeyword: '',
     searchToken: '',
@@ -122,8 +139,40 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const [searchMode, setSearchMode] = useState(false); // 是否处于搜索结果视图
   const [appliedFilters, setAppliedFilters] = useState(emptyFilters);
 
+  const getDefaultColumnVisibility = () => ({
+    [COLUMN_KEYS.NAME]: true,
+    [COLUMN_KEYS.STATUS]: true,
+    [COLUMN_KEYS.QUOTA_USAGE]: true,
+    [COLUMN_KEYS.GROUP]: true,
+    [COLUMN_KEYS.TOKEN_KEY]: false,
+    [COLUMN_KEYS.MODEL_LIMITS]: false,
+    [COLUMN_KEYS.ALLOW_IPS]: false,
+    [COLUMN_KEYS.CREATED_TIME]: false,
+    [COLUMN_KEYS.EXPIRED_TIME]: true,
+    [COLUMN_KEYS.LAST_TEST]: false,
+    [COLUMN_KEYS.USERNAME]: false,
+    [COLUMN_KEYS.OPERATE]: true,
+  });
+
+  const getInitialVisibleColumns = () => {
+    const defaults = getDefaultColumnVisibility();
+    const savedColumns = localStorage.getItem(COLUMN_STORAGE_KEY);
+    if (!savedColumns) {
+      return defaults;
+    }
+    try {
+      return { ...defaults, ...JSON.parse(savedColumns) };
+    } catch (error) {
+      return defaults;
+    }
+  };
+
   // Selection state
   const [selectedKeys, setSelectedKeys] = useState([]);
+  const [visibleColumns, setVisibleColumns] = useState(
+    getInitialVisibleColumns,
+  );
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
 
   // Edit state
   const [showEdit, setShowEdit] = useState(false);
@@ -139,10 +188,38 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const keyRequestsRef = useRef({});
   const [testingTokenIds, setTestingTokenIds] = useState({});
   const [lastTestResultsById, setLastTestResultsById] = useState({});
+  const [highlightedTokenName, setHighlightedTokenName] = useState('');
 
   // Form state
   const [formApi, setFormApi] = useState(null);
   const formInitValues = emptyFilters;
+
+  const initDefaultColumns = () => {
+    const defaults = getDefaultColumnVisibility();
+    setVisibleColumns(defaults);
+    localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(defaults));
+  };
+
+  const handleColumnVisibilityChange = (columnKey, checked) => {
+    setVisibleColumns((prev) => ({
+      ...prev,
+      [columnKey]: checked,
+    }));
+  };
+
+  const handleSelectAll = (checked) => {
+    const updatedColumns = {};
+    Object.values(COLUMN_KEYS).forEach((key) => {
+      updatedColumns[key] = checked;
+    });
+    setVisibleColumns(updatedColumns);
+  };
+
+  useEffect(() => {
+    if (Object.keys(visibleColumns).length > 0) {
+      localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(visibleColumns));
+    }
+  }, [visibleColumns]);
 
   // Get form values helper function
   const getFormValues = () => {
@@ -734,20 +811,24 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   // Handle row styling
   const handleRow = (record, index) => {
     const isSelected = selectedKeys.some((token) => token?.id === record?.id);
+    const isHighlighted =
+      normalizeTokenName(record?.name) !== '' &&
+      normalizeTokenName(record?.name) ===
+        normalizeTokenName(highlightedTokenName);
+    const classNames = ['token-row'];
+
     if (record.status !== 1) {
-      return {
-        className: isSelected
-          ? 'token-row token-row--disabled token-row--selected'
-          : 'token-row token-row--disabled',
-      };
+      classNames.push('token-row--disabled');
     }
     if (isSelected) {
-      return {
-        className: 'token-row token-row--selected',
-      };
+      classNames.push('token-row--selected');
     }
+    if (isHighlighted) {
+      classNames.push('token-row--highlight');
+    }
+
     return {
-      className: 'token-row',
+      className: classNames.join(' '),
     };
   };
 
@@ -887,6 +968,13 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     // UI state
     compactMode,
     setCompactMode,
+    visibleColumns,
+    showColumnSelector,
+    setShowColumnSelector,
+    handleColumnVisibilityChange,
+    handleSelectAll,
+    initDefaultColumns,
+    COLUMN_KEYS,
     showKeys,
     setShowKeys,
     resolvedTokenKeys,
@@ -918,6 +1006,8 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     batchCopyTokens,
     testingTokenIds,
     lastTestResultsById,
+    highlightedTokenName,
+    setHighlightedTokenName,
     testToken,
     batchTestTokens,
     syncPageData,

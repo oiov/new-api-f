@@ -203,10 +203,18 @@ function buildCCSwitchURL(app, name, models, apiKey) {
   return `ccswitch://v1/import?${params.toString()}`;
 }
 
-function buildProviderName(group, fallbackLabel) {
+function buildProviderName(group, tokenName, fallbackLabel) {
+  const siteName = 'FishXCode';
   const normalizedGroup = String(group || '').trim();
+  const normalizedTokenName = String(tokenName || '').trim();
+  if (normalizedGroup && normalizedTokenName) {
+    return `${siteName}-${normalizedGroup}-${normalizedTokenName}`;
+  }
+  if (normalizedTokenName) {
+    return `${siteName}-${normalizedTokenName}`;
+  }
   if (normalizedGroup) {
-    return `FishXCode (${normalizedGroup})`;
+    return `${siteName}-${normalizedGroup}`;
   }
   return fallbackLabel;
 }
@@ -372,6 +380,7 @@ export default function CCSwitchModal({
       setName(
         buildProviderName(
           tokenRecord?.group,
+          tokenRecord?.name,
           effectiveAppConfigs[nextApp]?.defaultName || effectiveAppConfigs.claude.defaultName,
         ),
       );
@@ -380,7 +389,13 @@ export default function CCSwitchModal({
 
   const handleAppChange = (val) => {
     setApp(val);
-    setName(buildProviderName(tokenRecord?.group, effectiveAppConfigs[val]?.defaultName || APP_CONFIGS[val].defaultName));
+    setName(
+      buildProviderName(
+        tokenRecord?.group,
+        tokenRecord?.name,
+        effectiveAppConfigs[val]?.defaultName || APP_CONFIGS[val].defaultName,
+      ),
+    );
     setModels(effectiveDefaultModels[val] || {});
     setModelTestResults({});
     setTestingModelKey('');
@@ -720,7 +735,12 @@ export default function CCSwitchModal({
   );
 
   const currentProviderName =
-    name || buildProviderName(tokenRecord?.group, currentConfig.defaultName);
+    name ||
+    buildProviderName(
+      tokenRecord?.group,
+      tokenRecord?.name,
+      currentConfig.defaultName,
+    );
   const canOpenCCSwitch =
     Boolean(finalImportModels.model) &&
     !submitting &&
@@ -958,7 +978,11 @@ export default function CCSwitchModal({
               <Input
                 value={name}
                 onChange={setName}
-                placeholder={buildProviderName(tokenRecord?.group, currentConfig.defaultName)}
+                placeholder={buildProviderName(
+                  tokenRecord?.group,
+                  tokenRecord?.name,
+                  currentConfig.defaultName,
+                )}
                 style={{
                   borderRadius: 12,
                   background: 'rgba(248, 250, 252, 0.92)',

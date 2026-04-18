@@ -4219,13 +4219,27 @@ const SubscriptionPlansCard = ({
                       <Text
                         link
                         className='mx-1'
-                        onClick={() => navigate('/console/token')}
+                        onClick={() =>
+                          navigate(
+                            '/console/token?highlight=Subscription%20Access&keyword=Subscription%20Access',
+                          )
+                        }
                       >
                         {t('令牌管理')}
                       </Text>
-                      <span>
-                        {t('选择 Subscription Access，使用 CC Switch 一键导入。')}
-                      </span>
+                      <span>{t('选择')}</span>
+                      <Text
+                        link
+                        className='mx-1'
+                        onClick={() =>
+                          navigate(
+                            '/console/token?highlight=Subscription%20Access&keyword=Subscription%20Access',
+                          )
+                        }
+                      >
+                        Subscription Access
+                      </Text>
+                      <span>{t('，使用 CC Switch 一键导入。')}</span>
                     </div>
                   </div>
 

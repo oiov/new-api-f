@@ -83,6 +83,36 @@ const isProtectedSubscriptionAccessToken = (record) => {
   return expiredTime === -1 || expiredTime > now;
 };
 
+const getTokenSourceMeta = (record, t) => {
+  const source = String(record?.source || '').trim();
+  switch (source) {
+    case 'subscription_aggregate_access':
+      return {
+        prefixLabel: t('系统生成'),
+        label: t('订阅聚合'),
+        color: 'cyan',
+      };
+    case 'subscription_specific_channel':
+      return {
+        prefixLabel: t('系统生成'),
+        label: t('专属通道'),
+        color: 'orange',
+      };
+    case 'subscription_derived_day_pass_access':
+      return {
+        prefixLabel: t('系统生成'),
+        label: t('日通行证'),
+        color: 'purple',
+      };
+    default:
+      return {
+        prefixLabel: '',
+        label: t('用户创建'),
+        color: 'grey',
+      };
+  }
+};
+
 // Render functions
 function renderTimestamp(timestamp) {
   return <>{timestamp2string(timestamp)}</>;
@@ -168,10 +198,12 @@ const renderTokenKey = (
   loadingTokenKeys,
   toggleTokenVisibility,
   copyTokenKey,
+  t,
   allowSensitiveActions = true,
 ) => {
   const revealed = !!showKeys[record.id];
   const loading = allowSensitiveActions ? !!loadingTokenKeys[record.id] : false;
+  const tokenSourceMeta = getTokenSourceMeta(record, t);
   const keyValue =
     allowSensitiveActions && revealed && resolvedTokenKeys[record.id]
       ? resolvedTokenKeys[record.id]
@@ -179,7 +211,17 @@ const renderTokenKey = (
   const displayedKey = keyValue ? `sk-${keyValue}` : '';
 
   return (
-    <div className='w-[200px]'>
+    <div className='w-[240px]'>
+      <div className='mb-1 flex items-center gap-2'>
+        {tokenSourceMeta.prefixLabel ? (
+          <Tag color='blue' size='small' shape='circle'>
+            {tokenSourceMeta.prefixLabel}
+          </Tag>
+        ) : null}
+        <Tag color={tokenSourceMeta.color} size='small' shape='circle'>
+          {tokenSourceMeta.label}
+        </Tag>
+      </div>
       <Input
         readOnly
         value={displayedKey}
@@ -592,6 +634,7 @@ export const getTokensColumns = ({
 }) => {
   const columns = [
     {
+      key: 'name',
       title: t('名称'),
       dataIndex: 'name',
     },
@@ -624,21 +667,25 @@ export const getTokensColumns = ({
           loadingTokenKeys,
           toggleTokenVisibility,
           copyTokenKey,
+          t,
           allowSensitiveActions,
         ),
     },
     {
       title: t('可用模型'),
+      key: 'model_limits',
       dataIndex: 'model_limits',
       render: (text, record) => renderModelLimits(text, record, t),
     },
     {
       title: t('IP限制'),
+      key: 'allow_ips',
       dataIndex: 'allow_ips',
       render: (text) => renderAllowIps(text, t),
     },
     {
       title: t('创建时间'),
+      key: 'created_time',
       dataIndex: 'created_time',
       render: (text, record, index) => {
         return <div>{renderTimestamp(text)}</div>;
@@ -646,6 +693,7 @@ export const getTokensColumns = ({
     },
     {
       title: t('过期时间'),
+      key: 'expired_time',
       dataIndex: 'expired_time',
       render: (text, record, index) => {
         return (
@@ -656,7 +704,8 @@ export const getTokensColumns = ({
       },
     },
     {
-      title: '',
+      title: t('操作'),
+      key: 'operate',
       dataIndex: 'operate',
       render: (text, record, index) =>
         renderOperations(
