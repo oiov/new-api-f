@@ -60,6 +60,7 @@ const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
 const FinancePage = lazy(() => import('./pages/Finance'));
 const R2StoragePage = lazy(() => import('./pages/R2Storage'));
+const R2StoragePreviewPage = lazy(() => import('./pages/R2Storage/Preview'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Chat2Link = lazy(() => import('./pages/Chat2Link'));
 const Midjourney = lazy(() => import('./pages/Midjourney'));
@@ -459,6 +460,16 @@ function App() {
               <RootRoute>
                 <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                   <R2StoragePage />
+                </Suspense>
+              </RootRoute>
+            }
+          />
+          <Route
+            path='/console/r2-storage/preview'
+            element={
+              <RootRoute>
+                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <R2StoragePreviewPage />
                 </Suspense>
               </RootRoute>
             }

@@ -19,6 +19,7 @@ import { IconRefresh, IconUpload } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import CardTable from '../../components/common/ui/CardTable';
 import { API, copy, openPage, showError, showSuccess } from '../../helpers';
+import { getDisplayFileType, resolveViewerFileType } from './utils';
 
 const { Text, Title } = Typography;
 const REMOTE_PAGE_SIZE = 100;
@@ -28,7 +29,8 @@ function formatFileSize(size) {
   const value = Number(size || 0);
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(2)} KB`;
-  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)} MB`;
+  if (value < 1024 * 1024 * 1024)
+    return `${(value / 1024 / 1024).toFixed(2)} MB`;
   return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
@@ -40,13 +42,18 @@ function formatDateTime(value, locale) {
 }
 
 function normalizePrefix(prefix = '') {
-  const value = String(prefix).trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const value = String(prefix)
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '');
   return value ? `${value}/` : '';
 }
 
 function buildUploadObjectKey(prefix, fileName) {
   const normalizedPrefix = normalizePrefix(prefix);
-  const normalizedName = String(fileName || '').trim().replace(/^\/+/, '');
+  const normalizedName = String(fileName || '')
+    .trim()
+    .replace(/^\/+/, '');
   return `${normalizedPrefix}${normalizedName}`;
 }
 
@@ -64,13 +71,19 @@ function getFileTypeTagConfig(fileType) {
       return { color: 'cyan', label: '音频' };
     case 'text':
       return { color: 'orange', label: '文本' };
+    case 'spreadsheet':
+      return { color: 'indigo', label: '表格' };
+    case 'docx':
+      return { color: 'blue', label: '文档' };
+    case 'pptx':
+      return { color: 'amber', label: '演示' };
     default:
       return { color: 'grey', label: '文件' };
   }
 }
 
 function isPreviewable(item) {
-  return ['image', 'pdf', 'video', 'audio', 'text'].includes(item?.file_type);
+  return Boolean(resolveViewerFileType(item));
 }
 
 const R2StoragePage = () => {
@@ -94,10 +107,6 @@ const R2StoragePage = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(LOCAL_PAGE_SIZE);
-  const [previewModal, setPreviewModal] = useState({
-    visible: false,
-    item: null,
-  });
   const [renameModal, setRenameModal] = useState({
     visible: false,
     oldKey: '',
@@ -121,10 +130,20 @@ const R2StoragePage = () => {
     totalCount: 0,
   });
   const [accessUrlMap, setAccessUrlMap] = useState({});
-  const [previewState, setPreviewState] = useState({ loading: false, url: '' });
 
   const getObjectProxyUrl = (objectKey) =>
     `/api/storage/admin/objects/content?key=${encodeURIComponent(objectKey || '')}`;
+
+  const getPreviewPageUrl = (item) => {
+    if (!item) return '';
+    const params = new URLSearchParams({
+      key: item.key || '',
+      name: item.name || '',
+      extension: item.extension || '',
+      fileType: item.file_type || '',
+    });
+    return `/console/r2-storage/preview?${params.toString()}`;
+  };
 
   const getObjectOpenUrl = (item) => {
     if (!item) return '';
@@ -161,7 +180,10 @@ const R2StoragePage = () => {
     }
 
     const cached = accessUrlMap[item.key];
-    if (cached?.url && (!cached.expiresAt || cached.expiresAt * 1000 > Date.now() + 5000)) {
+    if (
+      cached?.url &&
+      (!cached.expiresAt || cached.expiresAt * 1000 > Date.now() + 5000)
+    ) {
       return cached.url;
     }
 
@@ -227,7 +249,7 @@ const R2StoragePage = () => {
 
   const handlePreviewOpen = (item) => {
     if (!item || !isPreviewable(item)) return;
-    setPreviewModal({ visible: true, item });
+    openPage(getPreviewPageUrl(item));
   };
 
   const loadObjects = async ({
@@ -255,9 +277,10 @@ const R2StoragePage = () => {
       setData(responseData);
       setQuery({ prefix: nextPrefix, search: nextSearch });
       setAccessUrlMap({});
-      setPreviewState({ loading: false, url: '' });
       setItems((prev) =>
-        append ? [...prev, ...(responseData.items || [])] : responseData.items || [],
+        append
+          ? [...prev, ...(responseData.items || [])]
+          : responseData.items || [],
       );
       if (!append) {
         setSelectedRowKeys([]);
@@ -293,26 +316,6 @@ const R2StoragePage = () => {
       });
   }, [data?.public_url, pagedItems, viewMode]);
 
-  useEffect(() => {
-    const item = previewModal.item;
-    if (!previewModal.visible || !item || item.file_type === 'directory') {
-      setPreviewState({ loading: false, url: '' });
-      return;
-    }
-
-    let cancelled = false;
-    setPreviewState({ loading: true, url: '' });
-    resolveAccessUrl(item).then((url) => {
-      if (!cancelled) {
-        setPreviewState({ loading: false, url });
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [previewModal.item, previewModal.visible]);
-
   const handleSearch = () => {
     loadObjects({
       nextPrefix: prefixInput.trim(),
@@ -325,7 +328,12 @@ const R2StoragePage = () => {
   const handleReset = () => {
     setPrefixInput('');
     setSearchInput('');
-    loadObjects({ nextPrefix: '', nextSearch: '', nextToken: '', append: false });
+    loadObjects({
+      nextPrefix: '',
+      nextSearch: '',
+      nextToken: '',
+      append: false,
+    });
   };
 
   const handleOpenUploadModal = () => {
@@ -362,7 +370,10 @@ const R2StoragePage = () => {
     const currentPrefix = query.prefix || prefixInput.trim();
     return Array.from(fileList || []).map((file, index) => {
       const relativePath = String(
-        pathResolver?.(file, index) || file.webkitRelativePath || file.name || '',
+        pathResolver?.(file, index) ||
+          file.webkitRelativePath ||
+          file.name ||
+          '',
       ).trim();
       const preferredName = relativePath || file.name || `file-${index + 1}`;
       return {
@@ -398,7 +409,8 @@ const R2StoragePage = () => {
     if (entry.isFile) {
       return new Promise((resolve) => {
         entry.file(
-          (file) => resolve([{ file, relativePath: `${parentPath}${file.name}` }]),
+          (file) =>
+            resolve([{ file, relativePath: `${parentPath}${file.name}` }]),
           () => resolve([]),
         );
       });
@@ -413,7 +425,10 @@ const R2StoragePage = () => {
 
     while (true) {
       const entries = await new Promise((resolve) => {
-        reader.readEntries((batch) => resolve(batch || []), () => resolve([]));
+        reader.readEntries(
+          (batch) => resolve(batch || []),
+          () => resolve([]),
+        );
       });
       if (!entries.length) {
         break;
@@ -450,12 +465,15 @@ const R2StoragePage = () => {
     const items = Array.from(dataTransfer?.items || []);
     const handleItems = items.filter(
       (item) =>
-        item.kind === 'file' && typeof item.getAsFileSystemHandle === 'function',
+        item.kind === 'file' &&
+        typeof item.getAsFileSystemHandle === 'function',
     );
 
     if (handleItems.length > 0) {
       const nested = await Promise.all(
-        handleItems.map(async (item) => readDroppedHandle(await item.getAsFileSystemHandle())),
+        handleItems.map(async (item) =>
+          readDroppedHandle(await item.getAsFileSystemHandle()),
+        ),
       );
       return nested.flat();
     }
@@ -555,7 +573,9 @@ const R2StoragePage = () => {
               currentFileSize || Number(progressEvent?.loaded || 0),
             );
             const currentPercent =
-              currentFileSize > 0 ? Math.min(100, Math.round((loaded / currentFileSize) * 100)) : 100;
+              currentFileSize > 0
+                ? Math.min(100, Math.round((loaded / currentFileSize) * 100))
+                : 100;
             const totalPercent =
               totalBytes > 0
                 ? Math.min(
@@ -713,7 +733,10 @@ const R2StoragePage = () => {
       setSelectedRowKeys((prev) =>
         prev.filter((itemKey) => !deletedKeys.has(itemKey)),
       );
-      if (responseData?.failed_keys && Object.keys(responseData.failed_keys).length > 0) {
+      if (
+        responseData?.failed_keys &&
+        Object.keys(responseData.failed_keys).length > 0
+      ) {
         showError(
           t('部分对象删除失败') +
             `：${Object.keys(responseData.failed_keys).length}`,
@@ -774,7 +797,8 @@ const R2StoragePage = () => {
         key: 'file_type',
         width: 100,
         render: (_, record) => {
-          const tag = getFileTypeTagConfig(record.file_type);
+          const displayType = getDisplayFileType(record);
+          const tag = getFileTypeTagConfig(displayType);
           return <Tag color={tag.color}>{t(tag.label)}</Tag>;
         },
       },
@@ -819,7 +843,11 @@ const R2StoragePage = () => {
               {t('预览')}
             </Button>
             {record.file_type === 'directory' ? (
-              <Button theme='light' size='small' onClick={() => handleEnterDirectory(record)}>
+              <Button
+                theme='light'
+                size='small'
+                onClick={() => handleEnterDirectory(record)}
+              >
                 {t('进入')}
               </Button>
             ) : (
@@ -884,64 +912,9 @@ const R2StoragePage = () => {
     [accessUrlMap, data?.public_url, deletingKey, t],
   );
 
-  const previewContent = useMemo(() => {
-    const item = previewModal.item;
-    if (!item) return null;
-    if (previewState.loading) {
-      return <Text type='secondary'>{t('加载中')}</Text>;
-    }
-    if (!previewState.url) {
-      return <Text type='secondary'>{t('获取访问链接失败')}</Text>;
-    }
-
-    if (item.file_type === 'image') {
-      return (
-        <img
-          src={previewState.url}
-          alt={item.name}
-          style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain' }}
-        />
-      );
-    }
-    if (item.file_type === 'pdf') {
-      return (
-        <iframe
-          src={previewState.url}
-          title={item.name}
-          style={{ width: '100%', height: '70vh', border: 'none' }}
-        />
-      );
-    }
-    if (item.file_type === 'video') {
-      return (
-        <video
-          src={previewState.url}
-          controls
-          style={{ width: '100%', maxHeight: '70vh', background: '#000' }}
-        />
-      );
-    }
-    if (item.file_type === 'audio') {
-      return <audio src={previewState.url} controls style={{ width: '100%' }} />;
-    }
-    if (item.file_type === 'text') {
-      return (
-        <div className='flex flex-col gap-3'>
-          <Text type='secondary'>{t('文本类型文件建议在新窗口中查看。')}</Text>
-          <Button onClick={() => openPage(previewState.url)}>{t('打开文件')}</Button>
-        </div>
-      );
-    }
-    return (
-      <div className='flex flex-col gap-3'>
-        <Text type='secondary'>{t('当前文件类型不支持内嵌预览。')}</Text>
-        <Button onClick={() => openPage(previewState.url)}>{t('打开文件')}</Button>
-      </div>
-    );
-  }, [previewModal.item, previewState, t]);
-
   const renderCardItem = (item) => {
-    const tag = getFileTypeTagConfig(item.file_type);
+    const displayType = getDisplayFileType(item);
+    const tag = getFileTypeTagConfig(displayType);
     const checked = selectedRowKeys.includes(item.key);
 
     return (
@@ -962,7 +935,11 @@ const R2StoragePage = () => {
               {item.name || item.key}
             </Text>
             <div className='mt-1'>
-              <Text type='secondary' size='small' style={{ wordBreak: 'break-all' }}>
+              <Text
+                type='secondary'
+                size='small'
+                style={{ wordBreak: 'break-all' }}
+              >
                 {item.key}
               </Text>
             </div>
@@ -1012,7 +989,11 @@ const R2StoragePage = () => {
             {t('预览')}
           </Button>
           {item.file_type === 'directory' ? (
-            <Button size='small' theme='light' onClick={() => handleEnterDirectory(item)}>
+            <Button
+              size='small'
+              theme='light'
+              onClick={() => handleEnterDirectory(item)}
+            >
               {t('进入')}
             </Button>
           ) : (
@@ -1030,7 +1011,11 @@ const R2StoragePage = () => {
               >
                 {t('重命名')}
               </Button>
-              <Button size='small' theme='light' onClick={() => handleOpenItem(item)}>
+              <Button
+                size='small'
+                theme='light'
+                onClick={() => handleOpenItem(item)}
+              >
                 {t('打开')}
               </Button>
               <Popconfirm
@@ -1068,8 +1053,12 @@ const R2StoragePage = () => {
           type={isR2 ? 'info' : 'warning'}
           description={
             isR2
-              ? t('支持对象列表、模糊搜索、图片预览、上传、重命名、单删与批量删除。')
-              : t('当前存储后端不是 R2，或 R2 配置不完整，请先到“系统设置 > 存储设置”完成配置。')
+              ? t(
+                  '支持对象列表、模糊搜索、图片/表格预览、上传、重命名、单删与批量删除。',
+                )
+              : t(
+                  '当前存储后端不是 R2，或 R2 配置不完整，请先到“系统设置 > 存储设置”完成配置。',
+                )
           }
           style={{ marginBottom: 16 }}
         />
@@ -1091,7 +1080,10 @@ const R2StoragePage = () => {
             {t('查询')}
           </Button>
           <Button onClick={handleReset}>{t('重置')}</Button>
-          <Button onClick={handleGoParent} disabled={!query.prefix && !prefixInput.trim()}>
+          <Button
+            onClick={handleGoParent}
+            disabled={!query.prefix && !prefixInput.trim()}
+          >
             {t('返回上级')}
           </Button>
           <Button
@@ -1121,7 +1113,11 @@ const R2StoragePage = () => {
             >
               {t('卡片列表')}
             </Button>
-            <Button onClick={handleOpenDirectoryModal} disabled={!isR2} type='tertiary'>
+            <Button
+              onClick={handleOpenDirectoryModal}
+              disabled={!isR2}
+              type='tertiary'
+            >
               {t('新建目录')}
             </Button>
             <Button
@@ -1204,7 +1200,8 @@ const R2StoragePage = () => {
                 hidePagination
                 rowSelection={{
                   selectedRowKeys,
-                  onChange: (nextKeys) => setSelectedRowKeys(sanitizeSelectedRowKeys(nextKeys)),
+                  onChange: (nextKeys) =>
+                    setSelectedRowKeys(sanitizeSelectedRowKeys(nextKeys)),
                   getCheckboxProps: (record) => ({
                     disabled: record.file_type === 'directory',
                   }),
@@ -1251,7 +1248,12 @@ const R2StoragePage = () => {
             </div>
           </>
         ) : loading ? (
-          <CardTable rowKey='key' columns={tableColumns} dataSource={[]} loading />
+          <CardTable
+            rowKey='key'
+            columns={tableColumns}
+            dataSource={[]}
+            loading
+          />
         ) : (
           <Empty description={t('暂无对象')} />
         )}
@@ -1287,8 +1289,12 @@ const R2StoragePage = () => {
           }}
         >
           <div className='flex flex-wrap gap-2'>
-            <Button onClick={handleChooseUploadFile}>{t('选择文件/压缩包')}</Button>
-            <Button onClick={handleChooseUploadDirectory}>{t('选择文件夹')}</Button>
+            <Button onClick={handleChooseUploadFile}>
+              {t('选择文件/压缩包')}
+            </Button>
+            <Button onClick={handleChooseUploadDirectory}>
+              {t('选择文件夹')}
+            </Button>
           </div>
           <div
             ref={uploadDropzoneRef}
@@ -1343,18 +1349,25 @@ const R2StoragePage = () => {
                 onChange={setUploadConflictStrategy}
                 style={{ width: '100%' }}
               >
-                <Select.Option value='error'>{t('发现重复时报错')}</Select.Option>
+                <Select.Option value='error'>
+                  {t('发现重复时报错')}
+                </Select.Option>
                 <Select.Option value='skip'>{t('跳过重复文件')}</Select.Option>
-                <Select.Option value='overwrite'>{t('覆盖已有文件')}</Select.Option>
+                <Select.Option value='overwrite'>
+                  {t('覆盖已有文件')}
+                </Select.Option>
               </Select>
             </div>
           </div>
-          {(uploading || uploadProgress.totalPercent > 0 || uploadProgress.currentName) && (
+          {(uploading ||
+            uploadProgress.totalPercent > 0 ||
+            uploadProgress.currentName) && (
             <div className='rounded-xl border border-[var(--semi-color-border)] p-3'>
               <div className='flex items-center justify-between gap-3'>
                 <Text strong>{t('上传进度')}</Text>
                 <Text type='secondary'>
-                  {uploadProgress.currentIndex > 0 && uploadProgress.totalCount > 0
+                  {uploadProgress.currentIndex > 0 &&
+                  uploadProgress.totalCount > 0
                     ? `${uploadProgress.currentIndex}/${uploadProgress.totalCount}`
                     : '-'}
                 </Text>
@@ -1367,7 +1380,10 @@ const R2StoragePage = () => {
               />
               <div className='mt-2 flex items-center justify-between gap-3'>
                 <Text type='secondary'>{t('当前文件')}</Text>
-                <Text type='secondary' style={{ wordBreak: 'break-all', textAlign: 'right' }}>
+                <Text
+                  type='secondary'
+                  style={{ wordBreak: 'break-all', textAlign: 'right' }}
+                >
                   {uploadProgress.currentName || '-'}
                 </Text>
               </div>
@@ -1384,7 +1400,10 @@ const R2StoragePage = () => {
             <div className='mt-2 flex flex-col gap-2 max-h-[320px] overflow-auto'>
               {uploadModal.files.length > 0 ? (
                 uploadModal.files.map((item) => (
-                  <div key={item.id} className='rounded-xl border border-[var(--semi-color-border)] p-3'>
+                  <div
+                    key={item.id}
+                    className='rounded-xl border border-[var(--semi-color-border)] p-3'
+                  >
                     <div className='mb-1'>
                       <Text strong style={{ wordBreak: 'break-all' }}>
                         {item.displayName}
@@ -1422,7 +1441,9 @@ const R2StoragePage = () => {
       <Modal
         title={t('重命名对象')}
         visible={renameModal.visible}
-        onCancel={() => setRenameModal({ visible: false, oldKey: '', newKey: '' })}
+        onCancel={() =>
+          setRenameModal({ visible: false, oldKey: '', newKey: '' })
+        }
         onOk={handleRenameSubmit}
         okText={t('保存')}
         cancelText={t('取消')}
@@ -1460,26 +1481,6 @@ const R2StoragePage = () => {
             onEnterPress={handleCreateDirectory}
           />
         </div>
-      </Modal>
-
-      <Modal
-        title={previewModal.item ? `${t('文件预览')} · ${previewModal.item.name}` : t('文件预览')}
-        visible={previewModal.visible}
-        footer={
-          <Space>
-            <Button
-              onClick={() => previewModal.item && handleOpenItem(previewModal.item)}
-            >
-              {t('新窗口打开')}
-            </Button>
-            <Button onClick={() => setPreviewModal({ visible: false, item: null })}>
-              {t('关闭')}
-            </Button>
-          </Space>
-        }
-        onCancel={() => setPreviewModal({ visible: false, item: null })}
-      >
-        {previewContent}
       </Modal>
     </div>
   );

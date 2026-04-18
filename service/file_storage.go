@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -367,6 +368,41 @@ func GetStorageObjectAccessURL(key string, expiresSeconds int) (string, int64, e
 		return "", 0, err
 	}
 	return url, expiresAt.Unix(), nil
+}
+
+func UpdateStorageObjectContent(key string, content []byte, contentType string) (*StorageObjectInfo, error) {
+	cfg, err := getR2StorageConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	normalizedKey := normalizeStorageKey(key)
+	if normalizedKey == "" {
+		return nil, fmt.Errorf("对象 Key 不能为空")
+	}
+	if strings.HasSuffix(normalizedKey, "/") {
+		return nil, fmt.Errorf("目录不支持在线编辑")
+	}
+	if !isStorageObjectEditable(normalizedKey) {
+		return nil, fmt.Errorf("当前文件类型暂不支持在线编辑")
+	}
+
+	exists, err := storageObjectExists(cfg, normalizedKey)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, fmt.Errorf("对象不存在：%s", normalizedKey)
+	}
+
+	resolvedContentType := resolveStorageObjectContentType(normalizedKey, contentType)
+	if err = putBytesToR2(cfg, normalizedKey, content, resolvedContentType); err != nil {
+		return nil, err
+	}
+
+	common.SysLog(fmt.Sprintf("R2 对象内容已更新：%s", normalizedKey))
+	result := buildStorageObjectInfo(cfg, normalizedKey, int64(len(content)), "", "")
+	return &result, nil
 }
 
 func CreateStorageDirectory(prefix, name string) (*StorageObjectInfo, error) {
@@ -944,10 +980,39 @@ func detectStorageObjectType(key string) string {
 		return "video"
 	case ".mp3", ".wav", ".ogg", ".m4a", ".flac":
 		return "audio"
-	case ".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml", ".html":
+	case ".xlsx", ".xls", ".csv", ".tsv":
+		return "spreadsheet"
+	case ".txt", ".md", ".json", ".xml", ".yaml", ".yml", ".html":
 		return "text"
 	default:
 		return "file"
+	}
+}
+
+func resolveStorageObjectContentType(key, contentType string) string {
+	trimmedContentType := strings.TrimSpace(contentType)
+	if trimmedContentType != "" {
+		return trimmedContentType
+	}
+
+	if guessed := strings.TrimSpace(mime.TypeByExtension(strings.ToLower(filepath.Ext(key)))); guessed != "" {
+		if strings.HasPrefix(guessed, "text/") && !strings.Contains(strings.ToLower(guessed), "charset=") {
+			return guessed + "; charset=utf-8"
+		}
+		return guessed
+	}
+
+	return "text/plain; charset=utf-8"
+}
+
+func isStorageObjectEditable(key string) bool {
+	switch strings.ToLower(filepath.Ext(key)) {
+	case ".txt", ".md", ".markdown", ".json", ".js", ".jsx", ".ts", ".tsx",
+		".css", ".scss", ".less", ".go", ".py", ".java", ".sh", ".yaml",
+		".yml", ".xml", ".html", ".htm":
+		return true
+	default:
+		return false
 	}
 }
 

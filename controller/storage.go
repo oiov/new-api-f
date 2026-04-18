@@ -23,6 +23,12 @@ type createStorageDirectoryRequest struct {
 	Name   string `json:"name"`
 }
 
+type updateStorageObjectContentRequest struct {
+	Key         string `json:"key"`
+	Content     string `json:"content"`
+	ContentType string `json:"content_type"`
+}
+
 type storageObjectAccessURLResponse struct {
 	URL       string `json:"url"`
 	ExpiresAt int64  `json:"expires_at,omitempty"`
@@ -112,6 +118,22 @@ func GetStorageObjectAccessURL(c *gin.Context) {
 		URL:       url,
 		ExpiresAt: expiresAt,
 	})
+}
+
+func UpdateStorageObjectContent(c *gin.Context) {
+	var req updateStorageObjectContentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "请求参数错误："+err.Error())
+		return
+	}
+
+	data, err := service.UpdateStorageObjectContent(req.Key, []byte(req.Content), req.ContentType)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, data)
 }
 
 func CreateStorageDirectory(c *gin.Context) {
