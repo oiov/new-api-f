@@ -252,10 +252,9 @@ const renderOperations = (
   text,
   record,
   {
+    permissions,
     setEditingUser,
     setShowEditUser,
-    showPromoteModal,
-    showDemoteModal,
     showEnableDisableModal,
     showDeleteModal,
     showResetPasskeyModal,
@@ -288,16 +287,20 @@ const renderOperations = (
         showError(t('复制失败'));
       },
     },
-    {
-      node: 'item',
-      name: t('重置邀请次数'),
-      onClick: () => resetAffCount(record),
-    },
-    {
-      node: 'item',
-      name: t('设置邀请次数'),
-      onClick: () => setAffCount(record),
-    },
+    permissions?.canEditUser
+      ? {
+          node: 'item',
+          name: t('重置邀请次数'),
+          onClick: () => resetAffCount(record),
+        }
+      : null,
+    permissions?.canEditUser
+      ? {
+          node: 'item',
+          name: t('设置邀请次数'),
+          onClick: () => setAffCount(record),
+        }
+      : null,
     {
       node: 'divider',
     },
@@ -306,40 +309,53 @@ const renderOperations = (
       name: t('历史记录'),
       onClick: () => showUserHistoryModal(record),
     },
-    {
-      node: 'item',
-      name: t('订阅管理'),
-      onClick: () => showUserSubscriptionsModal(record),
-    },
-    {
-      node: 'item',
-      name: t('发送站内信'),
-      onClick: () => sendSiteNotification(record),
-    },
-    {
-      node: 'item',
-      name: t('重置 Passkey'),
-      onClick: () => showResetPasskeyModal(record),
-    },
-    {
-      node: 'item',
-      name: t('重置 2FA'),
-      onClick: () => showResetTwoFAModal(record),
-    },
-    {
-      node: 'divider',
-    },
-    {
-      node: 'item',
-      name: t('注销'),
-      type: 'danger',
-      onClick: () => showDeleteModal(record),
-    },
-  ];
+    permissions?.canViewSubscriptions
+      ? {
+          node: 'item',
+          name: t('订阅管理'),
+          onClick: () => showUserSubscriptionsModal(record),
+        }
+      : null,
+    permissions?.canNotifyUser
+      ? {
+          node: 'item',
+          name: t('发送站内信'),
+          onClick: () => sendSiteNotification(record),
+        }
+      : null,
+    permissions?.canEditUser
+      ? {
+          node: 'item',
+          name: t('重置 Passkey'),
+          onClick: () => showResetPasskeyModal(record),
+        }
+      : null,
+    permissions?.canEditUser
+      ? {
+          node: 'item',
+          name: t('重置 2FA'),
+          onClick: () => showResetTwoFAModal(record),
+        }
+      : null,
+    permissions?.canDeleteUser
+      ? {
+          node: 'divider',
+        }
+      : null,
+    permissions?.canDeleteUser
+      ? {
+          node: 'item',
+          name: t('注销'),
+          type: 'danger',
+          onClick: () => showDeleteModal(record),
+        }
+      : null,
+  ].filter(Boolean);
 
   return (
     <Space>
-      {record.status === 1 ? (
+      {permissions?.canDisableUser &&
+        (record.status === 1 ? (
         <Button
           type='danger'
           size='small'
@@ -354,7 +370,8 @@ const renderOperations = (
         >
           {t('启用')}
         </Button>
-      )}
+      ))}
+      {permissions?.canEditUser && (
       <Button
         type='tertiary'
         size='small'
@@ -365,23 +382,12 @@ const renderOperations = (
       >
         {t('编辑')}
       </Button>
-      <Button
-        type='warning'
-        size='small'
-        onClick={() => showPromoteModal(record)}
-      >
-        {t('提升')}
-      </Button>
-      <Button
-        type='secondary'
-        size='small'
-        onClick={() => showDemoteModal(record)}
-      >
-        {t('降级')}
-      </Button>
+      )}
+      {moreMenu.length > 0 && (
       <Dropdown menu={moreMenu} trigger='click' position='bottomRight'>
         <Button type='tertiary' size='small' icon={<IconMore />} />
       </Dropdown>
+      )}
     </Space>
   );
 };
@@ -391,10 +397,9 @@ const renderOperations = (
  */
 export const getUsersColumns = ({
   t,
+  permissions,
   setEditingUser,
   setShowEditUser,
-  showPromoteModal,
-  showDemoteModal,
   showEnableDisableModal,
   showDeleteModal,
   showResetPasskeyModal,
@@ -472,10 +477,9 @@ export const getUsersColumns = ({
       width: 200,
       render: (text, record, index) =>
         renderOperations(text, record, {
+          permissions,
           setEditingUser,
           setShowEditUser,
-          showPromoteModal,
-          showDemoteModal,
           showEnableDisableModal,
           showDeleteModal,
           showResetPasskeyModal,

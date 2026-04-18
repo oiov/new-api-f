@@ -21,6 +21,8 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { history } from './history';
 import { getUserData } from './data';
+import Loading from '../components/common/ui/Loading';
+import { useUserPermissions } from '../hooks/common/useUserPermissions';
 
 export function authHeader() {
   // return authorization header with jwt token
@@ -50,26 +52,71 @@ function PrivateRoute({ children }) {
   return children;
 }
 
-export function AdminRoute({ children }) {
+function PermissionRoute({
+  children,
+  permission,
+  anyPermissions,
+  fallbackCheck,
+}) {
   const user = getUserData();
   if (!user) {
     return <Navigate to='/login' state={{ from: history.location }} />;
   }
-  if (typeof user.role === 'number' && user.role >= 10) {
+
+  const { can, loading } = useUserPermissions();
+
+  if (
+    (permission || (anyPermissions && anyPermissions.length > 0)) &&
+    loading
+  ) {
+    return <Loading />;
+  }
+
+  if (permission) {
+    if (can(permission, false)) {
+      return children;
+    }
+    return <Navigate to='/forbidden' replace />;
+  }
+
+  if (Array.isArray(anyPermissions) && anyPermissions.length > 0) {
+    if (anyPermissions.some((permissionKey) => can(permissionKey, false))) {
+      return children;
+    }
+    return <Navigate to='/forbidden' replace />;
+  }
+
+  if (!permission && !anyPermissions && fallbackCheck(user)) {
     return children;
   }
+
   return <Navigate to='/forbidden' replace />;
 }
 
-export function RootRoute({ children }) {
-  const user = getUserData();
-  if (!user) {
-    return <Navigate to='/login' state={{ from: history.location }} />;
-  }
-  if (typeof user.role === 'number' && user.role >= 100) {
-    return children;
-  }
-  return <Navigate to='/forbidden' replace />;
+export function AdminRoute({ children, permission, anyPermissions }) {
+  return (
+    <PermissionRoute
+      permission={permission}
+      anyPermissions={anyPermissions}
+      fallbackCheck={(user) => typeof user.role === 'number' && user.role >= 10}
+    >
+      {children}
+    </PermissionRoute>
+  );
+}
+
+export function RootRoute({ children, permission, anyPermissions }) {
+  return (
+    <PermissionRoute
+      permission={permission}
+      anyPermissions={anyPermissions}
+      fallbackCheck={(user) =>
+        typeof user.role === 'number' && user.role >= 100
+      }
+    >
+      {children}
+    </PermissionRoute>
+  );
 }
 
 export { PrivateRoute };

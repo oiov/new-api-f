@@ -28,6 +28,7 @@ import {
   renderGroupOption,
   renderQuotaWithPrompt,
   getCurrencyConfig,
+  getUserData,
 } from '../../../../helpers';
 import {
   quotaToDisplayAmount,
@@ -48,6 +49,7 @@ import {
   Row,
   Col,
   InputNumber,
+  Banner,
 } from '@douyinfe/semi-ui';
 import {
   IconUser,
@@ -56,10 +58,59 @@ import {
   IconLink,
   IconUserGroup,
   IconPlus,
+  IconShield,
 } from '@douyinfe/semi-icons';
 import UserBindingManagementModal from './UserBindingManagementModal';
+import {
+  ALL_PERMISSION_POINTS,
+  PERMISSION_GROUPS,
+  PERMISSION_TEMPLATES,
+  PERMISSION_TEMPLATE_OPTIONS,
+} from '../../../../constants/permission.constants';
 
 const { Text, Title } = Typography;
+
+const normalizePermissionPoints = (value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [
+    ...new Set(value.filter((item) => typeof item === 'string' && item)),
+  ].sort();
+};
+
+const parsePermissionPoints = (raw) => {
+  if (!raw || typeof raw !== 'string') {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return normalizePermissionPoints(parsed);
+    }
+    if (parsed && typeof parsed === 'object') {
+      return normalizePermissionPoints(
+        Object.keys(parsed).filter((key) => parsed[key] === true),
+      );
+    }
+  } catch (error) {
+    return [];
+  }
+  return [];
+};
+
+const detectPermissionTemplate = (permissionPoints) => {
+  const normalized = normalizePermissionPoints(permissionPoints);
+  return (
+    Object.entries(PERMISSION_TEMPLATES).find(([, templatePoints]) => {
+      const template = normalizePermissionPoints(templatePoints);
+      return (
+        template.length === normalized.length &&
+        template.every((point, index) => point === normalized[index])
+      );
+    })?.[0] || 'custom'
+  );
+};
 
 const EditUserModal = (props) => {
   const { t } = useTranslation();
@@ -72,6 +123,8 @@ const EditUserModal = (props) => {
   const [groupOptions, setGroupOptions] = useState([]);
   const [bindingModalVisible, setBindingModalVisible] = useState(false);
   const formApiRef = useRef(null);
+  const currentUser = getUserData();
+  const canManageRole = currentUser?.role === 100;
 
   const isEdit = Boolean(userId);
 
@@ -89,7 +142,30 @@ const EditUserModal = (props) => {
     quota: 0,
     group: 'default',
     remark: '',
+    role: 1,
+    status: 1,
+    permissions_json: '',
+    permission_template: 'custom',
+    permission_points: [],
   });
+
+  const roleOptions = [
+    { label: t('普通用户'), value: 1 },
+    { label: t('管理员'), value: 10 },
+  ];
+
+  const statusOptions = [
+    { label: t('已启用'), value: 1 },
+    { label: t('已禁用'), value: 2 },
+  ];
+
+  const permissionTemplateOptions = [
+    ...PERMISSION_TEMPLATE_OPTIONS.map((item) => ({
+      label: t(item.label),
+      value: item.value,
+    })),
+    { label: t('自定义权限'), value: 'custom' },
+  ];
 
   const fetchGroups = async () => {
     try {
@@ -109,7 +185,13 @@ const EditUserModal = (props) => {
     const { success, message, data } = res.data;
     if (success) {
       data.password = '';
-      formApiRef.current?.setValues({ ...getInitValues(), ...data });
+      const permissionPoints = parsePermissionPoints(data.permissions_json);
+      formApiRef.current?.setValues({
+        ...getInitValues(),
+        ...data,
+        permission_points: permissionPoints,
+        permission_template: detectPermissionTemplate(permissionPoints),
+      });
     } else {
       showError(message);
     }
@@ -136,6 +218,15 @@ const EditUserModal = (props) => {
     let payload = { ...values };
     if (typeof payload.quota === 'string')
       payload.quota = parseInt(payload.quota) || 0;
+    if (canManageRole && Number(payload.role) === 10) {
+      payload.permissions_json = JSON.stringify(
+        normalizePermissionPoints(payload.permission_points),
+      );
+    } else {
+      payload.permissions_json = '';
+    }
+    delete payload.permission_template;
+    delete payload.permission_points;
     if (userId) {
       payload.id = parseInt(userId);
     }
@@ -260,6 +351,39 @@ const EditUserModal = (props) => {
                       />
                     </Col>
 
+                    {canManageRole && values.role !== 100 && (
+                      <>
+                        <Col span={12}>
+                          <Form.Select
+                            field='role'
+                            label={t('角色')}
+                            optionList={roleOptions}
+                            rules={[
+                              { required: true, message: t('请选择角色') },
+                            ]}
+                            onChange={(value) => {
+                              if (value !== 10) {
+                                formApiRef.current?.setValues({
+                                  permission_template: 'custom',
+                                  permission_points: [],
+                                });
+                              }
+                            }}
+                          />
+                        </Col>
+                        <Col span={12}>
+                          <Form.Select
+                            field='status'
+                            label={t('状态')}
+                            optionList={statusOptions}
+                            rules={[
+                              { required: true, message: t('请选择状态') },
+                            ]}
+                          />
+                        </Col>
+                      </>
+                    )}
+
                     <Col span={24}>
                       <Form.Input
                         field='remark'
@@ -270,6 +394,82 @@ const EditUserModal = (props) => {
                     </Col>
                   </Row>
                 </Card>
+
+                {canManageRole && values.role === 10 && (
+                  <Card className='!rounded-2xl shadow-sm border-0'>
+                    <div className='flex items-center mb-2'>
+                      <Avatar
+                        size='small'
+                        color='orange'
+                        className='mr-2 shadow-md'
+                      >
+                        <IconShield size={16} />
+                      </Avatar>
+                      <div>
+                        <Text className='text-lg font-medium'>
+                          {t('管理员权限')}
+                        </Text>
+                        <div className='text-xs text-gray-600'>
+                          {t('选择角色模板或精细化权限点')}
+                        </div>
+                      </div>
+                    </div>
+                    <Banner
+                      type='info'
+                      className='!rounded-xl mb-3'
+                      description={t(
+                        '模板会覆盖当前权限点；手动勾选权限后会自动切换为“自定义权限”。',
+                      )}
+                    />
+                    <Row gutter={12}>
+                      <Col span={24}>
+                        <Form.Select
+                          field='permission_template'
+                          label={t('权限模板')}
+                          optionList={permissionTemplateOptions}
+                          onChange={(value) => {
+                            if (value && value !== 'custom') {
+                              formApiRef.current?.setValues({
+                                permission_template: value,
+                                permission_points:
+                                  PERMISSION_TEMPLATES[value] || [],
+                              });
+                            }
+                          }}
+                        />
+                      </Col>
+                      <Col span={24}>
+                        <Form.Select
+                          field='permission_points'
+                          label={t('权限点')}
+                          multiple
+                          search
+                          optionList={PERMISSION_GROUPS.flatMap((group) =>
+                            group.options.map((option) => ({
+                              label: `${t(group.title)} / ${t(option.label)}`,
+                              value: option.value,
+                            })),
+                          )}
+                          onChange={(value) => {
+                            const normalized = normalizePermissionPoints(
+                              value,
+                            ).filter((point) =>
+                              ALL_PERMISSION_POINTS.includes(point),
+                            );
+                            formApiRef.current?.setValue(
+                              'permission_points',
+                              normalized,
+                            );
+                            formApiRef.current?.setValue(
+                              'permission_template',
+                              detectPermissionTemplate(normalized),
+                            );
+                          }}
+                        />
+                      </Col>
+                    </Row>
+                  </Card>
+                )}
 
                 {/* 权限设置 */}
                 {userId && (

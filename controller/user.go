@@ -101,6 +101,7 @@ func resolveUserResponseGroups(userId int, configuredGroup string, fallbackQuota
 // setup session & cookies and then return user info
 func setupLogin(user *model.User, c *gin.Context) {
 	configuredGroup, effectiveGroup := resolveUserResponseGroups(user.Id, user.Group, user.Quota)
+	permissions, permissionPoints := calculateUserPermissions(user.Role, user.PermissionsJSON)
 	session := sessions.Default(c)
 	session.Set("id", user.Id)
 	session.Set("username", user.Username)
@@ -116,14 +117,16 @@ func setupLogin(user *model.User, c *gin.Context) {
 		"message": "",
 		"success": true,
 		"data": map[string]any{
-			"id":               user.Id,
-			"username":         user.Username,
-			"display_name":     user.DisplayName,
-			"role":             user.Role,
-			"status":           user.Status,
-			"group":            user.Group,
-			"configured_group": configuredGroup,
-			"effective_group":  effectiveGroup,
+			"id":                user.Id,
+			"username":          user.Username,
+			"display_name":      user.DisplayName,
+			"role":              user.Role,
+			"status":            user.Status,
+			"group":             user.Group,
+			"configured_group":  configuredGroup,
+			"effective_group":   effectiveGroup,
+			"permissions":       permissions,
+			"permission_points": permissionPoints,
 		},
 	})
 }
@@ -430,7 +433,7 @@ func GetSelf(c *gin.Context) {
 	user.Remark = ""
 
 	// 计算用户权限信息
-	permissions := calculateUserPermissions(userRole)
+	permissions, permissionPoints := calculateUserPermissions(userRole, user.PermissionsJSON)
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
@@ -467,6 +470,7 @@ func GetSelf(c *gin.Context) {
 		"stripe_customer":                user.StripeCustomer,
 		"sidebar_modules":                userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":                    permissions,                // 新增权限字段
+		"permission_points":              permissionPoints,
 		"site_notification_unread_count": unreadSiteNotificationCount,
 	}
 
@@ -479,31 +483,17 @@ func GetSelf(c *gin.Context) {
 }
 
 // 计算用户权限的辅助函数
-func calculateUserPermissions(userRole int) map[string]interface{} {
-	permissions := map[string]interface{}{}
-
-	// 根据用户角色计算权限
-	if userRole == common.RoleRootUser {
-		// 超级管理员不需要边栏设置功能
-		permissions["sidebar_settings"] = false
-		permissions["sidebar_modules"] = map[string]interface{}{}
-	} else if userRole == common.RoleAdminUser {
-		// 管理员可以设置边栏，但不包含系统设置功能
-		permissions["sidebar_settings"] = true
-		permissions["sidebar_modules"] = map[string]interface{}{
-			"admin": map[string]interface{}{
-				"setting": false, // 管理员不能访问系统设置
-			},
-		}
-	} else {
-		// 普通用户只能设置个人功能，不包含管理员区域
-		permissions["sidebar_settings"] = true
-		permissions["sidebar_modules"] = map[string]interface{}{
-			"admin": false, // 普通用户不能访问管理员区域
-		}
+func calculateUserPermissions(userRole int, permissionsJSON string) (map[string]interface{}, []string) {
+	permissionPoints := common.ResolvePermissionPoints(userRole, permissionsJSON)
+	permissions := map[string]interface{}{
+		"sidebar_settings":  userRole != common.RoleRootUser,
+		"sidebar_modules":   common.BuildSidebarPermissionModules(userRole, permissionsJSON),
+		"permission_points": permissionPoints,
+		"permission_map":    common.BuildPermissionPointMap(permissionPoints),
+		"admin_access":      userRole >= common.RoleAdminUser,
+		"root_access":       userRole == common.RoleRootUser,
 	}
-
-	return permissions
+	return permissions, permissionPoints
 }
 
 // 根据用户角色生成默认的边栏配置
@@ -620,7 +610,16 @@ func UpdateUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if !common.IsValidateRole(updatedUser.Role) {
+		updatedUser.Role = originUser.Role
+	}
+	if updatedUser.Status != common.UserStatusEnabled && updatedUser.Status != common.UserStatusDisabled {
+		updatedUser.Status = originUser.Status
+	}
 	myRole := c.GetInt("role")
+	if myRole != common.RoleRootUser {
+		updatedUser.PermissionsJSON = originUser.PermissionsJSON
+	}
 	if myRole <= originUser.Role && myRole != common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
@@ -629,8 +628,29 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
 	}
+	if originUser.Role != common.RoleRootUser && updatedUser.Role == common.RoleRootUser {
+		common.ApiError(c, errors.New("不能通过编辑将用户设置为超级管理员"))
+		return
+	}
+	if updatedUser.Role != common.RoleAdminUser {
+		updatedUser.PermissionsJSON = ""
+	} else {
+		updatedUser.PermissionsJSON, err = normalizePermissionPointsJSON(updatedUser.PermissionsJSON)
+		if err != nil {
+			common.ApiError(c, errors.New("管理员权限配置格式错误"))
+			return
+		}
+	}
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
+	}
+	if originUser.Role == common.RoleRootUser && updatedUser.Role != common.RoleRootUser {
+		common.ApiErrorI18n(c, i18n.MsgUserCannotDemoteRootUser)
+		return
+	}
+	if originUser.Role == common.RoleRootUser && updatedUser.Status != common.UserStatusEnabled {
+		common.ApiErrorI18n(c, i18n.MsgUserCannotDisableRootUser)
+		return
 	}
 	updatePassword := updatedUser.Password != ""
 	if err := updatedUser.Edit(updatePassword); err != nil {
@@ -880,16 +900,31 @@ func CreateUser(c *gin.Context) {
 		user.DisplayName = user.Username
 	}
 	myRole := c.GetInt("role")
+	if user.Role == 0 {
+		user.Role = common.RoleCommonUser
+	}
 	if user.Role >= myRole {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
 	}
+	if user.Role == common.RoleRootUser {
+		common.ApiError(c, errors.New("不能创建超级管理员账户"))
+		return
+	}
 	// Even for admin users, we cannot fully trust them!
 	cleanUser := model.User{
-		Username:    user.Username,
-		Password:    user.Password,
-		DisplayName: user.DisplayName,
-		Role:        user.Role, // 保持管理员设置的角色
+		Username:        user.Username,
+		Password:        user.Password,
+		DisplayName:     user.DisplayName,
+		Role:            user.Role, // 保持管理员设置的角色
+		PermissionsJSON: "",
+	}
+	if myRole == common.RoleRootUser && user.Role == common.RoleAdminUser {
+		cleanUser.PermissionsJSON, err = normalizePermissionPointsJSON(user.PermissionsJSON)
+		if err != nil {
+			common.ApiError(c, errors.New("管理员权限配置格式错误"))
+			return
+		}
 	}
 	if err := cleanUser.Insert(0, ""); err != nil {
 		common.ApiError(c, err)
@@ -901,6 +936,22 @@ func CreateUser(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+func normalizePermissionPointsJSON(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	points, err := common.ParsePermissionPointsJSON(raw)
+	if err != nil {
+		return "", err
+	}
+	data, err := common.Marshal(points)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 type ManageRequest struct {
@@ -919,6 +970,14 @@ func ManageUser(c *gin.Context) {
 		return
 	}
 	myRole := c.GetInt("role")
+	currentUser, currentUserErr := model.GetUserById(c.GetInt("id"), false)
+	if currentUserErr != nil {
+		common.ApiError(c, currentUserErr)
+		return
+	}
+	hasPermission := func(permission string) bool {
+		return common.HasPermission(currentUser.Role, currentUser.PermissionsJSON, permission)
+	}
 	if req.Action == "reset_all_aff_count" {
 		if myRole != common.RoleRootUser {
 			common.ApiError(c, errors.New("仅超级管理员可执行该操作"))
@@ -958,14 +1017,26 @@ func ManageUser(c *gin.Context) {
 	}
 	switch req.Action {
 	case "disable":
+		if !hasPermission(common.PermissionPointUserDisable) {
+			common.ApiError(c, errors.New("无权禁用用户"))
+			return
+		}
 		user.Status = common.UserStatusDisabled
 		if user.Role == common.RoleRootUser {
 			common.ApiErrorI18n(c, i18n.MsgUserCannotDisableRootUser)
 			return
 		}
 	case "enable":
+		if !hasPermission(common.PermissionPointUserDisable) {
+			common.ApiError(c, errors.New("无权启用用户"))
+			return
+		}
 		user.Status = common.UserStatusEnabled
 	case "delete":
+		if !hasPermission(common.PermissionPointUserDelete) {
+			common.ApiError(c, errors.New("无权删除用户"))
+			return
+		}
 		if user.Role == common.RoleRootUser {
 			common.ApiErrorI18n(c, i18n.MsgUserCannotDeleteRootUser)
 			return
@@ -978,7 +1049,7 @@ func ManageUser(c *gin.Context) {
 			return
 		}
 	case "promote":
-		if myRole != common.RoleRootUser {
+		if myRole != common.RoleRootUser || !hasPermission(common.PermissionPointUserEdit) {
 			common.ApiErrorI18n(c, i18n.MsgUserAdminCannotPromote)
 			return
 		}
@@ -988,6 +1059,10 @@ func ManageUser(c *gin.Context) {
 		}
 		user.Role = common.RoleAdminUser
 	case "demote":
+		if !hasPermission(common.PermissionPointUserEdit) {
+			common.ApiError(c, errors.New("无权调整用户角色"))
+			return
+		}
 		if user.Role == common.RoleRootUser {
 			common.ApiErrorI18n(c, i18n.MsgUserCannotDemoteRootUser)
 			return
@@ -998,6 +1073,10 @@ func ManageUser(c *gin.Context) {
 		}
 		user.Role = common.RoleCommonUser
 	case "reset_aff_count":
+		if !hasPermission(common.PermissionPointUserEdit) {
+			common.ApiError(c, errors.New("无权调整邀请次数"))
+			return
+		}
 		if err := model.ResetInviteRewardGrantsByInviterId(user.Id); err != nil {
 			common.ApiError(c, err)
 			return
@@ -1016,6 +1095,10 @@ func ManageUser(c *gin.Context) {
 		})
 		return
 	case "set_aff_count":
+		if !hasPermission(common.PermissionPointUserEdit) {
+			common.ApiError(c, errors.New("无权设置邀请次数"))
+			return
+		}
 		if req.Count < 0 {
 			common.ApiError(c, errors.New("邀请次数不能小于 0"))
 			return

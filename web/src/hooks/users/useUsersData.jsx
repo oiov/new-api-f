@@ -23,9 +23,15 @@ import { useSearchParams } from 'react-router-dom';
 import { API, buildGroupOptions, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useUserPermissions } from '../common/useUserPermissions';
+import {
+  ACTION_PERMISSION_POINTS,
+  PAGE_PERMISSION_POINTS,
+} from '../../constants/permission.constants';
 
 export const useUsersData = () => {
   const { t } = useTranslation();
+  const { can } = useUserPermissions();
   const [compactMode, setCompactMode] = useTableCompactMode('users');
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -369,6 +375,15 @@ export const useUsersData = () => {
   }, [initialKeyword, formApi, urlKeywordProcessed]);
 
   return {
+    permissions: {
+      canViewUsers: can(PAGE_PERMISSION_POINTS.user, false),
+      canCreateUser: can(ACTION_PERMISSION_POINTS.userCreate, false),
+      canEditUser: can(ACTION_PERMISSION_POINTS.userEdit, false),
+      canDisableUser: can(ACTION_PERMISSION_POINTS.userDisable, false),
+      canDeleteUser: can(ACTION_PERMISSION_POINTS.userDelete, false),
+      canNotifyUser: can(ACTION_PERMISSION_POINTS.userNotify, false),
+      canViewSubscriptions: can(PAGE_PERMISSION_POINTS.subscription, false),
+    },
     // Data state
     users,
     loading,

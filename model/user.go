@@ -52,6 +52,7 @@ type User struct {
 	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
 	Remark           string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	PermissionsJSON  string         `json:"permissions_json" gorm:"type:text;column:permissions_json"`
 	InviterUsername  string         `json:"inviter_username,omitempty" gorm:"-"`
 	InviteeUsernames []string       `json:"invitee_usernames,omitempty" gorm:"-"`
 	InviteeCount     int            `json:"invitee_count,omitempty" gorm:"-"`
@@ -61,15 +62,21 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
+		Id:              user.Id,
+		Group:           user.Group,
+		Quota:           user.Quota,
+		Status:          user.Status,
+		Role:            user.Role,
+		Username:        user.Username,
+		Setting:         user.Setting,
+		Email:           user.Email,
+		PermissionsJSON: user.PermissionsJSON,
 	}
 	return cache
+}
+
+func (user *User) GetPermissionPoints() []string {
+	return common.ResolvePermissionPoints(user.Role, user.PermissionsJSON)
 }
 
 func (user *User) GetAccessToken() string {
@@ -721,11 +728,14 @@ func (user *User) Edit(updatePassword bool) error {
 
 	newUser := *user
 	updates := map[string]interface{}{
-		"username":     newUser.Username,
-		"display_name": newUser.DisplayName,
-		"group":        newUser.Group,
-		"quota":        newUser.Quota,
-		"remark":       newUser.Remark,
+		"username":         newUser.Username,
+		"display_name":     newUser.DisplayName,
+		"group":            newUser.Group,
+		"quota":            newUser.Quota,
+		"remark":           newUser.Remark,
+		"role":             newUser.Role,
+		"status":           newUser.Status,
+		"permissions_json": newUser.PermissionsJSON,
 	}
 	if updatePassword {
 		updates["password"] = newUser.Password
@@ -733,6 +743,9 @@ func (user *User) Edit(updatePassword bool) error {
 
 	DB.First(&user, user.Id)
 	if err = DB.Model(user).Updates(updates).Error; err != nil {
+		return err
+	}
+	if err = DB.First(user, user.Id).Error; err != nil {
 		return err
 	}
 

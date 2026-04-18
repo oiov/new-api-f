@@ -91,6 +91,7 @@ const UsersPage = () => {
             <UsersActions
               setShowAddUser={setShowAddUser}
               manageUser={usersData.manageUser}
+              permissions={usersData.permissions}
               t={t}
             />
 

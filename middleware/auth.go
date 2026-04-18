@@ -79,12 +79,7 @@ func authHelper(c *gin.Context, minRole int) {
 		apiUserIdStr = c.Request.Header.Get("New-Api-User")
 	}
 	if apiUserIdStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "无权进行此操作，未提供用户标识",
-		})
-		c.Abort()
-		return
+		apiUserIdStr = fmt.Sprintf("%v", id)
 	}
 	apiUserId, err := strconv.Atoi(apiUserIdStr)
 	if err != nil {
@@ -104,7 +99,19 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if status.(int) == common.UserStatusDisabled {
+	userCache, err := model.GetUserCache(apiUserId)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "无权进行此操作，用户不存在或已失效",
+		})
+		c.Abort()
+		return
+	}
+	role = userCache.Role
+	status = userCache.Status
+	username = userCache.Username
+	if userCache.Status == common.UserStatusDisabled {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "用户已被封禁",
@@ -112,7 +119,7 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if role.(int) < minRole {
+	if userCache.Role < minRole {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "无权进行此操作，权限不足",
@@ -120,7 +127,7 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if !validUserInfo(username.(string), role.(int)) {
+	if !validUserInfo(userCache.Username, userCache.Role) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "无权进行此操作，用户信息无效",
@@ -130,11 +137,12 @@ func authHelper(c *gin.Context, minRole int) {
 	}
 	// 防止不同newapi版本冲突，导致数据不通用
 	c.Header("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
-	c.Set("username", username)
-	c.Set("role", role)
-	c.Set("id", id)
-	c.Set("group", session.Get("group"))
-	c.Set("user_group", session.Get("group"))
+	c.Set("username", userCache.Username)
+	c.Set("role", userCache.Role)
+	c.Set("id", userCache.Id)
+	c.Set("group", userCache.Group)
+	c.Set("user_group", userCache.Group)
+	c.Set("permission_points", common.ResolvePermissionPoints(userCache.Role, userCache.PermissionsJSON))
 	c.Set("use_access_token", useAccessToken)
 
 	c.Next()
@@ -166,6 +174,56 @@ func AdminAuth() func(c *gin.Context) {
 func RootAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		authHelper(c, common.RoleRootUser)
+	}
+}
+
+func PermissionAuth(permission string) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id := c.GetInt("id")
+		userCache, err := model.GetUserCache(id)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "无权进行此操作，用户不存在或已失效",
+			})
+			c.Abort()
+			return
+		}
+		if !common.HasPermission(userCache.Role, userCache.PermissionsJSON, permission) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "无权进行此操作，权限不足",
+			})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+func AnyPermissionAuth(permissions ...string) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id := c.GetInt("id")
+		userCache, err := model.GetUserCache(id)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "无权进行此操作，用户不存在或已失效",
+			})
+			c.Abort()
+			return
+		}
+		for _, permission := range permissions {
+			if common.HasPermission(userCache.Role, userCache.PermissionsJSON, permission) {
+				c.Next()
+				return
+			}
+		}
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "无权进行此操作，权限不足",
+		})
+		c.Abort()
 	}
 }
 

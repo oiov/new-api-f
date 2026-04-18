@@ -16,15 +16,34 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { API } from '../../helpers';
+import { getUserData, setUserData } from '../../helpers/data';
+
+const normalizePermissionPoints = (permissionPoints) => {
+  if (Array.isArray(permissionPoints)) {
+    return permissionPoints.filter(
+      (point) => typeof point === 'string' && point.trim() !== '',
+    );
+  }
+
+  if (permissionPoints && typeof permissionPoints === 'object') {
+    return Object.keys(permissionPoints).filter(
+      (point) => permissionPoints[point] === true,
+    );
+  }
+
+  return [];
+};
 
 /**
  * 用户权限钩子 - 从后端获取用户权限，替代前端角色判断
  * 确保权限控制的安全性，防止前端绕过
  */
 export const useUserPermissions = () => {
-  const [permissions, setPermissions] = useState(null);
+  const [permissions, setPermissions] = useState(
+    () => getUserData()?.permissions || null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -37,14 +56,18 @@ export const useUserPermissions = () => {
       if (res.data.success) {
         const userPermissions = res.data.data.permissions;
         setPermissions(userPermissions);
-        console.log('用户权限加载成功:', userPermissions);
+        const currentUser = getUserData();
+        if (currentUser) {
+          setUserData({
+            ...currentUser,
+            permissions: userPermissions,
+          });
+        }
       } else {
         setError(res.data.message || '获取权限失败');
-        console.error('获取权限失败:', res.data.message);
       }
     } catch (error) {
       setError('网络错误，请重试');
-      console.error('加载用户权限异常:', error);
     } finally {
       setLoading(false);
     }
@@ -53,6 +76,12 @@ export const useUserPermissions = () => {
   useEffect(() => {
     loadPermissions();
   }, []);
+
+  const permissionPoints = useMemo(
+    () => normalizePermissionPoints(permissions?.permission_points),
+    [permissions?.permission_points],
+  );
+  const hasPermissionPoints = permissionPoints.length > 0;
 
   // 检查是否有边栏设置权限
   const hasSidebarSettingsPermission = () => {
@@ -103,11 +132,42 @@ export const useUserPermissions = () => {
     );
   };
 
+  const can = (permissionKey, fallback = false) => {
+    if (!permissionKey) return fallback;
+    if (!hasPermissionPoints) return fallback;
+    return permissionPoints.includes(permissionKey);
+  };
+
+  const canAny = (permissionKeys = [], fallback = false) => {
+    if (!Array.isArray(permissionKeys) || permissionKeys.length === 0) {
+      return fallback;
+    }
+    if (!hasPermissionPoints) return fallback;
+    return permissionKeys.some((permissionKey) =>
+      permissionPoints.includes(permissionKey),
+    );
+  };
+
+  const canAll = (permissionKeys = [], fallback = false) => {
+    if (!Array.isArray(permissionKeys) || permissionKeys.length === 0) {
+      return fallback;
+    }
+    if (!hasPermissionPoints) return fallback;
+    return permissionKeys.every((permissionKey) =>
+      permissionPoints.includes(permissionKey),
+    );
+  };
+
   return {
     permissions,
+    permissionPoints,
+    hasPermissionPoints,
     loading,
     error,
     loadPermissions,
+    can,
+    canAny,
+    canAll,
     hasSidebarSettingsPermission,
     isSidebarSectionAllowed,
     isSidebarModuleAllowed,
