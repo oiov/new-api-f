@@ -26,9 +26,9 @@ import { TABLE_COMPACT_MODES_KEY } from '../../constants';
  * 返回 [compactMode, setCompactMode]。
  * 内部使用 localStorage 保存状态，并监听 storage 事件保持多标签页同步。
  */
-export function useTableCompactMode(tableKey = 'global') {
+export function useTableCompactMode(tableKey = 'global', defaultValue = false) {
   const [compactMode, setCompactModeState] = useState(() =>
-    getTableCompactMode(tableKey),
+    getTableCompactMode(tableKey, defaultValue),
   );
 
   const setCompactMode = useCallback(
@@ -44,7 +44,11 @@ export function useTableCompactMode(tableKey = 'global') {
       if (e.key === TABLE_COMPACT_MODES_KEY) {
         try {
           const modes = JSON.parse(e.newValue || '{}');
-          setCompactModeState(!!modes[tableKey]);
+          if (Object.prototype.hasOwnProperty.call(modes, tableKey)) {
+            setCompactModeState(!!modes[tableKey]);
+          } else {
+            setCompactModeState(!!defaultValue);
+          }
         } catch {
           // ignore parse error
         }
@@ -52,7 +56,7 @@ export function useTableCompactMode(tableKey = 'global') {
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
-  }, [tableKey]);
+  }, [defaultValue, tableKey]);
 
   return [compactMode, setCompactMode];
 }

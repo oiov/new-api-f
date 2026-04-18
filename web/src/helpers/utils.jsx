@@ -579,9 +579,12 @@ function writeTableCompactModes(modes) {
   }
 }
 
-export function getTableCompactMode(tableKey = 'global') {
+export function getTableCompactMode(tableKey = 'global', defaultValue = false) {
   const modes = readTableCompactModes();
-  return !!modes[tableKey];
+  if (Object.prototype.hasOwnProperty.call(modes, tableKey)) {
+    return !!modes[tableKey];
+  }
+  return !!defaultValue;
 }
 
 export function setTableCompactMode(compact, tableKey = 'global') {

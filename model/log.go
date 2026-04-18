@@ -95,25 +95,41 @@ const (
 )
 
 func formatUserLogs(logs []*Log, startIdx int) {
+	formatLogs(logs, startIdx, true, false, false)
+}
+
+func formatLogs(logs []*Log, startIdx int, hideChannelName bool, hideAdminDebugFields bool, allowSensitivePreview bool) {
 	for i := range logs {
-		logs[i].ChannelName = ""
-		var otherMap map[string]interface{}
-		otherMap, _ = common.StrToMap(logs[i].Other)
-		if otherMap != nil {
-			// Remove admin-only debug fields.
-			delete(otherMap, "admin_info")
-			delete(otherMap, "reject_reason")
+		if hideChannelName {
+			logs[i].ChannelName = ""
 		}
-		logs[i].Other = common.MapToJsonStr(otherMap)
+		logs[i].Other = sanitizeLogOther(logs[i].Other, hideAdminDebugFields, allowSensitivePreview)
 		logs[i].Id = startIdx + i + 1
 	}
 }
 
-func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
+func sanitizeLogOther(other string, hideAdminDebugFields bool, allowSensitivePreview bool) string {
+	otherMap, _ := common.StrToMap(other)
+	if otherMap == nil {
+		return common.MapToJsonStr(otherMap)
+	}
+	if hideAdminDebugFields {
+		delete(otherMap, "admin_info")
+		delete(otherMap, "reject_reason")
+	}
+	if !allowSensitivePreview {
+		delete(otherMap, "system_text")
+		delete(otherMap, "messages_preview")
+		delete(otherMap, "messages_count")
+	}
+	return common.MapToJsonStr(otherMap)
+}
+
+func GetLogByTokenId(tokenId int, allowSensitivePreview bool) (logs []*Log, err error) {
 	tx := LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId)
 	tx = applyErrorLogVisibilityFilter(tx, LogTypeUnknown, !common.ErrorDetailsEnabled || !common.ErrorLogDisplayEnabled)
 	err = tx.Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
-	formatUserLogs(logs, 0)
+	formatLogs(logs, 0, true, true, allowSensitivePreview)
 	return logs, err
 }
 
@@ -434,7 +450,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, err error) {
 	tx := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -447,6 +463,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId in
 	if err = attachChannelNamesToLogs(logs); err != nil {
 		return logs, total, err
 	}
+	formatLogs(logs, startIdx, false, false, allowSensitivePreview)
 
 	return logs, total, err
 }
@@ -598,7 +615,7 @@ func attachChannelNamesToLogs(logs []*Log) error {
 	return nil
 }
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, err error) {
 	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, err
@@ -614,11 +631,11 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		return nil, 0, errors.New("查询日志失败")
 	}
 
-	formatUserLogs(logs, startIdx)
+	formatLogs(logs, startIdx, true, true, allowSensitivePreview)
 	return logs, total, err
 }
 
-func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, truncated bool, err error) {
+func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, truncated bool, err error) {
 	tx := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -633,10 +650,11 @@ func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, 
 	if err = attachChannelNamesToLogs(logs); err != nil {
 		return nil, 0, false, err
 	}
+	formatLogs(logs, 0, false, false, allowSensitivePreview)
 	return logs, total, truncated, nil
 }
 
-func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, truncated bool, err error) {
+func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, truncated bool, err error) {
 	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, false, err
@@ -653,7 +671,7 @@ func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTime
 		common.SysError("failed to export user logs: " + err.Error())
 		return nil, 0, false, errors.New("导出日志失败")
 	}
-	formatUserLogs(logs, 0)
+	formatLogs(logs, 0, true, true, allowSensitivePreview)
 	for index := range logs {
 		logs[index].Id = 0
 	}

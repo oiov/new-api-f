@@ -19,12 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useState, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal } from '@douyinfe/semi-ui';
+import { Modal, Button } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
 import {
   API,
   getTodayStartTimestamp,
   isAdmin,
+  isRoot,
   showError,
   showSuccess,
   timestamp2string,
@@ -48,6 +49,27 @@ export const useLogsData = () => {
   const navigate = useNavigate();
   const LOG_EXPORT_LIMIT = 10000;
   const [statusState] = useContext(StatusContext);
+
+  const renderExpandableTextBlock = (text, maxWidth = 720) => (
+    <div
+      style={{
+        maxWidth,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        lineHeight: 1.6,
+      }}
+    >
+      {text}
+    </div>
+  );
+
+  const openSensitivePreviewModal = (title, text) => {
+    Modal.info({
+      title,
+      content: renderExpandableTextBlock(text),
+      width: 760,
+    });
+  };
 
   // Define column keys for selection
   const COLUMN_KEYS = {
@@ -80,6 +102,7 @@ export const useLogsData = () => {
 
   // User and admin
   const isAdminUser = isAdmin();
+  const isRootUser = isRoot();
   const logExportEnabled = !!statusState?.status?.enable_log_export;
   // Role-specific storage key to prevent different roles from overwriting each other
   const STORAGE_KEY = isAdminUser
@@ -626,6 +649,54 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('其他详情'),
             value: logs[i].content,
+          });
+        }
+        if (isRootUser && other?.messages_count > 0) {
+          expandDataLocal.push({
+            key: t('消息数'),
+            value: other.messages_count,
+          });
+        }
+        if (isRootUser && other?.system_text) {
+          expandDataLocal.push({
+            key: t('系统提示词'),
+            value: (
+              <Button
+                theme='light'
+                type='primary'
+                size='small'
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openSensitivePreviewModal(
+                    t('系统提示词'),
+                    other.system_text,
+                  );
+                }}
+              >
+                {t('查看详情')}
+              </Button>
+            ),
+          });
+        }
+        if (isRootUser && other?.messages_preview) {
+          expandDataLocal.push({
+            key: t('消息预览'),
+            value: (
+              <Button
+                theme='light'
+                type='primary'
+                size='small'
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openSensitivePreviewModal(
+                    t('消息预览'),
+                    other.messages_preview,
+                  );
+                }}
+              >
+                {t('查看详情')}
+              </Button>
+            ),
           });
         }
         if (isAdminUser && other?.reject_reason) {

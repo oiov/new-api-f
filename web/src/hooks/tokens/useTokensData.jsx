@@ -119,7 +119,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     USERNAME: 'username',
     OPERATE: 'operate',
   };
-  const COLUMN_STORAGE_KEY = 'tokens-table-columns-v1';
+  const COLUMN_STORAGE_KEY = 'tokens-table-columns-v2';
   const emptyFilters = {
     searchKeyword: '',
     searchToken: '',
@@ -144,7 +144,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     [COLUMN_KEYS.STATUS]: true,
     [COLUMN_KEYS.QUOTA_USAGE]: true,
     [COLUMN_KEYS.GROUP]: true,
-    [COLUMN_KEYS.TOKEN_KEY]: false,
+    [COLUMN_KEYS.TOKEN_KEY]: true,
     [COLUMN_KEYS.MODEL_LIMITS]: false,
     [COLUMN_KEYS.ALLOW_IPS]: false,
     [COLUMN_KEYS.CREATED_TIME]: false,
@@ -181,7 +181,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   });
 
   // UI state
-  const [compactMode, setCompactMode] = useTableCompactMode('tokens');
+  const [compactMode, setCompactMode] = useTableCompactMode('tokens', true);
   const [showKeys, setShowKeys] = useState({});
   const [resolvedTokenKeys, setResolvedTokenKeys] = useState({});
   const [loadingTokenKeys, setLoadingTokenKeys] = useState({});

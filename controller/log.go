@@ -59,7 +59,8 @@ func getLogQueryParams(c *gin.Context) logQueryParams {
 func GetAllLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	query := getLogQueryParams(c)
-	logs, total, err := model.GetAllLogs(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, total, err := model.GetAllLogs(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -74,7 +75,8 @@ func GetUserLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	userId := c.GetInt("id")
 	query := getLogQueryParams(c)
-	logs, total, err := model.GetUserLogs(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, total, err := model.GetUserLogs(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -160,7 +162,8 @@ func ExportAllLogs(c *gin.Context) {
 		return
 	}
 	query := getLogQueryParams(c)
-	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -175,7 +178,8 @@ func ExportUserLogs(c *gin.Context) {
 	}
 	userId := c.GetInt("id")
 	query := getLogQueryParams(c)
-	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -208,7 +212,8 @@ func GetLogByKey(c *gin.Context) {
 		})
 		return
 	}
-	logs, err := model.GetLogByTokenId(tokenId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, err := model.GetLogByTokenId(tokenId, isRootUser)
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,
