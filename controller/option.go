@@ -119,7 +119,44 @@ func getMaskedOptionValue(key, value string) (string, bool) {
 }
 
 func maskSensitiveOptionValue(value string) string {
-	runes := []rune(value)
+	values := splitMaskedSensitiveValues(value)
+	if len(values) == 0 {
+		return ""
+	}
+	if len(values) == 1 {
+		return maskSingleSensitiveValue(values[0])
+	}
+	return fmt.Sprintf("共 %d 个已保存", len(values))
+}
+
+func splitMaskedSensitiveValues(value string) []string {
+	parts := strings.FieldsFunc(strings.ReplaceAll(value, "\r", "\n"), func(r rune) bool {
+		switch r {
+		case '\n', ',', ';', '，', '；':
+			return true
+		default:
+			return false
+		}
+	})
+
+	values := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		values = append(values, trimmed)
+	}
+	return values
+}
+
+func maskSingleSensitiveValue(value string) string {
+	runes := []rune(strings.TrimSpace(value))
 	if len(runes) <= 8 {
 		return "********"
 	}

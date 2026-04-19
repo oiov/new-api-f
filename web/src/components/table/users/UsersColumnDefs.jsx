@@ -41,6 +41,37 @@ import {
 
 const { Text } = Typography;
 
+const USER_STATUS_UNKNOWN = 0;
+const USER_STATUS_ENABLED = 1;
+const USER_STATUS_DISABLED = 2;
+
+const getUserStatusMeta = (record, t) => {
+  if (record?.DeletedAt !== null) {
+    return {
+      color: 'red',
+      text: t('已注销'),
+    };
+  }
+
+  switch (Number(record?.status)) {
+    case USER_STATUS_ENABLED:
+      return {
+        color: 'green',
+        text: t('已启用'),
+      };
+    case USER_STATUS_DISABLED:
+      return {
+        color: 'red',
+        text: t('已禁用'),
+      };
+    default:
+      return {
+        color: 'grey',
+        text: t('未初始化'),
+      };
+  }
+};
+
 /**
  * Render user role
  */
@@ -106,25 +137,11 @@ const renderUsername = (text, record) => {
  * Render user statistics
  */
 const renderStatistics = (text, record, showEnableDisableModal, t) => {
-  const isDeleted = record.DeletedAt !== null;
-
-  // Determine tag text & color like original status column
-  let tagColor = 'grey';
-  let tagText = t('未知状态');
-  if (isDeleted) {
-    tagColor = 'red';
-    tagText = t('已注销');
-  } else if (record.status === 1) {
-    tagColor = 'green';
-    tagText = t('已启用');
-  } else if (record.status === 2) {
-    tagColor = 'red';
-    tagText = t('已禁用');
-  }
+  const statusMeta = getUserStatusMeta(record, t);
 
   const content = (
-    <Tag color={tagColor} shape='circle' size='small'>
-      {tagText}
+    <Tag color={statusMeta.color} shape='circle' size='small'>
+      {statusMeta.text}
     </Tag>
   );
 
@@ -271,6 +288,11 @@ const renderOperations = (
     return <></>;
   }
 
+  const status = Number(record.status);
+  const canDisable = status === USER_STATUS_ENABLED;
+  const canEnable =
+    status === USER_STATUS_DISABLED || status === USER_STATUS_UNKNOWN;
+
   const moreMenu = [
     {
       node: 'item',
@@ -354,8 +376,7 @@ const renderOperations = (
 
   return (
     <Space>
-      {permissions?.canDisableUser &&
-        (record.status === 1 ? (
+      {permissions?.canDisableUser && canDisable ? (
         <Button
           type='danger'
           size='small'
@@ -363,14 +384,15 @@ const renderOperations = (
         >
           {t('禁用')}
         </Button>
-      ) : (
+      ) : null}
+      {permissions?.canDisableUser && canEnable ? (
         <Button
           size='small'
           onClick={() => showEnableDisableModal(record, 'enable')}
         >
           {t('启用')}
         </Button>
-      ))}
+      ) : null}
       {permissions?.canEditUser && (
       <Button
         type='tertiary'

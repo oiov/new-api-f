@@ -119,33 +119,42 @@ func postJSONWithNotifyTransport(targetURL string, payload []byte) (*http.Respon
 }
 
 func notifyServerChanPaymentSuccess(cfg *payment_notify_setting.PaymentNotifySetting, notification PaymentSuccessNotification) error {
-	sendKey := strings.TrimSpace(cfg.ServerChanSendKey)
+	sendKeys := splitNotifySecretValues(cfg.ServerChanSendKey)
 	uid := strings.TrimSpace(cfg.ServerChanUID)
-	if sendKey == "" || uid == "" {
+	if len(sendKeys) == 0 || uid == "" {
 		return fmt.Errorf("missing serverchan uid or send key")
 	}
 
 	body := map[string]string{
 		"title": paymentSuccessPushTitle,
-		"desp":  buildPaymentSuccessMarkdown(notification, uid),
+		"desp":  buildPaymentSuccessMarkdown(notification, uid, cfg.Remark),
 	}
 	payload, err := common.Marshal(body)
 	if err != nil {
 		return err
 	}
 
-	sendURL := fmt.Sprintf("https://%s.push.ft07.com/send/%s.send", uid, sendKey)
-	resp, err := postJSONWithNotifyTransport(sendURL, payload)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+	var errs []string
+	for _, sendKey := range sendKeys {
+		sendURL := fmt.Sprintf("https://%s.push.ft07.com/send/%s.send", uid, sendKey)
+		resp, err := postJSONWithNotifyTransport(sendURL, payload)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", maskNotifySecretValue(sendKey), err))
+			continue
+		}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		func() {
+			defer resp.Body.Close()
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+				errs = append(errs, fmt.Sprintf("%s: unexpected status %d: %s", maskNotifySecretValue(sendKey), resp.StatusCode, strings.TrimSpace(string(respBody))))
+			}
+		}()
 	}
 
+	if len(errs) > 0 {
+		return fmt.Errorf("serverchan partial failure: %s", strings.Join(errs, "; "))
+	}
 	return nil
 }
 
@@ -155,48 +164,95 @@ type pushPlusSendResponse struct {
 }
 
 func notifyPushPlusPaymentSuccess(cfg *payment_notify_setting.PaymentNotifySetting, notification PaymentSuccessNotification) error {
-	token := strings.TrimSpace(cfg.PushPlusToken)
-	if token == "" {
+	tokens := splitNotifySecretValues(cfg.PushPlusToken)
+	if len(tokens) == 0 {
 		return fmt.Errorf("missing pushplus token")
 	}
 
-	body := map[string]string{
-		"token":    token,
-		"title":    paymentSuccessPushTitle,
-		"content":  buildPaymentSuccessMarkdown(notification, strings.TrimSpace(cfg.ServerChanUID)),
-		"template": "markdown",
-	}
-	payload, err := common.Marshal(body)
-	if err != nil {
-		return err
+	content := buildPaymentSuccessMarkdown(notification, strings.TrimSpace(cfg.ServerChanUID), cfg.Remark)
+	var errs []string
+	for _, token := range tokens {
+		body := map[string]string{
+			"token":    token,
+			"title":    paymentSuccessPushTitle,
+			"content":  content,
+			"template": "markdown",
+		}
+		payload, err := common.Marshal(body)
+		if err != nil {
+			return err
+		}
+
+		resp, err := postJSONWithNotifyTransport(pushPlusSendURL, payload)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", maskNotifySecretValue(token), err))
+			continue
+		}
+
+		func() {
+			defer resp.Body.Close()
+			respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", maskNotifySecretValue(token), err))
+				return
+			}
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				errs = append(errs, fmt.Sprintf("%s: unexpected status %d: %s", maskNotifySecretValue(token), resp.StatusCode, strings.TrimSpace(string(respBody))))
+				return
+			}
+
+			var pushResp pushPlusSendResponse
+			if err := common.Unmarshal(respBody, &pushResp); err != nil {
+				errs = append(errs, fmt.Sprintf("%s: %v", maskNotifySecretValue(token), err))
+				return
+			}
+			if pushResp.Code != 200 {
+				errs = append(errs, fmt.Sprintf("%s: code=%d msg=%s", maskNotifySecretValue(token), pushResp.Code, strings.TrimSpace(pushResp.Msg)))
+			}
+		}()
 	}
 
-	resp, err := postJSONWithNotifyTransport(pushPlusSendURL, payload)
-	if err != nil {
-		return err
+	if len(errs) > 0 {
+		return fmt.Errorf("pushplus partial failure: %s", strings.Join(errs, "; "))
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
-	}
-
-	var pushResp pushPlusSendResponse
-	if err := common.Unmarshal(respBody, &pushResp); err != nil {
-		return err
-	}
-	if pushResp.Code != 200 {
-		return fmt.Errorf("code=%d msg=%s", pushResp.Code, strings.TrimSpace(pushResp.Msg))
-	}
-
 	return nil
 }
 
-func buildPaymentSuccessMarkdown(notification PaymentSuccessNotification, uid string) string {
+func splitNotifySecretValues(raw string) []string {
+	parts := strings.FieldsFunc(strings.ReplaceAll(raw, "\r", "\n"), func(r rune) bool {
+		switch r {
+		case '\n', ',', ';', '，', '；':
+			return true
+		default:
+			return false
+		}
+	})
+
+	values := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		values = append(values, trimmed)
+	}
+	return values
+}
+
+func maskNotifySecretValue(value string) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= 8 {
+		return "********"
+	}
+	return string(runes[:4]) + "****" + string(runes[len(runes)-4:])
+}
+
+func buildPaymentSuccessMarkdown(notification PaymentSuccessNotification, uid string, remark string) string {
 	category := strings.TrimSpace(notification.Category)
 	if category == "" {
 		category = "支付"
@@ -225,6 +281,9 @@ func buildPaymentSuccessMarkdown(notification PaymentSuccessNotification, uid st
 			label = "套餐"
 		}
 		lines = append(lines, fmt.Sprintf("- %s：%s", label, quota))
+	}
+	if remark = strings.TrimSpace(remark); remark != "" {
+		lines = append(lines, fmt.Sprintf("- 备注：%s", remark))
 	}
 	if uid = strings.TrimSpace(uid); uid != "" {
 		lines = append(lines, "", fmt.Sprintf("> 推送 UID: %s", uid))

@@ -24,18 +24,24 @@ func ListSelfSiteNotifications(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
 	unreadOnly := strings.EqualFold(strings.TrimSpace(c.Query("unread_only")), "true")
-	items, total, err := model.GetUserSiteNotifications(userId, pageInfo, unreadOnly)
+	beforeID, err := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("before_id", "0")))
+	if err != nil || beforeID < 0 {
+		common.ApiErrorMsg(c, "无效的站内信游标")
+		return
+	}
+	items, total, hasMore, nextBeforeID, err := model.GetUserSiteNotifications(userId, pageInfo.GetPageSize(), beforeID, unreadOnly)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
-		"message":   "",
-		"data":      items,
-		"total":     total,
-		"page":      pageInfo.Page,
-		"page_size": pageInfo.PageSize,
+		"success":        true,
+		"message":        "",
+		"data":           items,
+		"total":          total,
+		"page_size":      pageInfo.PageSize,
+		"has_more":       hasMore,
+		"next_before_id": nextBeforeID,
 	})
 }
 

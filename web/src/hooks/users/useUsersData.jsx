@@ -61,6 +61,7 @@ export const useUsersData = () => {
   const formInitValues = {
     searchKeyword: initialKeyword,
     searchGroup: '',
+    searchStatus: '',
     sortBy: 'id',
     sortOrder: 'desc',
   };
@@ -74,6 +75,7 @@ export const useUsersData = () => {
     return {
       searchKeyword: formValues.searchKeyword || '',
       searchGroup: formValues.searchGroup || '',
+      searchStatus: formValues.searchStatus || '',
       sortBy: formValues.sortBy || 'id',
       sortOrder: formValues.sortOrder || 'desc',
     };
@@ -84,6 +86,7 @@ export const useUsersData = () => {
     size,
     searchKeyword = '',
     searchGroup = '',
+    searchStatus = '',
     sortBy = 'id',
     sortOrder = 'desc',
   }) => {
@@ -92,6 +95,7 @@ export const useUsersData = () => {
     params.set('page_size', size);
     if (searchKeyword) params.set('keyword', searchKeyword);
     if (searchGroup) params.set('group', searchGroup);
+    if (searchStatus !== '') params.set('status', searchStatus);
     if (sortBy) params.set('sort_by', sortBy);
     if (sortOrder) params.set('sort_order', sortOrder);
     return params.toString();
@@ -108,11 +112,12 @@ export const useUsersData = () => {
   // Load users data
   const loadUsers = async (startIdx, pageSize) => {
     setLoading(true);
-    const { sortBy, sortOrder } = getFormValues();
+    const { searchStatus, sortBy, sortOrder } = getFormValues();
     const res = await API.get(
       `/api/user/?${buildUserListQuery({
         page: startIdx,
         size: pageSize,
+        searchStatus,
         sortBy,
         sortOrder,
       })}`,
@@ -135,6 +140,7 @@ export const useUsersData = () => {
     pageSize,
     searchKeyword = null,
     searchGroup = null,
+    searchStatus = null,
     sortBy = null,
     sortOrder = null,
   ) => {
@@ -142,18 +148,19 @@ export const useUsersData = () => {
     if (
       searchKeyword === null ||
       searchGroup === null ||
+      searchStatus === null ||
       sortBy === null ||
       sortOrder === null
     ) {
       const formValues = getFormValues();
       searchKeyword = formValues.searchKeyword;
       searchGroup = formValues.searchGroup;
+      searchStatus = formValues.searchStatus;
       sortBy = formValues.sortBy;
       sortOrder = formValues.sortOrder;
     }
 
-    if (searchKeyword === '' && searchGroup === '') {
-      // If keyword is blank, load files instead
+    if (searchKeyword === '' && searchGroup === '' && searchStatus === '') {
       await loadUsers(startIdx, pageSize);
       return;
     }
@@ -164,6 +171,7 @@ export const useUsersData = () => {
         size: pageSize,
         searchKeyword,
         searchGroup,
+        searchStatus,
         sortBy,
         sortOrder,
       })}`,
@@ -310,8 +318,9 @@ export const useUsersData = () => {
 
   // Refresh data
   const refresh = async (page = activePage) => {
-    const { searchKeyword, searchGroup, sortBy, sortOrder } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const { searchKeyword, searchGroup, searchStatus, sortBy, sortOrder } =
+      getFormValues();
+    if (searchKeyword === '' && searchGroup === '' && searchStatus === '') {
       await loadUsers(page, pageSize);
     } else {
       await searchUsers(
@@ -319,6 +328,7 @@ export const useUsersData = () => {
         pageSize,
         searchKeyword,
         searchGroup,
+        searchStatus,
         sortBy,
         sortOrder,
       );

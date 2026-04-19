@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -68,20 +69,42 @@ func CreateSiteNotificationTx(tx *gorm.DB, notification *SiteNotification) error
 	return tx.Create(notification).Error
 }
 
-func GetUserSiteNotifications(userId int, pageInfo *common.PageInfo, unreadOnly bool) ([]*SiteNotification, int64, error) {
+func GetUserSiteNotifications(userId int, limit int, beforeID int, unreadOnly bool) ([]*SiteNotification, int64, bool, int, error) {
 	var notifications []*SiteNotification
 	var total int64
+	if limit <= 0 {
+		limit = common.ItemsPerPage
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if beforeID < 0 {
+		return nil, 0, false, 0, errors.New("无效的站内信游标")
+	}
 	db := DB.Model(&SiteNotification{}).Where("user_id = ?", userId)
 	if unreadOnly {
 		db = db.Where("is_read = ?", false)
 	}
 	if err := db.Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, false, 0, err
 	}
-	if err := db.Order("id DESC").Offset(pageInfo.GetStartIdx()).Limit(pageInfo.GetPageSize()).Find(&notifications).Error; err != nil {
-		return nil, 0, err
+	if beforeID > 0 {
+		db = db.Where("id < ?", beforeID)
 	}
-	return notifications, total, nil
+	if err := db.Order("id DESC").Limit(limit + 1).Find(&notifications).Error; err != nil {
+		return nil, 0, false, 0, err
+	}
+
+	hasMore := len(notifications) > limit
+	if hasMore {
+		notifications = notifications[:limit]
+	}
+
+	nextBeforeID := 0
+	if len(notifications) > 0 {
+		nextBeforeID = notifications[len(notifications)-1].Id
+	}
+	return notifications, total, hasMore, nextBeforeID, nil
 }
 
 func CountUnreadSiteNotifications(userId int) (int64, error) {

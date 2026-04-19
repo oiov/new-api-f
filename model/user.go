@@ -304,7 +304,26 @@ func enrichUsersInviteInfo(tx *gorm.DB, users []*User) error {
 	return nil
 }
 
-func GetAllUsers(pageInfo *common.PageInfo, sortBy string, sortOrder string) (users []*User, total int64, err error) {
+func applyUserStatusFilter(query *gorm.DB, status string) (*gorm.DB, error) {
+	trimmedStatus := strings.TrimSpace(status)
+	if trimmedStatus == "" {
+		return query, nil
+	}
+
+	statusInt, err := strconv.Atoi(trimmedStatus)
+	if err != nil {
+		return nil, errors.New("无效的用户状态")
+	}
+
+	switch statusInt {
+	case 0, common.UserStatusEnabled, common.UserStatusDisabled:
+	default:
+		return nil, errors.New("无效的用户状态")
+	}
+	return query.Where("status = ?", statusInt), nil
+}
+
+func GetAllUsers(pageInfo *common.PageInfo, status string, sortBy string, sortOrder string) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -316,15 +335,21 @@ func GetAllUsers(pageInfo *common.PageInfo, sortBy string, sortOrder string) (us
 		}
 	}()
 
+	query, err := applyUserStatusFilter(tx.Unscoped().Model(&User{}), status)
+	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+
 	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
+	err = query.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().
+	err = query.
 		Order(normalizeUserListSort(sortBy, sortOrder)).
 		Limit(pageInfo.GetPageSize()).
 		Offset(pageInfo.GetStartIdx()).
@@ -347,7 +372,7 @@ func GetAllUsers(pageInfo *common.PageInfo, sortBy string, sortOrder string) (us
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, startIdx int, num int, sortBy string, sortOrder string) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, status string, startIdx int, num int, sortBy string, sortOrder string) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -365,6 +390,11 @@ func SearchUsers(keyword string, group string, startIdx int, num int, sortBy str
 
 	// 构建基础查询
 	query := tx.Model(&User{})
+	query, err = applyUserStatusFilter(query, status)
+	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"

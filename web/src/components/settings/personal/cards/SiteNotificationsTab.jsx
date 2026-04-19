@@ -6,6 +6,7 @@ import {
   Empty,
   List,
   Space,
+  Switch,
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
@@ -55,10 +56,13 @@ export default function SiteNotificationsTab({ t }) {
   const [userState, userDispatch] = useContext(UserContext);
   const [loading, setLoading] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextBeforeId, setNextBeforeId] = useState(0);
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [pageSize] = useState(20);
   const unreadCount = Number(userState?.user?.site_notification_unread_count || 0);
 
   const syncUnreadCount = useCallback(
@@ -81,27 +85,39 @@ export default function SiteNotificationsTab({ t }) {
     [userDispatch, userState?.user],
   );
 
-  const fetchItems = useCallback(async () => {
-    setLoading(true);
+  const fetchItems = useCallback(async ({ append = false, cursor = 0 } = {}) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const res = await API.get('/api/user/notifications', {
         params: {
-          p: page,
           page_size: pageSize,
+          unread_only: unreadOnly,
+          before_id: cursor > 0 ? cursor : undefined,
         },
       });
       if (res.data.success) {
-        setItems(Array.isArray(res.data.data) ? res.data.data : []);
+        const nextItems = Array.isArray(res.data.data) ? res.data.data : [];
+        setItems((prev) => (append ? [...prev, ...nextItems] : nextItems));
         setTotal(Number(res.data.total || 0));
+        setHasMore(Boolean(res.data.has_more));
+        setNextBeforeId(Number(res.data.next_before_id || 0));
       } else {
         showError(res.data.message);
       }
     } catch (error) {
       showError(error.message || t('加载失败'));
     } finally {
-      setLoading(false);
+      if (append) {
+        setLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
-  }, [page, pageSize, t]);
+  }, [pageSize, t, unreadOnly]);
 
   useEffect(() => {
     fetchItems();
@@ -170,6 +186,14 @@ export default function SiteNotificationsTab({ t }) {
           </Text>
         </div>
         <Space>
+          <div className='flex items-center gap-2 rounded-full border border-[var(--semi-color-border)] px-3 py-2'>
+            <Text size='small'>{t('仅看未读')}</Text>
+            <Switch
+              size='small'
+              checked={unreadOnly}
+              onChange={(checked) => setUnreadOnly(Boolean(checked))}
+            />
+          </div>
           <Button
             icon={<RefreshCw size={14} />}
             onClick={() => {
@@ -198,6 +222,18 @@ export default function SiteNotificationsTab({ t }) {
         description={t('站内信默认保留在账户内，不依赖邮箱绑定；如管理员勾选，也可能同步发送到邮箱。')}
         style={{ marginBottom: 16 }}
       />
+
+      <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
+        <Text type='secondary' size='small'>
+          {t('当前已加载 {{loaded}} / {{total}} 条', {
+            loaded: items.length,
+            total,
+          })}
+        </Text>
+        <Text type='tertiary' size='small'>
+          {unreadOnly ? t('仅展示未读消息') : t('按时间倒序展示最近消息')}
+        </Text>
+      </div>
 
       <List
         loading={loading}
@@ -259,13 +295,22 @@ export default function SiteNotificationsTab({ t }) {
             style={{ padding: 24 }}
           />
         }
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: setPage,
-          hideOnSinglePage: true,
-        }}
+        footer={
+          items.length > 0 ? (
+            <div className='flex justify-center py-3'>
+              {hasMore ? (
+                <Button
+                  loading={loadingMore}
+                  onClick={() => fetchItems({ append: true, cursor: nextBeforeId })}
+                >
+                  {t('加载更多')}
+                </Button>
+              ) : (
+                <Text type='tertiary'>{t('已经到底了')}</Text>
+              )}
+            </div>
+          ) : null
+        }
       />
     </div>
   );
