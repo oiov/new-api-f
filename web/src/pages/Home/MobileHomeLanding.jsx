@@ -162,7 +162,7 @@ const MobileHomeLanding = ({
   return (
     <div className='w-full overflow-x-hidden'>
       <section className='hl-spotlight-surface relative overflow-hidden border-b border-semi-color-border bg-[radial-gradient(circle_at_top_left,rgba(6,182,212,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.9))]'>
-        <div className='mx-auto flex w-full max-w-[1280px] flex-col gap-5 px-4 pb-9 pt-14'>
+        <div className='mx-auto flex w-full max-w-[1280px] flex-col gap-5 px-4 pb-9 pt-16'>
           <div className='flex flex-wrap items-center gap-3'>
             <a href='#official-direct-section'>
               <Button
@@ -226,11 +226,10 @@ const MobileHomeLanding = ({
               {accessModes.map((item, index) => (
                 <div
                   key={item.title}
-                  className={`rounded-[20px] border p-4 ${
-                    index === 0
-                      ? 'border-cyan-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(239,246,255,0.98))]'
-                      : 'border-emerald-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(236,253,245,0.98))]'
-                  }`}
+                  className={`rounded-[20px] border p-4 ${index === 0
+                    ? 'border-cyan-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(239,246,255,0.98))]'
+                    : 'border-emerald-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(236,253,245,0.98))]'
+                    }`}
                 >
                   <div className='flex items-center justify-between gap-3'>
                     <Tag
@@ -577,26 +576,26 @@ const MobileHomeLanding = ({
 
           <div className='mt-6 -mx-5 overflow-x-auto px-5 pb-1'>
             <div className='flex snap-x snap-mandatory gap-4'>
-            {testimonials.map((item) => (
-              <div
-                key={item.quote}
-                className='min-w-[284px] max-w-[284px] snap-start rounded-[20px] border border-semi-color-border bg-semi-color-bg-0 p-4 shadow-[0_12px_36px_rgba(15,23,42,0.05)]'
-              >
-                <div className='text-3xl font-black leading-none text-cyan-500/70'>"</div>
-                <Paragraph className='!mb-0 !mt-3 !text-sm !leading-7 !text-semi-color-text-1'>
-                  {item.quote}
-                </Paragraph>
-                <div className='mt-4 flex items-center gap-3'>
-                  <div className='flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10 text-sm font-bold text-cyan-700 dark:text-cyan-200'>
-                    {item.name}
-                  </div>
-                  <div>
-                    <div className='font-semibold text-semi-color-text-0'>{item.name}</div>
-                    <div className='text-sm text-semi-color-text-2'>{item.role}</div>
+              {testimonials.map((item) => (
+                <div
+                  key={item.quote}
+                  className='min-w-[284px] max-w-[284px] snap-start rounded-[20px] border border-semi-color-border bg-semi-color-bg-0 p-4 shadow-[0_12px_36px_rgba(15,23,42,0.05)]'
+                >
+                  <div className='text-3xl font-black leading-none text-cyan-500/70'>"</div>
+                  <Paragraph className='!mb-0 !mt-3 !text-sm !leading-7 !text-semi-color-text-1'>
+                    {item.quote}
+                  </Paragraph>
+                  <div className='mt-4 flex items-center gap-3'>
+                    <div className='flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10 text-sm font-bold text-cyan-700 dark:text-cyan-200'>
+                      {item.name}
+                    </div>
+                    <div>
+                      <div className='font-semibold text-semi-color-text-0'>{item.name}</div>
+                      <div className='text-sm text-semi-color-text-2'>{item.role}</div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
             </div>
           </div>
 

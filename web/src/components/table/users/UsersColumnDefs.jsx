@@ -41,9 +41,9 @@ import {
 
 const { Text } = Typography;
 
-const USER_STATUS_UNKNOWN = 0;
 const USER_STATUS_ENABLED = 1;
 const USER_STATUS_DISABLED = 2;
+const USER_STATUS_BANNED = 3;
 
 const getUserStatusMeta = (record, t) => {
   if (record?.DeletedAt !== null) {
@@ -64,10 +64,15 @@ const getUserStatusMeta = (record, t) => {
         color: 'red',
         text: t('已禁用'),
       };
+    case USER_STATUS_BANNED:
+      return {
+        color: 'orange',
+        text: t('已封禁'),
+      };
     default:
       return {
-        color: 'grey',
-        text: t('未初始化'),
+        color: 'red',
+        text: t('已禁用'),
       };
   }
 };
@@ -289,9 +294,9 @@ const renderOperations = (
   }
 
   const status = Number(record.status);
-  const canDisable = status === USER_STATUS_ENABLED;
-  const canEnable =
-    status === USER_STATUS_DISABLED || status === USER_STATUS_UNKNOWN;
+  const canDisable = status !== USER_STATUS_DISABLED;
+  const canBan = status !== USER_STATUS_BANNED;
+  const canEnable = status !== USER_STATUS_ENABLED;
 
   const moreMenu = [
     {
@@ -383,6 +388,15 @@ const renderOperations = (
           onClick={() => showEnableDisableModal(record, 'disable')}
         >
           {t('禁用')}
+        </Button>
+      ) : null}
+      {permissions?.canDisableUser && canBan ? (
+        <Button
+          type='warning'
+          size='small'
+          onClick={() => showEnableDisableModal(record, 'ban')}
+        >
+          {t('封禁')}
         </Button>
       ) : null}
       {permissions?.canDisableUser && canEnable ? (

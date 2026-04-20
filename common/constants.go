@@ -222,7 +222,21 @@ var RateLimitKeyExpirationDuration = 20 * time.Minute
 const (
 	UserStatusEnabled  = 1 // don't use 0, 0 is the default value!
 	UserStatusDisabled = 2 // also don't use 0
+	UserStatusBanned   = 3
 )
+
+func IsValidUserStatus(status int) bool {
+	switch status {
+	case UserStatusEnabled, UserStatusDisabled, UserStatusBanned:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsEnabledUserStatus(status int) bool {
+	return status == UserStatusEnabled
+}
 
 const (
 	TokenStatusEnabled   = 1 // don't use 0, 0 is the default value!

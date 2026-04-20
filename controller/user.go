@@ -615,7 +615,7 @@ func UpdateUser(c *gin.Context) {
 	if !common.IsValidateRole(updatedUser.Role) {
 		updatedUser.Role = originUser.Role
 	}
-	if updatedUser.Status != common.UserStatusEnabled && updatedUser.Status != common.UserStatusDisabled {
+	if !common.IsValidUserStatus(updatedUser.Status) {
 		updatedUser.Status = originUser.Status
 	}
 	myRole := c.GetInt("role")
@@ -1024,6 +1024,16 @@ func ManageUser(c *gin.Context) {
 			return
 		}
 		user.Status = common.UserStatusDisabled
+		if user.Role == common.RoleRootUser {
+			common.ApiErrorI18n(c, i18n.MsgUserCannotDisableRootUser)
+			return
+		}
+	case "ban":
+		if !hasPermission(common.PermissionPointUserDisable) {
+			common.ApiError(c, errors.New("无权封禁用户"))
+			return
+		}
+		user.Status = common.UserStatusBanned
 		if user.Role == common.RoleRootUser {
 			common.ApiErrorI18n(c, i18n.MsgUserCannotDisableRootUser)
 			return

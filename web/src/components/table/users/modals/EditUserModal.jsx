@@ -154,13 +154,10 @@ const EditUserModal = (props) => {
     { label: t('管理员'), value: 10 },
   ];
 
-  const currentStatus = Number(props.editingUser?.status);
   const statusOptions = [
-    ...(currentStatus !== 1 && currentStatus !== 2
-      ? [{ label: t('未初始化'), value: 0 }]
-      : []),
     { label: t('已启用'), value: 1 },
     { label: t('已禁用'), value: 2 },
+    { label: t('已封禁'), value: 3 },
   ];
 
   const permissionTemplateOptions = [

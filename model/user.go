@@ -315,9 +315,7 @@ func applyUserStatusFilter(query *gorm.DB, status string) (*gorm.DB, error) {
 		return nil, errors.New("无效的用户状态")
 	}
 
-	switch statusInt {
-	case 0, common.UserStatusEnabled, common.UserStatusDisabled:
-	default:
+	if !common.IsValidUserStatus(statusInt) {
 		return nil, errors.New("无效的用户状态")
 	}
 	return query.Where("status = ?", statusInt), nil
@@ -848,8 +846,8 @@ func (user *User) ValidateAndFill() (err error) {
 	// find buy username or email
 	DB.Where("username = ? OR email = ?", username, username).First(user)
 	okay := common.ValidatePasswordAndHash(password, user.Password)
-	if !okay || user.Status != common.UserStatusEnabled {
-		return errors.New("用户名或密码错误，或用户已被封禁")
+	if !okay || !common.IsEnabledUserStatus(user.Status) {
+		return errors.New("用户名或密码错误，或用户已被禁用或封禁")
 	}
 	return nil
 }

@@ -96,9 +96,9 @@ const UsersFilters = ({
             placeholder={t('选择状态')}
             optionList={[
               { label: t('全部状态'), value: '' },
-              { label: t('未初始化'), value: '0' },
               { label: t('已启用'), value: '1' },
               { label: t('已禁用'), value: '2' },
+              { label: t('已封禁'), value: '3' },
             ]}
             onChange={() => {
               setTimeout(() => {

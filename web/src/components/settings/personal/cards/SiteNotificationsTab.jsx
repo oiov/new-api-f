@@ -13,6 +13,7 @@ import {
 import {
   Bell,
   CheckCheck,
+  Inbox,
   MailOpen,
   RefreshCw,
 } from 'lucide-react';
@@ -26,6 +27,13 @@ const LEVEL_COLOR_MAP = {
   success: 'green',
   warning: 'orange',
   danger: 'red',
+};
+
+const LEVEL_SURFACE_MAP = {
+  info: 'border-l-blue-500 bg-blue-50/70',
+  success: 'border-l-green-500 bg-green-50/70',
+  warning: 'border-l-orange-500 bg-orange-50/70',
+  danger: 'border-l-red-500 bg-red-50/70',
 };
 
 function decodeHtmlEntities(content) {
@@ -171,21 +179,39 @@ export default function SiteNotificationsTab({ t }) {
 
   return (
     <div className='py-4'>
-      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
-        <div>
-          <div className='flex items-center gap-2'>
+      <div className='mb-4 overflow-hidden rounded-3xl border border-[var(--semi-color-border)] bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_42%),linear-gradient(135deg,_var(--semi-color-fill-0),_var(--semi-color-bg-0))] p-5'>
+        <div className='flex flex-wrap items-start justify-between gap-4'>
+          <div className='min-w-0 flex-1'>
             <Badge count={unreadCount} overflowCount={99}>
-              <div className='inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700'>
+              <div className='inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-sm font-semibold text-blue-700 shadow-sm'>
                 <Bell size={14} />
                 {t('站内信')}
               </div>
             </Badge>
+            <div className='mt-3 flex flex-wrap items-end gap-3'>
+              <Text strong className='text-lg'>
+                {t('管理员通知、发放提醒和售后说明都集中在这里')}
+              </Text>
+            </div>
+            <Text type='secondary' size='small' className='mt-2 block max-w-2xl'>
+              {t('未读消息会优先高亮展示，支持仅查看未读并批量标记为已读。')}
+            </Text>
+            <div className='mt-4 flex flex-wrap gap-2'>
+              <div className='rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm'>
+                <Text type='tertiary' size='small'>{t('未读')}</Text>
+                <div className='mt-1 text-xl font-semibold text-[var(--semi-color-text-0)]'>{unreadCount}</div>
+              </div>
+              <div className='rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm'>
+                <Text type='tertiary' size='small'>{t('已加载')}</Text>
+                <div className='mt-1 text-xl font-semibold text-[var(--semi-color-text-0)]'>{items.length}</div>
+              </div>
+              <div className='rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm'>
+                <Text type='tertiary' size='small'>{t('总数')}</Text>
+                <div className='mt-1 text-xl font-semibold text-[var(--semi-color-text-0)]'>{total}</div>
+              </div>
+            </div>
           </div>
-          <Text type='secondary' size='small' className='mt-2 block'>
-            {t('管理员发送的发放提醒、售后说明和重要通知会出现在这里。')}
-          </Text>
-        </div>
-        <Space>
+          <Space align='start'>
           <div className='flex items-center gap-2 rounded-full border border-[var(--semi-color-border)] px-3 py-2'>
             <Text size='small'>{t('仅看未读')}</Text>
             <Switch
@@ -213,7 +239,8 @@ export default function SiteNotificationsTab({ t }) {
           >
             {t('全部已读')}
           </Button>
-        </Space>
+          </Space>
+        </div>
       </div>
 
       <Banner
@@ -223,15 +250,20 @@ export default function SiteNotificationsTab({ t }) {
         style={{ marginBottom: 16 }}
       />
 
-      <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-        <Text type='secondary' size='small'>
-          {t('当前已加载 {{loaded}} / {{total}} 条', {
-            loaded: items.length,
-            total,
-          })}
-        </Text>
+      <div className='mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] px-4 py-3'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <Tag color='blue' shape='circle'>
+            {t('当前已加载 {{loaded}} / {{total}} 条', {
+              loaded: items.length,
+              total,
+            })}
+          </Tag>
+          <Tag color={unreadOnly ? 'orange' : 'grey'} shape='circle'>
+            {unreadOnly ? t('仅展示未读消息') : t('按时间倒序展示最近消息')}
+          </Tag>
+        </div>
         <Text type='tertiary' size='small'>
-          {unreadOnly ? t('仅展示未读消息') : t('按时间倒序展示最近消息')}
+          {unreadCount > 0 ? t('建议优先处理未读的重要通知') : t('当前没有待处理的未读通知')}
         </Text>
       </div>
 
@@ -245,8 +277,14 @@ export default function SiteNotificationsTab({ t }) {
             <List.Item
               key={item?.id}
               main={
-                <div className='w-full rounded-2xl border border-[var(--semi-color-border)] bg-[var(--semi-color-bg-0)] p-4'>
-                  <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
+                <div
+                  className={`w-full rounded-3xl border border-[var(--semi-color-border)] border-l-4 p-4 shadow-sm transition-all ${
+                    isRead
+                      ? 'bg-[var(--semi-color-bg-0)]'
+                      : LEVEL_SURFACE_MAP[item?.level] || LEVEL_SURFACE_MAP.info
+                  }`}
+                >
+                  <div className='mb-3 flex flex-wrap items-start justify-between gap-3'>
                     <div className='flex min-w-0 items-center gap-2'>
                       <Text strong className='truncate'>
                         {item?.title || '-'}
@@ -264,8 +302,8 @@ export default function SiteNotificationsTab({ t }) {
                         </Tag>
                       )}
                     </div>
-                    <div className='flex items-center gap-2'>
-                      <Text type='tertiary' size='small'>
+                    <div className='flex flex-col items-end gap-2'>
+                      <Text type='tertiary' size='small' className='whitespace-nowrap'>
                         {timestamp2string(Math.floor(Number(item?.created_at || 0) / 1000))}
                       </Text>
                       {!isRead ? (
@@ -281,7 +319,7 @@ export default function SiteNotificationsTab({ t }) {
                       ) : null}
                     </div>
                   </div>
-                  <div className='whitespace-pre-wrap break-words text-sm leading-6 text-[var(--semi-color-text-1)]'>
+                  <div className='rounded-2xl bg-white/70 px-4 py-3 text-sm leading-6 text-[var(--semi-color-text-1)]'>
                     {content || '-'}
                   </div>
                 </div>
@@ -291,7 +329,9 @@ export default function SiteNotificationsTab({ t }) {
         }}
         emptyContent={
           <Empty
+            image={<Inbox size={42} className='text-[var(--semi-color-text-2)]' />}
             description={t('暂无站内信')}
+            content={t('新的系统通知、发放提醒和售后消息会显示在这里。')}
             style={{ padding: 24 }}
           />
         }
