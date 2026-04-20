@@ -864,6 +864,17 @@ const ROUTE_SEO_CONFIGS = [
       }),
   },
   {
+    pattern: '/console/site-notifications',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 个人设置页标题',
+        descriptionKey: 'SEO 个人设置页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
     pattern: '/console/chat/*',
     build: (language, pathname) =>
       buildRouteSeo({

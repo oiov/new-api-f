@@ -65,10 +65,11 @@ const routerMap = {
   models: '/console/models',
   deployment: '/console/deployment',
   playground: '/console/playground',
+  mailAssistant: '/console/mail-assistant',
   personal: '/console/personal',
   activityLottery: '/console/activity-lottery',
   checkinLottery: '/console/checkin-lottery',
-  siteNotifications: '/console/personal#site-notifications',
+  siteNotifications: '/console/site-notifications',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
@@ -143,6 +144,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         className:
           localStorage.getItem('enable_task') === 'true' ? '' : 'tableHiddle',
       },
+      {
+        text: t('花火邮箱助手'),
+        itemKey: 'mailAssistant',
+        to: '/console/mail-assistant',
+      },
     ];
 
     // 根据配置过滤项目
@@ -185,7 +191,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       {
         text: t('站内信'),
         itemKey: 'siteNotifications',
-        to: '/personal#site-notifications',
+        to: '/console/site-notifications',
       },
     ];
 

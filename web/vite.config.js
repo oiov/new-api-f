@@ -23,7 +23,7 @@ import pkg from '@douyinfe/vite-plugin-semi';
 import path from 'path';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
-const DEFAULT_PROXY_TARGET = 'https://api.fishxcode.com';
+const DEFAULT_PROXY_TARGET = 'https://fishxcode.com';
 const deployedAt =
   process.env.VITE_DEPLOYED_AT ||
   process.env.DEPLOYED_AT ||

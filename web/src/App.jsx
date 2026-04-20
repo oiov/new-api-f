@@ -61,6 +61,8 @@ const InvoiceAdminPage = lazy(() => import('./pages/InvoiceAdmin'));
 const CheckinAdminPage = lazy(() => import('./pages/CheckinAdmin'));
 const ActivityLotteryPage = lazy(() => import('./pages/ActivityLottery'));
 const CheckinLotteryPage = lazy(() => import('./pages/CheckinLottery'));
+const SiteNotificationsPage = lazy(() => import('./pages/SiteNotifications'));
+const MailAssistantPage = lazy(() => import('./pages/MailAssistant'));
 const PackagePage = lazy(() => import('./pages/Package'));
 const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
@@ -223,6 +225,14 @@ function App() {
             element={
               <PrivateRoute>
                 <Playground />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/mail-assistant'
+            element={
+              <PrivateRoute>
+                <MailAssistantPage />
               </PrivateRoute>
             }
           />
@@ -479,6 +489,19 @@ function App() {
                   key={location.pathname}
                 >
                   <CheckinLotteryPage />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/site-notifications'
+            element={
+              <PrivateRoute>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
+                  <SiteNotificationsPage />
                 </Suspense>
               </PrivateRoute>
             }

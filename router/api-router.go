@@ -130,6 +130,11 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/notifications/unread_count", controller.GetSelfSiteNotificationUnreadCount)
 				selfRoute.POST("/notifications/:id/read", controller.MarkSelfSiteNotificationRead)
 				selfRoute.POST("/notifications/read_all", controller.MarkAllSelfSiteNotificationsRead)
+				selfRoute.GET("/mail_assistant", controller.GetMailAssistantSnapshot)
+				selfRoute.POST("/mail_assistant/import", controller.ImportMailAssistantAccounts)
+				selfRoute.POST("/mail_assistant/pull", controller.PullMailAssistantAccounts)
+				selfRoute.POST("/mail_assistant/accounts/:account_id/pull", controller.PullMailAssistantAccount)
+				selfRoute.GET("/mail_assistant/ws", controller.MailAssistantWS)
 			}
 
 			adminRoute := userRoute.Group("/")
