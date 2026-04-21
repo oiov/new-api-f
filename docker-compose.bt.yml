@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  new-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: new-api
+    restart: always
+    command: --log-dir /app/logs
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./logs:/app/logs
+    environment:
+      - BATCH_UPDATE_ENABLED=true
+      - ERROR_LOG_ENABLED=true
+      - MAX_REQUEST_BODY_MB=512
+      - PORT=8080
+      - REDIS_CONN_STRING=redis://:29CX7fQ18uwvhA0J4q6ypMT5V3BiZeOc@154.9.243.53:30842
+      - SESSION_SECRET=please_change_this_to_random_string
+      - CRYPTO_SECRET=please_change_this_to_random_string_too
+      - SQL_DSN=postgresql://root:NT96718WKhROy2JDkveUj4rs5GLSp0n3@154.64.232.136:30339/zeabur
+      - TZ=Asia/Shanghai
