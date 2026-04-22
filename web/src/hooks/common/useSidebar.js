@@ -41,7 +41,6 @@ export const DEFAULT_ADMIN_CONFIG = {
     activityLottery: true,
     midjourney: true,
     task: true,
-    mailAssistant: true,
   },
   personal: {
     enabled: true,

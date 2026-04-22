@@ -68,7 +68,6 @@ const routerMap = {
   models: '/console/models',
   deployment: '/console/deployment',
   playground: '/console/playground',
-  mailAssistant: '/console/mail-assistant',
   personal: '/console/personal',
   activityLottery: '/console/activity-lottery',
   checkinLottery: '/console/checkin-lottery',
@@ -154,11 +153,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/task',
         className:
           localStorage.getItem('enable_task') === 'true' ? '' : 'tableHiddle',
-      },
-      {
-        text: t('花火邮箱助手'),
-        itemKey: 'mailAssistant',
-        to: '/console/mail-assistant',
       },
     ];
 

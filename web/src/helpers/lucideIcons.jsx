@@ -88,7 +88,6 @@ export function getLucideIcon(key, selected = false) {
     case 'invite':
       return <Users {...commonProps} color={iconColor} />;
     case 'siteNotifications':
-    case 'mailAssistant':
       return <Mail {...commonProps} color={iconColor} />;
     case 'channel':
       return <Layers {...commonProps} color={iconColor} />;
