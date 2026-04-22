@@ -283,6 +283,8 @@ func validateOptionUpdate(key string, value string) error {
 		err = console_setting.ValidateSubscriptionPromoField("subscription_promo_button_link", value)
 	case "SelfServiceSubscriptionConversionCampaign":
 		err = model.ValidateSelfServiceSubscriptionConversionCampaign(value)
+	case "SubscriptionRefundSettings":
+		err = model.ValidateSubscriptionRefundSettings(value)
 	case "SubscriptionPlanForNewUser", "SubscriptionPlanForInviter", "SubscriptionPlanForInvitee":
 		planId, parseErr := strconv.Atoi(strings.TrimSpace(value))
 		if parseErr != nil || planId < 0 {

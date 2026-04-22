@@ -54,6 +54,7 @@ const createDefaultSidebarModulesAdmin = () => ({
     enabled: true,
     topup: true,
     invoice: true,
+    refund: true,
     invite: true,
     personal: true,
     siteNotifications: true,
@@ -255,6 +256,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       description: t('用户个人功能'),
       modules: [
         { key: 'topup', title: t('充值兑换'), description: t('在线充值与兑换码管理') },
+        { key: 'refund', title: t('退款售后'), description: t('退款与售后入口') },
         { key: 'invite', title: t('邀请拉新'), description: t('邀请链接与奖励管理') },
         {
           key: 'personal',

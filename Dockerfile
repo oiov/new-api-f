@@ -6,7 +6,7 @@ COPY web/bun.lock .
 RUN bun install --frozen-lockfile
 COPY ./web .
 COPY ./VERSION .
-RUN DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat VERSION) bun run build
+RUN DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat VERSION) bun run seo:generate && bunx vite build
 
 FROM golang:alpine AS builder2
 ENV GO111MODULE=on CGO_ENABLED=0

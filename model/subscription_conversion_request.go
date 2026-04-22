@@ -16,6 +16,10 @@ const (
 	SubscriptionConversionRequestStatusApproved = "approved"
 	SubscriptionConversionRequestStatusRejected = "rejected"
 	SubscriptionConversionRequestStatusCanceled = "canceled"
+
+	SubscriptionConversionPayoutStatusNone    = ""
+	SubscriptionConversionPayoutStatusPending = "pending"
+	SubscriptionConversionPayoutStatusPaid    = "paid"
 )
 
 type SubscriptionConversionRequest struct {
@@ -32,6 +36,10 @@ type SubscriptionConversionRequest struct {
 	SubscriptionSnapshotsJSON string `json:"-" gorm:"type:text;not null;default:''"`
 	RequestRemark             string `json:"request_remark" gorm:"type:text;default:''"`
 	AdminRemark               string `json:"admin_remark" gorm:"type:text;default:''"`
+	RequestedRefundTarget     string `json:"requested_refund_target" gorm:"type:varchar(32);not null;default:'balance'"`
+	ApprovedRefundTarget      string `json:"approved_refund_target" gorm:"type:varchar(32);not null;default:''"`
+	PayoutStatus              string `json:"payout_status" gorm:"type:varchar(32);not null;default:''"`
+	PayoutRemark              string `json:"payout_remark" gorm:"type:text;default:''"`
 
 	RequestedRatio  float64 `json:"requested_ratio" gorm:"type:decimal(12,6);not null;default:1"`
 	RequestedAmount float64 `json:"requested_amount" gorm:"type:decimal(12,2);not null;default:0"`
@@ -44,6 +52,7 @@ type SubscriptionConversionRequest struct {
 	ApprovedAt int64 `json:"approved_at" gorm:"bigint;default:0"`
 	RejectedAt int64 `json:"rejected_at" gorm:"bigint;default:0"`
 	ExecutedAt int64 `json:"executed_at" gorm:"bigint;default:0"`
+	PayoutAt   int64 `json:"payout_at" gorm:"bigint;default:0"`
 	DisabledAt int64 `json:"disabled_at" gorm:"bigint;default:0"`
 	CreateTime int64 `json:"create_time" gorm:"bigint;autoCreateTime"`
 	UpdateTime int64 `json:"update_time" gorm:"bigint;autoUpdateTime"`
@@ -73,8 +82,9 @@ type subscriptionConversionRequestSnapshot struct {
 }
 
 type SubscriptionConversionAdminFilters struct {
-	Keyword string
-	Status  string
+	Keyword      string
+	Status       string
+	PayoutStatus string
 }
 
 func (r *SubscriptionConversionRequest) BeforeCreate(tx *gorm.DB) error {
@@ -85,6 +95,9 @@ func (r *SubscriptionConversionRequest) BeforeCreate(tx *gorm.DB) error {
 	r.UpdateTime = now
 	if strings.TrimSpace(r.Status) == "" {
 		r.Status = SubscriptionConversionRequestStatusPending
+	}
+	if NormalizeSubscriptionRefundTarget(r.RequestedRefundTarget) == "" {
+		r.RequestedRefundTarget = SubscriptionRefundTargetBalance
 	}
 	return nil
 }
@@ -106,6 +119,17 @@ func normalizeSubscriptionConversionRequestStatus(status string) string {
 		return SubscriptionConversionRequestStatusCanceled
 	default:
 		return ""
+	}
+}
+
+func normalizeSubscriptionConversionPayoutStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case SubscriptionConversionPayoutStatusPending:
+		return SubscriptionConversionPayoutStatusPending
+	case SubscriptionConversionPayoutStatusPaid:
+		return SubscriptionConversionPayoutStatusPaid
+	default:
+		return SubscriptionConversionPayoutStatusNone
 	}
 }
 
@@ -303,9 +327,20 @@ func GetLatestSubscriptionConversionRequestByUser(userId int) (*SubscriptionConv
 	return &request, nil
 }
 
-func CreateSubscriptionConversionRequest(userId int, requestRemark string) (*SubscriptionConversionRequest, error) {
+func CreateSubscriptionConversionRequest(userId int, requestRemark string, refundTarget string) (*SubscriptionConversionRequest, error) {
 	if userId <= 0 {
 		return nil, fmt.Errorf("invalid user id")
+	}
+	refundSettings := GetSubscriptionRefundSettings()
+	if !refundSettings.IsRefundPageEnabled() {
+		return nil, fmt.Errorf("当前退款入口未开启")
+	}
+	refundTarget = NormalizeSubscriptionRefundTarget(refundTarget)
+	if refundTarget == "" {
+		refundTarget = refundSettings.DefaultRefundTarget()
+	}
+	if !refundSettings.IsRefundTargetAllowed(refundTarget) {
+		return nil, fmt.Errorf("当前不支持该退款去向")
 	}
 	preview, err := PreviewSelfServiceSubscriptionConversion(userId)
 	if err != nil {
@@ -320,10 +355,10 @@ func CreateSubscriptionConversionRequest(userId int, requestRemark string) (*Sub
 	if len(preview.Items) == 0 || preview.TotalConvertibleQuota <= 0 {
 		return nil, fmt.Errorf("当前没有可申请折算的套餐")
 	}
-	return createSubscriptionConversionRequestFromPreview(userId, preview, requestRemark)
+	return createSubscriptionConversionRequestFromPreview(userId, preview, requestRemark, refundTarget)
 }
 
-func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfServiceSubscriptionConversionPreview, requestRemark string) (*SubscriptionConversionRequest, error) {
+func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfServiceSubscriptionConversionPreview, requestRemark string, refundTarget string) (*SubscriptionConversionRequest, error) {
 	if userId <= 0 || preview == nil {
 		return nil, fmt.Errorf("invalid conversion request args")
 	}
@@ -399,6 +434,7 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 			SubscriptionIdsJSON:       subscriptionIDsJSON,
 			SubscriptionSnapshotsJSON: snapshotsJSON,
 			RequestRemark:             requestRemark,
+			RequestedRefundTarget:     refundTarget,
 			RequestedRatio:            1,
 			RequestedAmount:           math.Round(preview.TotalConvertibleAmount*100) / 100,
 			RequestedQuota:            preview.TotalConvertibleQuota,
@@ -420,7 +456,11 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 	if cacheGroup != "" {
 		_ = UpdateUserGroupCache(userId, cacheGroup)
 	}
-	RecordLog(userId, LogTypeSystem, fmt.Sprintf("已提交套餐转余额申请，原套餐已暂时禁用，预计返还 %s", logger.LogQuota(created.RequestedQuota)))
+	if created.RequestedRefundTarget == SubscriptionRefundTargetOriginalPayment {
+		RecordLog(userId, LogTypeSystem, fmt.Sprintf("已提交套餐退款申请（原路退款），原套餐已暂时禁用，预计退款金额 %.2f", created.RequestedAmount))
+	} else {
+		RecordLog(userId, LogTypeSystem, fmt.Sprintf("已提交套餐转余额申请，原套餐已暂时禁用，预计返还 %s", logger.LogQuota(created.RequestedQuota)))
+	}
 	return &created, nil
 }
 
@@ -434,6 +474,9 @@ func GetSubscriptionConversionRequestsByAdmin(pageInfo *common.PageInfo, filters
 
 	if status := normalizeSubscriptionConversionRequestStatus(filters.Status); status != "" {
 		query = query.Where("scr.status = ?", status)
+	}
+	if payoutStatus := normalizeSubscriptionConversionPayoutStatus(filters.PayoutStatus); payoutStatus != "" {
+		query = query.Where("scr.payout_status = ?", payoutStatus)
 	}
 	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
 		like := "%" + keyword + "%"
@@ -552,7 +595,7 @@ func attachSubscriptionConversionRequestItems(items []*SubscriptionConversionReq
 	return nil
 }
 
-func executeSubscriptionConversionRequestTx(tx *gorm.DB, request *SubscriptionConversionRequest, approvedQuota int, approvedAmount float64) (string, error) {
+func executeSubscriptionConversionRequestTx(tx *gorm.DB, request *SubscriptionConversionRequest, approvedQuota int, approvedAmount float64, approvedRefundTarget string) (string, error) {
 	if tx == nil || request == nil {
 		return "", fmt.Errorf("invalid conversion approval args")
 	}
@@ -581,12 +624,14 @@ func executeSubscriptionConversionRequestTx(tx *gorm.DB, request *SubscriptionCo
 			}
 		}
 	}
-	if approvedQuota <= 0 {
-		return "", fmt.Errorf("审批增加的余额必须大于0")
-	}
-	if err := tx.Model(&User{}).Where("id = ?", request.UserId).
-		Update("quota", gorm.Expr("quota + ?", approvedQuota)).Error; err != nil {
-		return "", err
+	if approvedRefundTarget == SubscriptionRefundTargetBalance {
+		if approvedQuota <= 0 {
+			return "", fmt.Errorf("审批增加的余额必须大于0")
+		}
+		if err := tx.Model(&User{}).Where("id = ?", request.UserId).
+			Update("quota", gorm.Expr("quota + ?", approvedQuota)).Error; err != nil {
+			return "", err
+		}
 	}
 	cacheGroup := ""
 	if request.DisabledAt <= 0 {
@@ -597,7 +642,16 @@ func executeSubscriptionConversionRequestTx(tx *gorm.DB, request *SubscriptionCo
 	}
 	request.Status = SubscriptionConversionRequestStatusApproved
 	request.ApprovedAt = now
-	request.ExecutedAt = now
+	if approvedRefundTarget == SubscriptionRefundTargetBalance {
+		request.ExecutedAt = now
+		request.PayoutStatus = SubscriptionConversionPayoutStatusNone
+		request.PayoutAt = 0
+		request.PayoutRemark = ""
+	} else {
+		request.PayoutStatus = SubscriptionConversionPayoutStatusPending
+		request.PayoutAt = 0
+	}
+	request.ApprovedRefundTarget = approvedRefundTarget
 	request.ApprovedQuota = approvedQuota
 	request.ApprovedAmount = math.Round(approvedAmount*100) / 100
 	if request.ApprovedRatio <= 0 {
@@ -609,7 +663,7 @@ func executeSubscriptionConversionRequestTx(tx *gorm.DB, request *SubscriptionCo
 	return cacheGroup, nil
 }
 
-func ApproveSubscriptionConversionRequest(requestId int, approvedRatio float64, approvedQuota int, adminRemark string) (*SubscriptionConversionRequest, error) {
+func ApproveSubscriptionConversionRequest(requestId int, approvedRatio float64, approvedQuota int, approvedRefundTarget string, adminRemark string) (*SubscriptionConversionRequest, error) {
 	if requestId <= 0 {
 		return nil, fmt.Errorf("invalid request id")
 	}
@@ -630,14 +684,25 @@ func ApproveSubscriptionConversionRequest(requestId int, approvedRatio float64, 
 		if request.Status != SubscriptionConversionRequestStatusPending {
 			return fmt.Errorf("仅可审批待审核申请")
 		}
+		refundSettings := GetSubscriptionRefundSettings()
+		approvedRefundTarget = NormalizeSubscriptionRefundTarget(approvedRefundTarget)
+		if approvedRefundTarget == "" {
+			approvedRefundTarget = NormalizeSubscriptionRefundTarget(request.RequestedRefundTarget)
+		}
+		if !refundSettings.IsRefundTargetAllowed(approvedRefundTarget) {
+			return fmt.Errorf("当前不支持该退款去向")
+		}
 		if approvedRatio <= 0 {
 			approvedRatio = 1
 		}
-		if approvedQuota <= 0 {
+		if approvedRefundTarget == SubscriptionRefundTargetBalance && approvedQuota <= 0 {
 			approvedQuota = int(math.Round(float64(request.RequestedQuota) * approvedRatio))
 		}
-		if approvedQuota <= 0 {
+		if approvedRefundTarget == SubscriptionRefundTargetBalance && approvedQuota <= 0 {
 			return fmt.Errorf("审批增加的余额必须大于0")
+		}
+		if approvedRefundTarget != SubscriptionRefundTargetBalance {
+			approvedQuota = 0
 		}
 		request.ApprovedRatio = approvedRatio
 		request.AdminRemark = adminRemark
@@ -649,8 +714,11 @@ func ApproveSubscriptionConversionRequest(requestId int, approvedRatio float64, 
 		if approvedAmount <= 0 && common.QuotaPerUnit > 0 {
 			approvedAmount = float64(approvedQuota) / common.QuotaPerUnit
 		}
+		if approvedRefundTarget == SubscriptionRefundTargetOriginalPayment && request.RequestedAmount > 0 {
+			approvedAmount = request.RequestedAmount * approvedRatio
+		}
 		var execErr error
-		cacheGroup, execErr = executeSubscriptionConversionRequestTx(tx, &request, approvedQuota, approvedAmount)
+		cacheGroup, execErr = executeSubscriptionConversionRequestTx(tx, &request, approvedQuota, approvedAmount, approvedRefundTarget)
 		return execErr
 	})
 	if err != nil {
@@ -659,10 +727,53 @@ func ApproveSubscriptionConversionRequest(requestId int, approvedRatio float64, 
 	if cacheGroup != "" {
 		_ = UpdateUserGroupCache(request.UserId, cacheGroup)
 	}
-	if user, getErr := GetUserById(request.UserId, false); getErr == nil && user != nil {
-		_ = updateUserQuotaCache(request.UserId, user.Quota)
+	if request.ApprovedRefundTarget == SubscriptionRefundTargetBalance {
+		if user, getErr := GetUserById(request.UserId, false); getErr == nil && user != nil {
+			_ = updateUserQuotaCache(request.UserId, user.Quota)
+		}
 	}
-	RecordLog(request.UserId, LogTypeSystem, fmt.Sprintf("套餐转余额申请已通过，到账 %s", logger.LogQuota(request.ApprovedQuota)))
+	if request.ApprovedRefundTarget == SubscriptionRefundTargetOriginalPayment {
+		RecordLog(request.UserId, LogTypeSystem, fmt.Sprintf("套餐退款申请已通过，退款方式为原路退款，审批金额 %.2f", request.ApprovedAmount))
+	} else {
+		RecordLog(request.UserId, LogTypeSystem, fmt.Sprintf("套餐转余额申请已通过，到账 %s", logger.LogQuota(request.ApprovedQuota)))
+	}
+	return &request, nil
+}
+
+func MarkSubscriptionConversionRequestPaid(requestId int, payoutRemark string) (*SubscriptionConversionRequest, error) {
+	if requestId <= 0 {
+		return nil, fmt.Errorf("invalid request id")
+	}
+	payoutRemark = strings.TrimSpace(payoutRemark)
+	if payoutRemark == "" {
+		return nil, fmt.Errorf("打款流水或备注不能为空")
+	}
+	var request SubscriptionConversionRequest
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", requestId).
+			First(&request).Error; err != nil {
+			return err
+		}
+		if request.Status != SubscriptionConversionRequestStatusApproved {
+			return fmt.Errorf("仅可标记已批准申请为已打款")
+		}
+		if NormalizeSubscriptionRefundTarget(request.ApprovedRefundTarget) != SubscriptionRefundTargetOriginalPayment {
+			return fmt.Errorf("仅原路退款申请需要打款状态")
+		}
+		if normalizeSubscriptionConversionPayoutStatus(request.PayoutStatus) == SubscriptionConversionPayoutStatusPaid {
+			return fmt.Errorf("该申请已标记为已打款")
+		}
+		now := GetDBTimestampWithTx(tx)
+		request.PayoutStatus = SubscriptionConversionPayoutStatusPaid
+		request.PayoutAt = now
+		request.PayoutRemark = payoutRemark
+		return tx.Save(&request).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	RecordLog(request.UserId, LogTypeSystem, fmt.Sprintf("套餐原路退款已标记打款完成，金额 %.2f", request.ApprovedAmount))
 	return &request, nil
 }
 

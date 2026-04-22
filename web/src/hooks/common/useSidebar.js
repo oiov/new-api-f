@@ -47,6 +47,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     enabled: true,
     topup: true,
     invoice: true,
+    refund: true,
     invite: true,
     personal: true,
     siteNotifications: true,

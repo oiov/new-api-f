@@ -24,6 +24,7 @@ func withSubscriptionConversionRequestTestDB(t *testing.T, run func()) {
 
 	common.OptionMapRWMutex.Lock()
 	oldCampaignRaw := common.OptionMap[selfServiceSubscriptionConversionCampaignOptionKey]
+	oldRefundSettingsRaw := common.OptionMap[subscriptionRefundSettingsOptionKey]
 	common.OptionMapRWMutex.Unlock()
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -64,6 +65,14 @@ func withSubscriptionConversionRequestTestDB(t *testing.T, run func()) {
 		common.OptionMap = make(map[string]string)
 	}
 	common.OptionMap[selfServiceSubscriptionConversionCampaignOptionKey] = campaignRaw
+	common.OptionMap[subscriptionRefundSettingsOptionKey] = `{
+		"page_enabled": true,
+		"enabled": true,
+		"allow_balance_refund": true,
+		"allow_original_payment_refund": true,
+		"settlement_mode": "duration_ratio",
+		"currency": "USD"
+	}`
 	common.OptionMapRWMutex.Unlock()
 
 	t.Cleanup(func() {
@@ -79,6 +88,11 @@ func withSubscriptionConversionRequestTestDB(t *testing.T, run func()) {
 			delete(common.OptionMap, selfServiceSubscriptionConversionCampaignOptionKey)
 		} else {
 			common.OptionMap[selfServiceSubscriptionConversionCampaignOptionKey] = oldCampaignRaw
+		}
+		if oldRefundSettingsRaw == "" {
+			delete(common.OptionMap, subscriptionRefundSettingsOptionKey)
+		} else {
+			common.OptionMap[subscriptionRefundSettingsOptionKey] = oldRefundSettingsRaw
 		}
 		common.OptionMapRWMutex.Unlock()
 	})
@@ -150,7 +164,7 @@ func seedSubscriptionConversionRequestFixtures(t *testing.T) (int64, int64) {
 func TestCreateSubscriptionConversionRequest_DisablesSubscriptionImmediately(t *testing.T) {
 	withSubscriptionConversionRequestTestDB(t, func() {
 		seedSubscriptionConversionRequestFixtures(t)
-		request, err := CreateSubscriptionConversionRequest(1, "")
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance)
 		require.NoError(t, err)
 		require.Equal(t, SubscriptionConversionRequestStatusPending, request.Status)
 		require.NotZero(t, request.DisabledAt)
@@ -171,7 +185,7 @@ func TestRejectSubscriptionConversionRequest_RestoresSubscriptionAndGroup(t *tes
 	withSubscriptionConversionRequestTestDB(t, func() {
 		originalEndTime, originalNextResetTime := seedSubscriptionConversionRequestFixtures(t)
 
-		request, err := CreateSubscriptionConversionRequest(1, "")
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance)
 		require.NoError(t, err)
 
 		rejected, err := RejectSubscriptionConversionRequest(request.Id, "不同意")
@@ -194,11 +208,11 @@ func TestApproveSubscriptionConversionRequest_UsesDisabledRequestSnapshot(t *tes
 	withSubscriptionConversionRequestTestDB(t, func() {
 		seedSubscriptionConversionRequestFixtures(t)
 
-		request, err := CreateSubscriptionConversionRequest(1, "")
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance)
 		require.NoError(t, err)
 
 		approvedQuota := request.RequestedQuota + 123
-		approved, err := ApproveSubscriptionConversionRequest(request.Id, 1.1, approvedQuota, "手动调整")
+		approved, err := ApproveSubscriptionConversionRequest(request.Id, 1.1, approvedQuota, SubscriptionRefundTargetBalance, "手动调整")
 		require.NoError(t, err)
 		require.Equal(t, SubscriptionConversionRequestStatusApproved, approved.Status)
 		require.Equal(t, approvedQuota, approved.ApprovedQuota)
@@ -219,7 +233,7 @@ func TestApproveSubscriptionConversionRequest_FailsWhenSubscriptionStateChanged(
 	withSubscriptionConversionRequestTestDB(t, func() {
 		originalEndTime, _ := seedSubscriptionConversionRequestFixtures(t)
 
-		request, err := CreateSubscriptionConversionRequest(1, "")
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance)
 		require.NoError(t, err)
 
 		require.NoError(t, DB.Model(&UserSubscription{}).Where("id = ?", 9201).Updates(map[string]any{
@@ -227,7 +241,7 @@ func TestApproveSubscriptionConversionRequest_FailsWhenSubscriptionStateChanged(
 			"end_time": originalEndTime,
 		}).Error)
 
-		_, err = ApproveSubscriptionConversionRequest(request.Id, 1, request.RequestedQuota, "")
+		_, err = ApproveSubscriptionConversionRequest(request.Id, 1, request.RequestedQuota, SubscriptionRefundTargetBalance, "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "套餐状态已发生变化")
 
@@ -412,5 +426,165 @@ func TestPreviewSelfServiceSubscriptionConversion_UsesCNYDisplayAmountToQuota(t 
 		item := preview.Items[0]
 		require.InDelta(t, 26.5, item.ConvertibleAmount, 0.001)
 		require.Equal(t, 378, item.ConvertibleQuota)
+	})
+}
+
+func TestPreviewSelfServiceSubscriptionConversion_UsesTokenUsageRefundSettings(t *testing.T) {
+	withSubscriptionConversionRequestTestDB(t, func() {
+		now := common.GetTimestamp()
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[subscriptionRefundSettingsOptionKey] = `{
+			"page_enabled": true,
+			"enabled": true,
+			"allow_balance_refund": true,
+			"allow_original_payment_refund": true,
+			"settlement_mode": "token_usage",
+			"currency": "USD",
+			"codex_input_price_per_million": 2,
+			"codex_output_price_per_million": 8,
+			"codex_cache_read_price_per_million": 0.5,
+			"codex_cache_write_price_per_million": 3
+		}`
+		common.OptionMapRWMutex.Unlock()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       5,
+			Username: "token_usage_user",
+			Group:    "codex_sub",
+			Quota:    0,
+			Status:   common.UserStatusEnabled,
+			AffCode:  "token_usage_aff",
+		}).Error)
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:            9140,
+			Title:         "Codex Pro Plan",
+			PriceAmount:   10,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   1000,
+			UpgradeGroup:  "codex_sub",
+		}).Error)
+		require.NoError(t, DB.Model(&SubscriptionPlan{}).Where("id = ?", 9140).Update("enabled", false).Error)
+		InvalidateSubscriptionPlanCache(9140)
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[selfServiceSubscriptionConversionCampaignOptionKey] = fmt.Sprintf(`{
+			"enabled": true,
+			"key": "test-subscription-conversion-token",
+			"title": "测试 Codex 折算活动",
+			"deadline": %d,
+			"timezone": "Asia/Shanghai",
+			"eligible_upgrade_groups": ["codex_sub"]
+		}`, now+86400)
+		common.OptionMapRWMutex.Unlock()
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:           9340,
+			UserId:       5,
+			PlanId:       9140,
+			TradeNo:      "conversion-order-token",
+			Money:        10,
+			Status:       common.TopUpStatusSuccess,
+			CompleteTime: now - 86400,
+			CreateTime:   now - 86400,
+		}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:            9240,
+			UserId:        5,
+			PlanId:        9140,
+			Status:        "active",
+			StartTime:     now - 86400,
+			EndTime:       now + 20*86400,
+			ResourceType:  SubscriptionResourceQuota,
+			AmountTotal:   1000,
+			UpgradeGroup:  "codex_sub",
+			PrevUserGroup: "default",
+			Source:        "order",
+			CreatedAt:     now - 86400,
+			UpdatedAt:     now - 86400,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+		}).Error)
+		require.NoError(t, DB.Create(&Log{
+			Id:               9401,
+			UserId:           5,
+			CreatedAt:        now - 3600,
+			Type:             LogTypeConsume,
+			ModelName:        "gpt-5.4",
+			PromptTokens:     300000,
+			CompletionTokens: 100000,
+			RequestId:        "token-refund-1",
+			Other:            `{"billing_source":"subscription","subscription_id":9240,"subscription_plan_id":9140,"cache_tokens":50000,"cache_write_tokens":20000,"subscription_consumed":123}`,
+		}).Error)
+
+		preview, err := PreviewSelfServiceSubscriptionConversion(5)
+		require.NoError(t, err)
+		require.Len(t, preview.Items, 1)
+
+		item := preview.Items[0]
+		require.Equal(t, SubscriptionRefundSettlementModeTokenUsage, item.SettlementMode)
+		require.EqualValues(t, 300000, item.InputTokens)
+		require.EqualValues(t, 100000, item.OutputTokens)
+		require.EqualValues(t, 50000, item.CacheReadTokens)
+		require.EqualValues(t, 20000, item.CacheWriteTokens)
+		require.EqualValues(t, 230000, item.BilledInputTokens)
+		require.InDelta(t, 1.35, item.ConsumedCostAmount, 0.001)
+		require.InDelta(t, 8.65, item.ConvertibleAmount, 0.001)
+		require.Equal(t, 865, item.ConvertibleQuota)
+	})
+}
+
+func TestApproveSubscriptionConversionRequest_OriginalPaymentDoesNotCreditQuota(t *testing.T) {
+	withSubscriptionConversionRequestTestDB(t, func() {
+		seedSubscriptionConversionRequestFixtures(t)
+
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetOriginalPayment)
+		require.NoError(t, err)
+		require.Equal(t, SubscriptionRefundTargetOriginalPayment, request.RequestedRefundTarget)
+
+		approved, err := ApproveSubscriptionConversionRequest(request.Id, 1, 0, SubscriptionRefundTargetOriginalPayment, "原路退款")
+		require.NoError(t, err)
+		require.Equal(t, SubscriptionRefundTargetOriginalPayment, approved.ApprovedRefundTarget)
+		require.Equal(t, 0, approved.ApprovedQuota)
+		require.Equal(t, int64(0), approved.ExecutedAt)
+		require.InDelta(t, request.RequestedAmount, approved.ApprovedAmount, 0.001)
+
+		var user User
+		require.NoError(t, DB.Where("id = ?", 1).First(&user).Error)
+		require.Equal(t, 500, user.Quota)
+	})
+}
+
+func TestMarkSubscriptionConversionRequestPaid(t *testing.T) {
+	withSubscriptionConversionRequestTestDB(t, func() {
+		seedSubscriptionConversionRequestFixtures(t)
+
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetOriginalPayment)
+		require.NoError(t, err)
+
+		approved, err := ApproveSubscriptionConversionRequest(request.Id, 1, 0, SubscriptionRefundTargetOriginalPayment, "原路退款")
+		require.NoError(t, err)
+		require.Equal(t, SubscriptionConversionPayoutStatusPending, approved.PayoutStatus)
+
+		paid, err := MarkSubscriptionConversionRequestPaid(request.Id, "财务已退款")
+		require.NoError(t, err)
+		require.Equal(t, SubscriptionConversionPayoutStatusPaid, paid.PayoutStatus)
+		require.NotZero(t, paid.PayoutAt)
+		require.Equal(t, "财务已退款", paid.PayoutRemark)
+	})
+}
+
+func TestMarkSubscriptionConversionRequestPaid_RequiresRemark(t *testing.T) {
+	withSubscriptionConversionRequestTestDB(t, func() {
+		seedSubscriptionConversionRequestFixtures(t)
+
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetOriginalPayment)
+		require.NoError(t, err)
+
+		_, err = ApproveSubscriptionConversionRequest(request.Id, 1, 0, SubscriptionRefundTargetOriginalPayment, "原路退款")
+		require.NoError(t, err)
+
+		_, err = MarkSubscriptionConversionRequestPaid(request.Id, "   ")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "打款流水或备注不能为空")
 	})
 }

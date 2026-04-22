@@ -28,6 +28,7 @@ import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
 import SettingsContactPage from '../../pages/Setting/Operation/SettingsContactPage';
+import SettingsRefund from '../../pages/Setting/Operation/SettingsRefund';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -63,6 +64,8 @@ const OperationSetting = () => {
 
     /* 联系页面配置 */
     'console_setting.contact_channels': '',
+    SubscriptionRefundSettings: '',
+    SelfServiceSubscriptionConversionCampaign: '',
 
     /* 敏感词设置 */
     CheckSensitiveEnabled: false,
@@ -150,6 +153,10 @@ const OperationSetting = () => {
         {/* 联系页面配置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsContactPage options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* 退款设置 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsRefund options={inputs} refresh={onRefresh} />
         </Card>
         {/* 屏蔽词过滤设置 */}
         <Card style={{ marginTop: '10px' }}>

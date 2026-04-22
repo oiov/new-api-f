@@ -57,6 +57,7 @@ const EcomAgent = lazy(() => import('./pages/EcomAgent'));
 const Redemption = lazy(() => import('./pages/Redemption'));
 const TopUp = lazy(() => import('./pages/TopUp'));
 const InvoicePage = lazy(() => import('./pages/Invoice'));
+const RefundPage = lazy(() => import('./pages/Refund'));
 const InvoiceAdminPage = lazy(() => import('./pages/InvoiceAdmin'));
 const CheckinAdminPage = lazy(() => import('./pages/CheckinAdmin'));
 const ActivityLotteryPage = lazy(() => import('./pages/ActivityLottery'));
@@ -419,6 +420,19 @@ function App() {
                   key={location.pathname}
                 >
                   <InvoicePage />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/refund'
+            element={
+              <PrivateRoute>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
+                  <RefundPage />
                 </Suspense>
               </PrivateRoute>
             }

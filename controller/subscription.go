@@ -323,6 +323,7 @@ func GetSelfServiceSubscriptionConversion(c *gin.Context) {
 
 type CreateSubscriptionConversionRequest struct {
 	RequestRemark string `json:"request_remark"`
+	RefundTarget  string `json:"refund_target"`
 }
 
 func CreateSelfServiceSubscriptionConversionRequest(c *gin.Context) {
@@ -332,7 +333,7 @@ func CreateSelfServiceSubscriptionConversionRequest(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	result, err := model.CreateSubscriptionConversionRequest(userId, req.RequestRemark)
+	result, err := model.CreateSubscriptionConversionRequest(userId, req.RequestRemark, req.RefundTarget)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -341,13 +342,18 @@ func CreateSelfServiceSubscriptionConversionRequest(c *gin.Context) {
 }
 
 type AdminApproveSubscriptionConversionPayload struct {
-	ApprovedRatio float64 `json:"approved_ratio"`
-	ApprovedQuota int     `json:"approved_quota"`
-	AdminRemark   string  `json:"admin_remark"`
+	ApprovedRatio        float64 `json:"approved_ratio"`
+	ApprovedQuota        int     `json:"approved_quota"`
+	ApprovedRefundTarget string  `json:"approved_refund_target"`
+	AdminRemark          string  `json:"admin_remark"`
 }
 
 type AdminRejectSubscriptionConversionPayload struct {
 	AdminRemark string `json:"admin_remark"`
+}
+
+type AdminMarkSubscriptionConversionPaidPayload struct {
+	PayoutRemark string `json:"payout_remark"`
 }
 
 type AdminManualDeliveryOrderListItem struct {
@@ -371,8 +377,9 @@ type AdminRejectManualOrderPayload struct {
 func AdminListSubscriptionConversionRequests(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	items, total, err := model.GetSubscriptionConversionRequestsByAdmin(pageInfo, model.SubscriptionConversionAdminFilters{
-		Keyword: c.Query("keyword"),
-		Status:  c.Query("status"),
+		Keyword:      c.Query("keyword"),
+		Status:       c.Query("status"),
+		PayoutStatus: c.Query("payout_status"),
 	})
 	if err != nil {
 		common.ApiError(c, err)
@@ -394,7 +401,7 @@ func AdminApproveSubscriptionConversionRequest(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	result, err := model.ApproveSubscriptionConversionRequest(id, req.ApprovedRatio, req.ApprovedQuota, req.AdminRemark)
+	result, err := model.ApproveSubscriptionConversionRequest(id, req.ApprovedRatio, req.ApprovedQuota, req.ApprovedRefundTarget, req.AdminRemark)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -414,6 +421,25 @@ func AdminRejectSubscriptionConversionRequest(c *gin.Context) {
 		return
 	}
 	result, err := model.RejectSubscriptionConversionRequest(id, req.AdminRemark)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func AdminMarkSubscriptionConversionRequestPaid(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的申请ID")
+		return
+	}
+	var req AdminMarkSubscriptionConversionPaidPayload
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	result, err := model.MarkSubscriptionConversionRequestPaid(id, req.PayoutRemark)
 	if err != nil {
 		common.ApiError(c, err)
 		return

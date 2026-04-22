@@ -11,6 +11,7 @@
     "@visactor/react-vchart": "~1.8.8",
     "@visactor/vchart": "~1.8.8",
     "@visactor/vchart-semi-theme": "~1.8.8",
+    "antd": "5.25.0",
     "axios": "1.13.5",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.11",
@@ -46,7 +47,7 @@
   "scripts": {
     "dev": "vite",
     "seo:generate": "node ./scripts/generate-seo-artifacts.mjs",
-    "build": "bun install --frozen-lockfile && bun run seo:generate && bunx vite build",
+    "build": "bun run seo:generate && bunx vite build",
     "lint": "prettier . --check",
     "lint:fix": "prettier . --write",
     "eslint": "bunx eslint \"**/*.{js,jsx}\" --cache",

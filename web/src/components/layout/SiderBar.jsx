@@ -17,9 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { StatusContext } from '../../context/Status';
+import { parseSubscriptionRefundSettings } from '../../helpers/subscriptionRefund';
 import { getLucideIcon } from '../../helpers/lucideIcons';
 import { ChevronLeft } from 'lucide-react';
 import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
@@ -46,6 +48,7 @@ const routerMap = {
   redemption: '/console/redemption',
   topup: '/console/topup',
   invoice: '/console/invoice',
+  refund: '/console/refund',
   invoiceAdmin: '/console/invoice-admin',
   checkinAdmin: '/console/checkin-admin',
   financeAdmin: '/console/finance',
@@ -74,6 +77,7 @@ const routerMap = {
 
 const SiderBar = ({ onNavigate = () => {} }) => {
   const { t } = useTranslation();
+  const [statusState] = useContext(StatusContext);
   const user = getUserData();
   const isAdminUser = typeof user?.role === 'number' && user.role >= 10;
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
@@ -85,6 +89,13 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   const { can, canAny } = useUserPermissions();
 
   const showSkeleton = useMinimumLoadingTime(sidebarLoading, 200);
+  const refundSettings = useMemo(
+    () =>
+      parseSubscriptionRefundSettings(
+        statusState?.status?.SubscriptionRefundSettings,
+      ),
+    [statusState?.status?.SubscriptionRefundSettings],
+  );
 
   const [selectedKeys, setSelectedKeys] = useState(['home']);
   const [chatItems, setChatItems] = useState([]);
@@ -179,6 +190,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/invoice',
       },
       {
+        text: t('退款售后'),
+        itemKey: 'refund',
+        to: '/refund',
+      },
+      {
         text: t('邀请拉新'),
         itemKey: 'invite',
         to: '/invite',
@@ -197,12 +213,19 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 
     // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
+      if (
+        item.itemKey === 'refund' &&
+        (!refundSettings.page_enabled || !refundSettings.enabled) &&
+        !isAdminUser
+      ) {
+        return false;
+      }
       const configVisible = isModuleVisible('personal', item.itemKey);
       return configVisible;
     });
 
     return filteredItems;
-  }, [t, isModuleVisible]);
+  }, [refundSettings.enabled, refundSettings.page_enabled, t, isModuleVisible]);
 
   const publicItems = useMemo(() => {
     const items = [

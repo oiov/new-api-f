@@ -195,6 +195,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.GET("/conversion_requests", middleware.PermissionAuth(common.PermissionPointSubscriptionView), controller.AdminListSubscriptionConversionRequests)
 			subscriptionAdminRoute.POST("/conversion_requests/:id/approve", middleware.PermissionAuth(common.PermissionPointSubscriptionEdit), controller.AdminApproveSubscriptionConversionRequest)
 			subscriptionAdminRoute.POST("/conversion_requests/:id/reject", middleware.PermissionAuth(common.PermissionPointSubscriptionEdit), controller.AdminRejectSubscriptionConversionRequest)
+			subscriptionAdminRoute.POST("/conversion_requests/:id/mark_paid", middleware.PermissionAuth(common.PermissionPointSubscriptionEdit), controller.AdminMarkSubscriptionConversionRequestPaid)
 			subscriptionAdminRoute.GET("/manual_orders", middleware.PermissionAuth(common.PermissionPointSubscriptionView), controller.AdminListManualDeliveryOrders)
 			subscriptionAdminRoute.POST("/manual_orders/:id/deliver", middleware.PermissionAuth(common.PermissionPointSubscriptionEdit), controller.AdminDeliverManualDeliveryOrder)
 			subscriptionAdminRoute.POST("/manual_orders/:id/reject", middleware.PermissionAuth(common.PermissionPointSubscriptionEdit), controller.AdminRejectManualDeliveryOrder)
