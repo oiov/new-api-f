@@ -66,19 +66,19 @@ const DEFAULT_CAMPAIGN_EXAMPLE = JSON.stringify(
 
 export default function SettingsRefund({ options, refresh }) {
   const { t } = useTranslation();
-  const [refundSettings, setRefundSettings] = useState(
-    DEFAULT_REFUND_SETTINGS_EXAMPLE,
-  );
-  const [campaignSettings, setCampaignSettings] = useState(
-    DEFAULT_CAMPAIGN_EXAMPLE,
-  );
+  const [refundSettings, setRefundSettings] = useState('');
+  const [campaignSettings, setCampaignSettings] = useState('');
+  const [refundSettingsMissing, setRefundSettingsMissing] = useState(false);
+  const [campaignSettingsMissing, setCampaignSettingsMissing] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const refundRaw = options.SubscriptionRefundSettings;
     if (refundRaw === undefined || refundRaw === '') {
-      setRefundSettings(DEFAULT_REFUND_SETTINGS_EXAMPLE);
+      setRefundSettings('');
+      setRefundSettingsMissing(true);
     } else {
+      setRefundSettingsMissing(false);
       try {
         setRefundSettings(JSON.stringify(JSON.parse(refundRaw), null, 2));
       } catch {
@@ -88,8 +88,10 @@ export default function SettingsRefund({ options, refresh }) {
 
     const campaignRaw = options.SelfServiceSubscriptionConversionCampaign;
     if (campaignRaw === undefined || campaignRaw === '') {
-      setCampaignSettings(DEFAULT_CAMPAIGN_EXAMPLE);
+      setCampaignSettings('');
+      setCampaignSettingsMissing(true);
     } else {
+      setCampaignSettingsMissing(false);
       try {
         setCampaignSettings(JSON.stringify(JSON.parse(campaignRaw), null, 2));
       } catch {
@@ -154,6 +156,16 @@ export default function SettingsRefund({ options, refresh }) {
       <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
         {t('退款基数 JSON')}
       </Typography.Text>
+      {refundSettingsMissing ? (
+        <Banner
+          type='info'
+          closeIcon={null}
+          description={t(
+            '当前数据库中还没有已保存的退款配置。下面展示为空；占位内容仅为参考模板，填写后点击保存设置才会生效。',
+          )}
+          style={{ marginBottom: 12 }}
+        />
+      ) : null}
       <TextArea
         value={refundSettings}
         onChange={setRefundSettings}
@@ -172,6 +184,16 @@ export default function SettingsRefund({ options, refresh }) {
       >
         {t('套餐折算活动 JSON')}
       </Typography.Text>
+      {campaignSettingsMissing ? (
+        <Banner
+          type='info'
+          closeIcon={null}
+          description={t(
+            '当前数据库中还没有已保存的套餐折算活动配置。下面展示为空；占位内容仅为参考模板，填写后点击保存设置才会生效。',
+          )}
+          style={{ marginBottom: 12 }}
+        />
+      ) : null}
       <TextArea
         value={campaignSettings}
         onChange={setCampaignSettings}
