@@ -24,6 +24,28 @@ import (
 	"github.com/pkg/errors"
 )
 
+type seedanceStringValue string
+
+func (v *seedanceStringValue) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		*v = ""
+		return nil
+	}
+
+	if trimmed[0] == '"' {
+		var value string
+		if err := common.Unmarshal(trimmed, &value); err != nil {
+			return err
+		}
+		*v = seedanceStringValue(value)
+		return nil
+	}
+
+	*v = seedanceStringValue(string(trimmed))
+	return nil
+}
+
 type TaskAdaptor struct {
 	taskcommon.BaseBilling
 	apiKey  string
@@ -48,10 +70,10 @@ var allowedFormFiles = []string{
 }
 
 type seedanceTaskPayload struct {
-	ID        string `json:"id,omitempty"`
-	TaskID    string `json:"task_id,omitempty"`
+	ID        seedanceStringValue `json:"id,omitempty"`
+	TaskID    seedanceStringValue `json:"task_id,omitempty"`
 	Status    string `json:"status,omitempty"`
-	Progress  string `json:"progress,omitempty"`
+	Progress  seedanceStringValue `json:"progress,omitempty"`
 	ResultURL string `json:"result_url,omitempty"`
 	Message   string `json:"message,omitempty"`
 	Error     *struct {
@@ -204,7 +226,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	video.Model = info.OriginModelName
 	c.JSON(http.StatusOK, video)
 
-	return upstreamTaskID, responseBody, nil
+	return string(upstreamTaskID), responseBody, nil
 }
 
 func (a *TaskAdaptor) GetModelList() []string {
@@ -244,9 +266,9 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 
 	taskInfo := &relaycommon.TaskInfo{
 		Code:     0,
-		TaskID:   firstNonEmpty(payload.TaskID, payload.ID),
+		TaskID:   firstNonEmpty(string(payload.TaskID), string(payload.ID)),
 		Status:   normalizeStatus(payload.Status),
-		Progress: payload.Progress,
+		Progress: string(payload.Progress),
 	}
 
 	switch taskInfo.Status {

@@ -1,6 +1,7 @@
 package seedance
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
@@ -57,6 +58,60 @@ func TestTaskAdaptor_ParseTaskResult_DirectPayloadFallback(t *testing.T) {
 	}
 
 	assertTaskInfo(t, taskInfo, "task_456", model.TaskStatusFailure, "10%", "")
+}
+
+func TestTaskAdaptor_ParseTaskResult_WrappedPollingPayloadWithNumericID(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	body := []byte(`{
+		"code":"success",
+		"data":{
+			"id":123456,
+			"task_id":"task_789",
+			"status":"IN_PROGRESS",
+			"progress":"50%"
+		}
+	}`)
+
+	taskInfo, err := adaptor.ParseTaskResult(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertTaskInfo(t, taskInfo, "task_789", model.TaskStatusInProgress, "50%", "")
+}
+
+func TestTaskAdaptor_ConvertToOpenAIVideo_WrappedPollingPayloadWithNumericID(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	task := &model.Task{
+		TaskID:    "task_public_123",
+		Status:    model.TaskStatusInProgress,
+		Progress:  "50%",
+		CreatedAt: 1776960828,
+		UpdatedAt: 1776960838,
+		Properties: model.Properties{
+			OriginModelName: "seedance-2-cheap",
+		},
+		Data: []byte(`{
+			"code":"success",
+			"data":{
+				"id":123456,
+				"task_id":"task_upstream_123",
+				"status":"IN_PROGRESS",
+				"progress":"50%"
+			}
+		}`),
+	}
+
+	got, err := adaptor.ConvertToOpenAIVideo(task)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(got), `"id":"task_public_123"`) {
+		t.Fatalf("unexpected converted payload: %s", string(got))
+	}
+	if !strings.Contains(string(got), `"progress":50`) {
+		t.Fatalf("unexpected converted payload: %s", string(got))
+	}
 }
 
 func assertTaskInfo(t *testing.T, got *relaycommon.TaskInfo, wantTaskID, wantStatus, wantProgress, wantURL string) {
