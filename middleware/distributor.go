@@ -239,9 +239,11 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		if setupErr := SetupContextForSelectedChannel(c, channel, modelRequest.Model); setupErr != nil {
-			abortWithOpenAiMessage(c, http.StatusServiceUnavailable, setupErr.Error())
-			return
+		if channel != nil || shouldSelectChannel {
+			if setupErr := SetupContextForSelectedChannel(c, channel, modelRequest.Model); setupErr != nil {
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, setupErr.Error())
+				return
+			}
 		}
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
