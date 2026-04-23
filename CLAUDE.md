@@ -150,3 +150,23 @@ For request structs that are parsed from client JSON and then re-marshaled to up
   - field absent in client JSON => `nil` => omitted on marshal;
   - field explicitly set to zero/false => non-`nil` pointer => must still be sent upstream.
 - Avoid using non-pointer scalars with `omitempty` for optional request parameters, because zero values (`0`, `0.0`, `false`) will be silently dropped during marshal.
+
+### Rule 7: web-worker 前端重构 — Claude ↔ Codex 协作规约
+
+**适用范围**：`web-worker/` 目录下的新前端重构（参见 `docs/superpowers/specs/2026-04-17-web-worker-refactor-design.md`）。`web/` 旧前端在重构期间不受影响。
+
+**职责分工**：
+- **Claude**：读 spec 与 Go 后端源码，出每个切片的 plan；审查 Codex 交付的请求对比表。
+- **Codex**：按 spec §5 的切片顺序实施；每个切片开工前必须 grep 对应的 `controller/*.go` 与 `model/*.go` 确认接口签名；设计语言严格遵守 spec §4.8。
+- **用户**：审批 plan、走查高危接口（spec §7.4）、对接口形状冲突拍板。
+
+**硬规则**：
+1. **两前端并存风险** — 新前端写操作的字段名、类型、编码必须与旧版 `web/` 完全一致。任何怪癖（`model_limits` CSV、`expired_time` unix 秒、`original_password` 字段名等）都按 spec §7.2 照抄，不得"优化"。
+2. **契约文件** — 每个 DTO 在 `src/api-client/types.ts` 顶部注释 `// source: <go file>:<func>`；字段带 `@quirk` 标签。
+3. **Zod 守门** — 写操作在 `src/api-client/schemas.ts` 过 Zod `parse`（不是 `safeParse`），schema 固化怪癖，类型 `z.infer` 导出。
+4. **请求对比表** — 每个涉及写操作的切片交付时必须附：旧版 DevTools 抓包 vs 新版实际发送，逐字段 diff = 0。
+5. **流量 marker** — Worker 反代层对 `/api/*` 注入 `X-Frontend: beta`；出问题时后端可针对性回退。
+6. **域名零硬编码** — `beta.nbility.dev` / `api.nbility.dev` 字面量只能出现在 `wrangler.jsonc` + `src/env/*.ts`；代码里走 `websiteConfig.url` / `env.*`。
+7. **Cookie 父域策略** — 所有 cookie 种 `Domain=.nbility.dev`；日后迁主域时用户无感（见 spec §1a）。
+8. **UI 库纯洁性** — 仅用 shadcn/ui + Tailwind + `@tabler/icons-react`，禁止引入 Semi UI / Ant / lucide / tremor / echarts。
+9. **不超纲** — Codex 单切片只改自己的范围；跨切片的共享代码（api-client、shell）改动需 Claude 授权。

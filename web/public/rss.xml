@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Nbility AI</title>
+    <link>https://nbility.dev/</link>
+    <description>Nbility AI 订阅套餐、价格更新与可售方案动态。 / Nbility AI subscription plans, pricing updates, and availability feed.</description>
+    <language>zh-CN</language>
+    <lastBuildDate>Thu, 23 Apr 2026 14:01:47 GMT</lastBuildDate>
+    <ttl>300</ttl>
+    <atom:link href="https://nbility.dev/rss.xml" rel="self" type="application/rss+xml" />
+    <image>
+      <url>https://nbility.dev/logo.svg</url>
+      <title>Nbility AI</title>
+      <link>https://nbility.dev/</link>
+    </image>
+    <item>
+      <title>Nbility AI 首页 / Home</title>
+      <link>https://nbility.dev/</link>
+      <guid>https://nbility.dev/</guid>
+      <pubDate>Thu, 23 Apr 2026 14:01:47 GMT</pubDate>
+      <description><![CDATA[企业级 Claude API 官方通道中转，支持包月套餐、企业采购和常用模型接入。 / Enterprise Claude API gateway with subscriptions, enterprise purchasing, and common model access.]]></description>
+    </item>
+    <item>
+      <title>Nbility AI 订阅套餐列表 / Subscription Plans</title>
+      <link>https://nbility.dev/pricing?tab=subscription-plans</link>
+      <guid>https://nbility.dev/pricing?tab=subscription-plans</guid>
+      <pubDate>Thu, 23 Apr 2026 14:01:47 GMT</pubDate>
+      <description><![CDATA[当前可售 0 个订阅套餐，覆盖 Claude、Codex 等系列。 / 0 active subscription plans are currently available, covering Claude, Codex series.]]></description>
+    </item>
+    <item>
+      <title>价格方案 / Pricing</title>
+      <link>https://nbility.dev/pricing</link>
+      <guid>https://nbility.dev/pricing</guid>
+      <pubDate>Thu, 23 Apr 2026 14:01:47 GMT</pubDate>
+      <description><![CDATA[查看模型价格与订阅套餐价格，支持公开访问和在线购买。 / Compare model pricing and subscription pricing with public access and online purchase.]]></description>
+    </item>
+    <item>
+      <title>开发文档 / Docs</title>
+      <link>https://nbility.dev/docs</link>
+      <guid>https://nbility.dev/docs</guid>
+      <pubDate>Thu, 23 Apr 2026 14:01:47 GMT</pubDate>
+      <description><![CDATA[阅读 Claude 接入文档、使用说明与配置指南。 / Read Claude integration docs, usage notes, and setup guides.]]></description>
+    </item>
+    <item>
+      <title>系统状态 / Status</title>
+      <link>https://nbility.dev/status</link>
+      <guid>https://nbility.dev/status</guid>
+      <pubDate>Thu, 23 Apr 2026 14:01:47 GMT</pubDate>
+      <description><![CDATA[查看当前服务状态、公告和站点说明。 / Check service status, announcements, and site information.]]></description>
+    </item>
+    <item>
+      <title>联系我们 / Contact</title>
+      <link>https://nbility.dev/contact</link>
+      <guid>https://nbility.dev/contact</guid>
+      <pubDate>Thu, 23 Apr 2026 14:01:47 GMT</pubDate>
+      <description><![CDATA[联系官方客服渠道，咨询售前、采购和售后问题。 / Contact official support for presales, purchasing, and after-sales questions.]]></description>
+    </item>
+  </channel>
+</rss>

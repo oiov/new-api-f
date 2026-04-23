@@ -1,0 +1,102 @@
+<h2>`/playground` 落地方案</h2>
+<p class="subtitle">
+  目标是公开访问、手填 API Key、支持 Chat/Image、视觉上延续现有站点而不是硬拷截图。
+</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. 完全独立工作台</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Brand | Playground | Chat Image Video | Model</div>
+          <div class="placeholder" style="height: 50px; margin-top: 12px;">
+            参数工具条
+          </div>
+          <div class="placeholder" style="height: 240px; margin-top: 12px;">
+            消息区域
+          </div>
+          <div class="placeholder" style="height: 120px; margin-top: 12px;">
+            输入区 + 附件
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>高仿截图的独立页面</h3>
+      <p>最像参考图，直接把 `/playground` 做成一套自己的工作台外壳。</p>
+    </div>
+  </div>
+
+  <div
+    class="card"
+    data-choice="b"
+    onclick="toggleSelect(this)"
+    style="outline: 2px solid #111; box-shadow: 0 16px 40px rgba(17,17,17,0.12);"
+  >
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. 推荐：品牌化独立工作台</div>
+        <div class="mockup-body">
+          <div class="mock-nav">
+            Nbility | Playground | Chat Image Video(disabled) | Model | API Key
+          </div>
+          <div style="display: flex; gap: 12px; margin-top: 12px;">
+            <div class="placeholder" style="height: 50px; flex: 1;">
+              参数区
+            </div>
+            <div class="placeholder" style="height: 50px; flex: 1;">
+              上下文/输出设置
+            </div>
+          </div>
+          <div class="placeholder" style="height: 240px; margin-top: 12px;">
+            对话或图像结果区
+          </div>
+          <div class="placeholder" style="height: 120px; margin-top: 12px;">
+            输入区 + 上传 + 发送
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>结构像截图，视觉跟随站点</h3>
+      <p>保留截图的操作模型和工作台感，但颜色、字体、按钮和细节融入 `web-worker`。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. 控制台容器页</div>
+        <div class="mockup-body">
+          <div style="display: flex; gap: 12px;">
+            <div class="mock-sidebar">站点/控制台侧栏</div>
+            <div style="flex: 1;">
+              <div class="mock-nav">Playground Header</div>
+              <div class="placeholder" style="height: 50px; margin-top: 12px;">
+                参数区
+              </div>
+              <div class="placeholder" style="height: 240px; margin-top: 12px;">
+                结果区
+              </div>
+              <div class="placeholder" style="height: 120px; margin-top: 12px;">
+                输入区
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>最大化复用现有布局</h3>
+      <p>开发最快，但公开访问和截图气质都不匹配，工作台沉浸感最弱。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 28px;">
+  <div class="label">推荐</div>
+  <p>
+    选 B：它最符合你刚才给的约束，既是独立 `/playground`，又不会做成和现有站点割裂的一套 UI。
+  </p>
+</div>
