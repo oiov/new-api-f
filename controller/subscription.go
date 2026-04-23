@@ -355,10 +355,12 @@ func CreateSelfServiceSubscriptionConversionRequest(c *gin.Context) {
 }
 
 type AdminApproveSubscriptionConversionPayload struct {
-	ApprovedRatio        float64 `json:"approved_ratio"`
-	ApprovedQuota        int     `json:"approved_quota"`
-	ApprovedRefundTarget string  `json:"approved_refund_target"`
-	AdminRemark          string  `json:"admin_remark"`
+	ApprovedRatio             float64 `json:"approved_ratio"`
+	ApprovedQuota             int     `json:"approved_quota"`
+	ApprovedAmount            float64 `json:"approved_amount"`
+	ApprovedRefundTarget      string  `json:"approved_refund_target"`
+	CalculationSettlementMode string  `json:"calculation_settlement_mode"`
+	AdminRemark               string  `json:"admin_remark"`
 }
 
 type AdminRejectSubscriptionConversionPayload struct {
@@ -414,7 +416,15 @@ func AdminApproveSubscriptionConversionRequest(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	result, err := model.ApproveSubscriptionConversionRequest(id, req.ApprovedRatio, req.ApprovedQuota, req.ApprovedRefundTarget, req.AdminRemark)
+	result, err := model.ApproveSubscriptionConversionRequest(
+		id,
+		req.ApprovedRatio,
+		req.ApprovedQuota,
+		req.ApprovedAmount,
+		req.ApprovedRefundTarget,
+		req.CalculationSettlementMode,
+		req.AdminRemark,
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return

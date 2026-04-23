@@ -25,7 +25,6 @@ import {
   Button,
   Card,
   Checkbox,
-  Collapse,
   Empty,
   Input,
   Modal,
@@ -39,7 +38,6 @@ import { StatusContext } from '../../context/Status';
 import {
   API,
   copy,
-  renderQuota,
   showError,
   showSuccess,
   timestamp2string,
@@ -76,11 +74,6 @@ function getConversionRequestStatusMeta(status, t) {
 function formatDateTime(timestamp) {
   if (!timestamp) return '--';
   return timestamp2string(timestamp);
-}
-
-function formatTokenCount(value) {
-  const amount = Number(value || 0);
-  return amount.toLocaleString('en-US');
 }
 
 function getEffectiveRefundTarget(request) {
@@ -176,12 +169,6 @@ const RefundPage = () => {
     return getConversionRequestStatusMeta(latestRequest.status, t);
   }, [latestRequest, t]);
 
-  const isTokenUsageSettlement = useMemo(() => {
-    return (conversionPreview?.items || []).some(
-      (item) => item.settlement_mode === 'token_usage',
-    );
-  }, [conversionPreview]);
-
   const selectedConversionItems = useMemo(() => {
     const selectedIdSet = new Set(selectedSubscriptionIds);
     return (conversionPreview?.items || []).filter((item) =>
@@ -221,24 +208,6 @@ const RefundPage = () => {
     );
   }, [filteredConversionItems, selectedConversionItems]);
 
-  const selectedConvertibleQuota = useMemo(() => {
-    return selectedConversionItems.reduce(
-      (sum, item) => sum + Number(item.convertible_quota || 0),
-      0,
-    );
-  }, [selectedConversionItems]);
-
-  const selectedConvertibleAmount = useMemo(() => {
-    return (
-      Math.round(
-        selectedConversionItems.reduce(
-          (sum, item) => sum + Number(item.convertible_amount || 0),
-          0,
-        ) * 100,
-      ) / 100
-    );
-  }, [selectedConversionItems]);
-
   const allConversionItemsSelected =
     filteredConversionItems.length > 0 &&
     filteredConversionItems.every((item) =>
@@ -261,13 +230,7 @@ const RefundPage = () => {
       if (selectedConversionItems.length <= 0) {
         return t('请选择至少一个符合规则的套餐后再提交申请。');
       }
-      return selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-        ? t(
-            '你选中的套餐会按系统预览规则核算退款金额，审核通过后按原有支付方式退款。',
-          )
-        : t(
-            '你选中的套餐会按系统预览规则折算，审核通过后返还到账户余额。',
-          );
+      return t('你选中的套餐会进入人工审核，最终退还结果以管理员核算与审批为准。');
     }
     return (
       conversionPreview?.closed_reason ||
@@ -384,15 +347,6 @@ const RefundPage = () => {
               : t(
                   '审核通过后，系统会把核准后的返还额度转入余额并正式作废旧套餐；审核拒绝则恢复原套餐。',
                 )}
-          </div>
-          <div>
-            {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-              ? t('预计退款金额')
-              : t('预计返还')}
-            ：
-            {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-              ? renderQuotaWithAmount(Number(selectedConvertibleAmount || 0))
-              : renderQuota(selectedConvertibleQuota)}
           </div>
           <div>
             {t('已选套餐')}：
@@ -554,21 +508,13 @@ const RefundPage = () => {
                   {t('1. 充值余额支持按 1:1 原路退款，申请时请提供订单号与账户信息。')}
                 </div>
                 <div>
-                  {isTokenUsageSettlement
-                    ? selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-                      ? t(
-                          '2. 命中活动的套餐可按后台配置的 1M token 标准单价核算退款金额，系统会先扣减已消耗成本，再按原支付方式退款。',
-                        )
-                      : t(
-                          '2. 命中活动的套餐可按后台配置的 1M token 标准单价折算，系统会先扣减已消耗成本，再返还剩余余额。',
-                        )
-                    : selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-                      ? t(
-                          '2. 命中活动的套餐可按系统当前规则核算退款金额，审核通过后按原支付方式退款，不会自动转成余额。',
-                        )
-                      : t(
-                          '2. 命中活动的套餐可按系统当前规则折算，提交后旧套餐会先临时禁用，审核通过后返还余额。',
-                        )}
+                  {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
+                    ? t(
+                        '2. 命中活动的套餐会进入人工审核，管理员会结合退款规则核定最终退款金额，并决定是否按原支付方式退款。',
+                      )
+                    : t(
+                        '2. 命中活动的套餐会进入人工审核，管理员会结合退款规则核定最终返还额度，并决定是否退到账户余额。',
+                      )}
                 </div>
                 <div>
                   {t(
@@ -577,7 +523,7 @@ const RefundPage = () => {
                 </div>
                 <div>
                   {t(
-                    '4. 你可以勾选要申请的套餐，系统会按已选套餐自动匹配订单并重算金额；暂不支持手动填写退款金额，详细规则请以退款政策文档为准。',
+                    '4. 你可以勾选要申请的套餐并提交申请，系统会按已选套餐关联订单，详细规则请以退款政策文档为准。',
                   )}
                 </div>
               </div>
@@ -745,13 +691,9 @@ const RefundPage = () => {
               description={
                 <div className='space-y-1 text-sm'>
                   <div>
-                    {isTokenUsageSettlement
-                      ? t(
-                          '折算结果以系统预览为准，核心依据是成功支付订单实付金额、已消耗的标准输入/输出/cache tokens 与后台退款单价配置。',
-                        )
-                      : t(
-                          '折算结果以系统预览为准，核心依据是成功支付订单的实付金额、套餐周期和计费天数。',
-                        )}
+                    {t(
+                      '提交申请后将进入人工审核，最终退款金额或返还额度以管理员审批结果为准。',
+                    )}
                   </div>
                   <div>
                     {t(
@@ -817,34 +759,6 @@ const RefundPage = () => {
               />
             ) : (
               <>
-                {(conversionPreview?.campaign?.conversion_rule ||
-                  (conversionPreview?.campaign?.billing_rules || []).length > 0 ||
-                  (conversionPreview?.campaign?.charge_rules || []).length >
-                    0) && (
-                  <Collapse>
-                    <Collapse.Panel
-                      itemKey='refund-policy-rules'
-                      header={t('详细规则与计算方式')}
-                    >
-                      <div className='space-y-2 text-sm text-semi-color-text-1'>
-                        {conversionPreview?.campaign?.conversion_rule ? (
-                          <div>{conversionPreview.campaign.conversion_rule}</div>
-                        ) : null}
-                        {(conversionPreview?.campaign?.billing_rules || []).map(
-                          (rule) => (
-                            <div key={rule}>• {rule}</div>
-                          ),
-                        )}
-                        {(conversionPreview?.campaign?.charge_rules || []).map(
-                          (rule) => (
-                            <div key={rule}>• {rule}</div>
-                          ),
-                        )}
-                      </div>
-                    </Collapse.Panel>
-                  </Collapse>
-                )}
-
                 <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
                   <div className='rounded-xl bg-white/80 p-4'>
                     <div className='text-xs text-gray-500'>{t('活动标题')}</div>
@@ -860,14 +774,10 @@ const RefundPage = () => {
                   </div>
                   <div className='rounded-xl bg-white/80 p-4'>
                     <div className='text-xs text-gray-500'>
-                      {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-                        ? t('预计退款金额')
-                        : t('预计返还')}
+                      {t('审核说明')}
                     </div>
                     <div className='mt-1 font-semibold'>
-                      {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-                        ? renderQuotaWithAmount(Number(selectedConvertibleAmount || 0))
-                        : renderQuota(selectedConvertibleQuota)}
+                      {t('仅提交申请，结果待审核')}
                     </div>
                     <Text type='tertiary' size='small' className='mt-2 block'>
                       {t('当前已选')} {selectedConversionItems.length} {t('个套餐')}
@@ -946,7 +856,7 @@ const RefundPage = () => {
                       <div>
                         <div className='font-semibold'>{t('选择要申请的套餐')}</div>
                         <Text type='tertiary' size='small'>
-                          {t('勾选后系统会按所选套餐匹配订单并自动计算退款/折算金额。')}
+                          {t('勾选后可提交退款申请，管理员会基于所选套餐和订单信息进行审核。')}
                         </Text>
                       </div>
                       <Space wrap align='center'>
@@ -1022,151 +932,14 @@ const RefundPage = () => {
                           </div>
                           <div className='text-left lg:text-right'>
                             <div className='font-semibold'>
-                              {selectedRefundTarget ===
-                              REFUND_TARGET_ORIGINAL_PAYMENT
-                                ? renderQuotaWithAmount(
-                                    Number(item.convertible_amount || 0),
-                                  )
-                                : renderQuota(item.convertible_quota || 0)}
+                              {t('待管理员核算')}
                             </div>
                             <Text type='tertiary' size='small' className='block'>
-                              {selectedRefundTarget ===
-                              REFUND_TARGET_ORIGINAL_PAYMENT
-                                ? t('预计退款金额')
-                                : t('预计折算金额')}{' '}
-                              {renderQuotaWithAmount(
-                                Number(item.convertible_amount || 0),
-                              )}
+                              {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
+                                ? t('最终退款金额以管理员审批为准')
+                                : t('最终返还额度以管理员审批为准')}
                             </Text>
-                            <Text type='tertiary' size='small' className='block'>
-                              {t('折算基价')}{' '}
-                              {renderQuotaWithAmount(
-                                Number(item.price_basis_amount || 0),
-                              )}
-                            </Text>
-                            {item.settlement_mode === 'token_usage' ? (
-                              <>
-                                <Text
-                                  type='tertiary'
-                                  size='small'
-                                  className='block'
-                                >
-                                  {t('已消耗成本')}{' '}
-                                  {renderQuotaWithAmount(
-                                    Number(item.consumed_cost_amount || 0),
-                                  )}
-                                </Text>
-                                <Text
-                                  type='tertiary'
-                                  size='small'
-                                  className='block'
-                                >
-                                  {t('标准输入 tokens')}{' '}
-                                  {formatTokenCount(item.billed_input_tokens)}
-                                </Text>
-                              </>
-                            ) : (
-                              <>
-                                <Text
-                                  type='tertiary'
-                                  size='small'
-                                  className='block'
-                                >
-                                  {t('剩余比例')}{' '}
-                                  {Math.round(
-                                    Number(item.remaining_ratio || 0) * 10000,
-                                  ) / 100}
-                                  %
-                                </Text>
-                                <Text
-                                  type='tertiary'
-                                  size='small'
-                                  className='block'
-                                >
-                                  {t('计费天数')}{' '}
-                                  {Number(item.billable_used_days || 0)} /{' '}
-                                  {Number(item.duration_days || 0)} {t('天')}
-                                </Text>
-                              </>
-                            )}
                           </div>
-                        </div>
-                        <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4'>
-                          {item.settlement_mode === 'token_usage' ? (
-                            <>
-                              <div className='rounded-lg bg-amber-50 px-3 py-2 text-sm'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('输入 tokens')}
-                                </div>
-                                <div className='mt-1 font-semibold'>
-                                  {formatTokenCount(item.input_tokens)}
-                                </div>
-                              </div>
-                              <div className='rounded-lg bg-amber-50 px-3 py-2 text-sm'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('输出 tokens')}
-                                </div>
-                                <div className='mt-1 font-semibold'>
-                                  {formatTokenCount(item.output_tokens)}
-                                </div>
-                              </div>
-                              <div className='rounded-lg bg-amber-50 px-3 py-2 text-sm'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('Cache Read tokens')}
-                                </div>
-                                <div className='mt-1 font-semibold'>
-                                  {formatTokenCount(item.cache_read_tokens)}
-                                </div>
-                              </div>
-                              <div className='rounded-lg bg-amber-50 px-3 py-2 text-sm'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('Cache Write tokens')}
-                                </div>
-                                <div className='mt-1 font-semibold'>
-                                  {formatTokenCount(item.cache_write_tokens)}
-                                </div>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className='rounded-lg bg-amber-50 px-3 py-2 text-sm'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('已使用天数')}
-                                </div>
-                                <div className='mt-1 font-semibold'>
-                                  {Number(item.used_days || 0)} {t('天')}
-                                </div>
-                              </div>
-                              <div className='rounded-lg bg-amber-50 px-3 py-2 text-sm'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('计费天数')}
-                                </div>
-                                <div className='mt-1 font-semibold'>
-                                  {Number(item.billable_used_days || 0)} /{' '}
-                                  {Number(item.duration_days || 0)} {t('天')}
-                                </div>
-                              </div>
-                              <div className='rounded-lg bg-amber-50 px-3 py-2 text-sm'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('剩余比例')}
-                                </div>
-                                <div className='mt-1 font-semibold'>
-                                  {Math.round(
-                                    Number(item.remaining_ratio || 0) * 10000,
-                                  ) / 100}
-                                  %
-                                </div>
-                              </div>
-                              <div className='rounded-lg bg-amber-50 px-3 py-2 text-sm'>
-                                <div className='text-xs text-gray-500'>
-                                  {t('结算模式')}
-                                </div>
-                                <div className='mt-1 font-semibold'>
-                                  {t('按剩余时长折算')}
-                                </div>
-                              </div>
-                            </>
-                          )}
                         </div>
                         <div className='mt-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-semi-color-text-1'>
                           <div className='text-xs text-gray-500'>
@@ -1243,10 +1016,6 @@ const RefundPage = () => {
                               {t('当前未匹配到可用于退款核算的成功支付订单')}
                             </div>
                           )}
-                        </div>
-                        <div className='mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-semi-color-text-1'>
-                          <div className='text-xs text-gray-500'>{t('计算公式')}</div>
-                          <div className='mt-1'>{item.formula || '--'}</div>
                         </div>
                       </div>
                     ))}
@@ -1340,7 +1109,7 @@ const RefundPage = () => {
                 {t('补充说明')}
               </Title>
               <Text type='tertiary'>
-                {t('开票仍然走系统内申请流程；折算与退款以当前活动预览和人工审核结果为准。')}
+                {t('开票仍然走系统内申请流程；退款与售后申请以当前规则和人工审核结果为准。')}
               </Text>
             </div>
             <Space wrap>

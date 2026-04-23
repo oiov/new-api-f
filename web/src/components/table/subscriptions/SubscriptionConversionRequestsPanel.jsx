@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -33,12 +33,16 @@ import {
 import { renderQuotaWithAmount } from '../../../helpers/render';
 import { API, renderQuota, showError, showSuccess, timestamp2string } from '../../../helpers';
 import { downloadTextAsFile } from '../../../helpers/utils';
+import { StatusContext } from '../../../context/Status';
 import {
+  parseSubscriptionRefundSettings,
   REFUND_TARGET_BALANCE,
   REFUND_TARGET_ORIGINAL_PAYMENT,
 } from '../../../helpers/subscriptionRefund';
 
 const { Text } = Typography;
+const CALCULATION_MODE_DURATION = 'duration_ratio';
+const CALCULATION_MODE_TOKEN = 'token_usage';
 
 const getStatusMeta = (status, t) => {
   switch (status) {
@@ -132,6 +136,7 @@ const renderRequestSubscriptionItems = (items, t) => {
 
 const SubscriptionConversionRequestsPanel = ({ t }) => {
   const EXPORT_PAGE_SIZE = 100;
+  const [statusState] = useContext(StatusContext);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [items, setItems] = useState([]);
@@ -148,12 +153,27 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
   const [markingPaid, setMarkingPaid] = useState(false);
   const [approvedRatio, setApprovedRatio] = useState('1');
   const [approvedQuota, setApprovedQuota] = useState('');
+  const [approvedAmount, setApprovedAmount] = useState('');
+  const [calculationSettlementMode, setCalculationSettlementMode] = useState(
+    CALCULATION_MODE_DURATION,
+  );
   const [approvedRefundTarget, setApprovedRefundTarget] = useState(
     REFUND_TARGET_BALANCE,
   );
   const [adminRemark, setAdminRemark] = useState('');
   const [rejectRemark, setRejectRemark] = useState('');
   const [payoutRemark, setPayoutRemark] = useState('');
+  const refundSettings = useMemo(
+    () =>
+      parseSubscriptionRefundSettings(
+        statusState?.status?.SubscriptionRefundSettings,
+      ),
+    [statusState?.status?.SubscriptionRefundSettings],
+  );
+  const defaultCalculationSettlementMode =
+    refundSettings?.settlement_mode === CALCULATION_MODE_TOKEN
+      ? CALCULATION_MODE_TOKEN
+      : CALCULATION_MODE_DURATION;
 
   const buildQueryParams = useCallback(
     (page = 1, pageSize = 50) => ({
@@ -195,9 +215,9 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
         ? String(item.requested_ratio)
         : '1',
     );
-    setApprovedQuota(
-      Number(item?.requested_quota || 0) > 0 ? String(item.requested_quota) : '',
-    );
+    setApprovedQuota('');
+    setApprovedAmount('');
+    setCalculationSettlementMode(defaultCalculationSettlementMode);
     setApprovedRefundTarget(
       item?.requested_refund_target || REFUND_TARGET_BALANCE,
     );
@@ -230,15 +250,17 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
       return;
     }
 
-    const quotaValue =
-      approvedQuota === ''
-        ? Number(current?.requested_quota || 0)
-        : Number(approvedQuota);
+    const quotaValue = approvedQuota === '' ? 0 : Number(approvedQuota);
+    const amountValue = approvedAmount === '' ? 0 : Number(approvedAmount);
     if (
       approvedRefundTarget === REFUND_TARGET_BALANCE &&
       (!Number.isFinite(quotaValue) || quotaValue < 0)
     ) {
       showError(t('最终增加余额额度不能小于 0'));
+      return;
+    }
+    if (!Number.isFinite(amountValue) || amountValue < 0) {
+      showError(t('最终金额不能小于 0'));
       return;
     }
 
@@ -250,7 +272,9 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
           approved_ratio: ratioValue,
           approved_quota:
             approvedRefundTarget === REFUND_TARGET_BALANCE ? quotaValue : 0,
+          approved_amount: amountValue,
           approved_refund_target: approvedRefundTarget,
+          calculation_settlement_mode: calculationSettlementMode,
           admin_remark: adminRemark,
         },
       );
@@ -735,9 +759,7 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
             </div>
             <div>
               {t('申请返还')}：
-              {current?.requested_refund_target === REFUND_TARGET_ORIGINAL_PAYMENT
-                ? renderQuotaWithAmount(Number(current?.requested_amount || 0))
-                : renderQuota(current?.requested_quota || 0)}
+              {t('由管理员核算')}
             </div>
             <div className='text-semi-color-text-2'>
               {approvedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
@@ -764,11 +786,33 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
             />
           </div>
           <div>
+            <div className='mb-1 text-sm'>{t('计算方式')}</div>
+            <Select
+              value={calculationSettlementMode}
+              onChange={setCalculationSettlementMode}
+              optionList={[
+                { label: t('按使用天数计算'), value: CALCULATION_MODE_DURATION },
+                { label: t('按额度消耗计算'), value: CALCULATION_MODE_TOKEN },
+              ]}
+            />
+            <Text type='tertiary' size='small' className='mt-1 block'>
+              {t('如未手动填写最终金额/额度，系统会按这里选择的方式自动核算。')}
+            </Text>
+          </div>
+          <div>
             <div className='mb-1 text-sm'>{t('批准比例')}</div>
             <Input
               value={approvedRatio}
               onChange={setApprovedRatio}
               placeholder='1.00'
+            />
+          </div>
+          <div>
+            <div className='mb-1 text-sm'>{t('最终退款金额')}</div>
+            <Input
+              value={approvedAmount}
+              onChange={setApprovedAmount}
+              placeholder={t('留空则按计算方式自动核算')}
             />
           </div>
           {approvedRefundTarget === REFUND_TARGET_BALANCE ? (
@@ -777,7 +821,7 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
               <Input
                 value={approvedQuota}
                 onChange={setApprovedQuota}
-                placeholder={String(current?.requested_quota || '')}
+                placeholder={t('留空则按计算方式自动核算')}
               />
             </div>
           ) : null}

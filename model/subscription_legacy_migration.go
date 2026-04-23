@@ -99,6 +99,13 @@ type SelfServiceSubscriptionConversionExecutionResult struct {
 	Items            []SelfServiceSubscriptionConversionExecutionItem `json:"items"`
 }
 
+type subscriptionConversionPreviewBuildOptions struct {
+	SkipStatusCheck      bool
+	SkipEligibilityCheck bool
+	ForcedSettlementMode string
+	RefundOrder          *SubscriptionRefundOrderSummary
+}
+
 func defaultSelfServiceSubscriptionConversionCampaign() SelfServiceSubscriptionConversionCampaign {
 	loc := subscriptionResetLocation
 	if loc == nil {
@@ -377,14 +384,14 @@ func resolveSelfServiceSubscriptionConversionDurationDays(sub *UserSubscription,
 	return 1
 }
 
-func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, plan *SubscriptionPlan, campaign SelfServiceSubscriptionConversionCampaign, now int64, tx *gorm.DB) (*SelfServiceSubscriptionConversionPreviewItem, error) {
+func buildSubscriptionConversionPreviewItemWithOptions(sub *UserSubscription, plan *SubscriptionPlan, campaign SelfServiceSubscriptionConversionCampaign, now int64, tx *gorm.DB, options subscriptionConversionPreviewBuildOptions) (*SelfServiceSubscriptionConversionPreviewItem, error) {
 	if sub == nil || plan == nil {
 		return nil, fmt.Errorf("invalid legacy migration subscription")
 	}
-	if sub.Status != "active" || sub.EndTime <= now {
+	if !options.SkipStatusCheck && (sub.Status != "active" || sub.EndTime <= now) {
 		return nil, nil
 	}
-	if !isSelfServiceSubscriptionConversionPlanEligible(sub, plan, campaign) {
+	if !options.SkipEligibilityCheck && !isSelfServiceSubscriptionConversionPlanEligible(sub, plan, campaign) {
 		return nil, nil
 	}
 	totalSeconds := sub.EndTime - sub.StartTime
@@ -424,6 +431,12 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 	}
 	refundSettings := GetSubscriptionRefundSettings()
 	settlementMode := SubscriptionRefundSettlementModeDurationRatio
+	if refundSettings.Enabled && refundSettings.SettlementMode == SubscriptionRefundSettlementModeTokenUsage {
+		settlementMode = SubscriptionRefundSettlementModeTokenUsage
+	}
+	if mode := strings.TrimSpace(options.ForcedSettlementMode); mode != "" {
+		settlementMode = mode
+	}
 	consumedCostAmount := 0.0
 	convertibleAmount := math.Round(priceBasis*ratio*100) / 100
 	formula := campaign.ConversionRule
@@ -432,7 +445,7 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 	cacheReadTokens := int64(0)
 	cacheWriteTokens := int64(0)
 	billedInputTokens := int64(0)
-	if refundSettings.Enabled && refundSettings.SettlementMode == SubscriptionRefundSettlementModeTokenUsage {
+	if refundSettings.Enabled && settlementMode == SubscriptionRefundSettlementModeTokenUsage {
 		usageSummary, err := summarizeSubscriptionRefundUsage(sub.UserId, sub.Id, sub.StartTime, now)
 		if err != nil {
 			return nil, err
@@ -450,13 +463,16 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 		if convertibleAmount < 0 {
 			convertibleAmount = 0
 		}
-		settlementMode = SubscriptionRefundSettlementModeTokenUsage
 		formula = buildSubscriptionRefundTokenFormula(refundSettings)
 	}
 	convertibleQuota := convertSubscriptionConversionAmountToQuota(convertibleAmount)
-	refundOrder, err := buildSubscriptionRefundOrderSummaryFromSubscription(sub, tx)
-	if err != nil {
-		return nil, err
+	refundOrder := options.RefundOrder
+	if refundOrder == nil {
+		var err error
+		refundOrder, err = buildSubscriptionRefundOrderSummaryFromSubscription(sub, tx)
+		if err != nil {
+			return nil, err
+		}
 	}
 	item := &SelfServiceSubscriptionConversionPreviewItem{
 		UserSubscriptionId:      sub.Id,
@@ -493,6 +509,10 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 		RequestCountPeriodTotal: sub.RequestCountPeriodTotal,
 	}
 	return item, nil
+}
+
+func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, plan *SubscriptionPlan, campaign SelfServiceSubscriptionConversionCampaign, now int64, tx *gorm.DB) (*SelfServiceSubscriptionConversionPreviewItem, error) {
+	return buildSubscriptionConversionPreviewItemWithOptions(sub, plan, campaign, now, tx, subscriptionConversionPreviewBuildOptions{})
 }
 
 type subscriptionRefundUsageLogRow struct {

@@ -20,6 +20,9 @@ const (
 	SubscriptionConversionPayoutStatusNone    = ""
 	SubscriptionConversionPayoutStatusPending = "pending"
 	SubscriptionConversionPayoutStatusPaid    = "paid"
+
+	SubscriptionConversionCalculationModeDurationRatio = SubscriptionRefundSettlementModeDurationRatio
+	SubscriptionConversionCalculationModeTokenUsage    = SubscriptionRefundSettlementModeTokenUsage
 )
 
 type SubscriptionConversionRequest struct {
@@ -327,6 +330,26 @@ func GetLatestSubscriptionConversionRequestByUser(userId int) (*SubscriptionConv
 	return &request, nil
 }
 
+func normalizeSubscriptionConversionCalculationMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case SubscriptionConversionCalculationModeTokenUsage:
+		return SubscriptionConversionCalculationModeTokenUsage
+	case SubscriptionConversionCalculationModeDurationRatio:
+		return SubscriptionConversionCalculationModeDurationRatio
+	default:
+		return ""
+	}
+}
+
+func getDefaultSubscriptionConversionCalculationMode() string {
+	settings := GetSubscriptionRefundSettings()
+	mode := normalizeSubscriptionConversionCalculationMode(settings.SettlementMode)
+	if mode != "" {
+		return mode
+	}
+	return SubscriptionConversionCalculationModeDurationRatio
+}
+
 func selectSubscriptionConversionPreviewItems(preview *SelfServiceSubscriptionConversionPreview, selectedSubscriptionIDs []int, strictSelection bool) ([]SelfServiceSubscriptionConversionPreviewItem, int, float64, error) {
 	if preview == nil {
 		return nil, 0, 0, fmt.Errorf("invalid conversion preview")
@@ -533,6 +556,92 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 	return &created, nil
 }
 
+func calculateSubscriptionConversionRequestSuggestionTx(tx *gorm.DB, request *SubscriptionConversionRequest, calculationMode string) (int, float64, error) {
+	if tx == nil || request == nil {
+		return 0, 0, fmt.Errorf("invalid conversion suggestion args")
+	}
+	calculationMode = normalizeSubscriptionConversionCalculationMode(calculationMode)
+	if calculationMode == "" {
+		calculationMode = getDefaultSubscriptionConversionCalculationMode()
+	}
+	subscriptionIDs, err := decodeSubscriptionIDList(request.SubscriptionIdsJSON)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(subscriptionIDs) == 0 {
+		return 0, 0, fmt.Errorf("申请中没有可执行的套餐")
+	}
+	snapshots, err := decodeSubscriptionConversionSnapshots(request.SubscriptionSnapshotsJSON)
+	if err != nil {
+		return 0, 0, err
+	}
+	snapshotMap := make(map[int]subscriptionConversionRequestSnapshot, len(snapshots))
+	for _, snapshot := range snapshots {
+		snapshotMap[snapshot.UserSubscriptionId] = snapshot
+	}
+	var subs []UserSubscription
+	if err := tx.Where("user_id = ? AND id IN ?", request.UserId, subscriptionIDs).
+		Find(&subs).Error; err != nil {
+		return 0, 0, err
+	}
+	if len(subs) != len(subscriptionIDs) {
+		return 0, 0, fmt.Errorf("申请中的部分套餐已不存在，请让用户重新提交申请")
+	}
+	subMap := make(map[int]UserSubscription, len(subs))
+	for _, sub := range subs {
+		subMap[sub.Id] = sub
+	}
+	campaign := GetSelfServiceSubscriptionConversionCampaign()
+	calcAt := request.DisabledAt
+	if calcAt <= 0 {
+		calcAt = GetDBTimestampWithTx(tx)
+	}
+	totalQuota := 0
+	totalAmount := 0.0
+	for _, subscriptionID := range subscriptionIDs {
+		sub, ok := subMap[subscriptionID]
+		if !ok {
+			return 0, 0, fmt.Errorf("申请中的部分套餐已不存在，请让用户重新提交申请")
+		}
+		snapshot, hasSnapshot := snapshotMap[subscriptionID]
+		if hasSnapshot {
+			if snapshot.PlanId > 0 {
+				sub.PlanId = snapshot.PlanId
+			}
+			sub.StartTime = snapshot.StartTime
+			sub.EndTime = snapshot.EndTime
+			sub.Source = snapshot.Source
+		}
+		sub.Status = "active"
+		plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+		if err != nil {
+			return 0, 0, err
+		}
+		item, err := buildSubscriptionConversionPreviewItemWithOptions(
+			&sub,
+			plan,
+			campaign,
+			calcAt,
+			tx,
+			subscriptionConversionPreviewBuildOptions{
+				SkipStatusCheck:      true,
+				SkipEligibilityCheck: true,
+				ForcedSettlementMode: calculationMode,
+				RefundOrder:          snapshot.RefundOrder,
+			},
+		)
+		if err != nil {
+			return 0, 0, err
+		}
+		if item == nil {
+			return 0, 0, fmt.Errorf("申请中的套餐当前无法按所选方式核算，请重新核对")
+		}
+		totalQuota += item.ConvertibleQuota
+		totalAmount += item.ConvertibleAmount
+	}
+	return totalQuota, math.Round(totalAmount*100) / 100, nil
+}
+
 func GetSubscriptionConversionRequestsByAdmin(pageInfo *common.PageInfo, filters SubscriptionConversionAdminFilters) ([]*SubscriptionConversionRequest, int64, error) {
 	if pageInfo == nil {
 		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
@@ -732,7 +841,7 @@ func executeSubscriptionConversionRequestTx(tx *gorm.DB, request *SubscriptionCo
 	return cacheGroup, nil
 }
 
-func ApproveSubscriptionConversionRequest(requestId int, approvedRatio float64, approvedQuota int, approvedRefundTarget string, adminRemark string) (*SubscriptionConversionRequest, error) {
+func ApproveSubscriptionConversionRequest(requestId int, approvedRatio float64, approvedQuota int, approvedAmount float64, approvedRefundTarget string, calculationMode string, adminRemark string) (*SubscriptionConversionRequest, error) {
 	if requestId <= 0 {
 		return nil, fmt.Errorf("invalid request id")
 	}
@@ -761,11 +870,22 @@ func ApproveSubscriptionConversionRequest(requestId int, approvedRatio float64, 
 		if !refundSettings.IsRefundTargetAllowed(approvedRefundTarget) {
 			return fmt.Errorf("当前不支持该退款去向")
 		}
+		calculationMode = normalizeSubscriptionConversionCalculationMode(calculationMode)
+		if calculationMode == "" {
+			calculationMode = getDefaultSubscriptionConversionCalculationMode()
+		}
 		if approvedRatio <= 0 {
 			approvedRatio = 1
 		}
+		suggestedQuota, suggestedAmount, err := calculateSubscriptionConversionRequestSuggestionTx(tx, &request, calculationMode)
+		if err != nil {
+			return err
+		}
 		if approvedRefundTarget == SubscriptionRefundTargetBalance && approvedQuota <= 0 {
-			approvedQuota = int(math.Round(float64(request.RequestedQuota) * approvedRatio))
+			approvedQuota = int(math.Round(float64(suggestedQuota) * approvedRatio))
+		}
+		if approvedAmount <= 0 {
+			approvedAmount = suggestedAmount * approvedRatio
 		}
 		if approvedRefundTarget == SubscriptionRefundTargetBalance && approvedQuota <= 0 {
 			return fmt.Errorf("审批增加的余额必须大于0")
@@ -775,16 +895,8 @@ func ApproveSubscriptionConversionRequest(requestId int, approvedRatio float64, 
 		}
 		request.ApprovedRatio = approvedRatio
 		request.AdminRemark = adminRemark
-		approvedAmount := 0.0
-		ratioDerivedQuota := int(math.Round(float64(request.RequestedQuota) * approvedRatio))
-		if ratioDerivedQuota == approvedQuota && request.RequestedAmount > 0 {
-			approvedAmount = request.RequestedAmount * approvedRatio
-		}
-		if approvedAmount <= 0 && common.QuotaPerUnit > 0 {
+		if approvedRefundTarget == SubscriptionRefundTargetBalance && approvedAmount <= 0 && common.QuotaPerUnit > 0 {
 			approvedAmount = float64(approvedQuota) / common.QuotaPerUnit
-		}
-		if approvedRefundTarget == SubscriptionRefundTargetOriginalPayment && request.RequestedAmount > 0 {
-			approvedAmount = request.RequestedAmount * approvedRatio
 		}
 		var execErr error
 		cacheGroup, execErr = executeSubscriptionConversionRequestTx(tx, &request, approvedQuota, approvedAmount, approvedRefundTarget)
