@@ -322,8 +322,9 @@ func GetSelfServiceSubscriptionConversion(c *gin.Context) {
 }
 
 type CreateSubscriptionConversionRequest struct {
-	RequestRemark string `json:"request_remark"`
-	RefundTarget  string `json:"refund_target"`
+	RequestRemark           string `json:"request_remark"`
+	RefundTarget            string `json:"refund_target"`
+	SelectedSubscriptionIds *[]int `json:"selected_subscription_ids"`
 }
 
 func CreateSelfServiceSubscriptionConversionRequest(c *gin.Context) {
@@ -333,7 +334,19 @@ func CreateSelfServiceSubscriptionConversionRequest(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	result, err := model.CreateSubscriptionConversionRequest(userId, req.RequestRemark, req.RefundTarget)
+	selectedSubscriptionIds := []int(nil)
+	strictSelection := false
+	if req.SelectedSubscriptionIds != nil {
+		selectedSubscriptionIds = *req.SelectedSubscriptionIds
+		strictSelection = true
+	}
+	result, err := model.CreateSubscriptionConversionRequest(
+		userId,
+		req.RequestRemark,
+		req.RefundTarget,
+		selectedSubscriptionIds,
+		strictSelection,
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return

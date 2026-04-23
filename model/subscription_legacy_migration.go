@@ -33,37 +33,38 @@ type SelfServiceSubscriptionConversionCampaign struct {
 }
 
 type SelfServiceSubscriptionConversionPreviewItem struct {
-	UserSubscriptionId      int     `json:"user_subscription_id"`
-	PlanId                  int     `json:"plan_id"`
-	PlanTitle               string  `json:"plan_title"`
-	ResourceType            string  `json:"resource_type"`
-	Source                  string  `json:"source"`
-	SettlementMode          string  `json:"settlement_mode"`
-	StartTime               int64   `json:"start_time"`
-	EndTime                 int64   `json:"end_time"`
-	TotalSeconds            int64   `json:"total_seconds"`
-	RemainingSeconds        int64   `json:"remaining_seconds"`
-	RemainingRatio          float64 `json:"remaining_ratio"`
-	DurationDays            float64 `json:"duration_days"`
-	UsedDays                int64   `json:"used_days"`
-	BillableUsedDays        float64 `json:"billable_used_days"`
-	PriceBasisAmount        float64 `json:"price_basis_amount"`
-	PriceBasisSource        string  `json:"price_basis_source"`
-	ConsumedCostAmount      float64 `json:"consumed_cost_amount"`
-	ConvertibleAmount       float64 `json:"convertible_amount"`
-	ConvertibleQuota        int     `json:"convertible_quota"`
-	Formula                 string  `json:"formula"`
-	InputTokens             int64   `json:"input_tokens"`
-	OutputTokens            int64   `json:"output_tokens"`
-	CacheReadTokens         int64   `json:"cache_read_tokens"`
-	CacheWriteTokens        int64   `json:"cache_write_tokens"`
-	BilledInputTokens       int64   `json:"billed_input_tokens"`
-	AmountUsed              int64   `json:"amount_used"`
-	AmountTotal             int64   `json:"amount_total"`
-	RequestCountUsed        int64   `json:"request_count_used"`
-	RequestCountTotal       int64   `json:"request_count_total"`
-	RequestCountPeriodUsed  int64   `json:"request_count_period_used"`
-	RequestCountPeriodTotal int64   `json:"request_count_period_total"`
+	UserSubscriptionId      int                             `json:"user_subscription_id"`
+	PlanId                  int                             `json:"plan_id"`
+	PlanTitle               string                          `json:"plan_title"`
+	ResourceType            string                          `json:"resource_type"`
+	Source                  string                          `json:"source"`
+	RefundOrder             *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+	SettlementMode          string                          `json:"settlement_mode"`
+	StartTime               int64                           `json:"start_time"`
+	EndTime                 int64                           `json:"end_time"`
+	TotalSeconds            int64                           `json:"total_seconds"`
+	RemainingSeconds        int64                           `json:"remaining_seconds"`
+	RemainingRatio          float64                         `json:"remaining_ratio"`
+	DurationDays            float64                         `json:"duration_days"`
+	UsedDays                int64                           `json:"used_days"`
+	BillableUsedDays        float64                         `json:"billable_used_days"`
+	PriceBasisAmount        float64                         `json:"price_basis_amount"`
+	PriceBasisSource        string                          `json:"price_basis_source"`
+	ConsumedCostAmount      float64                         `json:"consumed_cost_amount"`
+	ConvertibleAmount       float64                         `json:"convertible_amount"`
+	ConvertibleQuota        int                             `json:"convertible_quota"`
+	Formula                 string                          `json:"formula"`
+	InputTokens             int64                           `json:"input_tokens"`
+	OutputTokens            int64                           `json:"output_tokens"`
+	CacheReadTokens         int64                           `json:"cache_read_tokens"`
+	CacheWriteTokens        int64                           `json:"cache_write_tokens"`
+	BilledInputTokens       int64                           `json:"billed_input_tokens"`
+	AmountUsed              int64                           `json:"amount_used"`
+	AmountTotal             int64                           `json:"amount_total"`
+	RequestCountUsed        int64                           `json:"request_count_used"`
+	RequestCountTotal       int64                           `json:"request_count_total"`
+	RequestCountPeriodUsed  int64                           `json:"request_count_period_used"`
+	RequestCountPeriodTotal int64                           `json:"request_count_period_total"`
 }
 
 type SelfServiceSubscriptionConversionPreview struct {
@@ -453,12 +454,17 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 		formula = buildSubscriptionRefundTokenFormula(refundSettings)
 	}
 	convertibleQuota := convertSubscriptionConversionAmountToQuota(convertibleAmount)
+	refundOrder, err := buildSubscriptionRefundOrderSummaryFromSubscription(sub, tx)
+	if err != nil {
+		return nil, err
+	}
 	item := &SelfServiceSubscriptionConversionPreviewItem{
 		UserSubscriptionId:      sub.Id,
 		PlanId:                  sub.PlanId,
 		PlanTitle:               strings.TrimSpace(plan.Title),
 		ResourceType:            NormalizeSubscriptionResourceType(sub.ResourceType),
 		Source:                  strings.TrimSpace(sub.Source),
+		RefundOrder:             refundOrder,
 		SettlementMode:          settlementMode,
 		StartTime:               sub.StartTime,
 		EndTime:                 sub.EndTime,

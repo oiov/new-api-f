@@ -124,8 +124,10 @@ func GetStatus(c *gin.Context) {
 		"subscription_promo_button_link": cs.SubscriptionPromoButtonLink,
 
 		// 模块管理配置
-		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
-		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
+		"HeaderNavModules":                    common.OptionMap["HeaderNavModules"],
+		"SidebarModulesAdmin":                 common.OptionMap["SidebarModulesAdmin"],
+		"SubscriptionRefundSettings":          common.OptionMap["SubscriptionRefundSettings"],
+		"SelfServiceSubscriptionConversionCampaign": common.OptionMap["SelfServiceSubscriptionConversionCampaign"],
 
 		"oidc_enabled":                                  system_setting.IsOIDCLoginEnabled(),
 		"oidc_register_enabled":                         system_setting.IsOIDCRegisterEnabled(),

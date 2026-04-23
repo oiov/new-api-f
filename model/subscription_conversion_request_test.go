@@ -164,7 +164,7 @@ func seedSubscriptionConversionRequestFixtures(t *testing.T) (int64, int64) {
 func TestCreateSubscriptionConversionRequest_DisablesSubscriptionImmediately(t *testing.T) {
 	withSubscriptionConversionRequestTestDB(t, func() {
 		seedSubscriptionConversionRequestFixtures(t)
-		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance)
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance, nil, false)
 		require.NoError(t, err)
 		require.Equal(t, SubscriptionConversionRequestStatusPending, request.Status)
 		require.NotZero(t, request.DisabledAt)
@@ -185,7 +185,7 @@ func TestRejectSubscriptionConversionRequest_RestoresSubscriptionAndGroup(t *tes
 	withSubscriptionConversionRequestTestDB(t, func() {
 		originalEndTime, originalNextResetTime := seedSubscriptionConversionRequestFixtures(t)
 
-		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance)
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance, nil, false)
 		require.NoError(t, err)
 
 		rejected, err := RejectSubscriptionConversionRequest(request.Id, "不同意")
@@ -208,7 +208,7 @@ func TestApproveSubscriptionConversionRequest_UsesDisabledRequestSnapshot(t *tes
 	withSubscriptionConversionRequestTestDB(t, func() {
 		seedSubscriptionConversionRequestFixtures(t)
 
-		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance)
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance, nil, false)
 		require.NoError(t, err)
 
 		approvedQuota := request.RequestedQuota + 123
@@ -233,7 +233,7 @@ func TestApproveSubscriptionConversionRequest_FailsWhenSubscriptionStateChanged(
 	withSubscriptionConversionRequestTestDB(t, func() {
 		originalEndTime, _ := seedSubscriptionConversionRequestFixtures(t)
 
-		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance)
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetBalance, nil, false)
 		require.NoError(t, err)
 
 		require.NoError(t, DB.Model(&UserSubscription{}).Where("id = ?", 9201).Updates(map[string]any{
@@ -248,6 +248,106 @@ func TestApproveSubscriptionConversionRequest_FailsWhenSubscriptionStateChanged(
 		var user User
 		require.NoError(t, DB.Where("id = ?", 1).First(&user).Error)
 		require.Equal(t, 500, user.Quota)
+	})
+}
+
+func TestCreateSubscriptionConversionRequest_UsesSelectedSubscriptionIds(t *testing.T) {
+	withSubscriptionConversionRequestTestDB(t, func() {
+		seedSubscriptionConversionRequestFixtures(t)
+		now := common.GetTimestamp()
+		require.NoError(t, DB.Create(&SubscriptionPlan{
+			Id:            9102,
+			Title:         "Claude Legacy Plan Extra",
+			PriceAmount:   20,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   2000,
+			UpgradeGroup:  "claude_sub",
+		}).Error)
+		require.NoError(t, DB.Model(&SubscriptionPlan{}).Where("id = ?", 9102).Update("enabled", false).Error)
+		InvalidateSubscriptionPlanCache(9102)
+		require.NoError(t, DB.Create(&SubscriptionOrder{
+			Id:           9302,
+			UserId:       1,
+			PlanId:       9102,
+			TradeNo:      "conversion-order-2",
+			Money:        20,
+			Status:       common.TopUpStatusSuccess,
+			CompleteTime: now - 600,
+			CreateTime:   now - 900,
+		}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:            9202,
+			UserId:        1,
+			PlanId:        9102,
+			Status:        "active",
+			StartTime:     now - 2*86400,
+			EndTime:       now + 10*86400,
+			NextResetTime: now + 3600,
+			ResourceType:  SubscriptionResourceQuota,
+			AmountTotal:   2000,
+			AmountUsed:    0,
+			UpgradeGroup:  "claude_sub",
+			PrevUserGroup: "default",
+			Source:        "order",
+			CreatedAt:     now - 900,
+			UpdatedAt:     now - 900,
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+		}).Error)
+
+		preview, err := PreviewSelfServiceSubscriptionConversion(1)
+		require.NoError(t, err)
+		require.Len(t, preview.Items, 2)
+
+		var selectedItem *SelfServiceSubscriptionConversionPreviewItem
+		for i := range preview.Items {
+			if preview.Items[i].UserSubscriptionId == 9202 {
+				selectedItem = &preview.Items[i]
+				break
+			}
+		}
+		require.NotNil(t, selectedItem)
+
+		request, err := CreateSubscriptionConversionRequest(
+			1,
+			"",
+			SubscriptionRefundTargetBalance,
+			[]int{9202},
+			true,
+		)
+		require.NoError(t, err)
+		require.Equal(t, selectedItem.ConvertibleQuota, request.RequestedQuota)
+		require.InDelta(t, selectedItem.ConvertibleAmount, request.RequestedAmount, 0.001)
+
+		ids, err := decodeSubscriptionIDList(request.SubscriptionIdsJSON)
+		require.NoError(t, err)
+		require.Equal(t, []int{9202}, ids)
+
+		var untouched UserSubscription
+		require.NoError(t, DB.Where("id = ?", 9201).First(&untouched).Error)
+		require.Equal(t, "active", untouched.Status)
+
+		var selected UserSubscription
+		require.NoError(t, DB.Where("id = ?", 9202).First(&selected).Error)
+		require.Equal(t, "cancelled", selected.Status)
+	})
+}
+
+func TestCreateSubscriptionConversionRequest_RejectsEmptyExplicitSelection(t *testing.T) {
+	withSubscriptionConversionRequestTestDB(t, func() {
+		seedSubscriptionConversionRequestFixtures(t)
+
+		_, err := CreateSubscriptionConversionRequest(
+			1,
+			"",
+			SubscriptionRefundTargetBalance,
+			[]int{},
+			true,
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "请至少选择一个套餐")
 	})
 }
 
@@ -537,7 +637,7 @@ func TestApproveSubscriptionConversionRequest_OriginalPaymentDoesNotCreditQuota(
 	withSubscriptionConversionRequestTestDB(t, func() {
 		seedSubscriptionConversionRequestFixtures(t)
 
-		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetOriginalPayment)
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetOriginalPayment, nil, false)
 		require.NoError(t, err)
 		require.Equal(t, SubscriptionRefundTargetOriginalPayment, request.RequestedRefundTarget)
 
@@ -558,7 +658,7 @@ func TestMarkSubscriptionConversionRequestPaid(t *testing.T) {
 	withSubscriptionConversionRequestTestDB(t, func() {
 		seedSubscriptionConversionRequestFixtures(t)
 
-		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetOriginalPayment)
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetOriginalPayment, nil, false)
 		require.NoError(t, err)
 
 		approved, err := ApproveSubscriptionConversionRequest(request.Id, 1, 0, SubscriptionRefundTargetOriginalPayment, "原路退款")
@@ -577,7 +677,7 @@ func TestMarkSubscriptionConversionRequestPaid_RequiresRemark(t *testing.T) {
 	withSubscriptionConversionRequestTestDB(t, func() {
 		seedSubscriptionConversionRequestFixtures(t)
 
-		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetOriginalPayment)
+		request, err := CreateSubscriptionConversionRequest(1, "", SubscriptionRefundTargetOriginalPayment, nil, false)
 		require.NoError(t, err)
 
 		_, err = ApproveSubscriptionConversionRequest(request.Id, 1, 0, SubscriptionRefundTargetOriginalPayment, "原路退款")

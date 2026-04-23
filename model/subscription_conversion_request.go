@@ -327,7 +327,58 @@ func GetLatestSubscriptionConversionRequestByUser(userId int) (*SubscriptionConv
 	return &request, nil
 }
 
-func CreateSubscriptionConversionRequest(userId int, requestRemark string, refundTarget string) (*SubscriptionConversionRequest, error) {
+func selectSubscriptionConversionPreviewItems(preview *SelfServiceSubscriptionConversionPreview, selectedSubscriptionIDs []int, strictSelection bool) ([]SelfServiceSubscriptionConversionPreviewItem, int, float64, error) {
+	if preview == nil {
+		return nil, 0, 0, fmt.Errorf("invalid conversion preview")
+	}
+	if len(preview.Items) == 0 {
+		return nil, 0, 0, fmt.Errorf("当前没有可申请折算的套餐")
+	}
+	if !strictSelection {
+		return preview.Items, preview.TotalConvertibleQuota, preview.TotalConvertibleAmount, nil
+	}
+	selectedSubscriptionIDs = normalizeSubscriptionIntList(selectedSubscriptionIDs)
+	if len(selectedSubscriptionIDs) == 0 {
+		return nil, 0, 0, fmt.Errorf("请至少选择一个套餐")
+	}
+	selectedSet := make(map[int]struct{}, len(selectedSubscriptionIDs))
+	for _, id := range selectedSubscriptionIDs {
+		if id > 0 {
+			selectedSet[id] = struct{}{}
+		}
+	}
+	if len(selectedSet) == 0 {
+		return nil, 0, 0, fmt.Errorf("请至少选择一个套餐")
+	}
+	previewItemMap := make(map[int]SelfServiceSubscriptionConversionPreviewItem, len(preview.Items))
+	for _, item := range preview.Items {
+		if item.UserSubscriptionId > 0 {
+			previewItemMap[item.UserSubscriptionId] = item
+		}
+	}
+	for id := range selectedSet {
+		if _, ok := previewItemMap[id]; !ok {
+			return nil, 0, 0, fmt.Errorf("所选套餐已发生变化，请刷新后重试")
+		}
+	}
+	items := make([]SelfServiceSubscriptionConversionPreviewItem, 0, len(selectedSet))
+	totalQuota := 0
+	totalAmount := 0.0
+	for _, item := range preview.Items {
+		if _, ok := selectedSet[item.UserSubscriptionId]; !ok {
+			continue
+		}
+		items = append(items, item)
+		totalQuota += item.ConvertibleQuota
+		totalAmount += item.ConvertibleAmount
+	}
+	if len(items) == 0 || totalQuota <= 0 {
+		return nil, 0, 0, fmt.Errorf("当前没有可申请折算的套餐")
+	}
+	return items, totalQuota, math.Round(totalAmount*100) / 100, nil
+}
+
+func CreateSubscriptionConversionRequest(userId int, requestRemark string, refundTarget string, selectedSubscriptionIDs []int, strictSelection bool) (*SubscriptionConversionRequest, error) {
 	if userId <= 0 {
 		return nil, fmt.Errorf("invalid user id")
 	}
@@ -355,17 +406,31 @@ func CreateSubscriptionConversionRequest(userId int, requestRemark string, refun
 	if len(preview.Items) == 0 || preview.TotalConvertibleQuota <= 0 {
 		return nil, fmt.Errorf("当前没有可申请折算的套餐")
 	}
-	return createSubscriptionConversionRequestFromPreview(userId, preview, requestRemark, refundTarget)
+	selectedItems, selectedTotalQuota, selectedTotalAmount, err := selectSubscriptionConversionPreviewItems(preview, selectedSubscriptionIDs, strictSelection)
+	if err != nil {
+		return nil, err
+	}
+	return createSubscriptionConversionRequestFromPreview(
+		userId,
+		preview,
+		selectedItems,
+		selectedTotalQuota,
+		selectedTotalAmount,
+		requestRemark,
+		refundTarget,
+	)
 }
 
-func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfServiceSubscriptionConversionPreview, requestRemark string, refundTarget string) (*SubscriptionConversionRequest, error) {
+func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfServiceSubscriptionConversionPreview, selectedItems []SelfServiceSubscriptionConversionPreviewItem, selectedTotalQuota int, selectedTotalAmount float64, requestRemark string, refundTarget string) (*SubscriptionConversionRequest, error) {
 	if userId <= 0 || preview == nil {
 		return nil, fmt.Errorf("invalid conversion request args")
 	}
-	subscriptionIDs := make([]int, 0, len(preview.Items))
-	for _, item := range preview.Items {
+	subscriptionIDs := make([]int, 0, len(selectedItems))
+	previewItemMap := make(map[int]SelfServiceSubscriptionConversionPreviewItem, len(selectedItems))
+	for _, item := range selectedItems {
 		if item.UserSubscriptionId > 0 {
 			subscriptionIDs = append(subscriptionIDs, item.UserSubscriptionId)
+			previewItemMap[item.UserSubscriptionId] = item
 		}
 	}
 	if len(subscriptionIDs) == 0 {
@@ -407,6 +472,10 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 			if subs[i].Status != "active" || subs[i].EndTime <= now {
 				return fmt.Errorf("申请中的套餐已过期或失效，请刷新后重试")
 			}
+			previewItem, ok := previewItemMap[subs[i].Id]
+			if !ok {
+				return fmt.Errorf("所选套餐已发生变化，请刷新后重试")
+			}
 			refundOrder, err := buildSubscriptionRefundOrderSnapshotForConversion(&subs[i], tx)
 			if err != nil {
 				return err
@@ -414,7 +483,7 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 			snapshots = append(snapshots, subscriptionConversionRequestSnapshot{
 				UserSubscriptionId: subs[i].Id,
 				PlanId:             subs[i].PlanId,
-				PlanTitle:          strings.TrimSpace(preview.Items[i].PlanTitle),
+				PlanTitle:          strings.TrimSpace(previewItem.PlanTitle),
 				Source:             strings.TrimSpace(subs[i].Source),
 				StartTime:          subs[i].StartTime,
 				EndTime:            subs[i].EndTime,
@@ -436,8 +505,8 @@ func createSubscriptionConversionRequestFromPreview(userId int, preview *SelfSer
 			RequestRemark:             requestRemark,
 			RequestedRefundTarget:     refundTarget,
 			RequestedRatio:            1,
-			RequestedAmount:           math.Round(preview.TotalConvertibleAmount*100) / 100,
-			RequestedQuota:            preview.TotalConvertibleQuota,
+			RequestedAmount:           math.Round(selectedTotalAmount*100) / 100,
+			RequestedQuota:            selectedTotalQuota,
 			DisabledAt:                now,
 		}
 		if err := tx.Create(&request).Error; err != nil {

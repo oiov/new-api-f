@@ -24,8 +24,10 @@ import {
   Banner,
   Button,
   Card,
+  Checkbox,
   Collapse,
   Empty,
+  Input,
   Modal,
   Select,
   Skeleton,
@@ -56,6 +58,7 @@ import SubscriptionConversionRequestsPanel from '../../components/table/subscrip
 const { Text, Title } = Typography;
 
 const SUPPORT_EMAIL = 'support@fishxcode.com';
+const REFUND_POLICY_URL = 'https://doc.fishxcode.com/refund';
 
 function getConversionRequestStatusMeta(status, t) {
   switch (status) {
@@ -99,6 +102,9 @@ const RefundPage = () => {
   const [conversionPreview, setConversionPreview] = useState(null);
   const [conversionLoading, setConversionLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedSubscriptionIds, setSelectedSubscriptionIds] = useState([]);
+  const [conversionFilterKeyword, setConversionFilterKeyword] = useState('');
+  const [hasSelectionInteracted, setHasSelectionInteracted] = useState(false);
   const refundSettings = useMemo(
     () =>
       parseSubscriptionRefundSettings(
@@ -143,6 +149,23 @@ const RefundPage = () => {
     });
   }, [allowedRefundTargets, refundSettings]);
 
+  useEffect(() => {
+    const nextIds = (conversionPreview?.items || [])
+      .map((item) => Number(item.user_subscription_id || 0))
+      .filter((id) => id > 0);
+    setSelectedSubscriptionIds((current) => {
+      if (nextIds.length === 0) {
+        return [];
+      }
+      const nextIdSet = new Set(nextIds);
+      const preserved = current.filter((id) => nextIdSet.has(id));
+      if (preserved.length > 0 || hasSelectionInteracted) {
+        return preserved;
+      }
+      return nextIds;
+    });
+  }, [conversionPreview?.items, hasSelectionInteracted]);
+
   const latestRequest = conversionPreview?.latest_request || null;
   const latestRequestRefundTarget = useMemo(
     () => getEffectiveRefundTarget(latestRequest),
@@ -159,6 +182,74 @@ const RefundPage = () => {
     );
   }, [conversionPreview]);
 
+  const selectedConversionItems = useMemo(() => {
+    const selectedIdSet = new Set(selectedSubscriptionIds);
+    return (conversionPreview?.items || []).filter((item) =>
+      selectedIdSet.has(Number(item.user_subscription_id || 0)),
+    );
+  }, [conversionPreview, selectedSubscriptionIds]);
+
+  const filteredConversionItems = useMemo(() => {
+    const keyword = conversionFilterKeyword.trim().toLowerCase();
+    if (!keyword) {
+      return conversionPreview?.items || [];
+    }
+    return (conversionPreview?.items || []).filter((item) => {
+      const fields = [
+        item.plan_title,
+        item.source,
+        item.user_subscription_id,
+        item?.refund_order?.trade_no,
+        item?.refund_order?.payment_method,
+        item?.refund_order?.order_id,
+        item?.refund_order?.topup_id,
+      ];
+      return fields.some((field) =>
+        String(field || '')
+          .toLowerCase()
+          .includes(keyword),
+      );
+    });
+  }, [conversionFilterKeyword, conversionPreview]);
+
+  const hiddenSelectedConversionItems = useMemo(() => {
+    const visibleIdSet = new Set(
+      filteredConversionItems.map((item) => Number(item.user_subscription_id || 0)),
+    );
+    return selectedConversionItems.filter(
+      (item) => !visibleIdSet.has(Number(item.user_subscription_id || 0)),
+    );
+  }, [filteredConversionItems, selectedConversionItems]);
+
+  const selectedConvertibleQuota = useMemo(() => {
+    return selectedConversionItems.reduce(
+      (sum, item) => sum + Number(item.convertible_quota || 0),
+      0,
+    );
+  }, [selectedConversionItems]);
+
+  const selectedConvertibleAmount = useMemo(() => {
+    return (
+      Math.round(
+        selectedConversionItems.reduce(
+          (sum, item) => sum + Number(item.convertible_amount || 0),
+          0,
+        ) * 100,
+      ) / 100
+    );
+  }, [selectedConversionItems]);
+
+  const allConversionItemsSelected =
+    filteredConversionItems.length > 0 &&
+    filteredConversionItems.every((item) =>
+      selectedSubscriptionIds.includes(Number(item.user_subscription_id || 0)),
+    );
+
+  const partiallySelectedConversionItems =
+    filteredConversionItems.some((item) =>
+      selectedSubscriptionIds.includes(Number(item.user_subscription_id || 0)),
+    ) && !allConversionItemsSelected;
+
   const conversionSummary = useMemo(() => {
     if (!conversionPreview) {
       return t('当前没有可用的套餐折算活动，若需人工协助请联系售后。');
@@ -167,19 +258,81 @@ const RefundPage = () => {
       return t('你已经提交过申请，命中套餐会在审核结束前保持禁用状态。');
     }
     if (conversionPreview?.can_execute) {
+      if (selectedConversionItems.length <= 0) {
+        return t('请选择至少一个符合规则的套餐后再提交申请。');
+      }
       return selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
         ? t(
-            '命中当前活动的套餐会按系统预览规则核算退款金额，审核通过后按原有支付方式退款。',
+            '你选中的套餐会按系统预览规则核算退款金额，审核通过后按原有支付方式退款。',
           )
         : t(
-            '命中当前活动的套餐会按系统预览规则折算，审核通过后返还到账户余额。',
+            '你选中的套餐会按系统预览规则折算，审核通过后返还到账户余额。',
           );
     }
     return (
       conversionPreview?.closed_reason ||
       t('当前仅展示历史申请记录，如需继续处理请联系售后。')
     );
-  }, [conversionPreview, latestRequest, selectedRefundTarget, t]);
+  }, [conversionPreview, latestRequest, selectedConversionItems.length, selectedRefundTarget, t]);
+
+  const handleToggleSubscriptionItem = (subscriptionId, checked) => {
+    const normalizedId = Number(subscriptionId || 0);
+    if (normalizedId <= 0) {
+      return;
+    }
+    setHasSelectionInteracted(true);
+    setSelectedSubscriptionIds((current) => {
+      const currentSet = new Set(current);
+      if (checked) {
+        currentSet.add(normalizedId);
+      } else {
+        currentSet.delete(normalizedId);
+      }
+      return (conversionPreview?.items || [])
+        .map((item) => Number(item.user_subscription_id || 0))
+        .filter((id) => currentSet.has(id));
+    });
+  };
+
+  const handleToggleAllSubscriptionItems = (checked) => {
+    setHasSelectionInteracted(true);
+    if (!checked) {
+      const visibleIdSet = new Set(
+        filteredConversionItems.map((item) => Number(item.user_subscription_id || 0)),
+      );
+      setSelectedSubscriptionIds((current) =>
+        current.filter((id) => !visibleIdSet.has(id)),
+      );
+      return;
+    }
+    setSelectedSubscriptionIds((current) => {
+      const nextSet = new Set(current);
+      filteredConversionItems.forEach((item) => {
+        const id = Number(item.user_subscription_id || 0);
+        if (id > 0) {
+          nextSet.add(id);
+        }
+      });
+      return (conversionPreview?.items || [])
+        .map((item) => Number(item.user_subscription_id || 0))
+        .filter((id) => nextSet.has(id));
+    });
+  };
+
+  const handleClearHiddenSelections = () => {
+    if (hiddenSelectedConversionItems.length <= 0) {
+      return;
+    }
+    setHasSelectionInteracted(true);
+    const hiddenIdSet = new Set(
+      hiddenSelectedConversionItems.map((item) =>
+        Number(item.user_subscription_id || 0),
+      ),
+    );
+    setSelectedSubscriptionIds((current) =>
+      current.filter((id) => !hiddenIdSet.has(id)),
+    );
+  };
 
   const handleCopyEmail = async () => {
     const copied = await copy(SUPPORT_EMAIL);
@@ -190,11 +343,23 @@ const RefundPage = () => {
     showError(t('复制失败，请手动复制'));
   };
 
+  const handleCopyTradeNo = async (tradeNo) => {
+    if (!tradeNo) {
+      return;
+    }
+    const copied = await copy(tradeNo);
+    if (copied) {
+      showSuccess(t('已复制订单号'));
+      return;
+    }
+    showError(t('复制失败，请手动复制'));
+  };
+
   const handleSubmitConversionRequest = () => {
     if (
       !selectedRefundTarget ||
       !conversionPreview?.can_execute ||
-      !conversionPreview?.items?.length ||
+      !selectedConversionItems.length ||
       submitting
     ) {
       return;
@@ -226,20 +391,34 @@ const RefundPage = () => {
               : t('预计返还')}
             ：
             {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-              ? renderQuotaWithAmount(
-                  Number(conversionPreview.total_convertible_amount || 0),
-                )
-              : renderQuota(conversionPreview.total_convertible_quota || 0)}
+              ? renderQuotaWithAmount(Number(selectedConvertibleAmount || 0))
+              : renderQuota(selectedConvertibleQuota)}
           </div>
           <div>
-            {t('命中套餐')}：
-            {conversionPreview.items.length} {t('个')}
+            {t('已选套餐')}：
+            {selectedConversionItems.length} {t('个')}
           </div>
           <div>
             {t('退款去向')}：
             {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
               ? t('原有支付方式')
               : t('账户余额')}
+          </div>
+          <div className='rounded-lg bg-semi-color-fill-0 p-2'>
+            <div className='mb-1 text-xs text-gray-500'>{t('本次提交套餐')}</div>
+            <div className='space-y-1'>
+              {selectedConversionItems.map((item) => (
+                <div key={item.user_subscription_id}>
+                  {item.plan_title || `#${item.user_subscription_id}`}{' '}
+                  <Text type='tertiary' size='small'>
+                    #{item.user_subscription_id}
+                    {item?.refund_order?.trade_no
+                      ? ` · ${item.refund_order.trade_no}`
+                      : ''}
+                  </Text>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       ),
@@ -252,6 +431,7 @@ const RefundPage = () => {
             '/api/subscription/self/conversion_campaign/request',
             {
               refund_target: selectedRefundTarget,
+              selected_subscription_ids: selectedSubscriptionIds,
             },
           );
           if (res.data?.success) {
@@ -272,7 +452,7 @@ const RefundPage = () => {
   if (!refundSettings.page_enabled || !refundSettings.enabled) {
     if (isAdminUser) {
       return (
-        <div className='px-2'>
+        <div className='px-2' style={{ paddingTop: '88px' }}>
           <div className='mx-auto flex max-w-6xl flex-col gap-4'>
             <Card
               className='!rounded-2xl border border-semi-color-border shadow-none'
@@ -302,7 +482,7 @@ const RefundPage = () => {
       );
     }
     return (
-      <div className='px-2'>
+      <div className='px-2' style={{ paddingTop: '88px' }}>
         <div className='mx-auto max-w-4xl'>
           <Card
             className='!rounded-2xl border border-semi-color-border shadow-none'
@@ -310,7 +490,7 @@ const RefundPage = () => {
           >
             <Empty
               description={t('当前退款与售后入口未开放')}
-              image={<Empty.PRESENTED_IMAGE_SIMPLE />}
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
           </Card>
         </div>
@@ -319,7 +499,7 @@ const RefundPage = () => {
   }
 
   return (
-    <div className='px-2'>
+    <div className='px-2' style={{ paddingTop: '88px' }}>
       <div className='mx-auto flex max-w-6xl flex-col gap-4'>
         <Card
           className='!rounded-2xl border border-semi-color-border shadow-sm'
@@ -340,6 +520,12 @@ const RefundPage = () => {
               </Text>
             </div>
             <Space wrap>
+              <Button
+                theme='outline'
+                onClick={() => window.open(REFUND_POLICY_URL, '_blank', 'noopener,noreferrer')}
+              >
+                {t('查看退款规则')}
+              </Button>
               <Button theme='outline' onClick={handleCopyEmail}>
                 {t('复制售后邮箱')}
               </Button>
@@ -387,6 +573,11 @@ const RefundPage = () => {
                 <div>
                   {t(
                     '3. Claude 套餐不支持退款，仅在承诺次数明显不足时提供补偿，不折现不原路退。',
+                  )}
+                </div>
+                <div>
+                  {t(
+                    '4. 你可以勾选要申请的套餐，系统会按已选套餐自动匹配订单并重算金额；暂不支持手动填写退款金额，详细规则请以退款政策文档为准。',
                   )}
                 </div>
               </div>
@@ -533,6 +724,7 @@ const RefundPage = () => {
                   disabled={
                     !selectedRefundTarget ||
                     !conversionPreview?.can_execute ||
+                    selectedConversionItems.length <= 0 ||
                     submitting ||
                     latestRequest?.status === 'pending'
                   }
@@ -674,39 +866,159 @@ const RefundPage = () => {
                     </div>
                     <div className='mt-1 font-semibold'>
                       {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-                        ? renderQuotaWithAmount(
-                            Number(
-                              conversionPreview?.total_convertible_amount || 0,
-                            ),
-                          )
-                        : renderQuota(
-                            conversionPreview?.total_convertible_quota || 0,
-                          )}
+                        ? renderQuotaWithAmount(Number(selectedConvertibleAmount || 0))
+                        : renderQuota(selectedConvertibleQuota)}
                     </div>
+                    <Text type='tertiary' size='small' className='mt-2 block'>
+                      {t('当前已选')} {selectedConversionItems.length} {t('个套餐')}
+                    </Text>
                   </div>
                 </div>
 
-                  {(conversionPreview?.items || []).length > 0 ? (
+                {(conversionPreview?.items || []).length > 0 ? (
                   <div className='space-y-3'>
-                    {(conversionPreview?.items || []).map((item) => (
+                    {selectedConversionItems.length > 0 ? (
+                      <div className='rounded-xl border border-semi-color-border bg-white/70 p-4'>
+                        <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+                          <div>
+                            <div className='font-semibold'>{t('当前已选套餐清单')}</div>
+                            <Text type='tertiary' size='small'>
+                              {t('提交会严格按这里列出的套餐执行，不会提交未在这里出现的项目。')}
+                            </Text>
+                          </div>
+                          {hiddenSelectedConversionItems.length > 0 ? (
+                            <Button theme='light' size='small' onClick={handleClearHiddenSelections}>
+                              {t('取消未显示的已选项')}
+                            </Button>
+                          ) : null}
+                        </div>
+                        <div className='mt-3 space-y-2'>
+                          {selectedConversionItems.map((item) => {
+                            const isHidden = hiddenSelectedConversionItems.some(
+                              (selectedItem) =>
+                                Number(selectedItem.user_subscription_id || 0) ===
+                                Number(item.user_subscription_id || 0),
+                            );
+                            return (
+                              <div
+                                key={`selected-${item.user_subscription_id}`}
+                                className='rounded-lg bg-semi-color-fill-0 px-3 py-2 text-sm'
+                              >
+                                <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
+                                  <div>
+                                    <div className='font-medium'>
+                                      {item.plan_title || `#${item.user_subscription_id}`}
+                                    </div>
+                                    <div className='text-xs text-gray-500'>
+                                      #{item.user_subscription_id}
+                                      {item?.refund_order?.trade_no
+                                        ? ` · ${item.refund_order.trade_no}`
+                                        : ''}
+                                    </div>
+                                  </div>
+                                  <Space wrap>
+                                    {isHidden ? (
+                                      <Tag color='orange' size='small' shape='circle'>
+                                        {t('当前筛选下未显示')}
+                                      </Tag>
+                                    ) : null}
+                                    <Button
+                                      theme='borderless'
+                                      size='small'
+                                      onClick={() =>
+                                        handleToggleSubscriptionItem(
+                                          item.user_subscription_id,
+                                          false,
+                                        )
+                                      }
+                                    >
+                                      {t('取消选择')}
+                                    </Button>
+                                  </Space>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className='flex flex-col gap-3 rounded-xl border border-dashed border-semi-color-border bg-white/70 p-4 md:flex-row md:items-center md:justify-between'>
+                      <div>
+                        <div className='font-semibold'>{t('选择要申请的套餐')}</div>
+                        <Text type='tertiary' size='small'>
+                          {t('勾选后系统会按所选套餐匹配订单并自动计算退款/折算金额。')}
+                        </Text>
+                      </div>
+                      <Space wrap align='center'>
+                        <Input
+                          value={conversionFilterKeyword}
+                          onChange={setConversionFilterKeyword}
+                          placeholder={t('搜索订单号 / 套餐名')}
+                          showClear
+                          style={{ width: 220 }}
+                        />
+                        <Checkbox
+                          checked={allConversionItemsSelected}
+                          indeterminate={partiallySelectedConversionItems}
+                          onChange={(e) =>
+                            handleToggleAllSubscriptionItems(e.target.checked)
+                          }
+                        >
+                          {t('全选当前结果')}
+                        </Checkbox>
+                        <Text type='tertiary' size='small'>
+                          {t('已选')} {selectedConversionItems.length} · {t('当前显示')}{' '}
+                          {filteredConversionItems.length}
+                        </Text>
+                      </Space>
+                    </div>
+                    {hiddenSelectedConversionItems.length > 0 ? (
+                      <Banner
+                        type='warning'
+                        closeIcon={null}
+                        description={
+                          <div className='text-sm'>
+                            {t('你当前还有')}
+                            {hiddenSelectedConversionItems.length}
+                            {t(
+                              '个已选套餐不在当前筛选结果中。提交时会按“当前已选套餐清单”中的全部项目提交，请先确认或清理。',
+                            )}
+                          </div>
+                        }
+                      />
+                    ) : null}
+                    {filteredConversionItems.map((item) => (
                       <div
                         key={item.user_subscription_id}
                         className='rounded-xl border border-semi-color-border bg-white/80 p-4'
                       >
                         <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
-                          <div>
-                            <div className='font-semibold'>{item.plan_title}</div>
-                            <Text type='tertiary' size='small'>
-                              #{item.user_subscription_id} · {t('来源')} {item.source || '--'}
-                            </Text>
-                            <Text
-                              type='tertiary'
-                              size='small'
-                              className='mt-1 block'
-                            >
-                              {t('有效期')}：{formatDateTime(item.start_time)} ~{' '}
-                              {formatDateTime(item.end_time)}
-                            </Text>
+                          <div className='flex items-start gap-3'>
+                            <Checkbox
+                              checked={selectedSubscriptionIds.includes(
+                                Number(item.user_subscription_id || 0),
+                              )}
+                              onChange={(e) =>
+                                handleToggleSubscriptionItem(
+                                  item.user_subscription_id,
+                                  e.target.checked,
+                                )
+                              }
+                            />
+                            <div>
+                              <div className='font-semibold'>{item.plan_title}</div>
+                              <Text type='tertiary' size='small'>
+                                #{item.user_subscription_id} · {t('来源')} {item.source || '--'}
+                              </Text>
+                              <Text
+                                type='tertiary'
+                                size='small'
+                                className='mt-1 block'
+                              >
+                                {t('有效期')}：{formatDateTime(item.start_time)} ~{' '}
+                                {formatDateTime(item.end_time)}
+                              </Text>
+                            </div>
                           </div>
                           <div className='text-left lg:text-right'>
                             <div className='font-semibold'>
@@ -856,16 +1168,98 @@ const RefundPage = () => {
                             </>
                           )}
                         </div>
+                        <div className='mt-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-semi-color-text-1'>
+                          <div className='text-xs text-gray-500'>
+                            {t('关联订单信息')}
+                          </div>
+                          {item?.refund_order?.trade_no ? (
+                            <div className='mt-2 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5'>
+                              <div>
+                                <div className='text-xs text-gray-500'>
+                                  {t('支付单 ID')}
+                                </div>
+                                <div className='mt-1 font-medium'>
+                                  #{item.refund_order.order_id || '-'}
+                                </div>
+                              </div>
+                              <div>
+                                <div className='text-xs text-gray-500'>
+                                  {t('充值单 ID')}
+                                </div>
+                                <div className='mt-1 font-medium'>
+                                  {item.refund_order.topup_id
+                                    ? `#${item.refund_order.topup_id}`
+                                    : '-'}
+                                </div>
+                              </div>
+                              <div className='xl:col-span-2'>
+                                <div className='text-xs text-gray-500'>
+                                  {t('订单号')}
+                                </div>
+                                <div className='mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3'>
+                                  <div className='break-all font-medium'>
+                                    {item.refund_order.trade_no || '-'}
+                                  </div>
+                                  <Button
+                                    theme='borderless'
+                                    size='small'
+                                    onClick={() =>
+                                      handleCopyTradeNo(item.refund_order.trade_no)
+                                    }
+                                  >
+                                    {t('复制订单号')}
+                                  </Button>
+                                </div>
+                              </div>
+                              <div>
+                                <div className='text-xs text-gray-500'>
+                                  {t('支付方式')}
+                                </div>
+                                <div className='mt-1 font-medium'>
+                                  {item.refund_order.payment_method || '-'}
+                                </div>
+                              </div>
+                              <div>
+                                <div className='text-xs text-gray-500'>
+                                  {t('实付金额')}
+                                </div>
+                                <div className='mt-1 font-medium'>
+                                  {renderQuotaWithAmount(
+                                    Number(item.refund_order.money || 0),
+                                  )}
+                                </div>
+                              </div>
+                              <div className='md:col-span-2'>
+                                <div className='text-xs text-gray-500'>
+                                  {t('支付时间')}
+                                </div>
+                                <div className='mt-1 font-medium'>
+                                  {formatDateTime(item.refund_order.complete_time)}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className='mt-2 text-semi-color-text-2'>
+                              {t('当前未匹配到可用于退款核算的成功支付订单')}
+                            </div>
+                          )}
+                        </div>
                         <div className='mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-semi-color-text-1'>
                           <div className='text-xs text-gray-500'>{t('计算公式')}</div>
                           <div className='mt-1'>{item.formula || '--'}</div>
                         </div>
                       </div>
                     ))}
+                    {filteredConversionItems.length === 0 ? (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description={t('没有匹配当前搜索条件的套餐')}
+                      />
+                    ) : null}
                   </div>
                 ) : (
                   <Empty
-                    image={<Empty.PRESENTED_IMAGE_SIMPLE />}
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
                     description={
                       conversionPreview?.closed_reason ||
                       t('当前没有可直接申请折算的套餐')
