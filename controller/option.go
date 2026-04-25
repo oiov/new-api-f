@@ -132,13 +132,15 @@ type OptionUpdateRequest struct {
 }
 
 func normalizeOptionValue(value any) string {
-	switch value.(type) {
+	switch value := value.(type) {
+	case nil:
+		return ""
 	case bool:
-		return common.Interface2String(value.(bool))
+		return common.Interface2String(value)
 	case float64:
-		return common.Interface2String(value.(float64))
+		return common.Interface2String(value)
 	case int:
-		return common.Interface2String(value.(int))
+		return common.Interface2String(value)
 	default:
 		return fmt.Sprintf("%v", value)
 	}

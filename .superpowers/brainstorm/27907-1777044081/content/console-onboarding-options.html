@@ -1,0 +1,86 @@
+
+<h2>/console 新用户引导卡片：3 种布局方向</h2>
+<p class="subtitle">目标：新用户第一次进入控制台时，快速知道下一步：充值、创建令牌、拿 Base URL、看文档、去 Playground 验证。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. 顶部横幅 + 步骤卡片</div>
+        <div class="mockup-body">
+          <div style="border:1px solid #cbd5e1;border-radius:18px;padding:18px;background:linear-gradient(135deg,#eff6ff,#f8fafc);margin-bottom:14px">
+            <strong>欢迎使用控制台</strong>
+            <p style="margin:6px 0 12px;color:#64748b">完成以下 4 步即可开始调用 API。</p>
+            <button class="mock-button">创建令牌</button>
+            <button class="mock-button">去充值</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="placeholder">1 创建令牌</div>
+            <div class="placeholder">2 Base URL</div>
+            <div class="placeholder">3 接入文档</div>
+            <div class="placeholder">4 Playground</div>
+          </div>
+          <div style="height:80px;margin-top:12px" class="placeholder">下面继续展示现有统计图表</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>推荐：温和嵌入式引导</h3>
+      <p>放在问候语和统计卡片之间，不打断用户；最适合 dashboard 首页。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. Checklist 完成度卡片</div>
+        <div class="mockup-body">
+          <div style="border:1px solid #cbd5e1;border-radius:18px;padding:18px;background:#fff">
+            <strong>开始前检查</strong>
+            <div style="margin-top:12px;display:grid;gap:8px">
+              <div class="placeholder">○ 充值账户余额</div>
+              <div class="placeholder">○ 创建令牌</div>
+              <div class="placeholder">○ 复制 Base URL</div>
+              <div class="placeholder">○ 阅读接入文档</div>
+              <div class="placeholder">○ 在 Playground 测试</div>
+            </div>
+          </div>
+          <div style="height:120px;margin-top:12px" class="placeholder">现有统计图表</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>强任务感：Checklist</h3>
+      <p>清晰但需要判断完成状态；如果没有可靠数据，容易显得“假完成度”。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. 右侧帮助面板</div>
+        <div class="mockup-body" style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
+          <div>
+            <div class="placeholder" style="height:72px">问候 + 时间筛选</div>
+            <div class="placeholder" style="height:150px;margin-top:12px">统计图表</div>
+          </div>
+          <div style="border:1px solid #cbd5e1;border-radius:18px;padding:14px;background:#f8fafc">
+            <strong>快速开始</strong>
+            <p style="font-size:12px;color:#64748b">Token / Base URL / Docs / Playground / Top up</p>
+            <button class="mock-button" style="width:100%;margin-top:8px">创建令牌</button>
+            <button class="mock-button" style="width:100%;margin-top:8px">查看文档</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>常驻侧栏：帮助入口</h3>
+      <p>不占主流程，但移动端会挤压布局，且对“第一次进入”提醒不够明显。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>我建议</h3>
+  <p>采用 A：顶部横幅 + 4~5 个动作卡片。条件上优先只在“新用户状态”展示：无消费记录或无令牌时展示；提供关闭按钮并用 localStorage 记住。</p>
+</div>

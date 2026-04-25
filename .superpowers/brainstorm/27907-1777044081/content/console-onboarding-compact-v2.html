@@ -1,0 +1,57 @@
+
+<h2>紧凑版方案 A：默认引导卡片 + 右上角随时打开</h2>
+<p class="subtitle">按你的反馈：卡片更紧凑；即使不是新用户，也在日期选择旁保留一个“快速开始”按钮。</p>
+
+<div class="mockup">
+  <div class="mockup-header">/console 首页布局预览</div>
+  <div class="mockup-body">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:14px">
+      <div>
+        <div style="font-size:22px;font-weight:700">下午好，Song</div>
+        <div style="color:#64748b;font-size:13px;margin-top:4px">欢迎回来，查看最近的使用概况。</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="mock-button">快速开始</button>
+        <div class="mock-input" style="width:210px">过去 7 天</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #cbd5e1;border-radius:16px;padding:12px;background:linear-gradient(135deg,#eff6ff,#fff);margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+        <div>
+          <strong>快速开始</strong>
+          <p style="margin:4px 0 0;color:#64748b;font-size:12px">完成这些步骤即可开始调用 API。Base URL 可直接复制。</p>
+        </div>
+        <button style="border:0;background:transparent;color:#64748b">×</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1.1fr 1.1fr 1fr 1fr 1fr;gap:8px;margin-top:10px">
+        <div class="placeholder" style="padding:10px;text-align:left"><b>充值</b><br><span style="font-size:12px;color:#64748b">购买额度</span></div>
+        <div class="placeholder" style="padding:10px;text-align:left"><b>创建令牌</b><br><span style="font-size:12px;color:#64748b">生成 API Key</span></div>
+        <div class="placeholder" style="padding:10px;text-align:left"><b>Base URL</b><br><span style="font-size:12px;color:#64748b">复制接口地址</span></div>
+        <div class="placeholder" style="padding:10px;text-align:left"><b>文档</b><br><span style="font-size:12px;color:#64748b">接入指南</span></div>
+        <div class="placeholder" style="padding:10px;text-align:left"><b>Playground</b><br><span style="font-size:12px;color:#64748b">在线测试</span></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+      <div class="placeholder" style="height:70px">余额</div>
+      <div class="placeholder" style="height:70px">请求数</div>
+      <div class="placeholder" style="height:70px">消耗</div>
+      <div class="placeholder" style="height:70px">趋势</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="placeholder" style="height:150px">每日消耗图</div>
+      <div class="placeholder" style="height:150px">模型分布图</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>建议行为</h3>
+  <ul>
+    <li>新用户默认展开：例如无令牌、无消费记录或本地未关闭过。</li>
+    <li>用户点击关闭后写入 localStorage，后续默认收起。</li>
+    <li>右上角“快速开始”按钮常驻，点击可重新展开/滚动到卡片。</li>
+    <li>卡片内容保持一行紧凑操作；移动端改为 2 列或横向滚动。</li>
+  </ul>
+</div>

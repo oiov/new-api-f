@@ -68,6 +68,11 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 }
 
 func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
+	if !setting.IsStripeTopUpEnabled() {
+		c.JSON(200, gin.H{"message": "error", "data": "Stripe 支付未正确配置"})
+		return
+	}
+
 	if req.PaymentMethod != PaymentMethodStripe {
 		c.JSON(200, gin.H{"message": "error", "data": "不支持的支付渠道"})
 		return
@@ -99,6 +104,11 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 
 	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL)
+	if err != nil && isStripeMissingCustomerError(err) && user.StripeCustomer != "" {
+		log.Printf("Stripe customer %s 不存在，已清空用户 %d 的绑定并重试", user.StripeCustomer, user.Id)
+		_ = model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("stripe_customer", "").Error
+		payLink, err = genStripeLink(referenceId, "", user.Email, req.Amount, req.SuccessURL, req.CancelURL)
+	}
 	if err != nil {
 		log.Println("获取Stripe Checkout支付链接失败", err)
 		c.JSON(200, gin.H{"message": "error", "data": "拉起支付失败"})
@@ -403,6 +413,11 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 	}
 
 	return result.URL, nil
+}
+
+func isStripeMissingCustomerError(err error) bool {
+	stripeErr, ok := err.(*stripe.Error)
+	return ok && stripeErr.Code == stripe.ErrorCodeResourceMissing && stripeErr.Param == "customer"
 }
 
 func GetChargedAmount(count float64, user model.User) float64 {

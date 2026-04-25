@@ -74,6 +74,11 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference))
 
 	payLink, err := genStripeSubscriptionLink(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId)
+	if err != nil && isStripeMissingCustomerError(err) && user.StripeCustomer != "" {
+		log.Printf("Stripe customer %s 不存在，已清空用户 %d 的绑定并重试", user.StripeCustomer, user.Id)
+		_ = model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("stripe_customer", "").Error
+		payLink, err = genStripeSubscriptionLink(referenceId, "", user.Email, plan.StripePriceId)
+	}
 	if err != nil {
 		log.Println("获取Stripe Checkout支付链接失败", err)
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
