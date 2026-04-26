@@ -3,12 +3,17 @@ package controller
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
+	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -28,6 +33,76 @@ type logQueryParams struct {
 	StatusCode         string
 	SubscriptionId     int
 	SubscriptionPlanId int
+}
+
+func getLogImageURLs(logItem *model.Log) []string {
+	if logItem == nil || strings.TrimSpace(logItem.Other) == "" {
+		return nil
+	}
+	var other struct {
+		ImageURLs []string `json:"image_urls"`
+	}
+	if err := common.Unmarshal([]byte(logItem.Other), &other); err != nil {
+		return nil
+	}
+	return other.ImageURLs
+}
+
+func imageDownloadFilename(rawURL string, index int) string {
+	filename := strings.TrimSpace(path.Base(strings.Split(rawURL, "?")[0]))
+	if filename == "" || filename == "." || filename == "/" {
+		filename = fmt.Sprintf("image-%d.png", index+1)
+	}
+	return filename
+}
+
+func DownloadLogImage(c *gin.Context) {
+	requestId := strings.TrimSpace(c.Param("request_id"))
+	index, err := strconv.Atoi(c.Param("index"))
+	if err != nil || index < 0 {
+		common.ApiErrorMsg(c, "无效的图片序号")
+		return
+	}
+
+	logItem, err := model.GetConsumeLogByRequestId(requestId)
+	if err != nil {
+		common.ApiErrorMsg(c, "日志不存在")
+		return
+	}
+	if c.GetInt("role") < common.RoleAdminUser && logItem.UserId != c.GetInt("id") {
+		common.ApiErrorMsg(c, "无权下载该图片")
+		return
+	}
+
+	imageURLs := getLogImageURLs(logItem)
+	if index >= len(imageURLs) || strings.TrimSpace(imageURLs[index]) == "" {
+		common.ApiErrorMsg(c, "图片不存在")
+		return
+	}
+
+	imageURL := strings.TrimSpace(imageURLs[index])
+	resp, err := service.DoDownloadRequest(imageURL, "log image download")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	defer service.CloseResponseBodyGracefully(resp)
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	filename := imageDownloadFilename(imageURL, index)
+	if exts, _ := mime.ExtensionsByType(contentType); len(exts) > 0 && path.Ext(filename) == "" {
+		filename += exts[0]
+	}
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	if resp.ContentLength > 0 {
+		c.Header("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
+	}
+	c.Status(http.StatusOK)
+	_, _ = io.Copy(c.Writer, resp.Body)
 }
 
 func getLogQueryParams(c *gin.Context) logQueryParams {

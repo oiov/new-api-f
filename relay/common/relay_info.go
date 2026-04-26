@@ -85,8 +85,10 @@ type TokenCountMeta struct {
 type RelayInfo struct {
 	TokenId           int
 	TokenKey          string
+	TokenName         string
 	TokenGroup        string
 	UserId            int
+	Username          string
 	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
 	UserGroup         string // 用户所在分组
 	TokenUnlimited    bool
@@ -455,6 +457,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 		RequestId:  reqId,
 		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
+		Username:   common.GetContextKeyString(c, constant.ContextKeyUserName),
 		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
 		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
 		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
@@ -464,6 +467,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 		TokenId:        common.GetContextKeyInt(c, constant.ContextKeyTokenId),
 		TokenKey:       common.GetContextKeyString(c, constant.ContextKeyTokenKey),
+		TokenName:      c.GetString("token_name"),
 		TokenUnlimited: common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
 		TokenGroup:     tokenGroup,
 

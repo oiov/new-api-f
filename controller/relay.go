@@ -219,6 +219,22 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		if isAsyncImageTaskRequest(c, relayInfo) {
+			relayInfo.InitChannelMeta(c)
+			bodyBytes, bytesErr := bodyStorage.Bytes()
+			if bytesErr != nil {
+				newAPIError = types.NewErrorWithStatusCode(bytesErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+				break
+			}
+			infoCopy := *relayInfo
+			if relayInfo.ChannelMeta != nil {
+				channelMetaCopy := *relayInfo.ChannelMeta
+				infoCopy.ChannelMeta = &channelMetaCopy
+			}
+			submitAsyncImageTask(c, &infoCopy, bodyBytes)
+			return
+		}
+
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
