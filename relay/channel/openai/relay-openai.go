@@ -592,6 +592,9 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	if imageURLs := extractImageResultURLs(responseBody); len(imageURLs) > 0 {
+		common.SetContextKey(c, constant.ContextKeyImageResultURLs, imageURLs)
+	}
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -612,6 +615,21 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	}
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 	return &usageResp.Usage, nil
+}
+
+func extractImageResultURLs(responseBody []byte) []string {
+	var imageResp dto.ImageResponse
+	if err := common.Unmarshal(responseBody, &imageResp); err != nil {
+		return nil
+	}
+	urls := make([]string, 0, len(imageResp.Data))
+	for _, item := range imageResp.Data {
+		url := strings.TrimSpace(item.Url)
+		if url != "" {
+			urls = append(urls, url)
+		}
+	}
+	return urls
 }
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {
