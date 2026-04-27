@@ -161,6 +161,13 @@ func TestChatImageGenerationHandlerStreamsChatCompletionChunks(t *testing.T) {
 		ChannelMeta:        &relaycommon.ChannelMeta{UpstreamModelName: "gpt-image-2-vip"},
 		StartTime:          time.Now(),
 	}
+	originalCache := cacheImageResultURL
+	cacheImageResultURL = func(requestId string, index int, originURL string) (string, error) {
+		return "https://r2.example.com/cache/req-chat-image/a.png", nil
+	}
+	t.Cleanup(func() {
+		cacheImageResultURL = originalCache
+	})
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Body: io.NopCloser(strings.NewReader(`{
@@ -182,7 +189,7 @@ func TestChatImageGenerationHandlerStreamsChatCompletionChunks(t *testing.T) {
 	for _, want := range []string{
 		`"object":"chat.completion.chunk"`,
 		`"role":"assistant"`,
-		`![image](https://cdn.example.com/a.png)`,
+		`![image](https://r2.example.com/cache/req-chat-image/a.png)`,
 		`"finish_reason":"stop"`,
 		`"usage":{"prompt_tokens":1`,
 		`data: [DONE]`,

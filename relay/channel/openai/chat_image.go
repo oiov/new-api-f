@@ -129,13 +129,18 @@ func ChatImageGenerationHandler(c *gin.Context, info *relaycommon.RelayInfo, res
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 
+	responseBody, imageURLs := prepareImageResponseBody(c, responseBody)
+
 	payload, err := buildChatImageResponsePayload(responseBody)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	if len(payload.ImageURLs) > 0 {
-		common.SetContextKey(c, constant.ContextKeyImageResultURLs, payload.ImageURLs)
+	if len(imageURLs) == 0 {
+		imageURLs = payload.ImageURLs
+	}
+	if len(imageURLs) > 0 {
+		common.SetContextKey(c, constant.ContextKeyImageResultURLs, imageURLs)
 	}
 
 	if info != nil {

@@ -1,6 +1,7 @@
 package openai
 
 import (
+	stdjson "encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -587,12 +588,14 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 
+	responseBody, imageURLs := prepareImageResponseBody(c, responseBody)
+
 	var usageResp dto.SimpleResponse
 	err = common.Unmarshal(responseBody, &usageResp)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
-	if imageURLs := extractImageResultURLs(responseBody); len(imageURLs) > 0 {
+	if len(imageURLs) > 0 {
 		common.SetContextKey(c, constant.ContextKeyImageResultURLs, imageURLs)
 	}
 
@@ -630,6 +633,72 @@ func extractImageResultURLs(responseBody []byte) []string {
 		}
 	}
 	return urls
+}
+
+type imageResultURLCacheFunc func(requestID string, index int, originURL string) (string, error)
+
+var cacheImageResultURL imageResultURLCacheFunc = service.CacheRemoteImageResultURL
+
+func prepareImageResponseBody(c *gin.Context, responseBody []byte) ([]byte, []string) {
+	var imageResp dto.ImageResponse
+	if err := common.Unmarshal(responseBody, &imageResp); err != nil {
+		return responseBody, nil
+	}
+	if len(imageResp.Data) == 0 {
+		return responseBody, nil
+	}
+
+	requestID := ""
+	if c != nil {
+		requestID = c.GetString(common.RequestIdKey)
+	}
+
+	urls := make([]string, 0, len(imageResp.Data))
+	changed := false
+	for index := range imageResp.Data {
+		originURL := strings.TrimSpace(imageResp.Data[index].Url)
+		if originURL == "" {
+			continue
+		}
+
+		resultURL := originURL
+		if cacheImageResultURL != nil {
+			if cachedURL, err := cacheImageResultURL(requestID, index, originURL); err != nil {
+				if c != nil {
+					logger.LogWarn(c, fmt.Sprintf("failed to cache image result to storage: %s", err.Error()))
+				} else {
+					common.SysLog("failed to cache image result to storage: " + err.Error())
+				}
+			} else if strings.TrimSpace(cachedURL) != "" {
+				resultURL = strings.TrimSpace(cachedURL)
+			}
+		}
+
+		if resultURL != originURL {
+			imageResp.Data[index].Url = resultURL
+			changed = true
+		}
+		urls = append(urls, resultURL)
+	}
+
+	if !changed {
+		return responseBody, urls
+	}
+
+	var envelope map[string]stdjson.RawMessage
+	if err := common.Unmarshal(responseBody, &envelope); err != nil {
+		return responseBody, urls
+	}
+	dataBytes, err := common.Marshal(imageResp.Data)
+	if err != nil {
+		return responseBody, urls
+	}
+	envelope["data"] = dataBytes
+	preparedBody, err := common.Marshal(envelope)
+	if err != nil {
+		return responseBody, urls
+	}
+	return preparedBody, urls
 }
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {

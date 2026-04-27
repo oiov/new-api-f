@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/google/uuid"
@@ -25,6 +27,7 @@ import (
 
 const invoiceMaxFileSize = 20 << 20        // 20MB
 const storageObjectMaxFileSize = 100 << 20 // 100MB
+const imageResultCacheMaxBytes = 50 << 20  // 50MB
 
 var invoiceAllowedExts = map[string]string{
 	".pdf":  "application/pdf",
@@ -128,6 +131,72 @@ func UploadInvoiceFile(file *multipart.FileHeader) (string, error) {
 		return uploadR2(file, key, contentType)
 	}
 	return uploadLocal(file, key)
+}
+
+func CacheRemoteImageResultURL(requestID string, index int, originURL string) (string, error) {
+	originURL = strings.TrimSpace(originURL)
+	if originURL == "" {
+		return "", fmt.Errorf("图片 URL 不能为空")
+	}
+
+	cfg := getStorageConfig()
+	if cfg.Backend != "r2" {
+		return originURL, nil
+	}
+
+	cfg, err := getR2StorageConfig()
+	if err != nil {
+		return "", err
+	}
+	if isStorageObjectURL(cfg, originURL) {
+		return originURL, nil
+	}
+
+	resp, err := DoDownloadRequest(originURL, "image result cache")
+	if err != nil {
+		return "", fmt.Errorf("下载图片失败：%w", err)
+	}
+	defer CloseResponseBodyGracefully(resp)
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return "", fmt.Errorf("下载图片失败，源站状态码 %d", resp.StatusCode)
+	}
+	if resp.ContentLength > imageResultCacheMaxBytes {
+		return "", fmt.Errorf("图片文件过大，无法缓存到 R2")
+	}
+
+	contentType := normalizeImageResultCacheContentType(originURL, resp.Header.Get("Content-Type"))
+	if contentType != "application/octet-stream" && !strings.HasPrefix(contentType, "image/") {
+		return "", fmt.Errorf("invalid content type: %s, required image/*", contentType)
+	}
+
+	tmpFile, err := os.CreateTemp("", "r2-image-cache-*")
+	if err != nil {
+		return "", fmt.Errorf("创建图片缓存临时文件失败：%w", err)
+	}
+	tmpFilePath := tmpFile.Name()
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFilePath)
+	}()
+
+	hasher := sha256.New()
+	written, err := io.Copy(io.MultiWriter(tmpFile, hasher), io.LimitReader(resp.Body, imageResultCacheMaxBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("读取图片内容失败：%w", err)
+	}
+	if written > imageResultCacheMaxBytes {
+		return "", fmt.Errorf("图片文件过大，无法缓存到 R2")
+	}
+	if _, err = tmpFile.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("重置图片缓存临时文件失败：%w", err)
+	}
+
+	key := buildImageResultCacheObjectKey(requestID, index, originURL, contentType)
+	if err = putObjectReaderToR2(cfg, key, tmpFile, written, hex.EncodeToString(hasher.Sum(nil)), contentType); err != nil {
+		return "", err
+	}
+	return buildStorageObjectURL(cfg, key), nil
 }
 
 func ListStorageObjects(prefix, continuationToken, search string, maxKeys int) (*StorageObjectListResult, error) {
@@ -885,6 +954,86 @@ func buildStorageObjectKey(prefix, filename string) string {
 		return safeName
 	}
 	return normalizedPrefix + safeName
+}
+
+func buildImageResultCacheObjectKey(requestID string, index int, originURL, contentType string) string {
+	safeRequestID := sanitizeStoragePathSegment(requestID)
+	if safeRequestID == "" {
+		safeRequestID = sha256Hex([]byte(strings.TrimSpace(originURL)))[:16]
+	}
+	return fmt.Sprintf("image-cache/%s/%d%s", safeRequestID, index, imageResultCacheExtension(originURL, contentType))
+}
+
+func imageResultCacheExtension(originURL, contentType string) string {
+	if parsed, err := url.Parse(strings.TrimSpace(originURL)); err == nil {
+		if ext := strings.ToLower(path.Ext(parsed.Path)); isImageCacheExtension(ext) {
+			return ext
+		}
+	}
+	if exts, _ := mime.ExtensionsByType(strings.TrimSpace(contentType)); len(exts) > 0 {
+		if ext := strings.ToLower(exts[0]); isImageCacheExtension(ext) {
+			return ext
+		}
+	}
+	return ".png"
+}
+
+func isImageCacheExtension(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeImageResultCacheContentType(originURL, contentType string) string {
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = contentType[:idx]
+	}
+	contentType = strings.TrimSpace(strings.ToLower(contentType))
+	if contentType != "" {
+		return contentType
+	}
+	if parsed, err := url.Parse(strings.TrimSpace(originURL)); err == nil {
+		if guessed := mime.TypeByExtension(strings.ToLower(path.Ext(parsed.Path))); guessed != "" {
+			return guessed
+		}
+	}
+	return "application/octet-stream"
+}
+
+func sanitizeStoragePathSegment(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' {
+			builder.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			builder.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(builder.String(), "-")
+}
+
+func isStorageObjectURL(cfg storageConfig, rawURL string) bool {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return false
+	}
+	if cfg.PublicURL != "" && strings.HasPrefix(rawURL, cfg.PublicURL+"/") {
+		return true
+	}
+	storagePrefix := strings.TrimSuffix(buildStorageObjectURL(cfg, ""), "/") + "/"
+	return strings.HasPrefix(rawURL, storagePrefix)
 }
 
 func sanitizeStorageFilename(filename string) string {
