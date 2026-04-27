@@ -72,9 +72,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	adaptor.Init(info)
 
 	passThroughGlobal := model_setting.GetGlobalSettings().PassThroughRequestEnabled
+	usePassThrough := shouldUseTextPassThrough(passThroughGlobal, info)
 	if info.RelayMode == relayconstant.RelayModeChatCompletions &&
-		!passThroughGlobal &&
-		!info.ChannelSetting.PassThroughBodyEnabled &&
+		!usePassThrough &&
 		service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
 		applySystemPromptIfNeeded(c, info, request)
 		usage, newApiErr := chatCompletionsViaResponses(c, info, adaptor, request)
@@ -95,7 +95,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 
 	var requestBody io.Reader
 
-	if passThroughGlobal || info.ChannelSetting.PassThroughBodyEnabled {
+	if usePassThrough {
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -214,4 +214,18 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
 	}
 	return nil
+}
+
+func shouldUseTextPassThrough(passThroughGlobal bool, info *relaycommon.RelayInfo) bool {
+	if info == nil {
+		return passThroughGlobal
+	}
+	usePassThrough := passThroughGlobal || info.ChannelSetting.PassThroughBodyEnabled
+	if !usePassThrough || info.RelayMode != relayconstant.RelayModeChatCompletions {
+		return usePassThrough
+	}
+	if common.IsGPTImage2Model(info.OriginModelName) {
+		return false
+	}
+	return info.ChannelMeta == nil || !common.IsGPTImage2Model(info.UpstreamModelName)
 }

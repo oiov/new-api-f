@@ -13,6 +13,7 @@ var (
 		"dall-e-3",
 		"dall-e-2",
 		"gpt-image-1",
+		"gpt-image-2",
 		"prefix:imagen-",
 		"flux-",
 		"flux.1-",
@@ -46,6 +47,10 @@ func IsImageGenerationModel(modelName string) bool {
 		}
 	}
 	return false
+}
+
+func IsGPTImage2Model(modelName string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "gpt-image-2")
 }
 
 func IsOpenAITextModel(modelName string) bool {
