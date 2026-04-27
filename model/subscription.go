@@ -1667,6 +1667,36 @@ func getSubscriptionUsageWindowStart(sub *UserSubscription) int64 {
 	return sub.StartTime
 }
 
+func getSubscriptionResetWindowForTimestamp(sub *UserSubscription, timestamp int64) (int64, int64) {
+	if sub == nil || timestamp <= 0 {
+		return 0, 0
+	}
+	resetPeriod := NormalizeResetPeriod(sub.ResetPeriod)
+	if resetPeriod == SubscriptionResetNever {
+		return sub.StartTime, 0
+	}
+	baseUnix := sub.StartTime
+	if baseUnix <= 0 {
+		baseUnix = sub.LastResetTime
+	}
+	if baseUnix <= 0 {
+		return 0, 0
+	}
+	snapshotPlan := &SubscriptionPlan{
+		QuotaResetPeriod:        resetPeriod,
+		QuotaResetCustomSeconds: sub.ResetCustomSeconds,
+		QuotaResetUseFixedClock: sub.ResetUseFixedClock,
+		QuotaResetFixedSeconds:  sub.ResetFixedSeconds,
+	}
+	windowStart := baseUnix
+	windowEnd := calcNextResetTime(time.Unix(windowStart, 0), snapshotPlan, sub.EndTime)
+	for windowEnd > 0 && timestamp >= windowEnd {
+		windowStart = windowEnd
+		windowEnd = calcNextResetTime(time.Unix(windowStart, 0), snapshotPlan, sub.EndTime)
+	}
+	return windowStart, windowEnd
+}
+
 func getSubscriptionRequestCountPeriodLimit(sub *UserSubscription) int64 {
 	if sub == nil {
 		return 0
@@ -2531,9 +2561,9 @@ func CompleteSubscriptionOrderWithResult(tradeNo string, providerPayload string)
 		return false, err
 	}
 	if createdSub != nil {
-	if err := SyncSubscriptionAccessTokenCachesForUser(logUserId); err != nil {
-		return false, err
-	}
+		if err := SyncSubscriptionAccessTokenCachesForUser(logUserId); err != nil {
+			return false, err
+		}
 	}
 	if upgradeGroup != "" && logUserId > 0 {
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
@@ -3941,9 +3971,9 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 		return nil, err
 	}
 	if needSyncAggregateTokenCache && targetUserId > 0 {
-	if err := SyncSubscriptionAccessTokenCachesForUser(targetUserId); err != nil {
-		return nil, err
-	}
+		if err := SyncSubscriptionAccessTokenCachesForUser(targetUserId); err != nil {
+			return nil, err
+		}
 	}
 	if upgradeGroup != "" && targetUserId > 0 {
 		_ = UpdateUserGroupCache(targetUserId, upgradeGroup)
@@ -6404,6 +6434,8 @@ type SubscriptionPreConsumeResult struct {
 	RequestCountAfter        int64
 	RequestCountPeriodBefore int64
 	RequestCountPeriodAfter  int64
+	ResetWindowStart         int64
+	ResetWindowEnd           int64
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -6988,6 +7020,7 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 			returnValue.RequestCountAfter = sub.RequestCountUsed
 			returnValue.RequestCountPeriodBefore = sub.RequestCountPeriodUsed
 			returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
+			returnValue.ResetWindowStart, returnValue.ResetWindowEnd = getSubscriptionResetWindowForTimestamp(sub, dup.CreatedAt)
 			return nil
 		}
 		return err
@@ -7023,6 +7056,8 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 	returnValue.RequestCountAfter = sub.RequestCountUsed
 	returnValue.RequestCountPeriodBefore = requestCountPeriodBefore
 	returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
+	returnValue.ResetWindowStart = getSubscriptionUsageWindowStart(sub)
+	returnValue.ResetWindowEnd = sub.NextResetTime
 	return nil
 }
 
@@ -7109,6 +7144,7 @@ func preConsumeUserSubscriptionWithPreference(requestId string, userId int, mode
 			returnValue.RequestCountAfter = sub.RequestCountUsed
 			returnValue.RequestCountPeriodBefore = sub.RequestCountPeriodUsed
 			returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
+			returnValue.ResetWindowStart, returnValue.ResetWindowEnd = getSubscriptionResetWindowForTimestamp(&sub, existing.CreatedAt)
 			return nil
 		}
 
@@ -7340,6 +7376,18 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 	})
 }
 
+func PostConsumeUserSubscriptionDeltaForWindow(userSubscriptionId int, delta int64, windowStart int64, windowEnd int64) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	if delta == 0 {
+		return nil
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return postConsumeUserSubscriptionDeltaForWindowTx(tx, userSubscriptionId, delta, 0, windowStart, windowEnd)
+	})
+}
+
 func PostConsumeUserSubscriptionUsage(userSubscriptionId int, amountDelta int64, countDelta int64) error {
 	if userSubscriptionId <= 0 {
 		return errors.New("invalid userSubscriptionId")
@@ -7356,7 +7404,15 @@ func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, del
 	return postConsumeUserSubscriptionDeltaDetailedTx(tx, userSubscriptionId, delta, 0)
 }
 
+func postConsumeUserSubscriptionDeltaForWindowTx(tx *gorm.DB, userSubscriptionId int, amountDelta int64, countDelta int64, windowStart int64, windowEnd int64) error {
+	return postConsumeUserSubscriptionDeltaDetailedForWindowTx(tx, userSubscriptionId, amountDelta, countDelta, windowStart, windowEnd)
+}
+
 func postConsumeUserSubscriptionDeltaDetailedTx(tx *gorm.DB, userSubscriptionId int, amountDelta int64, countDelta int64) error {
+	return postConsumeUserSubscriptionDeltaDetailedForWindowTx(tx, userSubscriptionId, amountDelta, countDelta, 0, 0)
+}
+
+func postConsumeUserSubscriptionDeltaDetailedForWindowTx(tx *gorm.DB, userSubscriptionId int, amountDelta int64, countDelta int64, windowStart int64, windowEnd int64) error {
 	if tx == nil {
 		return errors.New("tx is nil")
 	}
@@ -7371,6 +7427,12 @@ func postConsumeUserSubscriptionDeltaDetailedTx(tx *gorm.DB, userSubscriptionId 
 		Where("id = ?", userSubscriptionId).
 		First(&sub).Error; err != nil {
 		return err
+	}
+	if windowStart > 0 && sub.LastResetTime > windowStart {
+		return nil
+	}
+	if windowEnd > 0 && sub.LastResetTime >= windowEnd {
+		return nil
 	}
 	if countDelta != 0 {
 		if hasLifetimeRequestCountLimit(&sub) || !hasSeparatePeriodRequestCounter(&sub) {

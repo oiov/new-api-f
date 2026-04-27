@@ -238,6 +238,21 @@ const RefundPage = () => {
     );
   }, [conversionPreview, latestRequest, selectedConversionItems.length, selectedRefundTarget, t]);
 
+  const refundTargetText =
+    selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
+      ? t('原有支付方式')
+      : t('账户余额');
+  const eligibleConversionCount = conversionPreview?.items?.length || 0;
+  const matchedOrderCount = (conversionPreview?.items || []).filter(
+    (item) => item?.refund_order?.trade_no,
+  ).length;
+  const submitDisabled =
+    !selectedRefundTarget ||
+    !conversionPreview?.can_execute ||
+    selectedConversionItems.length <= 0 ||
+    submitting ||
+    latestRequest?.status === 'pending';
+
   const handleToggleSubscriptionItem = (subscriptionId, checked) => {
     const normalizedId = Number(subscriptionId || 0);
     if (normalizedId <= 0) {
@@ -456,46 +471,68 @@ const RefundPage = () => {
     <div className='px-2' style={{ paddingTop: '88px' }}>
       <div className='mx-auto flex max-w-6xl flex-col gap-4'>
         <Card
-          className='!rounded-2xl border border-semi-color-border shadow-sm'
-          bodyStyle={{ padding: '20px' }}
+          className='!rounded-3xl border border-semi-color-border bg-gradient-to-br from-blue-50 via-white to-amber-50 shadow-sm'
+          bodyStyle={{ padding: '24px' }}
         >
-          <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
-            <div className='space-y-2'>
-              <Tag color='blue' shape='circle'>
-                {t('退款与售后')}
-              </Tag>
-              <Title heading={4} style={{ margin: 0 }}>
-                {t('退款政策与工单处理入口')}
-              </Title>
-              <Text type='tertiary'>
-                {t(
-                  '本页依据 FishXCode 退款政策整理余额退款、Codex 套餐折算和 Claude 售后补偿的处理方式。',
-                )}
-              </Text>
+          <div className='grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px] lg:items-start'>
+            <div className='space-y-4'>
+              <div className='space-y-2'>
+                <Tag color='blue' shape='circle'>
+                  {t('退款与售后中心')}
+                </Tag>
+                <Title heading={3} style={{ margin: 0 }}>
+                  {t('选择退款类型，按状态完成申请')}
+                </Title>
+                <Text type='tertiary'>
+                  {t(
+                    '余额退款走人工售后，套餐折算可在本页自助提交；审核前请确认退款去向和命中套餐。',
+                  )}
+                </Text>
+              </div>
+              <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
+                <div className='rounded-2xl bg-white/80 p-4 shadow-sm'>
+                  <div className='text-xs text-gray-500'>{t('可申请套餐')}</div>
+                  <div className='mt-1 text-2xl font-semibold'>{eligibleConversionCount}</div>
+                </div>
+                <div className='rounded-2xl bg-white/80 p-4 shadow-sm'>
+                  <div className='text-xs text-gray-500'>{t('已选套餐')}</div>
+                  <div className='mt-1 text-2xl font-semibold'>{selectedConversionItems.length}</div>
+                </div>
+                <div className='rounded-2xl bg-white/80 p-4 shadow-sm'>
+                  <div className='text-xs text-gray-500'>{t('匹配订单')}</div>
+                  <div className='mt-1 text-2xl font-semibold'>{matchedOrderCount}</div>
+                </div>
+              </div>
             </div>
-            <Space wrap>
-              <Button
-                theme='outline'
-                onClick={() => window.open(REFUND_POLICY_URL, '_blank', 'noopener,noreferrer')}
-              >
-                {t('查看退款规则')}
-              </Button>
-              <Button theme='outline' onClick={handleCopyEmail}>
-                {t('复制售后邮箱')}
-              </Button>
-              <Button
-                theme='solid'
-                type='primary'
-                onClick={() =>
-                  window.open(
-                    `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('FishXCode 退款/售后申请')}`,
-                    '_self',
-                  )
-                }
-              >
-                {t('发送邮件')}
-              </Button>
-            </Space>
+            <div className='rounded-2xl border border-semi-color-border bg-white/85 p-4 shadow-sm'>
+              <div className='mb-3 font-semibold'>{t('人工售后入口')}</div>
+              <Text type='tertiary' size='small' className='block'>
+                {t('充值余额退款、Claude 补偿和特殊订单问题建议直接联系售后。')}
+              </Text>
+              <Space wrap className='mt-4'>
+                <Button
+                  theme='outline'
+                  onClick={() => window.open(REFUND_POLICY_URL, '_blank', 'noopener,noreferrer')}
+                >
+                  {t('查看退款规则')}
+                </Button>
+                <Button theme='outline' onClick={handleCopyEmail}>
+                  {t('复制邮箱')}
+                </Button>
+                <Button
+                  theme='solid'
+                  type='primary'
+                  onClick={() =>
+                    window.open(
+                      `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('FishXCode 退款/售后申请')}`,
+                      '_self',
+                    )
+                  }
+                >
+                  {t('发送邮件')}
+                </Button>
+              </Space>
+            </div>
           </div>
 
           <Banner
@@ -633,7 +670,7 @@ const RefundPage = () => {
         </div>
 
         <Card
-          className='!rounded-2xl border border-amber-200 bg-amber-50/70 shadow-none'
+          className='!rounded-2xl border border-amber-200 bg-amber-50/70 shadow-sm'
           bodyStyle={{ padding: '20px' }}
         >
           <div className='space-y-4'>
@@ -659,30 +696,13 @@ const RefundPage = () => {
                 </Space>
                 <Text type='tertiary'>{conversionSummary}</Text>
               </div>
-              <Space wrap>
-                <Button onClick={loadConversionPreview} loading={conversionLoading}>
-                  {t('刷新')}
-                </Button>
-                <Button
-                  theme='solid'
-                  type='warning'
-                  loading={submitting}
-                  disabled={
-                    !selectedRefundTarget ||
-                    !conversionPreview?.can_execute ||
-                    selectedConversionItems.length <= 0 ||
-                    submitting ||
-                    latestRequest?.status === 'pending'
-                  }
-                  onClick={handleSubmitConversionRequest}
-                >
-                  {latestRequest?.status === 'pending'
-                    ? t('申请审核中')
-                    : selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
-                      ? t('提交套餐原路退款申请')
-                      : t('提交套餐转余额申请')}
-                </Button>
-              </Space>
+              <div className='rounded-xl border border-amber-200 bg-white/80 p-3 text-sm'>
+                <div className='text-xs text-gray-500'>{t('当前选择')}</div>
+                <div className='mt-1 font-semibold'>{refundTargetText}</div>
+                <Text type='tertiary' size='small'>
+                  {selectedConversionItems.length} {t('个套餐将提交审核')}
+                </Text>
+              </div>
             </div>
 
             <Banner
@@ -707,10 +727,13 @@ const RefundPage = () => {
               }
             />
 
-            <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+            <div className='grid grid-cols-1 gap-3 lg:grid-cols-3'>
               <div className='rounded-xl bg-white/80 p-4'>
-                <div className='text-xs text-gray-500'>{t('退款去向')}</div>
-                <div className='mt-2'>
+                <div className='flex items-center gap-2'>
+                  <Tag color='blue' shape='circle' size='small'>1</Tag>
+                  <div className='font-semibold'>{t('选择退款去向')}</div>
+                </div>
+                <div className='mt-3'>
                   <Select
                     value={selectedRefundTarget}
                     onChange={setSelectedRefundTarget}
@@ -736,8 +759,11 @@ const RefundPage = () => {
                 </Text>
               </div>
               <div className='rounded-xl bg-white/80 p-4'>
-                <div className='text-xs text-gray-500'>{t('当前处理方式')}</div>
-                <div className='mt-1 font-semibold'>
+                <div className='flex items-center gap-2'>
+                  <Tag color='blue' shape='circle' size='small'>2</Tag>
+                  <div className='font-semibold'>{t('确认处理方式')}</div>
+                </div>
+                <div className='mt-3 font-semibold'>
                   {selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
                     ? t('按审批金额原路退款')
                     : t('按审批额度退到账户余额')}
@@ -747,6 +773,33 @@ const RefundPage = () => {
                     ? t('原路退款不会自动折算成余额，到账时间取决于原支付通道。')
                     : t('账户余额到账后会继续按当前站点的钱包计费规则扣减。')}
                 </Text>
+              </div>
+              <div className='rounded-xl bg-white/80 p-4'>
+                <div className='flex items-center gap-2'>
+                  <Tag color='blue' shape='circle' size='small'>3</Tag>
+                  <div className='font-semibold'>{t('提交人工审核')}</div>
+                </div>
+                <Text type='tertiary' size='small' className='mt-3 block'>
+                  {t('提交后旧套餐会临时禁用，审核通过后正式作废，拒绝则恢复。')}
+                </Text>
+                <Space wrap className='mt-3'>
+                  <Button onClick={loadConversionPreview} loading={conversionLoading}>
+                    {t('刷新')}
+                  </Button>
+                  <Button
+                    theme='solid'
+                    type='warning'
+                    loading={submitting}
+                    disabled={submitDisabled}
+                    onClick={handleSubmitConversionRequest}
+                  >
+                    {latestRequest?.status === 'pending'
+                      ? t('申请审核中')
+                      : selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
+                        ? t('提交原路退款')
+                        : t('提交转余额')}
+                  </Button>
+                </Space>
               </div>
             </div>
 
@@ -787,6 +840,31 @@ const RefundPage = () => {
 
                 {(conversionPreview?.items || []).length > 0 ? (
                   <div className='space-y-3'>
+                    <div className='rounded-xl border border-semi-color-border bg-white/80 p-4'>
+                      <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+                        <div>
+                          <div className='font-semibold'>{t('选择要申请的套餐')}</div>
+                          <Text type='tertiary' size='small'>
+                            {t('优先选择已匹配支付订单的套餐；未匹配订单会增加人工核对成本。')}
+                          </Text>
+                        </div>
+                        <div className='grid grid-cols-3 gap-2 text-center text-sm'>
+                          <div className='rounded-lg bg-semi-color-fill-0 px-3 py-2'>
+                            <div className='text-xs text-gray-500'>{t('展示')}</div>
+                            <div className='font-semibold'>{filteredConversionItems.length}</div>
+                          </div>
+                          <div className='rounded-lg bg-semi-color-fill-0 px-3 py-2'>
+                            <div className='text-xs text-gray-500'>{t('已选')}</div>
+                            <div className='font-semibold'>{selectedConversionItems.length}</div>
+                          </div>
+                          <div className='rounded-lg bg-semi-color-fill-0 px-3 py-2'>
+                            <div className='text-xs text-gray-500'>{t('订单')}</div>
+                            <div className='font-semibold'>{matchedOrderCount}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     {selectedConversionItems.length > 0 ? (
                       <div className='rounded-xl border border-semi-color-border bg-white/70 p-4'>
                         <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
@@ -1025,6 +1103,34 @@ const RefundPage = () => {
                         description={t('没有匹配当前搜索条件的套餐')}
                       />
                     ) : null}
+
+                    <div className='sticky bottom-4 rounded-2xl border border-amber-200 bg-white/95 p-4 shadow-lg backdrop-blur'>
+                      <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+                        <div>
+                          <div className='font-semibold'>
+                            {t('提交前确认')}：{selectedConversionItems.length} {t('个套餐')} · {refundTargetText}
+                          </div>
+                          <Text type='tertiary' size='small'>
+                            {submitDisabled
+                              ? t('请选择退款去向和至少一个套餐；如已有待审核申请，请等待处理完成。')
+                              : t('提交后会进入人工审核，最终结果以管理员审批为准。')}
+                          </Text>
+                        </div>
+                        <Button
+                          theme='solid'
+                          type='warning'
+                          loading={submitting}
+                          disabled={submitDisabled}
+                          onClick={handleSubmitConversionRequest}
+                        >
+                          {latestRequest?.status === 'pending'
+                            ? t('申请审核中')
+                            : selectedRefundTarget === REFUND_TARGET_ORIGINAL_PAYMENT
+                              ? t('提交套餐原路退款申请')
+                              : t('提交套餐转余额申请')}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <Empty

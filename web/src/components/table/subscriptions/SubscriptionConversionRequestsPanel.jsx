@@ -78,6 +78,20 @@ const getPayoutStatusMeta = (status, t) => {
   }
 };
 
+const getRequestPrimaryAmount = (record) => {
+  if (record?.requested_refund_target === REFUND_TARGET_ORIGINAL_PAYMENT) {
+    return renderQuotaWithAmount(Number(record?.requested_amount || 0));
+  }
+  return renderQuota(record?.requested_quota || 0);
+};
+
+const getApprovedPrimaryAmount = (record) => {
+  if (record?.approved_refund_target === REFUND_TARGET_ORIGINAL_PAYMENT) {
+    return renderQuotaWithAmount(Number(record?.approved_amount || 0));
+  }
+  return renderQuota(record?.approved_quota || 0);
+};
+
 const renderRequestSubscriptionItems = (items, t) => {
   if (!Array.isArray(items) || items.length === 0) {
     return (
@@ -174,6 +188,27 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
     refundSettings?.settlement_mode === CALCULATION_MODE_TOKEN
       ? CALCULATION_MODE_TOKEN
       : CALCULATION_MODE_DURATION;
+
+  const itemsSummary = useMemo(
+    () => ({
+      pending: items.filter((item) => item?.status === 'pending').length,
+      payoutPending: items.filter(
+        (item) =>
+          item?.status === 'approved' &&
+          item?.approved_refund_target === REFUND_TARGET_ORIGINAL_PAYMENT &&
+          item?.payout_status !== 'paid',
+      ).length,
+      completed: items.filter(
+        (item) =>
+          item?.status === 'rejected' ||
+          (item?.status === 'approved' &&
+            (item?.approved_refund_target !== REFUND_TARGET_ORIGINAL_PAYMENT ||
+              item?.payout_status === 'paid')),
+      ).length,
+      total: items.length,
+    }),
+    [items],
+  );
 
   const buildQueryParams = useCallback(
     (page = 1, pageSize = 50) => ({
@@ -441,119 +476,90 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
   const columns = useMemo(
     () => [
       {
-        title: t('ID'),
-        dataIndex: 'id',
-        render: (value) => `#${value}`,
-        width: 88,
-      },
-      {
-        title: t('用户'),
+        title: t('申请信息'),
+        width: 240,
         render: (text, record) => (
-          <div>
-            <div>{record?.username || '-'}</div>
-            <Text type='tertiary' size='small'>
-              {t('用户 ID')} {record?.user_id}
-            </Text>
-          </div>
-        ),
-      },
-      {
-        title: t('状态'),
-        dataIndex: 'status',
-        width: 120,
-        render: (value) => {
-          const meta = getStatusMeta(value, t);
-          return (
-            <Tag color={meta.color} shape='circle' size='small'>
-              {meta.text}
-            </Tag>
-          );
-        },
-      },
-      {
-        title: t('申请返还'),
-        render: (text, record) => (
-          <div>
-            <div>
-              {record?.requested_refund_target === REFUND_TARGET_ORIGINAL_PAYMENT
-                ? renderQuotaWithAmount(Number(record?.requested_amount || 0))
-                : renderQuota(record?.requested_quota || 0)}
-            </div>
-            <Text type='tertiary' size='small'>
-              x{Number(record?.requested_ratio || 1).toFixed(2)}
-            </Text>
-            <Text type='tertiary' size='small' className='block'>
-              {(record?.subscription_items || []).length} {t('个套餐')}
-            </Text>
-            <Text type='tertiary' size='small' className='block'>
-              {getRefundTargetText(record?.requested_refund_target, t)}
-            </Text>
-          </div>
-        ),
-      },
-      {
-        title: t('批准返还'),
-        render: (text, record) =>
-          record?.status === 'approved' ? (
-            <div>
-              <div>
-                {record?.approved_refund_target ===
-                REFUND_TARGET_ORIGINAL_PAYMENT
-                  ? renderQuotaWithAmount(Number(record?.approved_amount || 0))
-                  : renderQuota(record?.approved_quota || 0)}
-              </div>
+          <div className='min-w-0'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <span className='font-medium'>{record?.username || '-'}</span>
               <Text type='tertiary' size='small'>
-                x{Number(record?.approved_ratio || 1).toFixed(2)}
-              </Text>
-              <Text type='tertiary' size='small' className='block'>
-                {getRefundTargetText(record?.approved_refund_target, t)}
+                #{record?.id}
               </Text>
             </div>
-          ) : (
-            '-'
-          ),
+            <Text type='tertiary' size='small' className='block'>
+              {t('用户 ID')} {record?.user_id} · {(record?.subscription_items || []).length}{' '}
+              {t('个套餐')}
+            </Text>
+            <Text type='tertiary' size='small' className='block'>
+              {record?.create_time ? timestamp2string(record.create_time) : '-'}
+            </Text>
+          </div>
+        ),
       },
       {
-        title: t('打款状态'),
+        title: t('处理状态'),
+        width: 150,
         render: (_, record) => {
-          if (record?.approved_refund_target !== REFUND_TARGET_ORIGINAL_PAYMENT) {
-            return '-';
-          }
-          const meta = getPayoutStatusMeta(record?.payout_status, t);
+          const meta = getStatusMeta(record?.status, t);
+          const payoutMeta = getPayoutStatusMeta(record?.payout_status, t);
           return (
-            <div>
+            <div className='space-y-1'>
               <Tag color={meta.color} shape='circle' size='small'>
                 {meta.text}
               </Tag>
-              {record?.payout_at ? (
-                <Text type='tertiary' size='small' className='block'>
-                  {timestamp2string(record.payout_at)}
-                </Text>
+              {record?.approved_refund_target === REFUND_TARGET_ORIGINAL_PAYMENT ? (
+                <Tag color={payoutMeta.color} shape='circle' size='small'>
+                  {payoutMeta.text}
+                </Tag>
               ) : null}
             </div>
           );
         },
       },
       {
-        title: t('申请时间'),
-        dataIndex: 'create_time',
-        render: (value) => (
-          <div className='text-sm'>
-            <div>{timestamp2string(value).split(' ')[0] || '-'}</div>
-            <Text type='tertiary' size='small'>
-              {timestamp2string(value).split(' ')[1] || ''}
-            </Text>
+        title: t('申请内容'),
+        render: (text, record) => (
+          <div className='space-y-1'>
+            <div className='font-medium'>{getRequestPrimaryAmount(record)}</div>
+            <div className='flex flex-wrap gap-1'>
+              <Tag color='blue' size='small'>
+                {getRefundTargetText(record?.requested_refund_target, t)}
+              </Tag>
+              <Tag color='grey' size='small'>
+                x{Number(record?.requested_ratio || 1).toFixed(2)}
+              </Tag>
+            </div>
           </div>
         ),
-        width: 150,
+      },
+      {
+        title: t('核准结果'),
+        render: (text, record) =>
+          record?.status === 'approved' ? (
+            <div className='space-y-1'>
+              <div className='font-medium'>{getApprovedPrimaryAmount(record)}</div>
+              <div className='flex flex-wrap gap-1'>
+                <Tag color='green' size='small'>
+                  {getRefundTargetText(record?.approved_refund_target, t)}
+                </Tag>
+                <Tag color='grey' size='small'>
+                  x{Number(record?.approved_ratio || 1).toFixed(2)}
+                </Tag>
+              </div>
+            </div>
+          ) : (
+            <Text type='tertiary' size='small'>
+              {record?.status === 'pending' ? t('等待审核') : '-'}
+            </Text>
+          ),
       },
       {
         title: t('操作'),
-        width: 260,
+        width: 220,
         render: (text, record) =>
           record?.status === 'pending' ? (
-            <Space>
-              <Button size='small' theme='borderless' onClick={() => openDetail(record)}>
+            <Space spacing={4} wrap>
+              <Button size='small' theme='outline' onClick={() => openDetail(record)}>
                 {t('查看')}
               </Button>
               <Button size='small' type='primary' onClick={() => openApprove(record)}>
@@ -566,7 +572,7 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
           ) : (
             <div className='space-y-1'>
               <Space spacing={4} wrap>
-                <Button size='small' theme='borderless' onClick={() => openDetail(record)}>
+                <Button size='small' theme='outline' onClick={() => openDetail(record)}>
                   {t('查看')}
                 </Button>
                 {record?.status === 'approved' &&
@@ -596,15 +602,40 @@ const SubscriptionConversionRequestsPanel = ({ t }) => {
     <>
       <Card
         className='!rounded-xl border border-semi-color-border shadow-sm'
-        bodyStyle={{ padding: '16px' }}
+        bodyStyle={{ padding: '20px' }}
       >
-        <div className='mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between'>
-          <div>
-            <div className='font-semibold'>{t('套餐退款/折算审核')}</div>
+        <div className='mb-4 flex flex-col gap-4'>
+          <div className='flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between'>
+            <div>
+              <div className='text-lg font-semibold'>{t('退款审核工作台')}</div>
+              <Text type='tertiary' size='small'>
+                {t('集中处理套餐转余额、原路退款审核与后续打款标记。')}
+              </Text>
+            </div>
             <Text type='tertiary' size='small'>
-              {t('用户提交后原套餐会先被禁用；管理员可按余额返还或原路退款处理，拒绝后恢复原套餐。')}
+              {t('用户提交后原套餐会先被禁用；批准后作废原套餐，拒绝后恢复原套餐。')}
             </Text>
           </div>
+
+          <div className='grid grid-cols-2 gap-3 lg:grid-cols-4'>
+            <div className='rounded-xl border border-semi-color-border bg-semi-color-fill-0 p-3'>
+              <Text type='tertiary' size='small'>{t('当前列表')}</Text>
+              <div className='mt-1 text-2xl font-semibold'>{itemsSummary.total}</div>
+            </div>
+            <div className='rounded-xl border border-orange-200 bg-orange-50 p-3'>
+              <Text type='tertiary' size='small'>{t('待审核')}</Text>
+              <div className='mt-1 text-2xl font-semibold text-orange-600'>{itemsSummary.pending}</div>
+            </div>
+            <div className='rounded-xl border border-blue-200 bg-blue-50 p-3'>
+              <Text type='tertiary' size='small'>{t('待打款')}</Text>
+              <div className='mt-1 text-2xl font-semibold text-blue-600'>{itemsSummary.payoutPending}</div>
+            </div>
+            <div className='rounded-xl border border-green-200 bg-green-50 p-3'>
+              <Text type='tertiary' size='small'>{t('已闭环')}</Text>
+              <div className='mt-1 text-2xl font-semibold text-green-600'>{itemsSummary.completed}</div>
+            </div>
+          </div>
+
           <Space wrap>
             <Input
               value={keyword}

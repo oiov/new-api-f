@@ -119,6 +119,99 @@ func TestCalcNextResetTime_UsesFixedClockWhenConfigured(t *testing.T) {
 	require.Equal(t, time.Date(2026, 5, 7, 20, 30, 0, 0, loc).Unix(), monthly)
 }
 
+func TestPostConsumeDeltaSkipsExpiredResetWindow(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		loc := time.FixedZone("UTC+8", 8*3600)
+		lastReset := time.Date(2026, 4, 25, 15, 41, 36, 0, loc).Unix()
+		nextReset := time.Date(2026, 4, 26, 15, 41, 36, 0, loc).Unix()
+
+		record := &SubscriptionPreConsumeRecord{
+			RequestId:          "cross-window-request",
+			UserId:             774,
+			UserSubscriptionId: 442,
+			PreConsumed:        62500,
+			PreConsumedAmount:  62500,
+			Status:             "consumed",
+			CreatedAt:          nextReset - 60,
+			UpdatedAt:          nextReset - 60,
+		}
+		recordWindowStart := lastReset
+		recordWindowEnd := nextReset
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:            442,
+			UserId:        774,
+			PlanId:        3,
+			AmountTotal:   15000000,
+			AmountUsed:    0,
+			ResourceType:  SubscriptionResourceQuota,
+			ResetPeriod:   SubscriptionResetDaily,
+			StartTime:     time.Date(2026, 4, 22, 15, 41, 36, 0, loc).Unix(),
+			EndTime:       time.Date(2026, 5, 22, 15, 41, 36, 0, loc).Unix(),
+			Status:        "active",
+			LastResetTime: nextReset,
+			NextResetTime: time.Date(2026, 4, 27, 15, 41, 36, 0, loc).Unix(),
+			CreatedAt:     lastReset,
+			UpdatedAt:     nextReset,
+		}).Error)
+		require.NoError(t, DB.Create(record).Error)
+
+		require.NoError(t, postConsumeUserSubscriptionDeltaForWindowTx(DB, 442, 34491, 0, recordWindowStart, recordWindowEnd))
+
+		var sub UserSubscription
+		require.NoError(t, DB.Where("id = ?", 442).First(&sub).Error)
+		require.EqualValues(t, 0, sub.AmountUsed)
+	})
+}
+
+func TestPreConsumeDuplicateKeepsOriginalResetWindow(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		loc := time.FixedZone("UTC+8", 8*3600)
+		oldWindowStart := time.Date(2026, 4, 25, 15, 41, 36, 0, loc).Unix()
+		oldWindowEnd := time.Date(2026, 4, 26, 15, 41, 36, 0, loc).Unix()
+		newWindowEnd := time.Date(2026, 4, 27, 15, 41, 36, 0, loc).Unix()
+
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                442,
+			UserId:            774,
+			PlanId:            3,
+			AmountTotal:       15000000,
+			AmountUsed:        1000,
+			ResourceType:      SubscriptionResourceQuota,
+			ResetPeriod:       SubscriptionResetDaily,
+			StartTime:         time.Date(2026, 4, 22, 15, 41, 36, 0, loc).Unix(),
+			EndTime:           time.Date(2026, 5, 22, 15, 41, 36, 0, loc).Unix(),
+			Status:            "active",
+			LastResetTime:     oldWindowEnd,
+			NextResetTime:     newWindowEnd,
+			AllowedModelsJSON: `[]`,
+			CreatedAt:         oldWindowStart,
+			UpdatedAt:         oldWindowEnd,
+		}).Error)
+		require.NoError(t, DB.Create(&SubscriptionPreConsumeRecord{
+			RequestId:          "duplicate-cross-window-request",
+			UserId:             774,
+			UserSubscriptionId: 442,
+			PreConsumed:        62500,
+			PreConsumedAmount:  62500,
+			Status:             "consumed",
+			CreatedAt:          oldWindowEnd - 60,
+			UpdatedAt:          oldWindowEnd - 60,
+		}).Error)
+		require.NoError(t, DB.Model(&SubscriptionPreConsumeRecord{}).
+			Where("request_id = ?", "duplicate-cross-window-request").
+			Updates(map[string]any{
+				"created_at": oldWindowEnd - 60,
+				"updated_at": oldWindowEnd - 60,
+			}).Error)
+
+		res, err := PreConsumePreferredUserSubscription("duplicate-cross-window-request", 774, 442, "", "", 0, 62500)
+		require.NoError(t, err)
+		require.EqualValues(t, oldWindowStart, res.ResetWindowStart)
+		require.EqualValues(t, oldWindowEnd, res.ResetWindowEnd)
+	})
+}
+
 func TestBuildSubscriptionQuotaInsufficientMessage_RequestCount(t *testing.T) {
 	loc := time.FixedZone("UTC+8", 8*3600)
 	resetAt := time.Date(2026, 4, 12, 8, 0, 0, 0, loc).Unix()

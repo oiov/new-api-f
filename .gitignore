@@ -40,3 +40,4 @@ scripts/
 .env.back
 .playwright-mcp
 tsconfig.tsbuildinfo
+.superpowers/batch_register.py
