@@ -18,6 +18,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxLogImageDownloadBytes int64 = 50 * 1024 * 1024
+
 type logQueryParams struct {
 	LogType            int
 	StartTimestamp     int64
@@ -56,6 +58,19 @@ func imageDownloadFilename(rawURL string, index int) string {
 	return filename
 }
 
+func validateLogImageDownloadResponse(resp *http.Response) error {
+	if resp == nil {
+		return fmt.Errorf("图片下载失败，源站无响应")
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("图片下载失败，源站状态码 %d", resp.StatusCode)
+	}
+	if resp.ContentLength > maxLogImageDownloadBytes {
+		return fmt.Errorf("图片文件过大，无法通过服务器下载")
+	}
+	return nil
+}
+
 func DownloadLogImage(c *gin.Context) {
 	requestId := strings.TrimSpace(c.Param("request_id"))
 	index, err := strconv.Atoi(c.Param("index"))
@@ -88,6 +103,11 @@ func DownloadLogImage(c *gin.Context) {
 	}
 	defer service.CloseResponseBodyGracefully(resp)
 
+	if err := validateLogImageDownloadResponse(resp); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
@@ -102,7 +122,10 @@ func DownloadLogImage(c *gin.Context) {
 		c.Header("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
 	}
 	c.Status(http.StatusOK)
-	_, _ = io.Copy(c.Writer, resp.Body)
+	_, err = io.Copy(c.Writer, io.LimitReader(resp.Body, maxLogImageDownloadBytes+1))
+	if err != nil {
+		common.SysError("failed to stream log image download: " + err.Error())
+	}
 }
 
 func getLogQueryParams(c *gin.Context) logQueryParams {
