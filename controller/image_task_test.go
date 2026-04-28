@@ -29,6 +29,17 @@ func TestIsAsyncImageTaskRequestRequiresHeaderAndImageGenerationMode(t *testing.
 	require.False(t, isAsyncImageTaskRequest(ctx, info))
 }
 
+func TestIsAsyncImageTaskRequestSupportsImageEdits(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", nil)
+	ctx.Request.Header.Set(asyncImageTaskHeader, "true")
+	info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeImagesEdits}
+
+	require.True(t, isAsyncImageTaskRequest(ctx, info))
+}
+
 func TestInitImageTaskCopiesBillingAndMetadata(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		RequestId:       "req_123",
@@ -58,6 +69,19 @@ func TestInitImageTaskCopiesBillingAndMetadata(t *testing.T) {
 	require.Equal(t, 22, task.PrivateData.TokenId)
 	require.NotNil(t, task.PrivateData.BillingContext)
 	require.Equal(t, "gpt-image-2", task.PrivateData.BillingContext.OriginModelName)
+}
+
+func TestInitImageTaskUsesRelayModeAction(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		RelayMode:       relayconstant.RelayModeImagesEdits,
+		OriginModelName: "gpt-image-1",
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelId: 36},
+		PriceData:       types.PriceData{QuotaToPreConsume: 10},
+	}
+
+	task := initImageTask(info)
+
+	require.Equal(t, "edits", task.Action)
 }
 
 func TestCopyRelayInfoToAsyncContextPreservesModelAndRelayMode(t *testing.T) {

@@ -27,11 +27,16 @@ import (
 const asyncImageTaskHeader = "X-New-Api-Async-Task"
 
 func isAsyncImageTaskRequest(c *gin.Context, relayInfo *relaycommon.RelayInfo) bool {
-	if c == nil || relayInfo == nil || relayInfo.RelayMode != relayconstant.RelayModeImagesGenerations {
+	if c == nil || relayInfo == nil || !isAsyncImageTaskRelayMode(relayInfo.RelayMode) {
 		return false
 	}
 	value := strings.TrimSpace(c.GetHeader(asyncImageTaskHeader))
 	return strings.EqualFold(value, "true") || value == "1"
+}
+
+func isAsyncImageTaskRelayMode(relayMode int) bool {
+	return relayMode == relayconstant.RelayModeImagesGenerations ||
+		relayMode == relayconstant.RelayModeImagesEdits
 }
 
 func submitAsyncImageTask(c *gin.Context, relayInfo *relaycommon.RelayInfo, body []byte) {
@@ -61,7 +66,7 @@ func submitAsyncImageTask(c *gin.Context, relayInfo *relaycommon.RelayInfo, body
 
 func initImageTask(relayInfo *relaycommon.RelayInfo) *model.Task {
 	task := model.InitTask(constant.TaskPlatformImage, relayInfo)
-	task.Action = "generations"
+	task.Action = imageTaskAction(relayInfo)
 	task.Status = model.TaskStatusSubmitted
 	task.Progress = "0%"
 	task.Quota = relayInfo.PriceData.QuotaToPreConsume
@@ -86,6 +91,13 @@ func initImageTask(relayInfo *relaycommon.RelayInfo) *model.Task {
 		"model":      relayInfo.OriginModelName,
 	})
 	return task
+}
+
+func imageTaskAction(relayInfo *relaycommon.RelayInfo) string {
+	if relayInfo != nil && relayInfo.RelayMode == relayconstant.RelayModeImagesEdits {
+		return "edits"
+	}
+	return "generations"
 }
 
 func runAsyncImageTask(task *model.Task, relayInfo *relaycommon.RelayInfo, body []byte) {
