@@ -323,7 +323,7 @@ func GetLogByKey(c *gin.Context) {
 
 func GetLogsStat(c *gin.Context) {
 	query := getLogQueryParams(c)
-	stat, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	stat, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -333,9 +333,15 @@ func GetLogsStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": stat.Quota,
-			"rpm":   stat.Rpm,
-			"tpm":   stat.Tpm,
+			"quota":                     stat.Quota,
+			"rpm":                       stat.Rpm,
+			"tpm":                       stat.Tpm,
+			"prompt_cache_hit_count":    stat.PromptCacheHitCount,
+			"prompt_cache_total_count":  stat.PromptCacheTotalCount,
+			"prompt_cache_hit_rate":     stat.PromptCacheHitRate,
+			"prompt_cache_input_tokens": stat.PromptCacheInputTokens,
+			"prompt_cache_read_tokens":  stat.PromptCacheReadTokens,
+			"prompt_cache_write_tokens": stat.PromptCacheWriteTokens,
 		},
 	})
 	return
@@ -344,7 +350,7 @@ func GetLogsStat(c *gin.Context) {
 func GetLogsSelfStat(c *gin.Context) {
 	username := c.GetString("username")
 	query := getLogQueryParams(c)
-	quotaNum, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, 0, query.ModelName, username, query.TokenName, query.Channel, query.Group, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	quotaNum, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, 0, query.ModelName, username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -354,9 +360,15 @@ func GetLogsSelfStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": quotaNum.Quota,
-			"rpm":   quotaNum.Rpm,
-			"tpm":   quotaNum.Tpm,
+			"quota":                     quotaNum.Quota,
+			"rpm":                       quotaNum.Rpm,
+			"tpm":                       quotaNum.Tpm,
+			"prompt_cache_hit_count":    quotaNum.PromptCacheHitCount,
+			"prompt_cache_total_count":  quotaNum.PromptCacheTotalCount,
+			"prompt_cache_hit_rate":     quotaNum.PromptCacheHitRate,
+			"prompt_cache_input_tokens": quotaNum.PromptCacheInputTokens,
+			"prompt_cache_read_tokens":  quotaNum.PromptCacheReadTokens,
+			"prompt_cache_write_tokens": quotaNum.PromptCacheWriteTokens,
 			//"token": tokenNum,
 		},
 	})

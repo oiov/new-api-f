@@ -999,28 +999,27 @@ func readInt64FromMap(values map[string]interface{}, key string) int64 {
 }
 
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	Quota                  int     `json:"quota"`
+	Rpm                    int     `json:"rpm"`
+	Tpm                    int     `json:"tpm"`
+	PromptCacheHitCount    int64   `json:"prompt_cache_hit_count"`
+	PromptCacheTotalCount  int64   `json:"prompt_cache_total_count"`
+	PromptCacheHitRate     float64 `json:"prompt_cache_hit_rate"`
+	PromptCacheInputTokens int64   `json:"prompt_cache_input_tokens"`
+	PromptCacheReadTokens  int64   `json:"prompt_cache_read_tokens"`
+	PromptCacheWriteTokens int64   `json:"prompt_cache_write_tokens"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
-
-	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, sum(prompt_tokens) + sum(completion_tokens) tpm")
-
+func buildLogStatConsumeQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
+	tx := LOG_DB.Table("logs")
 	if username != "" {
 		tx = tx.Where("username = ?", username)
-		rpmTpmQuery = rpmTpmQuery.Where("username = ?", username)
 	}
 	if userId > 0 {
 		tx = tx.Where("user_id = ?", userId)
-		rpmTpmQuery = rpmTpmQuery.Where("user_id = ?", userId)
 	}
 	if tokenName != "" {
 		tx = tx.Where("token_name = ?", tokenName)
-		rpmTpmQuery = rpmTpmQuery.Where("token_name = ?", tokenName)
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
@@ -1031,53 +1030,173 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId 
 	if modelName != "" {
 		modelNamePattern, err := sanitizeLikePattern(modelName)
 		if err != nil {
-			return stat, err
+			return nil, err
 		}
 		tx = tx.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
-		rpmTpmQuery = rpmTpmQuery.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
 	}
 	if channel != 0 {
 		tx = tx.Where("channel_id = ?", channel)
-		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
 	}
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
-		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+	}
+	if requestId != "" {
+		tx = tx.Where("request_id = ?", requestId)
 	}
 	if errorMessage != "" {
 		errorPattern := buildLogContentSearchPattern(errorMessage)
 		tx = tx.Where("(content LIKE ? ESCAPE '!' OR other LIKE ? ESCAPE '!')", errorPattern, errorPattern)
-		rpmTpmQuery = rpmTpmQuery.Where("(content LIKE ? ESCAPE '!' OR other LIKE ? ESCAPE '!')", errorPattern, errorPattern)
 	}
 	if statusCode != "" {
 		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns(statusCode)
 		tx = tx.Where("(content = ? OR content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
-		rpmTpmQuery = rpmTpmQuery.Where("(content = ? OR content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
 	}
 	if subscriptionId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_id", subscriptionId)
-		rpmTpmQuery = applySubscriptionJSONIdFilter(rpmTpmQuery, "subscription_id", subscriptionId)
 	}
 	if subscriptionPlanId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_plan_id", subscriptionPlanId)
-		rpmTpmQuery = applySubscriptionJSONIdFilter(rpmTpmQuery, "subscription_plan_id", subscriptionPlanId)
+	}
+	return tx.Where("type = ?", LogTypeConsume), nil
+}
+
+type promptCacheStat struct {
+	HitCount    int64
+	TotalCount  int64
+	InputTokens int64
+	ReadTokens  int64
+	WriteTokens int64
+}
+
+type promptCacheStatRow struct {
+	PromptTokens int    `gorm:"column:prompt_tokens"`
+	Other        string `gorm:"column:other"`
+}
+
+type promptCacheTotalRow struct {
+	TotalCount  int64 `gorm:"column:total_count"`
+	InputTokens int64 `gorm:"column:input_tokens"`
+}
+
+func sumPromptCacheStat(countQuery *gorm.DB, rowsQuery *gorm.DB) (promptCacheStat, error) {
+	stat := promptCacheStat{}
+	total := promptCacheTotalRow{}
+	if err := countQuery.Select("count(*) total_count, COALESCE(sum(prompt_tokens), 0) input_tokens").Scan(&total).Error; err != nil {
+		return stat, err
+	}
+	stat.TotalCount = total.TotalCount
+	stat.InputTokens = total.InputTokens
+	if stat.TotalCount == 0 {
+		return stat, nil
 	}
 
-	tx = tx.Where("type = ?", LogTypeConsume)
-	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
+	var rows []promptCacheStatRow
+	err := rowsQuery.
+		Select("prompt_tokens, other").
+		Where(
+			"(other LIKE ? OR other LIKE ? OR other LIKE ? OR other LIKE ?)",
+			`%"cache_tokens"%`,
+			`%"prompt_cache_hit_tokens"%`,
+			`%"cache_write_tokens"%`,
+			`%"cache_creation_tokens%`,
+		).
+		Find(&rows).Error
+	if err != nil {
+		return stat, err
+	}
+
+	for _, row := range rows {
+		if row.Other == "" {
+			continue
+		}
+		other := map[string]interface{}{}
+		if err := common.UnmarshalJsonStr(row.Other, &other); err != nil {
+			continue
+		}
+		readTokens := promptCacheReadTokens(other)
+		writeTokens := promptCacheWriteTokens(other)
+		if readTokens > 0 {
+			stat.HitCount++
+		}
+		stat.ReadTokens += readTokens
+		stat.WriteTokens += writeTokens
+	}
+	return stat, nil
+}
+
+func promptCacheReadTokens(other map[string]interface{}) int64 {
+	cacheTokens := readPositiveInt64FromMap(other, "cache_tokens")
+	promptCacheHitTokens := readPositiveInt64FromMap(other, "prompt_cache_hit_tokens")
+	if promptCacheHitTokens > cacheTokens {
+		return promptCacheHitTokens
+	}
+	return cacheTokens
+}
+
+func promptCacheWriteTokens(other map[string]interface{}) int64 {
+	cacheWriteTokens := readPositiveInt64FromMap(other, "cache_write_tokens")
+	if cacheWriteTokens > 0 {
+		return cacheWriteTokens
+	}
+	splitTokens := readPositiveInt64FromMap(other, "cache_creation_tokens_5m") + readPositiveInt64FromMap(other, "cache_creation_tokens_1h")
+	if splitTokens > 0 {
+		return splitTokens
+	}
+	return readPositiveInt64FromMap(other, "cache_creation_tokens")
+}
+
+func readPositiveInt64FromMap(values map[string]interface{}, key string) int64 {
+	n := readInt64FromMap(values, key)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (stat Stat, err error) {
+	tx, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	if err != nil {
+		return stat, err
+	}
+	rpmTpmQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	if err != nil {
+		return stat, err
+	}
 
 	// 只统计最近60秒的rpm和tpm
 	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
 
 	// 执行查询
-	if err := tx.Scan(&stat).Error; err != nil {
+	if err := tx.Select("sum(quota) quota").Scan(&stat).Error; err != nil {
 		common.SysError("failed to query log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
-	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
+	if err := rpmTpmQuery.Select("count(*) rpm, sum(prompt_tokens) + sum(completion_tokens) tpm").Scan(&stat).Error; err != nil {
 		common.SysError("failed to query rpm/tpm stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
+
+	cacheCountQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	if err != nil {
+		return stat, err
+	}
+	cacheRowsQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	if err != nil {
+		return stat, err
+	}
+	cacheStat, err := sumPromptCacheStat(cacheCountQuery, cacheRowsQuery)
+	if err != nil {
+		common.SysError("failed to query prompt cache stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+	stat.PromptCacheHitCount = cacheStat.HitCount
+	stat.PromptCacheTotalCount = cacheStat.TotalCount
+	if cacheStat.TotalCount > 0 {
+		stat.PromptCacheHitRate = float64(cacheStat.HitCount) / float64(cacheStat.TotalCount)
+	}
+	stat.PromptCacheInputTokens = cacheStat.InputTokens
+	stat.PromptCacheReadTokens = cacheStat.ReadTokens
+	stat.PromptCacheWriteTokens = cacheStat.WriteTokens
 
 	return stat, nil
 }
