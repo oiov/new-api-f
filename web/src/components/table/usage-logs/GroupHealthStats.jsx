@@ -75,7 +75,7 @@ const GroupHealthStats = ({
   t,
 }) => {
   const stats = Array.isArray(groupHealthStats) ? groupHealthStats : [];
-  const [viewMode, setViewMode] = useState('list');
+  const [viewMode, setViewMode] = useState('chart');
   const [scopeMode, setScopeMode] = useState('global');
   const [expanded, setExpanded] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState('');
@@ -222,8 +222,12 @@ const GroupHealthStats = ({
             <TabPane tab={t('全局')} itemKey='global' />
             <TabPane tab={t('局部')} itemKey='local' />
           </Tabs>
-          <Button.Group size='small'>
+          <Space
+            spacing={0}
+            className='rounded-md bg-[var(--semi-color-fill-0)] p-0.5'
+          >
             <Button
+              size='small'
               type={viewMode === 'card' ? 'primary' : 'tertiary'}
               icon={<IconGridView />}
               aria-label={t('卡片')}
@@ -231,6 +235,7 @@ const GroupHealthStats = ({
               onClick={() => setViewMode('card')}
             />
             <Button
+              size='small'
               type={viewMode === 'list' ? 'primary' : 'tertiary'}
               icon={<IconListView />}
               aria-label={t('列表')}
@@ -238,13 +243,14 @@ const GroupHealthStats = ({
               onClick={() => setViewMode('list')}
             />
             <Button
+              size='small'
               type={viewMode === 'chart' ? 'primary' : 'tertiary'}
               icon={<IconBarChartVStroked />}
               aria-label={t('图表')}
               title={t('图表')}
               onClick={() => setViewMode('chart')}
             />
-          </Button.Group>
+          </Space>
           <Button
             icon={expanded ? <IconChevronUp /> : <IconChevronDown />}
             size='small'
