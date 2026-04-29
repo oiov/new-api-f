@@ -47,6 +47,8 @@ const LogsTable = (logsData) => {
     hasExpandableRows,
     isAdminUser,
     billingDisplayMode,
+    selectedLogKeys,
+    handleLogSelectionChange,
     t,
     COLUMN_KEYS,
   } = logsData;
@@ -108,6 +110,12 @@ const LogsTable = (logsData) => {
       })}
       dataSource={logs}
       rowKey='key'
+      {...(isAdminUser && {
+        rowSelection: {
+          selectedRowKeys: selectedLogKeys,
+          onChange: handleLogSelectionChange,
+        },
+      })}
       loading={loading}
       scroll={compactMode ? undefined : { x: 'max-content' }}
       className='rounded-xl overflow-hidden'

@@ -6277,6 +6277,12 @@
     "图表": "Chart",
     "错误日志说明": "Error log guide",
     "主要失败原因": "Top failure reasons",
-    "列表": "List"
+    "列表": "List",
+    "删除所选日志": "Delete selected logs",
+    "确认删除所选日志？": "Delete selected logs?",
+    "将删除已选择的 {{count}} 条日志，此操作不可恢复。": "This will delete {{count}} selected logs and cannot be undone.",
+    "已删除 {{count}} 条日志": "Deleted {{count}} logs",
+    "请选择要删除的日志": "Please select logs to delete",
+    "状态监控": "Status monitor"
   }
 }

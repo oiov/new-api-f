@@ -1353,6 +1353,14 @@ func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	return token
 }
 
+func DeleteLogsByIds(ids []int) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := LOG_DB.Where("id IN ?", ids).Delete(&Log{})
+	return result.RowsAffected, result.Error
+}
+
 func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64, error) {
 	var total int64 = 0
 

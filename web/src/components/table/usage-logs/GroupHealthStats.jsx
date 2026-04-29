@@ -46,6 +46,7 @@ import { renderQuota, timestamp2string } from '../../../helpers';
 const CHART_OPTION = { mode: 'desktop-browser' };
 const ERROR_LOG_FAQ_URL =
   'https://doc.fishxcode.com/en/faq#how-do-i-read-error-logs';
+const STATUS_MONITOR_URL = 'https://fishxcode.com/status';
 const STATUS_CODE_PREFIX_PATTERN = /^status_code=\d+,\s*/i;
 
 const getHealthColor = (successRate) => {
@@ -182,7 +183,7 @@ const GroupHealthStats = ({
 
   return (
     <Card
-      className='!rounded-2xl !border-0 shadow-sm mb-4'
+      className='!rounded-2xl !border-0 shadow-sm !mb-4'
       bodyStyle={{ padding: 16 }}
     >
       <div className='flex items-center justify-between gap-3 mb-3'>
@@ -212,6 +213,17 @@ const GroupHealthStats = ({
             underline
           >
             {t('错误日志说明')}
+          </Typography.Text>
+          <Typography.Text
+            link={{
+              href: STATUS_MONITOR_URL,
+              target: '_blank',
+              rel: 'noopener noreferrer',
+            }}
+            icon={<IconLink />}
+            underline
+          >
+            {t('状态监控')}
           </Typography.Text>
           <Tabs
             type='button'

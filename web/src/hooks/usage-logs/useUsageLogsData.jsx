@@ -120,6 +120,9 @@ export const useLogsData = () => {
   });
   const [groupHealthStats, setGroupHealthStats] = useState([]);
   const [exporting, setExporting] = useState(false);
+  const [selectedLogKeys, setSelectedLogKeys] = useState([]);
+  const [selectedLogs, setSelectedLogs] = useState([]);
+  const [batchDeletingLogs, setBatchDeletingLogs] = useState(false);
 
   // Form state
   const [formApi, setFormApi] = useState(null);
@@ -358,6 +361,68 @@ export const useLogsData = () => {
     }
 
     return params;
+  };
+
+  const clearSelectedLogs = () => {
+    setSelectedLogKeys([]);
+    setSelectedLogs([]);
+  };
+
+  const handleLogSelectionChange = (selectedKeys, selectedRows) => {
+    const keys = selectedKeys || [];
+    const rows = Array.isArray(selectedRows) ? selectedRows : [];
+    const fallbackRows = keys
+      .map((key) => logs.find((log) => log.key === key))
+      .filter(Boolean);
+    setSelectedLogKeys(keys);
+    setSelectedLogs(rows.length > 0 ? rows : fallbackRows);
+  };
+
+  const deleteSelectedLogs = async () => {
+    if (!isAdminUser) {
+      return;
+    }
+    const ids = selectedLogs
+      .map((log) => Number(log?.id || 0))
+      .filter((id) => id > 0);
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length === 0) {
+      showError(t('请选择要删除的日志'));
+      return;
+    }
+
+    Modal.confirm({
+      title: t('确认删除所选日志？'),
+      content: t('将删除已选择的 {{count}} 条日志，此操作不可恢复。', {
+        count: uniqueIds.length,
+      }),
+      okButtonProps: { type: 'danger' },
+      okText: t('删除'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        setBatchDeletingLogs(true);
+        try {
+          const res = await API.post('/api/log/batch_delete', {
+            ids: uniqueIds,
+          });
+          const { success, message, data } = res.data || {};
+          if (success) {
+            showSuccess(t('已删除 {{count}} 条日志', { count: data || 0 }));
+            clearSelectedLogs();
+            setActivePage(1);
+            handleEyeClick();
+            refreshGroupHealthStats();
+            await loadLogs(1, pageSize);
+          } else {
+            showError(message || t('删除失败'));
+          }
+        } catch (error) {
+          showError(error?.message || t('删除失败'));
+        } finally {
+          setBatchDeletingLogs(false);
+        }
+      },
+    });
   };
 
   const exportLogs = async () => {
@@ -991,6 +1056,7 @@ export const useLogsData = () => {
       setActivePage(data.page);
       setPageSize(data.page_size);
       setLogCount(data.total);
+      clearSelectedLogs();
 
       setLogsFormat(newPageData);
     } else {
@@ -1119,6 +1185,9 @@ export const useLogsData = () => {
     stat,
     groupHealthStats,
     exporting,
+    selectedLogKeys,
+    selectedLogs,
+    batchDeletingLogs,
     isAdminUser,
     logExportEnabled,
 
@@ -1164,6 +1233,8 @@ export const useLogsData = () => {
     handlePageSizeChange,
     refresh,
     exportLogs,
+    deleteSelectedLogs,
+    handleLogSelectionChange,
     applyLogFilter,
     jumpToChannelDetail,
     jumpToUserDetail,

@@ -6193,6 +6193,12 @@
     "图表": "Graphique",
     "错误日志说明": "Guide des journaux d’erreur",
     "主要失败原因": "Principales causes d’échec",
-    "列表": "Liste"
+    "列表": "Liste",
+    "删除所选日志": "Supprimer les journaux sélectionnés",
+    "确认删除所选日志？": "Supprimer les journaux sélectionnés ?",
+    "将删除已选择的 {{count}} 条日志，此操作不可恢复。": "Cela supprimera {{count}} journaux sélectionnés. Cette action est irréversible.",
+    "已删除 {{count}} 条日志": "{{count}} journaux supprimés",
+    "请选择要删除的日志": "Veuillez sélectionner les journaux à supprimer",
+    "状态监控": "Surveillance du statut"
   }
 }

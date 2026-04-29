@@ -419,6 +419,7 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.GetAllLogs)
 		logRoute.GET("/export", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogExport), controller.ExportAllLogs)
+		logRoute.POST("/batch_delete", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.BatchDeleteLogs)
 		logRoute.DELETE("/", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.DeleteHistoryLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.GetLogsStat)
 		logRoute.GET("/group_health", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.GetGroupLogHealthStats)

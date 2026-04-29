@@ -345,6 +345,46 @@ func GetGroupLogSelfHealthStats(c *gin.Context) {
 	common.ApiSuccess(c, stats)
 }
 
+const maxBatchDeleteLogCount = 1000
+
+type batchDeleteLogsRequest struct {
+	Ids []int `json:"ids"`
+}
+
+func BatchDeleteLogs(c *gin.Context) {
+	req := batchDeleteLogsRequest{}
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	ids := make([]int, 0, len(req.Ids))
+	seen := make(map[int]struct{}, len(req.Ids))
+	for _, id := range req.Ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		common.ApiErrorMsg(c, "请选择要删除的日志")
+		return
+	}
+	if len(ids) > maxBatchDeleteLogCount {
+		common.ApiErrorMsg(c, fmt.Sprintf("单次最多删除 %d 条日志", maxBatchDeleteLogCount))
+		return
+	}
+	count, err := model.DeleteLogsByIds(ids)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, count)
+}
+
 func DeleteHistoryLogs(c *gin.Context) {
 	targetTimestamp, _ := strconv.ParseInt(c.Query("target_timestamp"), 10, 64)
 	if targetTimestamp == 0 {

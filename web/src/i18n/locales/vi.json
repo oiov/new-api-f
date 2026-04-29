@@ -6602,6 +6602,12 @@
     "图表": "Biểu đồ",
     "错误日志说明": "Hướng dẫn nhật ký lỗi",
     "主要失败原因": "Lý do lỗi chính",
-    "列表": "Danh sách"
+    "列表": "Danh sách",
+    "删除所选日志": "Xóa nhật ký đã chọn",
+    "确认删除所选日志？": "Xóa nhật ký đã chọn?",
+    "将删除已选择的 {{count}} 条日志，此操作不可恢复。": "Thao tác này sẽ xóa {{count}} nhật ký đã chọn và không thể hoàn tác.",
+    "已删除 {{count}} 条日志": "Đã xóa {{count}} nhật ký",
+    "请选择要删除的日志": "Vui lòng chọn nhật ký cần xóa",
+    "状态监控": "Giám sát trạng thái"
   }
 }
