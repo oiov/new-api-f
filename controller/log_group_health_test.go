@@ -65,8 +65,9 @@ func TestGetGroupLogSelfHealthStatsExpandsAutoGroup(t *testing.T) {
 	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`["default"]`))
 	require.NoError(t, db.Create(&model.User{Id: 1, Username: "alice", Group: "default", Quota: 100}).Error)
 	require.NoError(t, db.Create(&[]model.Log{
-		{CreatedAt: now - 10, Type: model.LogTypeConsume, Group: "default", UserId: 2},
-		{CreatedAt: now - 10, Type: model.LogTypeConsume, Group: "vip", UserId: 3},
+		{CreatedAt: now - 10, Type: model.LogTypeConsume, Group: "default", UserId: 1, Quota: 15},
+		{CreatedAt: now - 10, Type: model.LogTypeConsume, Group: "default", UserId: 2, Quota: 20},
+		{CreatedAt: now - 10, Type: model.LogTypeConsume, Group: "vip", UserId: 3, Quota: 30},
 	}).Error)
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, fmt.Sprintf("/api/log/self/group_health?group=auto&start_timestamp=%d&end_timestamp=%d", now-60, now), nil, 1)
@@ -77,18 +78,19 @@ func TestGetGroupLogSelfHealthStatsExpandsAutoGroup(t *testing.T) {
 	stats := decodeGroupHealthStats(t, response)
 	require.Len(t, stats, 1)
 	assert.Equal(t, "default", stats[0].Group)
-	assert.EqualValues(t, 0, stats[0].TotalCount)
-	assert.EqualValues(t, 0, stats[0].SuccessCount)
-	assert.EqualValues(t, 0, stats[0].Quota)
+	assert.EqualValues(t, 1, stats[0].TotalCount)
+	assert.EqualValues(t, 1, stats[0].SuccessCount)
+	assert.EqualValues(t, 15, stats[0].Quota)
 	assert.NotNil(t, stats[0].ErrorReasons)
 }
 
-func TestGetGroupLogSelfHealthStatsHidesErrorReasons(t *testing.T) {
+func TestGetGroupLogSelfHealthStatsReturnsOwnErrorReasons(t *testing.T) {
 	db := setupLogGroupHealthControllerTestDB(t)
 	now := time.Now().Unix()
 	require.NoError(t, db.Create(&model.User{Id: 1, Username: "alice", Group: "default", Quota: 100}).Error)
 	require.NoError(t, db.Create(&[]model.Log{
 		{CreatedAt: now - 10, Type: model.LogTypeError, Group: "default", UserId: 1, Content: "status_code=500,upstream failed"},
+		{CreatedAt: now - 9, Type: model.LogTypeError, Group: "default", UserId: 2, Content: "status_code=502,other user failed"},
 	}).Error)
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, fmt.Sprintf("/api/log/self/group_health?group=default&start_timestamp=%d&end_timestamp=%d", now-60, now), nil, 1)
@@ -98,7 +100,9 @@ func TestGetGroupLogSelfHealthStatsHidesErrorReasons(t *testing.T) {
 	require.True(t, response.Success, response.Message)
 	stats := decodeGroupHealthStats(t, response)
 	require.Len(t, stats, 1)
-	assert.Empty(t, stats[0].ErrorReasons)
+	require.Len(t, stats[0].ErrorReasons, 1)
+	assert.Equal(t, "status_code=500,upstream failed", stats[0].ErrorReasons[0].Content)
+	assert.Equal(t, "500", stats[0].ErrorReasons[0].StatusCode)
 }
 
 func TestGetGroupLogSelfHealthStatsIgnoresRateLimitErrors(t *testing.T) {

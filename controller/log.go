@@ -298,21 +298,6 @@ func GetGroupLogHealthStats(c *gin.Context) {
 	common.ApiSuccess(c, stats)
 }
 
-func maskGroupLogHealthStatsForUser(stats []model.GroupLogHealthStat) []model.GroupLogHealthStat {
-	for i := range stats {
-		stats[i].TotalCount = 0
-		stats[i].SuccessCount = 0
-		stats[i].ErrorCount = 0
-		stats[i].Quota = 0
-		stats[i].Tokens = 0
-		stats[i].AvgUseTime = 0
-		stats[i].FirstSeenAt = 0
-		stats[i].LastSeenAt = 0
-		stats[i].ErrorReasons = make([]model.GroupLogHealthErrorReason, 0)
-	}
-	return stats
-}
-
 func GetGroupLogSelfHealthStats(c *gin.Context) {
 	query := buildGroupLogHealthStatsQuery(getLogQueryParams(c))
 	userId := c.GetInt("id")
@@ -344,7 +329,7 @@ func GetGroupLogSelfHealthStats(c *gin.Context) {
 		}
 		query.Groups = groups
 	}
-	query.UserId = 0
+	query.UserId = userId
 	query.Username = ""
 	query.Channel = 0
 
@@ -353,7 +338,7 @@ func GetGroupLogSelfHealthStats(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, maskGroupLogHealthStatsForUser(stats))
+	common.ApiSuccess(c, stats)
 }
 
 func DeleteHistoryLogs(c *gin.Context) {
