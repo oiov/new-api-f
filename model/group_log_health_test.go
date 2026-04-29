@@ -67,6 +67,8 @@ func TestGetGroupLogHealthStatsAggregatesByGroupAndWindow(t *testing.T) {
 		assert.EqualValues(t, 25, stat.Tokens)
 		assert.InDelta(t, 66.67, stat.SuccessRate, 0.01)
 		assert.InDelta(t, 5, stat.AvgUseTime, 0.01)
+		assert.EqualValues(t, now-90*60, stat.FirstSeenAt)
+		assert.EqualValues(t, now-10*60, stat.LastSeenAt)
 	})
 }
 

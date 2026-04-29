@@ -109,6 +109,17 @@ export const useUsersData = () => {
     setUsers(users);
   };
 
+  const updateUserInList = (user) => {
+    if (!user?.id) {
+      return;
+    }
+    setUsers((prevUsers) =>
+      prevUsers.map((item) =>
+        item.id === user.id ? { ...item, ...user, key: user.id } : item,
+      ),
+    );
+  };
+
   // Load users data
   const loadUsers = async (startIdx, pageSize) => {
     setLoading(true);
@@ -276,8 +287,9 @@ export const useUsersData = () => {
   // Handle page change
   const handlePageChange = (page) => {
     setActivePage(page);
-    const { searchKeyword, searchGroup, sortBy, sortOrder } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const { searchKeyword, searchGroup, searchStatus, sortBy, sortOrder } =
+      getFormValues();
+    if (searchKeyword === '' && searchGroup === '' && searchStatus === '') {
       loadUsers(page, pageSize).then();
     } else {
       searchUsers(
@@ -285,6 +297,7 @@ export const useUsersData = () => {
         pageSize,
         searchKeyword,
         searchGroup,
+        searchStatus,
         sortBy,
         sortOrder,
       ).then();
@@ -430,6 +443,7 @@ export const useUsersData = () => {
     handlePageSizeChange,
     handleRow,
     refresh,
+    updateUserInList,
     closeAddUser,
     closeEditUser,
     getFormValues,

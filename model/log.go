@@ -1029,6 +1029,7 @@ type GroupLogHealthStat struct {
 	Tokens       int64   `json:"tokens"`
 	AvgUseTime   float64 `json:"avg_use_time"`
 	SuccessRate  float64 `json:"success_rate"`
+	FirstSeenAt  int64   `json:"first_seen_at"`
 	LastSeenAt   int64   `json:"last_seen_at"`
 }
 
@@ -1040,6 +1041,7 @@ type groupLogHealthStatRow struct {
 	Quota        int64   `gorm:"column:quota"`
 	Tokens       int64   `gorm:"column:tokens"`
 	AvgUseTime   float64 `gorm:"column:avg_use_time"`
+	FirstSeenAt  int64   `gorm:"column:first_seen_at"`
 	LastSeenAt   int64   `gorm:"column:last_seen_at"`
 }
 
@@ -1096,6 +1098,7 @@ func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthSta
 		"sum(case when type = ? then quota else 0 end) as quota, " +
 		"sum(case when type = ? then prompt_tokens + completion_tokens else 0 end) as tokens, " +
 		"avg(use_time) as avg_use_time, " +
+		"min(created_at) as first_seen_at, " +
 		"max(created_at) as last_seen_at"
 
 	rows := make([]groupLogHealthStatRow, 0)
@@ -1116,6 +1119,7 @@ func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthSta
 			Quota:        row.Quota,
 			Tokens:       row.Tokens,
 			AvgUseTime:   row.AvgUseTime,
+			FirstSeenAt:  row.FirstSeenAt,
 			LastSeenAt:   row.LastSeenAt,
 		}
 		if stat.Group == "" {

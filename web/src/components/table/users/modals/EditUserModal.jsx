@@ -216,27 +216,38 @@ const EditUserModal = (props) => {
   /* ----------------------- submit ----------------------- */
   const submit = async (values) => {
     setLoading(true);
-    let payload = { ...values };
+    let payload = {
+      username: values.username,
+      display_name: values.display_name,
+      password: values.password,
+      group: values.group,
+      quota: values.quota,
+      remark: values.remark,
+      role: values.role,
+      status: values.status,
+      permissions_json: values.permissions_json,
+    };
     if (typeof payload.quota === 'string')
       payload.quota = parseInt(payload.quota) || 0;
     if (canManageRole && Number(payload.role) === 10) {
       payload.permissions_json = JSON.stringify(
-        normalizePermissionPoints(payload.permission_points),
+        normalizePermissionPoints(values.permission_points),
       );
     } else {
       payload.permissions_json = '';
     }
-    delete payload.permission_template;
-    delete payload.permission_points;
     if (userId) {
       payload.id = parseInt(userId);
     }
     const url = userId ? `/api/user/` : `/api/user/self`;
     const res = await API.put(url, payload);
-    const { success, message } = res.data;
+    const { success, message, data } = res.data;
     if (success) {
       showSuccess(t('用户信息更新成功！'));
-      props.refresh();
+      if (data) {
+        props.updateUserInList?.(data);
+      }
+      await props.refresh();
       props.handleClose();
     } else {
       showError(message);
