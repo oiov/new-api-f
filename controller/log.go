@@ -275,15 +275,16 @@ func GetLogsSelfStat(c *gin.Context) {
 
 func buildGroupLogHealthStatsQuery(query logQueryParams) model.GroupLogHealthStatsQuery {
 	return model.GroupLogHealthStatsQuery{
-		StartTimestamp: query.StartTimestamp,
-		EndTimestamp:   query.EndTimestamp,
-		UserId:         query.UserId,
-		Username:       query.Username,
-		TokenName:      query.TokenName,
-		ModelName:      query.ModelName,
-		Channel:        query.Channel,
-		Group:          query.Group,
-		StatusCode:     query.StatusCode,
+		StartTimestamp:        query.StartTimestamp,
+		EndTimestamp:          query.EndTimestamp,
+		UserId:                query.UserId,
+		Username:              query.Username,
+		TokenName:             query.TokenName,
+		ModelName:             query.ModelName,
+		Channel:               query.Channel,
+		Group:                 query.Group,
+		StatusCode:            query.StatusCode,
+		IgnoreRateLimitErrors: true,
 	}
 }
 
@@ -295,6 +296,21 @@ func GetGroupLogHealthStats(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, stats)
+}
+
+func maskGroupLogHealthStatsForUser(stats []model.GroupLogHealthStat) []model.GroupLogHealthStat {
+	for i := range stats {
+		stats[i].TotalCount = 0
+		stats[i].SuccessCount = 0
+		stats[i].ErrorCount = 0
+		stats[i].Quota = 0
+		stats[i].Tokens = 0
+		stats[i].AvgUseTime = 0
+		stats[i].FirstSeenAt = 0
+		stats[i].LastSeenAt = 0
+		stats[i].ErrorReasons = make([]model.GroupLogHealthErrorReason, 0)
+	}
+	return stats
 }
 
 func GetGroupLogSelfHealthStats(c *gin.Context) {
@@ -337,7 +353,7 @@ func GetGroupLogSelfHealthStats(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, stats)
+	common.ApiSuccess(c, maskGroupLogHealthStatsForUser(stats))
 }
 
 func DeleteHistoryLogs(c *gin.Context) {

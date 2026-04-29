@@ -796,21 +796,11 @@ func summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(userId int, subscrip
 			continue
 		}
 		subscriptionID := readIntFromMap(otherMap, "subscription_id")
-		consumed := readInt64FromMap(otherMap, "subscription_consumed")
 		resourceType := resourceTypeMap[subscriptionID]
 		if resourceType == "" {
 			resourceType = SubscriptionResourceQuota
 		}
-		// Fallback for older records that lack subscription_consumed:
-		// derive from subscription_pre_consumed + subscription_post_delta.
-		if consumed <= 0 {
-			preConsumed := readInt64FromMap(otherMap, "subscription_pre_consumed")
-			postDelta := readInt64FromMap(otherMap, "subscription_post_delta")
-			fallback := preConsumed + postDelta
-			if fallback > 0 {
-				consumed = fallback
-			}
-		}
+		consumed := readSubscriptionConsumedFromOther(otherMap, resourceType)
 		if consumed <= 0 {
 			continue
 		}
@@ -840,6 +830,37 @@ func summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(userId int, subscrip
 		}
 	}
 	return summary, nil
+}
+
+func readSubscriptionConsumedFromOther(otherMap map[string]interface{}, resourceType string) int64 {
+	if resourceType == SubscriptionResourceRequestCount {
+		if consumed := readInt64FromMap(otherMap, "subscription_request_count_consumed"); consumed > 0 {
+			return consumed
+		}
+		if consumed := readInt64FromMap(otherMap, "subscription_consumed"); consumed > 0 {
+			return consumed
+		}
+		if consumed := readInt64FromMap(otherMap, "subscription_pre_consumed_count"); consumed > 0 {
+			return consumed
+		}
+		return 0
+	}
+	if consumed := readInt64FromMap(otherMap, "subscription_amount_consumed"); consumed > 0 {
+		return consumed
+	}
+	if consumed := readInt64FromMap(otherMap, "subscription_consumed"); consumed > 0 {
+		return consumed
+	}
+	preConsumed := readInt64FromMap(otherMap, "subscription_pre_consumed_amount")
+	if preConsumed <= 0 {
+		preConsumed = readInt64FromMap(otherMap, "subscription_pre_consumed")
+	}
+	postDelta := readInt64FromMap(otherMap, "subscription_post_delta")
+	fallback := preConsumed + postDelta
+	if fallback > 0 {
+		return fallback
+	}
+	return 0
 }
 
 func buildSubscriptionResourceTypeMap(rows []subscriptionConsumeSummaryRow) (map[int]string, error) {
@@ -1009,16 +1030,17 @@ type Stat struct {
 }
 
 type GroupLogHealthStatsQuery struct {
-	StartTimestamp int64
-	EndTimestamp   int64
-	UserId         int
-	Username       string
-	TokenName      string
-	ModelName      string
-	Channel        int
-	Group          string
-	Groups         []string
-	StatusCode     string
+	StartTimestamp        int64
+	EndTimestamp          int64
+	UserId                int
+	Username              string
+	TokenName             string
+	ModelName             string
+	Channel               int
+	Group                 string
+	Groups                []string
+	StatusCode            string
+	IgnoreRateLimitErrors bool
 }
 
 type GroupLogHealthStat struct {
@@ -1116,6 +1138,10 @@ func buildGroupLogHealthQuery(query GroupLogHealthStatsQuery, groupCol string, l
 	if query.StatusCode != "" {
 		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns(query.StatusCode)
 		tx = tx.Where("(content = ? OR content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
+	}
+	if query.IgnoreRateLimitErrors {
+		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns("429")
+		tx = tx.Where("type != ? OR (content != ? AND content NOT LIKE ? ESCAPE '!')", LogTypeError, statusCodeExact, statusCodePrefix)
 	}
 	return tx, nil
 }

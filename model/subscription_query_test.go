@@ -164,6 +164,46 @@ func TestPostConsumeDeltaSkipsExpiredResetWindow(t *testing.T) {
 	})
 }
 
+func TestSummarizeUsageFromPreConsumeRecordsSkipsFinalizedLogs(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		sub := &UserSubscription{
+			Id:           443,
+			UserId:       775,
+			PlanId:       4,
+			AmountTotal:  15000000,
+			AmountUsed:   0,
+			ResourceType: SubscriptionResourceQuota,
+			Status:       "active",
+			StartTime:    now - 3600,
+			EndTime:      now + 3600,
+		}
+		require.NoError(t, DB.Create(sub).Error)
+		records := []*SubscriptionPreConsumeRecord{
+			{RequestId: "finalized-request", UserId: 775, UserSubscriptionId: 443, PreConsumed: 1000, PreConsumedAmount: 1000, Status: "consumed", CreatedAt: now - 60, UpdatedAt: now - 60},
+			{RequestId: "zero-usage-request", UserId: 775, UserSubscriptionId: 443, PreConsumed: 700, PreConsumedAmount: 700, Status: "consumed", CreatedAt: now - 40, UpdatedAt: now - 40},
+			{RequestId: "pending-request", UserId: 775, UserSubscriptionId: 443, PreConsumed: 800, PreConsumedAmount: 800, Status: "consumed", CreatedAt: now - 30, UpdatedAt: now - 30},
+		}
+		require.NoError(t, DB.Create(&records).Error)
+
+		finalizedOther := `{"billing_source":"subscription","subscription_id":443,"subscription_plan_id":4,"subscription_pre_consumed_amount":1000,"subscription_post_delta":-400,"subscription_consumed":600}`
+		zeroUsageOther := `{"billing_source":"subscription","subscription_id":443,"subscription_plan_id":4,"subscription_pre_consumed_amount":700,"subscription_post_delta":-700,"subscription_consumed":0}`
+		logs := []*Log{
+			{Id: 1001, UserId: 775, Type: LogTypeConsume, CreatedAt: now - 50, RequestId: "finalized-request", Other: finalizedOther},
+			{Id: 1002, UserId: 775, Type: LogTypeConsume, CreatedAt: now - 35, RequestId: "zero-usage-request", Other: zeroUsageOther},
+		}
+		require.NoError(t, DB.Create(&logs).Error)
+
+		amountUsed, countUsed, requestIDs, err := summarizeUserSubscriptionUsageFromPreConsumeRecords(sub, now-3600, now)
+		require.NoError(t, err)
+		require.EqualValues(t, 800, amountUsed)
+		require.EqualValues(t, 0, countUsed)
+		require.NotContains(t, requestIDs, "finalized-request")
+		require.NotContains(t, requestIDs, "zero-usage-request")
+		require.Contains(t, requestIDs, "pending-request")
+	})
+}
+
 func TestPreConsumeDuplicateKeepsOriginalResetWindow(t *testing.T) {
 	withSubscriptionQueryTestDB(t, func() {
 		loc := time.FixedZone("UTC+8", 8*3600)
@@ -2218,5 +2258,30 @@ func TestSummarizeSubscriptionConsumeLogs_IgnoresZeroConsumedRecords(t *testing.
 		require.EqualValues(t, 1, summary.TodaySuccessCount)
 		require.EqualValues(t, 1, summary.TotalRequestConsumed)
 		require.EqualValues(t, 1, summary.TodayRequestConsumed)
+	})
+}
+
+func TestSummarizeSubscriptionConsumeLogs_UsesResourceSpecificConsumedField(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+		require.NoError(t, DB.Create(&User{Id: 21, Username: "summary_count_user", AffCode: "summary_count_aff", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&UserSubscription{
+			Id:                402,
+			UserId:            21,
+			PlanId:            202,
+			ResourceType:      SubscriptionResourceRequestCount,
+			RequestCountTotal: 100,
+			Status:            "active",
+			StartTime:         now - 3600,
+			EndTime:           now + 3600,
+		}).Error)
+
+		other := `{"billing_source":"subscription","subscription_id":402,"subscription_plan_id":202,"subscription_amount_consumed":999,"subscription_request_count_consumed":1,"subscription_consumed":1,"subscription_resource_type":"request_count"}`
+		require.NoError(t, DB.Create(&Log{Id: 3, UserId: 21, Type: LogTypeConsume, CreatedAt: now - 30, Other: other}).Error)
+
+		_, _, summary, err := GetSubscriptionConsumeLogs(21, 402, 0, 0, 0, 0, 0, 20)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, summary.TotalRequestConsumed)
+		require.EqualValues(t, 0, summary.TotalQuotaConsumed)
 	})
 }

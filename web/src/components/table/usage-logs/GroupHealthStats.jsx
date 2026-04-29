@@ -30,7 +30,7 @@ import {
   TabPane,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IconLink, IconRefresh } from '@douyinfe/semi-icons';
+import { IconChevronDown, IconChevronUp, IconLink, IconRefresh } from '@douyinfe/semi-icons';
 import { VChart } from '@visactor/react-vchart';
 import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import { renderQuota, timestamp2string } from '../../../helpers';
@@ -61,11 +61,13 @@ const GroupHealthStats = ({
   loadingGroupHealth,
   refreshGroupHealthStats,
   applyLogFilter,
+  isAdminUser,
   t,
 }) => {
   const stats = Array.isArray(groupHealthStats) ? groupHealthStats : [];
   const [viewMode, setViewMode] = useState('card');
   const [scopeMode, setScopeMode] = useState('global');
+  const [expanded, setExpanded] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState('');
 
   useEffect(() => {
@@ -117,8 +119,12 @@ const GroupHealthStats = ({
         mark: {
           content: [
             { key: t('成功率'), value: (datum) => `${Number(datum.successRate || 0).toFixed(2)}%` },
-            { key: t('请求数'), value: (datum) => datum.totalCount },
-            { key: t('错误'), value: (datum) => datum.errorCount },
+            ...(isAdminUser
+              ? [
+                  { key: t('请求数'), value: (datum) => datum.totalCount },
+                  { key: t('错误'), value: (datum) => datum.errorCount },
+                ]
+              : []),
           ],
         },
       },
@@ -128,7 +134,7 @@ const GroupHealthStats = ({
       },
       height: 280,
     }),
-    [chartStats, t],
+    [chartStats, isAdminUser, t],
   );
 
   const selectGroup = (groupName) => {
@@ -202,8 +208,16 @@ const GroupHealthStats = ({
           </Tabs>
           <Tabs type='button' size='small' activeKey={viewMode} onChange={setViewMode}>
             <TabPane tab={t('卡片')} itemKey='card' />
+            <TabPane tab={t('列表')} itemKey='list' />
             <TabPane tab={t('图表')} itemKey='chart' />
           </Tabs>
+          <Button
+            icon={expanded ? <IconChevronUp /> : <IconChevronDown />}
+            size='small'
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? t('收起') : t('展开')}
+          </Button>
           <Button
             icon={<IconRefresh />}
             size='small'
@@ -215,15 +229,98 @@ const GroupHealthStats = ({
         </Space>
       </div>
 
-      <Skeleton loading={loadingGroupHealth} active paragraph={{ rows: 2 }}>
-        {stats.length === 0 ? (
-          <Empty description={t('暂无分组健康数据')} />
-        ) : viewMode === 'chart' ? (
-          <div className='rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-bg-1)] p-2'>
-            <VChart spec={chartSpec} option={CHART_OPTION} />
-          </div>
-        ) : (
-          <div className='grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3'>
+      {expanded && (
+        <Skeleton loading={loadingGroupHealth} active paragraph={{ rows: 2 }}>
+          {stats.length === 0 ? (
+            <Empty description={t('暂无分组健康数据')} />
+          ) : viewMode === 'chart' ? (
+            <div className='rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-bg-1)] p-2'>
+              <VChart spec={chartSpec} option={CHART_OPTION} />
+            </div>
+          ) : viewMode === 'list' ? (
+            <div className='overflow-x-auto rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-bg-1)]'>
+              <table className='min-w-full text-left text-xs'>
+                <thead className='bg-[var(--semi-color-fill-0)] text-[var(--semi-color-text-2)]'>
+                  <tr>
+                    <th className='whitespace-nowrap px-3 py-2 font-medium'>{t('分组')}</th>
+                    <th className='whitespace-nowrap px-3 py-2 font-medium'>{t('成功率')}</th>
+                    {isAdminUser && (
+                      <>
+                        <th className='whitespace-nowrap px-3 py-2 font-medium'>{t('请求数')}</th>
+                        <th className='whitespace-nowrap px-3 py-2 font-medium'>{t('成功')}</th>
+                        <th className='whitespace-nowrap px-3 py-2 font-medium'>{t('错误')}</th>
+                        <th className='whitespace-nowrap px-3 py-2 font-medium'>{t('消耗')}</th>
+                        <th className='whitespace-nowrap px-3 py-2 font-medium'>{t('平均耗时')}</th>
+                        <th className='whitespace-nowrap px-3 py-2 font-medium'>{t('开始时间')}</th>
+                        <th className='whitespace-nowrap px-3 py-2 font-medium'>{t('最后请求')}</th>
+                      </>
+                    )}
+                    {isAdminUser && <th className='min-w-[240px] px-3 py-2 font-medium'>{t('失败原因')}</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {chartStats.map((item) => {
+                    const successRate = Number(item.success_rate || 0);
+                    const healthColor = getHealthColor(successRate);
+                    const groupName = item.group || 'default';
+                    const errorReasons = normalizeErrorReasons(item.error_reasons);
+
+                    return (
+                      <tr
+                        key={groupName}
+                        className='cursor-pointer border-t border-[var(--semi-color-border)] text-[var(--semi-color-text-1)] transition-colors hover:bg-[var(--semi-color-fill-0)]'
+                        onClick={() => selectGroup(groupName)}
+                      >
+                        <td className='whitespace-nowrap px-3 py-2'><Tag color={healthColor}>{groupName}</Tag></td>
+                        <td className='whitespace-nowrap px-3 py-2 font-semibold'>{successRate.toFixed(2)}%</td>
+                        {isAdminUser && (
+                          <>
+                            <td className='whitespace-nowrap px-3 py-2'>{item.total_count || 0}</td>
+                            <td className='whitespace-nowrap px-3 py-2'>{item.success_count || 0}</td>
+                            <td className='whitespace-nowrap px-3 py-2'>{item.error_count || 0}</td>
+                            <td className='whitespace-nowrap px-3 py-2'>{renderQuota(item.quota || 0)}</td>
+                            <td className='whitespace-nowrap px-3 py-2'>{Number(item.avg_use_time || 0).toFixed(2)}s</td>
+                            <td className='whitespace-nowrap px-3 py-2'>{item.first_seen_at ? timestamp2string(item.first_seen_at) : '-'}</td>
+                            <td className='whitespace-nowrap px-3 py-2'>{item.last_seen_at ? timestamp2string(item.last_seen_at) : '-'}</td>
+                          </>
+                        )}
+                        {isAdminUser && (
+                          <td className='px-3 py-2'>
+                            {errorReasons.length > 0 ? (
+                              <div className='space-y-1'>
+                                {errorReasons.map((reason, index) => {
+                                  const statusCode = reason.status_code || '-';
+                                  const errorMessage = cleanErrorMessage(reason.content) || '-';
+                                  const reasonKey = `${groupName}-${statusCode}-${reason.content || index}`;
+
+                                  return (
+                                    <button
+                                      type='button'
+                                      key={reasonKey}
+                                      title={`${statusCode} · ${errorMessage} · ${reason.count || 0}`}
+                                      onClick={(event) => selectErrorReason(event, groupName, reason)}
+                                      className='flex max-w-[360px] items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-[var(--semi-color-fill-1)] hover:text-[var(--semi-color-primary)]'
+                                    >
+                                      <span className='shrink-0 font-medium'>{statusCode}</span>
+                                      <span className='shrink-0 text-[var(--semi-color-text-2)]'>·</span>
+                                      <span className='min-w-0 flex-1 truncate'>{errorMessage}</span>
+                                      <span className='shrink-0 text-[var(--semi-color-text-2)]'>·</span>
+                                      <span className='shrink-0'>{reason.count || 0}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : '-'}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className='grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3'>
             {chartStats.map((item) => {
               const successRate = Number(item.success_rate || 0);
               const healthColor = getHealthColor(successRate);
@@ -246,9 +343,11 @@ const GroupHealthStats = ({
                   <div className='flex items-center justify-between gap-2 mb-3'>
                     <Space>
                       <Tag color={healthColor}>{groupName}</Tag>
-                      <span className='text-xs text-[var(--semi-color-text-2)]'>
-                        {t('请求数')}: {item.total_count || 0}
-                      </span>
+                      {isAdminUser && (
+                        <span className='text-xs text-[var(--semi-color-text-2)]'>
+                          {t('请求数')}: {item.total_count || 0}
+                        </span>
+                      )}
                     </Space>
                     <span className='text-sm font-semibold'>
                       {successRate.toFixed(2)}%
@@ -260,25 +359,31 @@ const GroupHealthStats = ({
                     showInfo={false}
                     aria-label={t('成功率')}
                   />
-                  <div className='grid grid-cols-2 gap-2 mt-3 text-xs text-[var(--semi-color-text-1)]'>
-                    <span>{t('成功')}: {item.success_count || 0}</span>
-                    <span>{t('错误')}: {item.error_count || 0}</span>
-                    <span>{t('消耗')}: {renderQuota(item.quota || 0)}</span>
-                    <span>
-                      {t('平均耗时')}: {Number(item.avg_use_time || 0).toFixed(2)}s
-                    </span>
-                  </div>
-                  <div className='mt-2 text-xs text-[var(--semi-color-text-2)]'>
-                    {t('开始时间')}:{' '}
-                    {item.first_seen_at
-                      ? timestamp2string(item.first_seen_at)
-                      : '-'}
-                  </div>
-                  <div className='mt-1 text-xs text-[var(--semi-color-text-2)]'>
-                    {t('最后请求')}:{' '}
-                    {item.last_seen_at ? timestamp2string(item.last_seen_at) : '-'}
-                  </div>
-                  {errorReasons.length > 0 && (
+                  {isAdminUser && (
+                    <div className='grid grid-cols-2 gap-2 mt-3 text-xs text-[var(--semi-color-text-1)]'>
+                      <span>{t('成功')}: {item.success_count || 0}</span>
+                      <span>{t('错误')}: {item.error_count || 0}</span>
+                      <span>{t('消耗')}: {renderQuota(item.quota || 0)}</span>
+                      <span>
+                        {t('平均耗时')}: {Number(item.avg_use_time || 0).toFixed(2)}s
+                      </span>
+                    </div>
+                  )}
+                  {isAdminUser && (
+                    <>
+                      <div className='mt-2 text-xs text-[var(--semi-color-text-2)]'>
+                        {t('开始时间')}:{' '}
+                        {item.first_seen_at
+                          ? timestamp2string(item.first_seen_at)
+                          : '-'}
+                      </div>
+                      <div className='mt-1 text-xs text-[var(--semi-color-text-2)]'>
+                        {t('最后请求')}:{' '}
+                        {item.last_seen_at ? timestamp2string(item.last_seen_at) : '-'}
+                      </div>
+                    </>
+                  )}
+                  {isAdminUser && errorReasons.length > 0 && (
                     <div className='mt-3 rounded-lg bg-[var(--semi-color-fill-0)] p-2'>
                       <div className='mb-1 text-xs font-medium text-[var(--semi-color-text-0)]'>
                         {t('主要失败原因')}
@@ -314,9 +419,10 @@ const GroupHealthStats = ({
                 </div>
               );
             })}
-          </div>
-        )}
-      </Skeleton>
+            </div>
+          )}
+        </Skeleton>
+      )}
     </Card>
   );
 };

@@ -2055,10 +2055,19 @@ func summarizeUserSubscriptionUsageFromPreConsumeRecords(sub *UserSubscription, 
 	if err != nil {
 		return 0, 0, nil, err
 	}
+	finalizedRequestIDs, err := findFinalizedSubscriptionConsumeRequestIDs(sub, startTimestamp, endTimestamp)
+	if err != nil {
+		return 0, 0, nil, err
+	}
 	requestIDs := make(map[string]struct{}, len(records))
 	var amountUsed int64
 	var countUsed int64
 	for _, record := range records {
+		if record.RequestId != "" {
+			if _, ok := finalizedRequestIDs[record.RequestId]; ok {
+				continue
+			}
+		}
 		amountUsed += record.Amount
 		countUsed += record.Count
 		if record.RequestId != "" {
@@ -2066,6 +2075,49 @@ func summarizeUserSubscriptionUsageFromPreConsumeRecords(sub *UserSubscription, 
 		}
 	}
 	return amountUsed, countUsed, requestIDs, nil
+}
+
+func findFinalizedSubscriptionConsumeRequestIDs(sub *UserSubscription, startTimestamp int64, endTimestamp int64) (map[string]struct{}, error) {
+	result := map[string]struct{}{}
+	if sub == nil {
+		return result, nil
+	}
+	rows := make([]subscriptionConsumeSummaryRow, 0)
+	tx := buildSubscriptionConsumeLogsQuery(0, sub.Id, 0, sub.UserId, startTimestamp, endTimestamp)
+	if err := tx.Select("logs.request_id, logs.other").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.RequestId == "" {
+			continue
+		}
+		otherMap := map[string]interface{}{}
+		if err := common.UnmarshalJsonStr(row.Other, &otherMap); err != nil {
+			continue
+		}
+		if hasSubscriptionSettlementFields(otherMap) {
+			result[row.RequestId] = struct{}{}
+		}
+	}
+	return result, nil
+}
+
+func hasSubscriptionSettlementFields(otherMap map[string]interface{}) bool {
+	if otherMap == nil {
+		return false
+	}
+	settlementFields := []string{
+		"subscription_amount_consumed",
+		"subscription_request_count_consumed",
+		"subscription_consumed",
+		"subscription_post_delta",
+	}
+	for _, field := range settlementFields {
+		if _, ok := otherMap[field]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {

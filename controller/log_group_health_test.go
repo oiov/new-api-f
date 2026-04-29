@@ -77,11 +77,13 @@ func TestGetGroupLogSelfHealthStatsExpandsAutoGroup(t *testing.T) {
 	stats := decodeGroupHealthStats(t, response)
 	require.Len(t, stats, 1)
 	assert.Equal(t, "default", stats[0].Group)
-	assert.EqualValues(t, 1, stats[0].TotalCount)
+	assert.EqualValues(t, 0, stats[0].TotalCount)
+	assert.EqualValues(t, 0, stats[0].SuccessCount)
+	assert.EqualValues(t, 0, stats[0].Quota)
 	assert.NotNil(t, stats[0].ErrorReasons)
 }
 
-func TestGetGroupLogSelfHealthStatsReturnsErrorReasons(t *testing.T) {
+func TestGetGroupLogSelfHealthStatsHidesErrorReasons(t *testing.T) {
 	db := setupLogGroupHealthControllerTestDB(t)
 	now := time.Now().Unix()
 	require.NoError(t, db.Create(&model.User{Id: 1, Username: "alice", Group: "default", Quota: 100}).Error)
@@ -96,10 +98,28 @@ func TestGetGroupLogSelfHealthStatsReturnsErrorReasons(t *testing.T) {
 	require.True(t, response.Success, response.Message)
 	stats := decodeGroupHealthStats(t, response)
 	require.Len(t, stats, 1)
-	require.Len(t, stats[0].ErrorReasons, 1)
-	assert.Equal(t, "status_code=500,upstream failed", stats[0].ErrorReasons[0].Content)
-	assert.EqualValues(t, 1, stats[0].ErrorReasons[0].Count)
-	assert.Equal(t, "500", stats[0].ErrorReasons[0].StatusCode)
+	assert.Empty(t, stats[0].ErrorReasons)
+}
+
+func TestGetGroupLogSelfHealthStatsIgnoresRateLimitErrors(t *testing.T) {
+	db := setupLogGroupHealthControllerTestDB(t)
+	now := time.Now().Unix()
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "alice", Group: "default", Quota: 100}).Error)
+	require.NoError(t, db.Create(&[]model.Log{
+		{CreatedAt: now - 10, Type: model.LogTypeConsume, Group: "default", UserId: 1},
+		{CreatedAt: now - 9, Type: model.LogTypeError, Group: "default", UserId: 1, Content: "status_code=429, rate limit"},
+	}).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, fmt.Sprintf("/api/log/self/group_health?group=default&start_timestamp=%d&end_timestamp=%d", now-60, now), nil, 1)
+	GetGroupLogSelfHealthStats(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	stats := decodeGroupHealthStats(t, response)
+	require.Len(t, stats, 1)
+	assert.Equal(t, "default", stats[0].Group)
+	assert.Equal(t, 100.0, stats[0].SuccessRate)
+	assert.Empty(t, stats[0].ErrorReasons)
 }
 
 func TestGetGroupLogSelfHealthStatsRejectsUnavailableGroup(t *testing.T) {

@@ -43,6 +43,7 @@ func TestGetGroupLogHealthStatsAggregatesByGroupAndWindow(t *testing.T) {
 		now := time.Now().Unix()
 		logs := []*Log{
 			{CreatedAt: now - 10*60, Type: LogTypeConsume, Group: "vip", UserId: 1, ModelName: "gpt", TokenName: "main", Quota: 10, PromptTokens: 8, CompletionTokens: 2, UseTime: 3},
+			{CreatedAt: now - 15*60, Type: LogTypeError, Group: "vip", UserId: 2, ModelName: "gpt", TokenName: "main", Content: "status_code=429, rate limit", UseTime: 2},
 			{CreatedAt: now - 20*60, Type: LogTypeError, Group: "vip", UserId: 2, ModelName: "gpt", TokenName: "main", Content: "500", UseTime: 5},
 			{CreatedAt: now - 90*60, Type: LogTypeConsume, Group: "vip", UserId: 1, ModelName: "gpt", TokenName: "main", Quota: 20, PromptTokens: 10, CompletionTokens: 5, UseTime: 7},
 			{CreatedAt: now - 30*60, Type: LogTypeConsume, Group: "default", UserId: 3, ModelName: "gpt", TokenName: "main", Quota: 30, PromptTokens: 20, CompletionTokens: 10, UseTime: 4},
@@ -51,9 +52,10 @@ func TestGetGroupLogHealthStatsAggregatesByGroupAndWindow(t *testing.T) {
 		require.NoError(t, LOG_DB.Create(&logs).Error)
 
 		stats, err := GetGroupLogHealthStats(GroupLogHealthStatsQuery{
-			StartTimestamp: now - 24*60*60,
-			EndTimestamp:   now,
-			Group:          "vip",
+			StartTimestamp:        now - 24*60*60,
+			EndTimestamp:          now,
+			Group:                 "vip",
+			IgnoreRateLimitErrors: true,
 		})
 		require.NoError(t, err)
 		require.Len(t, stats, 1)
@@ -69,6 +71,23 @@ func TestGetGroupLogHealthStatsAggregatesByGroupAndWindow(t *testing.T) {
 		assert.InDelta(t, 5, stat.AvgUseTime, 0.01)
 		assert.EqualValues(t, now-90*60, stat.FirstSeenAt)
 		assert.EqualValues(t, now-10*60, stat.LastSeenAt)
+	})
+}
+
+func TestGetGroupLogHealthStatsCanIncludeRateLimitErrors(t *testing.T) {
+	withGroupLogHealthTestDB(t, func() {
+		now := time.Now().Unix()
+		logs := []*Log{
+			{CreatedAt: now - 10, Type: LogTypeConsume, Group: "vip"},
+			{CreatedAt: now - 9, Type: LogTypeError, Group: "vip", Content: "status_code=429, rate limit"},
+		}
+		require.NoError(t, LOG_DB.Create(&logs).Error)
+
+		stats, err := GetGroupLogHealthStats(GroupLogHealthStatsQuery{StartTimestamp: now - 60, EndTimestamp: now, Group: "vip"})
+		require.NoError(t, err)
+		require.Len(t, stats, 1)
+		assert.EqualValues(t, 2, stats[0].TotalCount)
+		assert.EqualValues(t, 1, stats[0].ErrorCount)
 	})
 }
 
