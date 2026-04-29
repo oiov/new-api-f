@@ -80,6 +80,10 @@ func SetRelayRouter(router *gin.Engine) {
 		})
 	}
 	{
+		imageTaskRouter := relayV1Router.Group("")
+		imageTaskRouter.GET("/images/tasks/:task_id", controller.GetImageTask)
+	}
+	{
 		//http router
 		httpRouter := relayV1Router.Group("")
 		httpRouter.Use(middleware.Distribute())

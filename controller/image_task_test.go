@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
@@ -82,6 +83,33 @@ func TestInitImageTaskUsesRelayModeAction(t *testing.T) {
 	task := initImageTask(info)
 
 	require.Equal(t, "edits", task.Action)
+}
+
+func TestImageTaskResponseDataIncludesStatusAndImageURLs(t *testing.T) {
+	task := &model.Task{
+		TaskID:     "task_img",
+		Platform:   constant.TaskPlatformImage,
+		Action:     "edits",
+		Status:     model.TaskStatusSuccess,
+		Progress:   "100%",
+		SubmitTime: 100,
+		StartTime:  110,
+		FinishTime: 120,
+	}
+	task.PrivateData.ResultURL = "https://example.com/a.png"
+	task.SetData(map[string]any{
+		"model":      "gpt-image-2",
+		"image_urls": []string{"https://example.com/a.png"},
+	})
+
+	data := imageTaskResponseData(task)
+
+	require.Equal(t, "task_img", data["task_id"])
+	require.Equal(t, "succeeded", data["status"])
+	require.Equal(t, "edits", data["action"])
+	require.Equal(t, "100%", data["progress"])
+	require.Equal(t, "https://example.com/a.png", data["result_url"])
+	require.Equal(t, []string{"https://example.com/a.png"}, data["image_urls"])
 }
 
 func TestCopyRelayInfoToAsyncContextPreservesModelAndRelayMode(t *testing.T) {

@@ -64,6 +64,48 @@ func submitAsyncImageTask(c *gin.Context, relayInfo *relaycommon.RelayInfo, body
 	})
 }
 
+func GetImageTask(c *gin.Context) {
+	taskID := strings.TrimSpace(c.Param("task_id"))
+	if taskID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": types.NewError(
+				fmt.Errorf("task_id is required"),
+				types.ErrorCodeInvalidRequest,
+				types.ErrOptionWithSkipRetry(),
+			).ToOpenAIError(),
+		})
+		return
+	}
+
+	task, exists, err := model.GetByTaskId(c.GetInt("id"), taskID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": types.NewError(
+				err,
+				types.ErrorCodeUpdateDataError,
+				types.ErrOptionWithSkipRetry(),
+			).ToOpenAIError(),
+		})
+		return
+	}
+	if !exists || task.Platform != constant.TaskPlatformImage {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": types.NewError(
+				fmt.Errorf("image task not found"),
+				types.ErrorCodeInvalidRequest,
+				types.ErrOptionWithSkipRetry(),
+			).ToOpenAIError(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.TaskResponse[any]{
+		Code:    dto.TaskSuccessCode,
+		Message: "success",
+		Data:    imageTaskResponseData(task),
+	})
+}
+
 func initImageTask(relayInfo *relaycommon.RelayInfo) *model.Task {
 	task := model.InitTask(constant.TaskPlatformImage, relayInfo)
 	task.Action = imageTaskAction(relayInfo)
@@ -98,6 +140,85 @@ func imageTaskAction(relayInfo *relaycommon.RelayInfo) string {
 		return "edits"
 	}
 	return "generations"
+}
+
+func imageTaskResponseData(task *model.Task) map[string]any {
+	if task == nil {
+		return map[string]any{}
+	}
+	data := map[string]any{
+		"task_id":     task.TaskID,
+		"status":      imageTaskPublicStatus(task.Status),
+		"status_raw":  string(task.Status),
+		"action":      task.Action,
+		"progress":    task.Progress,
+		"submit_time": task.SubmitTime,
+		"start_time":  task.StartTime,
+		"finish_time": task.FinishTime,
+	}
+	if task.FailReason != "" {
+		data["fail_reason"] = task.FailReason
+	}
+	if task.PrivateData.ResultURL != "" {
+		data["result_url"] = task.PrivateData.ResultURL
+	}
+	taskData := imageTaskData(task)
+	if len(taskData) > 0 {
+		data["data"] = taskData
+		if imageURLs := imageURLsFromTaskData(taskData); len(imageURLs) > 0 {
+			data["image_urls"] = imageURLs
+		}
+	}
+	return data
+}
+
+func imageTaskPublicStatus(status model.TaskStatus) string {
+	switch status {
+	case model.TaskStatusSubmitted:
+		return "submitted"
+	case model.TaskStatusQueued:
+		return "queued"
+	case model.TaskStatusInProgress:
+		return "in_progress"
+	case model.TaskStatusSuccess:
+		return "succeeded"
+	case model.TaskStatusFailure:
+		return "failed"
+	default:
+		return strings.ToLower(string(status))
+	}
+}
+
+func imageTaskData(task *model.Task) map[string]any {
+	if task == nil || len(task.Data) == 0 {
+		return nil
+	}
+	data := map[string]any{}
+	if err := common.Unmarshal(task.Data, &data); err != nil {
+		return nil
+	}
+	return data
+}
+
+func imageURLsFromTaskData(data map[string]any) []string {
+	raw, ok := data["image_urls"]
+	if !ok {
+		return nil
+	}
+	switch urls := raw.(type) {
+	case []string:
+		return urls
+	case []any:
+		result := make([]string, 0, len(urls))
+		for _, item := range urls {
+			if url, ok := item.(string); ok && url != "" {
+				result = append(result, url)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
 }
 
 func runAsyncImageTask(task *model.Task, relayInfo *relaycommon.RelayInfo, body []byte) {
