@@ -95,6 +95,7 @@ export const useLogsData = () => {
   const [showStat, setShowStat] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingStat, setLoadingStat] = useState(false);
+  const [loadingGroupHealth, setLoadingGroupHealth] = useState(false);
   const [activePage, setActivePage] = useState(1);
   const [logCount, setLogCount] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
@@ -117,6 +118,7 @@ export const useLogsData = () => {
     quota: 0,
     token: 0,
   });
+  const [groupHealthStats, setGroupHealthStats] = useState([]);
   const [exporting, setExporting] = useState(false);
 
   // Form state
@@ -504,6 +506,38 @@ export const useLogsData = () => {
     }
     setShowStat(true);
     setLoadingStat(false);
+  };
+
+  const getGroupHealthStats = async () => {
+    const params = buildLogQueryParams({ customLogType: 0 });
+    params.delete('type');
+    params.delete('request_id');
+    params.delete('error_message');
+    params.delete('subscription_id');
+    params.delete('subscription_plan_id');
+
+    const endpoint = isAdminUser
+      ? '/api/log/group_health'
+      : '/api/log/self/group_health';
+    const res = await API.get(`${endpoint}?${params.toString()}`);
+    const { success, message, data } = res.data;
+    if (success) {
+      setGroupHealthStats(Array.isArray(data) ? data : []);
+    } else {
+      showError(message);
+    }
+  };
+
+  const refreshGroupHealthStats = async () => {
+    if (loadingGroupHealth) {
+      return;
+    }
+    setLoadingGroupHealth(true);
+    try {
+      await getGroupHealthStats();
+    } finally {
+      setLoadingGroupHealth(false);
+    }
   };
 
   // User info function
@@ -973,6 +1007,7 @@ export const useLogsData = () => {
   const refresh = async () => {
     setActivePage(1);
     handleEyeClick();
+    refreshGroupHealthStats();
     await loadLogs(1, pageSize);
   };
 
@@ -990,6 +1025,7 @@ export const useLogsData = () => {
     setTimeout(() => {
       setActivePage(1);
       handleEyeClick();
+      refreshGroupHealthStats();
       loadLogs(1, pageSize).catch((reason) => {
         showError(reason);
       });
@@ -1040,6 +1076,7 @@ export const useLogsData = () => {
   useEffect(() => {
     if (formApi) {
       handleEyeClick();
+      refreshGroupHealthStats();
     }
   }, [formApi]);
 
@@ -1057,11 +1094,13 @@ export const useLogsData = () => {
     showStat,
     loading,
     loadingStat,
+    loadingGroupHealth,
     activePage,
     logCount,
     pageSize,
     logType,
     stat,
+    groupHealthStats,
     exporting,
     isAdminUser,
     logExportEnabled,
@@ -1113,6 +1152,7 @@ export const useLogsData = () => {
     jumpToUserDetail,
     copyText,
     handleEyeClick,
+    refreshGroupHealthStats,
     setLogsFormat,
     hasExpandableRows,
     setLogType,

@@ -1007,6 +1007,128 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
+type GroupLogHealthStatsQuery struct {
+	StartTimestamp int64
+	EndTimestamp   int64
+	UserId         int
+	Username       string
+	TokenName      string
+	ModelName      string
+	Channel        int
+	Group          string
+	Groups         []string
+	StatusCode     string
+}
+
+type GroupLogHealthStat struct {
+	Group        string  `json:"group"`
+	TotalCount   int64   `json:"total_count"`
+	SuccessCount int64   `json:"success_count"`
+	ErrorCount   int64   `json:"error_count"`
+	Quota        int64   `json:"quota"`
+	Tokens       int64   `json:"tokens"`
+	AvgUseTime   float64 `json:"avg_use_time"`
+	SuccessRate  float64 `json:"success_rate"`
+	LastSeenAt   int64   `json:"last_seen_at"`
+}
+
+type groupLogHealthStatRow struct {
+	Group        string  `gorm:"column:group_name"`
+	TotalCount   int64   `gorm:"column:total_count"`
+	SuccessCount int64   `gorm:"column:success_count"`
+	ErrorCount   int64   `gorm:"column:error_count"`
+	Quota        int64   `gorm:"column:quota"`
+	Tokens       int64   `gorm:"column:tokens"`
+	AvgUseTime   float64 `gorm:"column:avg_use_time"`
+	LastSeenAt   int64   `gorm:"column:last_seen_at"`
+}
+
+func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthStat, error) {
+	groupCol := logGroupCol
+	if groupCol == "" {
+		if common.UsingPostgreSQL {
+			groupCol = `"group"`
+		} else {
+			groupCol = "`group`"
+		}
+	}
+	tx := LOG_DB.Table("logs").Where("type IN ?", []int{LogTypeConsume, LogTypeError})
+	if query.StartTimestamp > 0 {
+		tx = tx.Where("created_at >= ?", query.StartTimestamp)
+	}
+	if query.EndTimestamp > 0 {
+		tx = tx.Where("created_at <= ?", query.EndTimestamp)
+	}
+	if query.UserId > 0 {
+		tx = tx.Where("user_id = ?", query.UserId)
+	}
+	if query.Username != "" {
+		tx = tx.Where("username = ?", query.Username)
+	}
+	if query.TokenName != "" {
+		tx = tx.Where("token_name = ?", query.TokenName)
+	}
+	if query.ModelName != "" {
+		modelNamePattern, err := sanitizeLikePattern(query.ModelName)
+		if err != nil {
+			return nil, err
+		}
+		tx = tx.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
+	}
+	if query.Channel != 0 {
+		tx = tx.Where("channel_id = ?", query.Channel)
+	}
+	if query.Group != "" {
+		tx = tx.Where(groupCol+" = ?", query.Group)
+	} else if len(query.Groups) > 0 {
+		tx = tx.Where(groupCol+" IN ?", query.Groups)
+	}
+	if query.StatusCode != "" {
+		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns(query.StatusCode)
+		tx = tx.Where("(content = ? OR content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
+	}
+
+	groupColumnName := strings.Trim(groupCol, "`\"")
+	selectExpr := groupCol + " as group_name, " +
+		"count(*) as total_count, " +
+		"sum(case when type = ? then 1 else 0 end) as success_count, " +
+		"sum(case when type = ? then 1 else 0 end) as error_count, " +
+		"sum(case when type = ? then quota else 0 end) as quota, " +
+		"sum(case when type = ? then prompt_tokens + completion_tokens else 0 end) as tokens, " +
+		"avg(use_time) as avg_use_time, " +
+		"max(created_at) as last_seen_at"
+
+	rows := make([]groupLogHealthStatRow, 0)
+	if err := tx.Select(selectExpr, LogTypeConsume, LogTypeError, LogTypeConsume, LogTypeConsume).
+		Group(groupColumnName).
+		Order("total_count desc").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	stats := make([]GroupLogHealthStat, 0, len(rows))
+	for _, row := range rows {
+		stat := GroupLogHealthStat{
+			Group:        strings.TrimSpace(row.Group),
+			TotalCount:   row.TotalCount,
+			SuccessCount: row.SuccessCount,
+			ErrorCount:   row.ErrorCount,
+			Quota:        row.Quota,
+			Tokens:       row.Tokens,
+			AvgUseTime:   row.AvgUseTime,
+			LastSeenAt:   row.LastSeenAt,
+		}
+		if stat.Group == "" {
+			stat.Group = "default"
+		}
+		if stat.TotalCount > 0 {
+			stat.SuccessRate = float64(stat.SuccessCount) * 100 / float64(stat.TotalCount)
+		}
+		stats = append(stats, stat)
+	}
+	return stats, nil
+}
+
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 

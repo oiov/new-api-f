@@ -22,7 +22,7 @@ import { Button, Form } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { ChevronDown, ChevronUp, Filter } from 'lucide-react';
 
-import { DATE_RANGE_PRESETS } from '../../../constants/console.constants';
+import { USAGE_LOG_DATE_RANGE_PRESETS } from '../../../constants/console.constants';
 
 const LogsFilters = ({
   formInitValues,
@@ -163,7 +163,7 @@ const LogsFilters = ({
                   showClear
                   pure
                   size='small'
-                  presets={DATE_RANGE_PRESETS.map((preset) => ({
+                  presets={USAGE_LOG_DATE_RANGE_PRESETS.map((preset) => ({
                     text: t(preset.text),
                     start: preset.start(),
                     end: preset.end(),
