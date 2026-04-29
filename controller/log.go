@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -268,6 +271,73 @@ func GetLogsSelfStat(c *gin.Context) {
 		},
 	})
 	return
+}
+
+func buildGroupLogHealthStatsQuery(query logQueryParams) model.GroupLogHealthStatsQuery {
+	return model.GroupLogHealthStatsQuery{
+		StartTimestamp: query.StartTimestamp,
+		EndTimestamp:   query.EndTimestamp,
+		UserId:         query.UserId,
+		Username:       query.Username,
+		TokenName:      query.TokenName,
+		ModelName:      query.ModelName,
+		Channel:        query.Channel,
+		Group:          query.Group,
+		StatusCode:     query.StatusCode,
+	}
+}
+
+func GetGroupLogHealthStats(c *gin.Context) {
+	query := buildGroupLogHealthStatsQuery(getLogQueryParams(c))
+	stats, err := model.GetGroupLogHealthStats(query)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, stats)
+}
+
+func GetGroupLogSelfHealthStats(c *gin.Context) {
+	query := buildGroupLogHealthStatsQuery(getLogQueryParams(c))
+	userId := c.GetInt("id")
+	user, err := model.GetUserById(userId, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	hasQuotaBalance := true
+	if setting.EnableGroupBillingFilter {
+		hasQuotaBalance = user.Quota > 0
+	}
+	usableGroups := service.GetUserUsableGroupsForUser(userId, user.Group, hasQuotaBalance)
+	if query.Group == "auto" {
+		query.Group = ""
+		query.Groups = service.GetAutoGroupsFromUsableGroups(usableGroups)
+	} else if query.Group != "" {
+		if _, ok := usableGroups[query.Group]; !ok {
+			common.ApiErrorMsg(c, "无权查看该分组健康状态")
+			return
+		}
+	} else {
+		groups := make([]string, 0, len(usableGroups))
+		for groupName := range usableGroups {
+			groupName = strings.TrimSpace(groupName)
+			if groupName != "" && groupName != "auto" {
+				groups = append(groups, groupName)
+			}
+		}
+		query.Groups = groups
+	}
+	query.UserId = 0
+	query.Username = ""
+	query.Channel = 0
+
+	stats, err := model.GetGroupLogHealthStats(query)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, stats)
 }
 
 func DeleteHistoryLogs(c *gin.Context) {
