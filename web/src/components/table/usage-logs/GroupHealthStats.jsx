@@ -28,13 +28,16 @@ import {
   Tag,
   Tabs,
   TabPane,
+  Typography,
 } from '@douyinfe/semi-ui';
-import { IconRefresh } from '@douyinfe/semi-icons';
+import { IconLink, IconRefresh } from '@douyinfe/semi-icons';
 import { VChart } from '@visactor/react-vchart';
 import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import { renderQuota, timestamp2string } from '../../../helpers';
 
 const CHART_OPTION = { mode: 'desktop-browser' };
+const ERROR_LOG_FAQ_URL = 'https://doc.fishxcode.com/en/faq#how-do-i-read-error-logs';
+const STATUS_CODE_PREFIX_PATTERN = /^status_code=\d+,\s*/i;
 
 const getHealthColor = (successRate) => {
   if (successRate >= 99) return 'green';
@@ -42,6 +45,16 @@ const getHealthColor = (successRate) => {
   if (successRate >= 90) return 'orange';
   return 'red';
 };
+
+const normalizeErrorReasons = (errorReasons) => {
+  if (!Array.isArray(errorReasons)) return [];
+  return errorReasons
+    .slice(0, 3)
+    .filter((reason) => reason?.content || reason?.status_code);
+};
+
+const cleanErrorMessage = (content) =>
+  String(content || '').replace(STATUS_CODE_PREFIX_PATTERN, '').trim();
 
 const GroupHealthStats = ({
   groupHealthStats,
@@ -127,6 +140,29 @@ const GroupHealthStats = ({
     });
   };
 
+  const selectErrorReason = (event, groupName, reason) => {
+    event.stopPropagation();
+
+    const errorMessage = cleanErrorMessage(reason.content);
+    const patch = {
+      group: groupName,
+      logType: '5',
+    };
+
+    if (
+      reason.status_code !== undefined &&
+      reason.status_code !== null &&
+      reason.status_code !== ''
+    ) {
+      patch.status_code = String(reason.status_code);
+    }
+    if (errorMessage) {
+      patch.error_message = errorMessage;
+    }
+
+    applyLogFilter?.(patch);
+  };
+
   return (
     <Card
       className='!rounded-2xl !border-0 shadow-sm mb-3'
@@ -149,6 +185,17 @@ const GroupHealthStats = ({
           )}
         </div>
         <Space wrap>
+          <Typography.Text
+            link={{
+              href: ERROR_LOG_FAQ_URL,
+              target: '_blank',
+              rel: 'noopener noreferrer',
+            }}
+            icon={<IconLink />}
+            underline
+          >
+            {t('错误日志说明')}
+          </Typography.Text>
           <Tabs type='button' size='small' activeKey={scopeMode} onChange={setScopeMode}>
             <TabPane tab={t('全局')} itemKey='global' />
             <TabPane tab={t('局部')} itemKey='local' />
@@ -181,11 +228,19 @@ const GroupHealthStats = ({
               const successRate = Number(item.success_rate || 0);
               const healthColor = getHealthColor(successRate);
               const groupName = item.group || 'default';
+              const errorReasons = normalizeErrorReasons(item.error_reasons);
               return (
-                <button
-                  type='button'
+                <div
+                  role='button'
+                  tabIndex={0}
                   key={groupName}
                   onClick={() => selectGroup(groupName)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      selectGroup(groupName);
+                    }
+                  }}
                   className='w-full cursor-pointer rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-bg-1)] p-3 text-left transition-colors hover:border-[var(--semi-color-primary)]'
                 >
                   <div className='flex items-center justify-between gap-2 mb-3'>
@@ -223,10 +278,40 @@ const GroupHealthStats = ({
                     {t('最后请求')}:{' '}
                     {item.last_seen_at ? timestamp2string(item.last_seen_at) : '-'}
                   </div>
+                  {errorReasons.length > 0 && (
+                    <div className='mt-3 rounded-lg bg-[var(--semi-color-fill-0)] p-2'>
+                      <div className='mb-1 text-xs font-medium text-[var(--semi-color-text-0)]'>
+                        {t('主要失败原因')}
+                      </div>
+                      <div className='space-y-1'>
+                        {errorReasons.map((reason, index) => {
+                          const statusCode = reason.status_code || '-';
+                          const errorMessage = cleanErrorMessage(reason.content) || '-';
+                          const reasonKey = `${groupName}-${statusCode}-${reason.content || index}`;
+
+                          return (
+                            <button
+                              type='button'
+                              key={reasonKey}
+                              title={`${statusCode} · ${errorMessage} · ${reason.count || 0}`}
+                              onClick={(event) => selectErrorReason(event, groupName, reason)}
+                              className='flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-xs text-[var(--semi-color-text-1)] transition-colors hover:bg-[var(--semi-color-fill-1)] hover:text-[var(--semi-color-primary)]'
+                            >
+                              <span className='shrink-0 font-medium'>{statusCode}</span>
+                              <span className='shrink-0 text-[var(--semi-color-text-2)]'>·</span>
+                              <span className='min-w-0 flex-1 truncate'>{errorMessage}</span>
+                              <span className='shrink-0 text-[var(--semi-color-text-2)]'>·</span>
+                              <span className='shrink-0'>{reason.count || 0}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div className='mt-2 text-xs text-[var(--semi-color-primary)]'>
                     {t('点击查看该分组日志详情')}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>

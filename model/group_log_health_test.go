@@ -95,3 +95,70 @@ func TestGetGroupLogHealthStatsFiltersByUserAndModel(t *testing.T) {
 		assert.EqualValues(t, 0, stats[0].ErrorCount)
 	})
 }
+
+func TestGetGroupLogHealthStatsIncludesTopErrorReasons(t *testing.T) {
+	withGroupLogHealthTestDB(t, func() {
+		now := time.Now().Unix()
+		logs := []*Log{
+			{CreatedAt: now - 10, Type: LogTypeError, Group: "vip", UserId: 1, Username: "alice", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "status_code=429, rate limit", UseTime: 1},
+			{CreatedAt: now - 9, Type: LogTypeError, Group: "vip", UserId: 1, Username: "alice", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "status_code=429, rate limit", UseTime: 1},
+			{CreatedAt: now - 8, Type: LogTypeError, Group: "vip", UserId: 1, Username: "alice", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "quota exceeded", UseTime: 1},
+			{CreatedAt: now - 7, Type: LogTypeError, Group: "vip", UserId: 1, Username: "alice", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "bad request", UseTime: 1},
+			{CreatedAt: now - 6, Type: LogTypeError, Group: "vip", UserId: 1, Username: "alice", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "auth failed", UseTime: 1},
+			{CreatedAt: now - 5, Type: LogTypeError, Group: "vip", UserId: 1, Username: "alice", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "status_code=429, rate limit again", UseTime: 1},
+			{CreatedAt: now - 4, Type: LogTypeConsume, Group: "vip", UserId: 1, Username: "alice", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "status_code=429, rate limit", UseTime: 1},
+			{CreatedAt: now - 3, Type: LogTypeError, Group: "vip", UserId: 2, Username: "bob", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "status_code=429, rate limit", UseTime: 1},
+			{CreatedAt: now - 2, Type: LogTypeError, Group: "free", UserId: 1, Username: "alice", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "other group", UseTime: 1},
+			{CreatedAt: now - 70, Type: LogTypeError, Group: "vip", UserId: 1, Username: "alice", ModelName: "gpt-4o", TokenName: "main", ChannelId: 2, Content: "outside window", UseTime: 1},
+		}
+		require.NoError(t, LOG_DB.Create(&logs).Error)
+
+		stats, err := GetGroupLogHealthStats(GroupLogHealthStatsQuery{
+			StartTimestamp: now - 60,
+			EndTimestamp:   now,
+			UserId:         1,
+			Username:       "alice",
+			TokenName:      "main",
+			ModelName:      "gpt-4o",
+			Channel:        2,
+			Group:          "vip",
+			StatusCode:     "429",
+		})
+		require.NoError(t, err)
+		require.Len(t, stats, 1)
+		require.Len(t, stats[0].ErrorReasons, 2)
+		assert.Equal(t, GroupLogHealthErrorReason{Content: "status_code=429, rate limit", Count: 2, StatusCode: "429"}, stats[0].ErrorReasons[0])
+		assert.Equal(t, GroupLogHealthErrorReason{Content: "status_code=429, rate limit again", Count: 1, StatusCode: "429"}, stats[0].ErrorReasons[1])
+	})
+}
+
+func TestGetGroupLogHealthStatsLimitsErrorReasonsPerGroup(t *testing.T) {
+	withGroupLogHealthTestDB(t, func() {
+		now := time.Now().Unix()
+		logs := []*Log{
+			{CreatedAt: now - 6, Type: LogTypeError, Group: "vip", Content: "delta"},
+			{CreatedAt: now - 5, Type: LogTypeError, Group: "vip", Content: "alpha"},
+			{CreatedAt: now - 4, Type: LogTypeError, Group: "vip", Content: "charlie"},
+			{CreatedAt: now - 3, Type: LogTypeError, Group: "vip", Content: "bravo"},
+			{CreatedAt: now - 2, Type: LogTypeError, Group: "vip", Content: "alpha"},
+			{CreatedAt: now - 1, Type: LogTypeError, Group: "", Content: "empty group"},
+		}
+		require.NoError(t, LOG_DB.Create(&logs).Error)
+
+		stats, err := GetGroupLogHealthStats(GroupLogHealthStatsQuery{StartTimestamp: now - 60, EndTimestamp: now})
+		require.NoError(t, err)
+
+		byGroup := make(map[string]GroupLogHealthStat)
+		for _, stat := range stats {
+			byGroup[stat.Group] = stat
+		}
+
+		require.Len(t, byGroup["vip"].ErrorReasons, 3)
+		assert.Equal(t, "alpha", byGroup["vip"].ErrorReasons[0].Content)
+		assert.EqualValues(t, 2, byGroup["vip"].ErrorReasons[0].Count)
+		assert.Equal(t, "bravo", byGroup["vip"].ErrorReasons[1].Content)
+		assert.Equal(t, "charlie", byGroup["vip"].ErrorReasons[2].Content)
+		require.Len(t, byGroup["default"].ErrorReasons, 1)
+		assert.Equal(t, "empty group", byGroup["default"].ErrorReasons[0].Content)
+	})
+}

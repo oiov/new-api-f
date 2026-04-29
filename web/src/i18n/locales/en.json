@@ -6274,6 +6274,8 @@
     "全局": "Global",
     "局部": "Local",
     "卡片": "Cards",
-    "图表": "Chart"
+    "图表": "Chart",
+    "错误日志说明": "Error log guide",
+    "主要失败原因": "Top failure reasons"
   }
 }

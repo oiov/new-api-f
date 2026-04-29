@@ -18,6 +18,7 @@ import (
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Log struct {
@@ -1021,16 +1022,23 @@ type GroupLogHealthStatsQuery struct {
 }
 
 type GroupLogHealthStat struct {
-	Group        string  `json:"group"`
-	TotalCount   int64   `json:"total_count"`
-	SuccessCount int64   `json:"success_count"`
-	ErrorCount   int64   `json:"error_count"`
-	Quota        int64   `json:"quota"`
-	Tokens       int64   `json:"tokens"`
-	AvgUseTime   float64 `json:"avg_use_time"`
-	SuccessRate  float64 `json:"success_rate"`
-	FirstSeenAt  int64   `json:"first_seen_at"`
-	LastSeenAt   int64   `json:"last_seen_at"`
+	Group        string                      `json:"group"`
+	TotalCount   int64                       `json:"total_count"`
+	SuccessCount int64                       `json:"success_count"`
+	ErrorCount   int64                       `json:"error_count"`
+	Quota        int64                       `json:"quota"`
+	Tokens       int64                       `json:"tokens"`
+	AvgUseTime   float64                     `json:"avg_use_time"`
+	SuccessRate  float64                     `json:"success_rate"`
+	FirstSeenAt  int64                       `json:"first_seen_at"`
+	LastSeenAt   int64                       `json:"last_seen_at"`
+	ErrorReasons []GroupLogHealthErrorReason `json:"error_reasons"`
+}
+
+type GroupLogHealthErrorReason struct {
+	Content    string `json:"content"`
+	Count      int64  `json:"count"`
+	StatusCode string `json:"status_code"`
 }
 
 type groupLogHealthStatRow struct {
@@ -1045,16 +1053,36 @@ type groupLogHealthStatRow struct {
 	LastSeenAt   int64   `gorm:"column:last_seen_at"`
 }
 
-func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthStat, error) {
-	groupCol := logGroupCol
-	if groupCol == "" {
-		if common.UsingPostgreSQL {
-			groupCol = `"group"`
-		} else {
-			groupCol = "`group`"
-		}
+type groupLogHealthErrorReasonRow struct {
+	Group   string `gorm:"column:group_name"`
+	Content string `gorm:"column:content"`
+	Count   int64  `gorm:"column:reason_count"`
+}
+
+const groupLogHealthErrorReasonLimit = 3
+
+func normalizeLogGroup(group string) string {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		return "default"
 	}
-	tx := LOG_DB.Table("logs").Where("type IN ?", []int{LogTypeConsume, LogTypeError})
+	return group
+}
+
+func extractLogStatusCode(content string) string {
+	const prefix = "status_code="
+	if !strings.HasPrefix(content, prefix) {
+		return ""
+	}
+	remainder := strings.TrimPrefix(content, prefix)
+	if idx := strings.Index(remainder, ","); idx >= 0 {
+		return strings.TrimSpace(remainder[:idx])
+	}
+	return strings.TrimSpace(remainder)
+}
+
+func buildGroupLogHealthQuery(query GroupLogHealthStatsQuery, groupCol string, logTypes []int) (*gorm.DB, error) {
+	tx := LOG_DB.Table("logs").Where("type IN ?", logTypes)
 	if query.StartTimestamp > 0 {
 		tx = tx.Where("created_at >= ?", query.StartTimestamp)
 	}
@@ -1089,8 +1117,53 @@ func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthSta
 		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns(query.StatusCode)
 		tx = tx.Where("(content = ? OR content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
 	}
+	return tx, nil
+}
 
-	groupColumnName := strings.Trim(groupCol, "`\"")
+func getGroupLogHealthErrorReasons(query GroupLogHealthStatsQuery, groupCol string) (map[string][]GroupLogHealthErrorReason, error) {
+	tx, err := buildGroupLogHealthQuery(query, groupCol, []int{LogTypeError})
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]groupLogHealthErrorReasonRow, 0)
+	if err = tx.Select(groupCol + " as group_name, content, count(*) as reason_count").
+		Clauses(clause.GroupBy{Columns: []clause.Column{{Name: groupCol, Raw: true}, {Name: "content"}}}).
+		Order("reason_count desc").
+		Order("content asc").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	reasonsByGroup := make(map[string][]GroupLogHealthErrorReason)
+	for _, row := range rows {
+		group := normalizeLogGroup(row.Group)
+		if len(reasonsByGroup[group]) >= groupLogHealthErrorReasonLimit {
+			continue
+		}
+		reasonsByGroup[group] = append(reasonsByGroup[group], GroupLogHealthErrorReason{
+			Content:    row.Content,
+			Count:      row.Count,
+			StatusCode: extractLogStatusCode(row.Content),
+		})
+	}
+	return reasonsByGroup, nil
+}
+
+func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthStat, error) {
+	groupCol := logGroupCol
+	if groupCol == "" {
+		if common.UsingPostgreSQL {
+			groupCol = `"group"`
+		} else {
+			groupCol = "`group`"
+		}
+	}
+	tx, err := buildGroupLogHealthQuery(query, groupCol, []int{LogTypeConsume, LogTypeError})
+	if err != nil {
+		return nil, err
+	}
+
 	selectExpr := groupCol + " as group_name, " +
 		"count(*) as total_count, " +
 		"sum(case when type = ? then 1 else 0 end) as success_count, " +
@@ -1102,17 +1175,21 @@ func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthSta
 		"max(created_at) as last_seen_at"
 
 	rows := make([]groupLogHealthStatRow, 0)
-	if err := tx.Select(selectExpr, LogTypeConsume, LogTypeError, LogTypeConsume, LogTypeConsume).
-		Group(groupColumnName).
+	if err = tx.Select(selectExpr, LogTypeConsume, LogTypeError, LogTypeConsume, LogTypeConsume).
+		Clauses(clause.GroupBy{Columns: []clause.Column{{Name: groupCol, Raw: true}}}).
 		Order("total_count desc").
 		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	reasonsByGroup, err := getGroupLogHealthErrorReasons(query, groupCol)
+	if err != nil {
 		return nil, err
 	}
 
 	stats := make([]GroupLogHealthStat, 0, len(rows))
 	for _, row := range rows {
 		stat := GroupLogHealthStat{
-			Group:        strings.TrimSpace(row.Group),
+			Group:        normalizeLogGroup(row.Group),
 			TotalCount:   row.TotalCount,
 			SuccessCount: row.SuccessCount,
 			ErrorCount:   row.ErrorCount,
@@ -1121,9 +1198,10 @@ func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthSta
 			AvgUseTime:   row.AvgUseTime,
 			FirstSeenAt:  row.FirstSeenAt,
 			LastSeenAt:   row.LastSeenAt,
+			ErrorReasons: make([]GroupLogHealthErrorReason, 0),
 		}
-		if stat.Group == "" {
-			stat.Group = "default"
+		if reasons, ok := reasonsByGroup[stat.Group]; ok {
+			stat.ErrorReasons = reasons
 		}
 		if stat.TotalCount > 0 {
 			stat.SuccessRate = float64(stat.SuccessCount) * 100 / float64(stat.TotalCount)

@@ -6190,6 +6190,8 @@
     "全局": "Global",
     "局部": "Local",
     "卡片": "Cartes",
-    "图表": "Graphique"
+    "图表": "Graphique",
+    "错误日志说明": "Guide des journaux d’erreur",
+    "主要失败原因": "Principales causes d’échec"
   }
 }
