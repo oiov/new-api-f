@@ -115,6 +115,54 @@ func TestGetGroupLogHealthStatsFiltersByUserAndModel(t *testing.T) {
 	})
 }
 
+func TestGetGroupLogHealthStatsAppliesDetailFilters(t *testing.T) {
+	withGroupLogHealthTestDB(t, func() {
+		now := time.Now().Unix()
+		logs := []*Log{
+			{CreatedAt: now - 10, Type: LogTypeConsume, Group: "vip", RequestId: "req-target", Other: `{"subscription_id":10,"subscription_plan_id":20}`},
+			{CreatedAt: now - 9, Type: LogTypeConsume, Group: "vip", RequestId: "req-other", Other: `{"subscription_id":11,"subscription_plan_id":20}`},
+			{CreatedAt: now - 8, Type: LogTypeError, Group: "vip", RequestId: "req-error", Content: "status_code=500,target failure", Other: `{"subscription_id":10,"subscription_plan_id":21}`},
+			{CreatedAt: now - 7, Type: LogTypeError, Group: "vip", RequestId: "req-noise", Content: "status_code=500,noise", Other: `{"subscription_id":10,"subscription_plan_id":20}`},
+		}
+		require.NoError(t, LOG_DB.Create(&logs).Error)
+
+		stats, err := GetGroupLogHealthStats(GroupLogHealthStatsQuery{
+			StartTimestamp: now - 60,
+			EndTimestamp:   now,
+			Group:          "vip",
+			RequestId:      "req-target",
+		})
+		require.NoError(t, err)
+		require.Len(t, stats, 1)
+		assert.EqualValues(t, 1, stats[0].TotalCount)
+		assert.EqualValues(t, 1, stats[0].SuccessCount)
+
+		stats, err = GetGroupLogHealthStats(GroupLogHealthStatsQuery{
+			StartTimestamp: now - 60,
+			EndTimestamp:   now,
+			Group:          "vip",
+			ErrorMessage:   "target failure",
+		})
+		require.NoError(t, err)
+		require.Len(t, stats, 1)
+		assert.EqualValues(t, 1, stats[0].TotalCount)
+		assert.EqualValues(t, 1, stats[0].ErrorCount)
+		require.Len(t, stats[0].ErrorReasons, 1)
+		assert.Equal(t, "status_code=500,target failure", stats[0].ErrorReasons[0].Content)
+
+		stats, err = GetGroupLogHealthStats(GroupLogHealthStatsQuery{
+			StartTimestamp:     now - 60,
+			EndTimestamp:       now,
+			Group:              "vip",
+			SubscriptionId:     10,
+			SubscriptionPlanId: 20,
+		})
+		require.NoError(t, err)
+		require.Len(t, stats, 1)
+		assert.EqualValues(t, 2, stats[0].TotalCount)
+	})
+}
+
 func TestGetGroupLogHealthStatsIncludesTopErrorReasons(t *testing.T) {
 	withGroupLogHealthTestDB(t, func() {
 		now := time.Now().Unix()

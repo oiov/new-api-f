@@ -199,7 +199,9 @@ export const useLogsData = () => {
   };
 
   // Column visibility state
-  const [visibleColumns, setVisibleColumns] = useState(getInitialVisibleColumns);
+  const [visibleColumns, setVisibleColumns] = useState(
+    getInitialVisibleColumns,
+  );
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [billingDisplayMode, setBillingDisplayMode] = useState(
     getInitialBillingDisplayMode,
@@ -302,6 +304,7 @@ export const useLogsData = () => {
   };
 
   const buildLogQueryParams = (options = {}) => {
+    const sourceValues = options.formValues || getFormValues();
     const {
       user_id,
       username,
@@ -317,7 +320,7 @@ export const useLogsData = () => {
       subscription_id,
       subscription_plan_id,
       logType: formLogType,
-    } = getFormValues();
+    } = sourceValues;
 
     const currentLogType =
       options.customLogType !== undefined && options.customLogType !== null
@@ -368,7 +371,9 @@ export const useLogsData = () => {
     const runExport = async () => {
       setExporting(true);
       try {
-        const endpoint = isAdminUser ? '/api/log/export' : '/api/log/self/export';
+        const endpoint = isAdminUser
+          ? '/api/log/export'
+          : '/api/log/self/export';
         const params = buildLogQueryParams();
         const res = await API.get(`${endpoint}?${params.toString()}`, {
           responseType: 'blob',
@@ -508,13 +513,12 @@ export const useLogsData = () => {
     setLoadingStat(false);
   };
 
-  const getGroupHealthStats = async () => {
-    const params = buildLogQueryParams({ customLogType: 0 });
+  const getGroupHealthStats = async (options = {}) => {
+    const params = buildLogQueryParams({
+      customLogType: 0,
+      formValues: options.formValues,
+    });
     params.delete('type');
-    params.delete('request_id');
-    params.delete('error_message');
-    params.delete('subscription_id');
-    params.delete('subscription_plan_id');
 
     const endpoint = isAdminUser
       ? '/api/log/group_health'
@@ -528,13 +532,13 @@ export const useLogsData = () => {
     }
   };
 
-  const refreshGroupHealthStats = async () => {
+  const refreshGroupHealthStats = async (options = {}) => {
     if (loadingGroupHealth) {
       return;
     }
     setLoadingGroupHealth(true);
     try {
-      await getGroupHealthStats();
+      await getGroupHealthStats(options);
     } finally {
       setLoadingGroupHealth(false);
     }
@@ -599,7 +603,10 @@ export const useLogsData = () => {
       let other = getLogOther(logs[i].other);
       let expandDataLocal = [];
 
-      if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)) {
+      if (
+        isAdminUser &&
+        (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)
+      ) {
         expandDataLocal.push({
           key: t('渠道信息'),
           value: `${logs[i].channel} - ${logs[i].channel_name || '[未知]'}`,
@@ -701,10 +708,7 @@ export const useLogsData = () => {
                 size='small'
                 onClick={(event) => {
                   event.stopPropagation();
-                  openSensitivePreviewModal(
-                    t('系统提示词'),
-                    other.system_text,
-                  );
+                  openSensitivePreviewModal(t('系统提示词'), other.system_text);
                 }}
               >
                 {t('查看详情')}
@@ -742,7 +746,9 @@ export const useLogsData = () => {
       }
       if (logs[i].type === 2) {
         const requestModelName = String(logs[i]?.model_name || '').trim();
-        const upstreamModelName = String(other?.upstream_model_name || '').trim();
+        const upstreamModelName = String(
+          other?.upstream_model_name || '',
+        ).trim();
         let modelMapped =
           other?.is_model_mapped &&
           upstreamModelName !== '' &&
@@ -856,7 +862,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('失败原因'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {other.reason}
               </div>
             ),
@@ -1005,9 +1018,10 @@ export const useLogsData = () => {
 
   // Refresh function
   const refresh = async () => {
+    const currentFormValues = getFormValues();
     setActivePage(1);
     handleEyeClick();
-    refreshGroupHealthStats();
+    refreshGroupHealthStats({ formValues: currentFormValues });
     await loadLogs(1, pageSize);
   };
 
@@ -1017,15 +1031,16 @@ export const useLogsData = () => {
     }
 
     const currentValues = formApi.getValues() || {};
-    formApi.setValues({
+    const nextValues = {
       ...currentValues,
       ...patch,
-    });
+    };
+    formApi.setValues(nextValues);
 
     setTimeout(() => {
       setActivePage(1);
       handleEyeClick();
-      refreshGroupHealthStats();
+      refreshGroupHealthStats({ formValues: getFormValues() });
       loadLogs(1, pageSize).catch((reason) => {
         showError(reason);
       });
@@ -1037,7 +1052,9 @@ export const useLogsData = () => {
     if (!normalizedChannelId) {
       return;
     }
-    navigate(`/console/channel?keyword=${encodeURIComponent(normalizedChannelId)}`);
+    navigate(
+      `/console/channel?keyword=${encodeURIComponent(normalizedChannelId)}`,
+    );
   };
 
   const jumpToUserDetail = ({ userId, username }) => {

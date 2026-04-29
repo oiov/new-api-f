@@ -31,9 +31,12 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import {
+  IconBarChartVStroked,
   IconChevronDown,
   IconChevronUp,
+  IconGridView,
   IconLink,
+  IconListView,
   IconRefresh,
 } from '@douyinfe/semi-icons';
 import { VChart } from '@visactor/react-vchart';
@@ -179,7 +182,7 @@ const GroupHealthStats = ({
 
   return (
     <Card
-      className='!rounded-2xl !border-0 shadow-sm mb-3'
+      className='!rounded-2xl !border-0 shadow-sm mb-4'
       bodyStyle={{ padding: 16 }}
     >
       <div className='flex items-center justify-between gap-3 mb-3'>
@@ -219,16 +222,29 @@ const GroupHealthStats = ({
             <TabPane tab={t('全局')} itemKey='global' />
             <TabPane tab={t('局部')} itemKey='local' />
           </Tabs>
-          <Tabs
-            type='button'
-            size='small'
-            activeKey={viewMode}
-            onChange={setViewMode}
-          >
-            <TabPane tab={t('卡片')} itemKey='card' />
-            <TabPane tab={t('列表')} itemKey='list' />
-            <TabPane tab={t('图表')} itemKey='chart' />
-          </Tabs>
+          <Button.Group size='small'>
+            <Button
+              type={viewMode === 'card' ? 'primary' : 'tertiary'}
+              icon={<IconGridView />}
+              aria-label={t('卡片')}
+              title={t('卡片')}
+              onClick={() => setViewMode('card')}
+            />
+            <Button
+              type={viewMode === 'list' ? 'primary' : 'tertiary'}
+              icon={<IconListView />}
+              aria-label={t('列表')}
+              title={t('列表')}
+              onClick={() => setViewMode('list')}
+            />
+            <Button
+              type={viewMode === 'chart' ? 'primary' : 'tertiary'}
+              icon={<IconBarChartVStroked />}
+              aria-label={t('图表')}
+              title={t('图表')}
+              onClick={() => setViewMode('chart')}
+            />
+          </Button.Group>
           <Button
             icon={expanded ? <IconChevronUp /> : <IconChevronDown />}
             size='small'

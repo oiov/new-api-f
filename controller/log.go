@@ -284,6 +284,10 @@ func buildGroupLogHealthStatsQuery(query logQueryParams) model.GroupLogHealthSta
 		Channel:               query.Channel,
 		Group:                 query.Group,
 		StatusCode:            query.StatusCode,
+		RequestId:             query.RequestId,
+		ErrorMessage:          query.ErrorMessage,
+		SubscriptionId:        query.SubscriptionId,
+		SubscriptionPlanId:    query.SubscriptionPlanId,
 		IgnoreRateLimitErrors: true,
 	}
 }

@@ -1040,6 +1040,10 @@ type GroupLogHealthStatsQuery struct {
 	Group                 string
 	Groups                []string
 	StatusCode            string
+	RequestId             string
+	ErrorMessage          string
+	SubscriptionId        int
+	SubscriptionPlanId    int
 	IgnoreRateLimitErrors bool
 }
 
@@ -1134,6 +1138,19 @@ func buildGroupLogHealthQuery(query GroupLogHealthStatsQuery, groupCol string, l
 		tx = tx.Where(groupCol+" = ?", query.Group)
 	} else if len(query.Groups) > 0 {
 		tx = tx.Where(groupCol+" IN ?", query.Groups)
+	}
+	if query.RequestId != "" {
+		tx = tx.Where("request_id = ?", query.RequestId)
+	}
+	if query.ErrorMessage != "" {
+		errorPattern := buildLogContentSearchPattern(query.ErrorMessage)
+		tx = tx.Where("(content LIKE ? ESCAPE '!' OR other LIKE ? ESCAPE '!')", errorPattern, errorPattern)
+	}
+	if query.SubscriptionId > 0 {
+		tx = applySubscriptionJSONIdFilter(tx, "subscription_id", query.SubscriptionId)
+	}
+	if query.SubscriptionPlanId > 0 {
+		tx = applySubscriptionJSONIdFilter(tx, "subscription_plan_id", query.SubscriptionPlanId)
 	}
 	if query.StatusCode != "" {
 		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns(query.StatusCode)
