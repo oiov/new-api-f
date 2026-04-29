@@ -75,7 +75,7 @@ const GroupHealthStats = ({
   t,
 }) => {
   const stats = Array.isArray(groupHealthStats) ? groupHealthStats : [];
-  const [viewMode, setViewMode] = useState('chart');
+  const [viewMode, setViewMode] = useState('list');
   const [scopeMode, setScopeMode] = useState('global');
   const [expanded, setExpanded] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState('');
