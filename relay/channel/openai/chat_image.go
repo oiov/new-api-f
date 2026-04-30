@@ -129,7 +129,7 @@ func ChatImageGenerationHandler(c *gin.Context, info *relaycommon.RelayInfo, res
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 
-	responseBody, imageURLs := prepareImageResponseBody(c, responseBody)
+	responseBody, imageURLs := prepareImageResponseBody(c, info, responseBody)
 
 	payload, err := buildChatImageResponsePayload(responseBody)
 	if err != nil {

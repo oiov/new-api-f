@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
@@ -194,6 +195,33 @@ func CacheRemoteImageResultURL(requestID string, index int, originURL string) (s
 
 	key := buildImageResultCacheObjectKey(requestID, index, originURL, contentType)
 	if err = putObjectReaderToR2(cfg, key, tmpFile, written, hex.EncodeToString(hasher.Sum(nil)), contentType); err != nil {
+		return "", err
+	}
+	return buildStorageObjectURL(cfg, key), nil
+}
+
+func CacheBase64ImageResultURL(requestID string, index int, base64Data string) (string, error) {
+	base64Data = strings.TrimSpace(base64Data)
+	if base64Data == "" {
+		return "", fmt.Errorf("图片 base64 不能为空")
+	}
+
+	cfg := getStorageConfig()
+	if cfg.Backend != "r2" {
+		return "", nil
+	}
+
+	cfg, err := getR2StorageConfig()
+	if err != nil {
+		return "", err
+	}
+
+	payload, contentType, originName, err := decodeBase64ImageResultCachePayload(base64Data)
+	if err != nil {
+		return "", err
+	}
+	key := buildImageResultCacheObjectKey(requestID, index, originName, contentType)
+	if err = putBytesToR2(cfg, key, payload, contentType); err != nil {
 		return "", err
 	}
 	return buildStorageObjectURL(cfg, key), nil
@@ -962,6 +990,42 @@ func buildImageResultCacheObjectKey(requestID string, index int, originURL, cont
 		safeRequestID = sha256Hex([]byte(strings.TrimSpace(originURL)))[:16]
 	}
 	return fmt.Sprintf("image-cache/%s/%d%s", safeRequestID, index, imageResultCacheExtension(originURL, contentType))
+}
+
+func decodeBase64ImageResultCachePayload(base64Data string) ([]byte, string, string, error) {
+	_, format, cleanBase64, err := DecodeBase64ImageData(base64Data)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("解析 base64 图片失败：%w", err)
+	}
+	payload, err := base64.StdEncoding.DecodeString(cleanBase64)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("解码 base64 图片失败：%w", err)
+	}
+	if int64(len(payload)) > imageResultCacheMaxBytes {
+		return nil, "", "", fmt.Errorf("图片文件过大，无法缓存到 R2")
+	}
+	contentType := imageResultCacheContentTypeFromFormat(format)
+	originName := "base64" + imageResultCacheExtension("", contentType)
+	return payload, contentType, originName, nil
+}
+
+func imageResultCacheContentTypeFromFormat(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "jpg", "jpeg":
+		return "image/jpeg"
+	case "png":
+		return "image/png"
+	case "gif":
+		return "image/gif"
+	case "webp":
+		return "image/webp"
+	case "bmp":
+		return "image/bmp"
+	case "svg":
+		return "image/svg+xml"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func imageResultCacheExtension(originURL, contentType string) string {

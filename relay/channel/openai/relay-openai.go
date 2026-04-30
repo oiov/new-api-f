@@ -588,7 +588,7 @@ func OpenaiHandlerWithUsage(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 
-	responseBody, imageURLs := prepareImageResponseBody(c, responseBody)
+	responseBody, imageURLs := prepareImageResponseBody(c, info, responseBody)
 
 	var usageResp dto.SimpleResponse
 	err = common.Unmarshal(responseBody, &usageResp)
@@ -639,12 +639,24 @@ type imageResultURLCacheFunc func(requestID string, index int, originURL string)
 
 var cacheImageResultURL imageResultURLCacheFunc = service.CacheRemoteImageResultURL
 
-func prepareImageResponseBody(c *gin.Context, responseBody []byte) ([]byte, []string) {
-	var imageResp dto.ImageResponse
-	if err := common.Unmarshal(responseBody, &imageResp); err != nil {
+type base64ImageResultURLCacheFunc func(requestID string, index int, base64Data string) (string, error)
+
+var cacheBase64ImageResultURL base64ImageResultURLCacheFunc = service.CacheBase64ImageResultURL
+
+func prepareImageResponseBody(c *gin.Context, info *relaycommon.RelayInfo, responseBody []byte) ([]byte, []string) {
+	var envelope map[string]stdjson.RawMessage
+	if err := common.Unmarshal(responseBody, &envelope); err != nil {
 		return responseBody, nil
 	}
-	if len(imageResp.Data) == 0 {
+	dataRaw, ok := envelope["data"]
+	if !ok {
+		return responseBody, nil
+	}
+	var imageData []map[string]stdjson.RawMessage
+	if err := common.Unmarshal(dataRaw, &imageData); err != nil {
+		return responseBody, nil
+	}
+	if len(imageData) == 0 {
 		return responseBody, nil
 	}
 
@@ -652,44 +664,70 @@ func prepareImageResponseBody(c *gin.Context, responseBody []byte) ([]byte, []st
 	if c != nil {
 		requestID = c.GetString(common.RequestIdKey)
 	}
+	wantsBase64 := imageResponseWantsBase64(info)
 
-	urls := make([]string, 0, len(imageResp.Data))
+	urls := make([]string, 0, len(imageData))
 	changed := false
-	for index := range imageResp.Data {
-		originURL := strings.TrimSpace(imageResp.Data[index].Url)
-		if originURL == "" {
+	for index := range imageData {
+		originURL := imageResultStringField(imageData[index], "url")
+		base64Data := imageResultStringField(imageData[index], "b64_json")
+
+		if originURL != "" {
+			if imageResultIsBase64DataURL(originURL) {
+				resultURL := cacheBase64ImageResult(c, requestID, index, originURL)
+				if resultURL != "" {
+					urls = append(urls, resultURL)
+				}
+				if wantsBase64 {
+					if base64Data == "" {
+						imageResultSetStringField(imageData[index], "b64_json", imageResultDataURLPayload(originURL))
+						changed = true
+					}
+					delete(imageData[index], "url")
+					changed = true
+					continue
+				}
+				if resultURL == "" {
+					urls = append(urls, originURL)
+					continue
+				}
+				imageResultSetStringField(imageData[index], "url", resultURL)
+				changed = true
+				continue
+			}
+
+			resultURL := cacheRemoteImageResultURL(c, requestID, index, originURL)
+			if resultURL != originURL {
+				imageResultSetStringField(imageData[index], "url", resultURL)
+				changed = true
+			}
+			urls = append(urls, resultURL)
 			continue
 		}
 
-		resultURL := originURL
-		if cacheImageResultURL != nil {
-			if cachedURL, err := cacheImageResultURL(requestID, index, originURL); err != nil {
-				if c != nil {
-					logger.LogWarn(c, fmt.Sprintf("failed to cache image result to storage: %s", err.Error()))
-				} else {
-					common.SysLog("failed to cache image result to storage: " + err.Error())
-				}
-			} else if strings.TrimSpace(cachedURL) != "" {
-				resultURL = strings.TrimSpace(cachedURL)
-			}
+		if base64Data == "" {
+			continue
 		}
 
-		if resultURL != originURL {
-			imageResp.Data[index].Url = resultURL
-			changed = true
+		resultURL := cacheBase64ImageResult(c, requestID, index, base64Data)
+		if resultURL == "" {
+			continue
 		}
 		urls = append(urls, resultURL)
+		if wantsBase64 {
+			continue
+		}
+
+		imageResultSetStringField(imageData[index], "url", resultURL)
+		delete(imageData[index], "b64_json")
+		changed = true
 	}
 
 	if !changed {
 		return responseBody, urls
 	}
 
-	var envelope map[string]stdjson.RawMessage
-	if err := common.Unmarshal(responseBody, &envelope); err != nil {
-		return responseBody, urls
-	}
-	dataBytes, err := common.Marshal(imageResp.Data)
+	dataBytes, err := common.Marshal(imageData)
 	if err != nil {
 		return responseBody, urls
 	}
@@ -699,6 +737,95 @@ func prepareImageResponseBody(c *gin.Context, responseBody []byte) ([]byte, []st
 		return responseBody, urls
 	}
 	return preparedBody, urls
+}
+
+func imageResponseWantsBase64(info *relaycommon.RelayInfo) bool {
+	if info == nil || info.Request == nil {
+		return false
+	}
+	imageReq, ok := info.Request.(*dto.ImageRequest)
+	if !ok || imageReq == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(imageReq.ResponseFormat), "b64_json")
+}
+
+func imageResultStringField(item map[string]stdjson.RawMessage, key string) string {
+	if item == nil {
+		return ""
+	}
+	raw, ok := item[key]
+	if !ok {
+		return ""
+	}
+	var value string
+	if err := common.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+func imageResultIsBase64DataURL(value string) bool {
+	value = strings.TrimSpace(strings.ToLower(value))
+	return strings.HasPrefix(value, "data:image/") && strings.Contains(value, ";base64,")
+}
+
+func imageResultDataURLPayload(value string) string {
+	value = strings.TrimSpace(value)
+	if idx := strings.Index(value, ","); idx >= 0 {
+		return strings.TrimSpace(value[idx+1:])
+	}
+	return value
+}
+
+func imageResultSetStringField(item map[string]stdjson.RawMessage, key string, value string) {
+	if item == nil {
+		return
+	}
+	data, err := common.Marshal(value)
+	if err != nil {
+		return
+	}
+	item[key] = data
+}
+
+func cacheRemoteImageResultURL(c *gin.Context, requestID string, index int, originURL string) string {
+	resultURL := originURL
+	if cacheImageResultURL == nil {
+		return resultURL
+	}
+	cachedURL, err := cacheImageResultURL(requestID, index, originURL)
+	if err != nil {
+		logImageResultCacheWarning(c, err)
+		return resultURL
+	}
+	if strings.TrimSpace(cachedURL) != "" {
+		resultURL = strings.TrimSpace(cachedURL)
+	}
+	return resultURL
+}
+
+func cacheBase64ImageResult(c *gin.Context, requestID string, index int, base64Data string) string {
+	if cacheBase64ImageResultURL == nil {
+		return ""
+	}
+	cachedURL, err := cacheBase64ImageResultURL(requestID, index, base64Data)
+	if err != nil {
+		logImageResultCacheWarning(c, err)
+		return ""
+	}
+	return strings.TrimSpace(cachedURL)
+}
+
+func logImageResultCacheWarning(c *gin.Context, err error) {
+	if err == nil {
+		return
+	}
+	if c != nil {
+		logger.LogWarn(c, fmt.Sprintf("failed to cache image result to storage: %s", err.Error()))
+	} else {
+		common.SysLog("failed to cache image result to storage: " + err.Error())
+	}
 }
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {
