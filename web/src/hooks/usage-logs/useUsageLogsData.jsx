@@ -19,12 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useState, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal } from '@douyinfe/semi-ui';
+import { Modal, Button } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
 import {
   API,
   getTodayStartTimestamp,
   isAdmin,
+  isRoot,
   showError,
   showSuccess,
   timestamp2string,
@@ -48,6 +49,27 @@ export const useLogsData = () => {
   const navigate = useNavigate();
   const LOG_EXPORT_LIMIT = 10000;
   const [statusState] = useContext(StatusContext);
+
+  const renderExpandableTextBlock = (text, maxWidth = 720) => (
+    <div
+      style={{
+        maxWidth,
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        lineHeight: 1.6,
+      }}
+    >
+      {text}
+    </div>
+  );
+
+  const openSensitivePreviewModal = (title, text) => {
+    Modal.info({
+      title,
+      content: renderExpandableTextBlock(text),
+      width: 760,
+    });
+  };
 
   // Define column keys for selection
   const COLUMN_KEYS = {
@@ -73,6 +95,7 @@ export const useLogsData = () => {
   const [showStat, setShowStat] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingStat, setLoadingStat] = useState(false);
+  const [loadingGroupHealth, setLoadingGroupHealth] = useState(false);
   const [activePage, setActivePage] = useState(1);
   const [logCount, setLogCount] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
@@ -80,6 +103,7 @@ export const useLogsData = () => {
 
   // User and admin
   const isAdminUser = isAdmin();
+  const isRootUser = isRoot();
   const logExportEnabled = !!statusState?.status?.enable_log_export;
   // Role-specific storage key to prevent different roles from overwriting each other
   const STORAGE_KEY = isAdminUser
@@ -94,7 +118,11 @@ export const useLogsData = () => {
     quota: 0,
     token: 0,
   });
+  const [groupHealthStats, setGroupHealthStats] = useState([]);
   const [exporting, setExporting] = useState(false);
+  const [selectedLogKeys, setSelectedLogKeys] = useState([]);
+  const [selectedLogs, setSelectedLogs] = useState([]);
+  const [batchDeletingLogs, setBatchDeletingLogs] = useState(false);
 
   // Form state
   const [formApi, setFormApi] = useState(null);
@@ -174,7 +202,9 @@ export const useLogsData = () => {
   };
 
   // Column visibility state
-  const [visibleColumns, setVisibleColumns] = useState(getInitialVisibleColumns);
+  const [visibleColumns, setVisibleColumns] = useState(
+    getInitialVisibleColumns,
+  );
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [billingDisplayMode, setBillingDisplayMode] = useState(
     getInitialBillingDisplayMode,
@@ -277,6 +307,7 @@ export const useLogsData = () => {
   };
 
   const buildLogQueryParams = (options = {}) => {
+    const sourceValues = options.formValues || getFormValues();
     const {
       user_id,
       username,
@@ -292,7 +323,7 @@ export const useLogsData = () => {
       subscription_id,
       subscription_plan_id,
       logType: formLogType,
-    } = getFormValues();
+    } = sourceValues;
 
     const currentLogType =
       options.customLogType !== undefined && options.customLogType !== null
@@ -332,6 +363,68 @@ export const useLogsData = () => {
     return params;
   };
 
+  const clearSelectedLogs = () => {
+    setSelectedLogKeys([]);
+    setSelectedLogs([]);
+  };
+
+  const handleLogSelectionChange = (selectedKeys, selectedRows) => {
+    const keys = selectedKeys || [];
+    const rows = Array.isArray(selectedRows) ? selectedRows : [];
+    const fallbackRows = keys
+      .map((key) => logs.find((log) => log.key === key))
+      .filter(Boolean);
+    setSelectedLogKeys(keys);
+    setSelectedLogs(rows.length > 0 ? rows : fallbackRows);
+  };
+
+  const deleteSelectedLogs = async () => {
+    if (!isAdminUser) {
+      return;
+    }
+    const ids = selectedLogs
+      .map((log) => Number(log?.id || 0))
+      .filter((id) => id > 0);
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length === 0) {
+      showError(t('请选择要删除的日志'));
+      return;
+    }
+
+    Modal.confirm({
+      title: t('确认删除所选日志？'),
+      content: t('将删除已选择的 {{count}} 条日志，此操作不可恢复。', {
+        count: uniqueIds.length,
+      }),
+      okButtonProps: { type: 'danger' },
+      okText: t('删除'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        setBatchDeletingLogs(true);
+        try {
+          const res = await API.post('/api/log/batch_delete', {
+            ids: uniqueIds,
+          });
+          const { success, message, data } = res.data || {};
+          if (success) {
+            showSuccess(t('已删除 {{count}} 条日志', { count: data || 0 }));
+            clearSelectedLogs();
+            setActivePage(1);
+            handleEyeClick();
+            refreshGroupHealthStats();
+            await loadLogs(1, pageSize);
+          } else {
+            showError(message || t('删除失败'));
+          }
+        } catch (error) {
+          showError(error?.message || t('删除失败'));
+        } finally {
+          setBatchDeletingLogs(false);
+        }
+      },
+    });
+  };
+
   const exportLogs = async () => {
     if (!logExportEnabled) {
       showError(t('日志导出未启用'));
@@ -343,7 +436,9 @@ export const useLogsData = () => {
     const runExport = async () => {
       setExporting(true);
       try {
-        const endpoint = isAdminUser ? '/api/log/export' : '/api/log/self/export';
+        const endpoint = isAdminUser
+          ? '/api/log/export'
+          : '/api/log/self/export';
         const params = buildLogQueryParams();
         const res = await API.get(`${endpoint}?${params.toString()}`, {
           responseType: 'blob',
@@ -483,6 +578,37 @@ export const useLogsData = () => {
     setLoadingStat(false);
   };
 
+  const getGroupHealthStats = async (options = {}) => {
+    const params = buildLogQueryParams({
+      customLogType: 0,
+      formValues: options.formValues,
+    });
+    params.delete('type');
+
+    const endpoint = isAdminUser
+      ? '/api/log/group_health'
+      : '/api/log/self/group_health';
+    const res = await API.get(`${endpoint}?${params.toString()}`);
+    const { success, message, data } = res.data;
+    if (success) {
+      setGroupHealthStats(Array.isArray(data) ? data : []);
+    } else {
+      showError(message);
+    }
+  };
+
+  const refreshGroupHealthStats = async (options = {}) => {
+    if (loadingGroupHealth) {
+      return;
+    }
+    setLoadingGroupHealth(true);
+    try {
+      await getGroupHealthStats(options);
+    } finally {
+      setLoadingGroupHealth(false);
+    }
+  };
+
   // User info function
   const showUserInfoFunc = async (userId) => {
     if (!isAdminUser) {
@@ -542,7 +668,10 @@ export const useLogsData = () => {
       let other = getLogOther(logs[i].other);
       let expandDataLocal = [];
 
-      if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)) {
+      if (
+        isAdminUser &&
+        (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)
+      ) {
         expandDataLocal.push({
           key: t('渠道信息'),
           value: `${logs[i].channel} - ${logs[i].channel_name || '[未知]'}`,
@@ -628,6 +757,51 @@ export const useLogsData = () => {
             value: logs[i].content,
           });
         }
+        if (isRootUser && other?.messages_count > 0) {
+          expandDataLocal.push({
+            key: t('消息数'),
+            value: other.messages_count,
+          });
+        }
+        if (isRootUser && other?.system_text) {
+          expandDataLocal.push({
+            key: t('系统提示词'),
+            value: (
+              <Button
+                theme='light'
+                type='primary'
+                size='small'
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openSensitivePreviewModal(t('系统提示词'), other.system_text);
+                }}
+              >
+                {t('查看详情')}
+              </Button>
+            ),
+          });
+        }
+        if (isRootUser && other?.messages_preview) {
+          expandDataLocal.push({
+            key: t('消息预览'),
+            value: (
+              <Button
+                theme='light'
+                type='primary'
+                size='small'
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openSensitivePreviewModal(
+                    t('消息预览'),
+                    other.messages_preview,
+                  );
+                }}
+              >
+                {t('查看详情')}
+              </Button>
+            ),
+          });
+        }
         if (isAdminUser && other?.reject_reason) {
           expandDataLocal.push({
             key: t('拦截原因'),
@@ -637,7 +811,9 @@ export const useLogsData = () => {
       }
       if (logs[i].type === 2) {
         const requestModelName = String(logs[i]?.model_name || '').trim();
-        const upstreamModelName = String(other?.upstream_model_name || '').trim();
+        const upstreamModelName = String(
+          other?.upstream_model_name || '',
+        ).trim();
         let modelMapped =
           other?.is_model_mapped &&
           upstreamModelName !== '' &&
@@ -751,7 +927,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('失败原因'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {other.reason}
               </div>
             ),
@@ -873,6 +1056,7 @@ export const useLogsData = () => {
       setActivePage(data.page);
       setPageSize(data.page_size);
       setLogCount(data.total);
+      clearSelectedLogs();
 
       setLogsFormat(newPageData);
     } else {
@@ -900,8 +1084,10 @@ export const useLogsData = () => {
 
   // Refresh function
   const refresh = async () => {
+    const currentFormValues = getFormValues();
     setActivePage(1);
     handleEyeClick();
+    refreshGroupHealthStats({ formValues: currentFormValues });
     await loadLogs(1, pageSize);
   };
 
@@ -911,14 +1097,16 @@ export const useLogsData = () => {
     }
 
     const currentValues = formApi.getValues() || {};
-    formApi.setValues({
+    const nextValues = {
       ...currentValues,
       ...patch,
-    });
+    };
+    formApi.setValues(nextValues);
 
     setTimeout(() => {
       setActivePage(1);
       handleEyeClick();
+      refreshGroupHealthStats({ formValues: getFormValues() });
       loadLogs(1, pageSize).catch((reason) => {
         showError(reason);
       });
@@ -930,7 +1118,9 @@ export const useLogsData = () => {
     if (!normalizedChannelId) {
       return;
     }
-    navigate(`/console/channel?keyword=${encodeURIComponent(normalizedChannelId)}`);
+    navigate(
+      `/console/channel?keyword=${encodeURIComponent(normalizedChannelId)}`,
+    );
   };
 
   const jumpToUserDetail = ({ userId, username }) => {
@@ -969,6 +1159,7 @@ export const useLogsData = () => {
   useEffect(() => {
     if (formApi) {
       handleEyeClick();
+      refreshGroupHealthStats();
     }
   }, [formApi]);
 
@@ -986,12 +1177,17 @@ export const useLogsData = () => {
     showStat,
     loading,
     loadingStat,
+    loadingGroupHealth,
     activePage,
     logCount,
     pageSize,
     logType,
     stat,
+    groupHealthStats,
     exporting,
+    selectedLogKeys,
+    selectedLogs,
+    batchDeletingLogs,
     isAdminUser,
     logExportEnabled,
 
@@ -1037,11 +1233,14 @@ export const useLogsData = () => {
     handlePageSizeChange,
     refresh,
     exportLogs,
+    deleteSelectedLogs,
+    handleLogSelectionChange,
     applyLogFilter,
     jumpToChannelDetail,
     jumpToUserDetail,
     copyText,
     handleEyeClick,
+    refreshGroupHealthStats,
     setLogsFormat,
     hasExpandableRows,
     setLogType,

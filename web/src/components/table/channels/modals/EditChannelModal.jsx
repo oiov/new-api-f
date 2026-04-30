@@ -205,6 +205,7 @@ const EditChannelModal = (props) => {
     thinking_to_content: false,
     proxy: '',
     pass_through_body_enabled: false,
+    rewrite_model_in_pass_through: false,
     system_prompt: '',
     system_prompt_override: false,
     settings: '',
@@ -568,6 +569,7 @@ const EditChannelModal = (props) => {
     thinking_to_content: false,
     proxy: '',
     pass_through_body_enabled: false,
+    rewrite_model_in_pass_through: false,
     system_prompt: '',
   });
   const showApiConfigCard = true; // 控制是否显示 API 配置卡片
@@ -888,6 +890,8 @@ const EditChannelModal = (props) => {
           data.proxy = parsedSettings.proxy || '';
           data.pass_through_body_enabled =
             parsedSettings.pass_through_body_enabled || false;
+          data.rewrite_model_in_pass_through =
+            parsedSettings.rewrite_model_in_pass_through || false;
           data.system_prompt = parsedSettings.system_prompt || '';
           data.system_prompt_override =
             parsedSettings.system_prompt_override || false;
@@ -897,6 +901,7 @@ const EditChannelModal = (props) => {
           data.thinking_to_content = false;
           data.proxy = '';
           data.pass_through_body_enabled = false;
+          data.rewrite_model_in_pass_through = false;
           data.system_prompt = '';
           data.system_prompt_override = false;
         }
@@ -905,6 +910,7 @@ const EditChannelModal = (props) => {
         data.thinking_to_content = false;
         data.proxy = '';
         data.pass_through_body_enabled = false;
+        data.rewrite_model_in_pass_through = false;
         data.system_prompt = '';
         data.system_prompt_override = false;
       }
@@ -1734,6 +1740,8 @@ const EditChannelModal = (props) => {
       thinking_to_content: localInputs.thinking_to_content || false,
       proxy: localInputs.proxy || '',
       pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
+      rewrite_model_in_pass_through:
+        localInputs.rewrite_model_in_pass_through || false,
       system_prompt: localInputs.system_prompt || '',
       system_prompt_override: localInputs.system_prompt_override || false,
     };
@@ -4051,6 +4059,24 @@ const EditChannelModal = (props) => {
                       }
                       extraText={t('启用请求体透传功能')}
                     />
+
+                    {inputs.type === 14 && (
+                      <Form.Switch
+                        field='rewrite_model_in_pass_through'
+                        label={t('透传时写回模型名')}
+                        checkedText={t('开')}
+                        uncheckedText={t('关')}
+                        onChange={(value) =>
+                          handleChannelSettingsChange(
+                            'rewrite_model_in_pass_through',
+                            value,
+                          )
+                        }
+                        extraText={t(
+                          '仅在透传请求体时生效，仍会将最终模型名写回请求体的 model 字段，适用于需要兼容模型映射的特殊 Claude 上游',
+                        )}
+                      />
+                    )}
 
                     <Form.Input
                       field='proxy'

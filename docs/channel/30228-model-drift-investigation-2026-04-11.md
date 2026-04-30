@@ -72,9 +72,9 @@ Claude 链路中，`upstream_model_name` 的记录来源为 `relayInfo.UpstreamM
 
 相关代码：
 
-- [relay/helper/model_mapped.go](/Users/admin/Developer/fishxcode/new-api/relay/helper/model_mapped.go)
-- [relay/channel/claude/relay-claude.go](/Users/admin/Developer/fishxcode/new-api/relay/channel/claude/relay-claude.go)
-- [service/log_info_generate.go](/Users/admin/Developer/fishxcode/new-api/service/log_info_generate.go)
+- [relay/helper/model_mapped.go](relay/helper/model_mapped.go)
+- [relay/channel/claude/relay-claude.go](relay/channel/claude/relay-claude.go)
+- [service/log_info_generate.go](service/log_info_generate.go)
 
 关键逻辑：
 

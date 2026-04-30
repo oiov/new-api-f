@@ -18,11 +18,41 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Banner, Button, Col, Form, Row, Spin, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Col, Form, Input, Row, Spin, Typography } from '@douyinfe/semi-ui';
+import { IconMinusCircle, IconPlusCircle } from '@douyinfe/semi-icons';
 import { API, showError, showSuccess, showWarning, toBoolean } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
+
+const splitSecretEntries = (value) => {
+  const normalized = String(value || '').replace(/\r/g, '\n');
+  const parts = normalized.split(/[\n,;，；]/);
+  const result = [];
+  const seen = new Set();
+
+  parts.forEach((part) => {
+    const trimmed = part.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  });
+
+  return result;
+};
+
+const buildSecretEntryList = (value) => {
+  const entries = splitSecretEntries(value);
+  return entries.length > 0 ? entries : [''];
+};
+
+const joinSecretEntries = (entries) =>
+  entries
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean)
+    .join('\n');
 
 const buildPaymentNotifyInputs = (options = {}) => ({
   'payment_notify_setting.TopUpEnabled': toBoolean(
@@ -36,13 +66,12 @@ const buildPaymentNotifyInputs = (options = {}) => ({
   ),
   'payment_notify_setting.ServerChanUID':
     options['payment_notify_setting.ServerChanUID'] || '',
-  'payment_notify_setting.ServerChanSendKey':
-    options['payment_notify_setting.ServerChanSendKey'] || '',
+  'payment_notify_setting.ServerChanSendKey': '',
   'payment_notify_setting.PushPlusEnabled': toBoolean(
     options['payment_notify_setting.PushPlusEnabled'],
   ),
-  'payment_notify_setting.PushPlusToken':
-    options['payment_notify_setting.PushPlusToken'] || '',
+  'payment_notify_setting.PushPlusToken': '',
+  'payment_notify_setting.Remark': options['payment_notify_setting.Remark'] || '',
 });
 
 export default function SettingsPaymentSuccessNotify(props) {
@@ -52,12 +81,20 @@ export default function SettingsPaymentSuccessNotify(props) {
   const [clearServerChanSendKey, setClearServerChanSendKey] = useState(false);
   const [clearPushPlusToken, setClearPushPlusToken] = useState(false);
   const [inputs, setInputs] = useState(buildPaymentNotifyInputs());
+  const [serverChanSendKeys, setServerChanSendKeys] = useState(['']);
+  const [pushPlusTokens, setPushPlusTokens] = useState(['']);
   const formApiRef = useRef(null);
 
   useEffect(() => {
     if (!props.options || !formApiRef.current) return;
     const currentInputs = buildPaymentNotifyInputs(props.options);
     setInputs(currentInputs);
+    setServerChanSendKeys(
+      buildSecretEntryList(currentInputs['payment_notify_setting.ServerChanSendKey']),
+    );
+    setPushPlusTokens(
+      buildSecretEntryList(currentInputs['payment_notify_setting.PushPlusToken']),
+    );
     setClearServerChanSendKey(false);
     setClearPushPlusToken(false);
     formApiRef.current.setValues(currentInputs);
@@ -68,13 +105,17 @@ export default function SettingsPaymentSuccessNotify(props) {
   };
 
   const renderSecretStatus = (maskedValue, pendingValue, clearFlag) => {
+    const trimmedPendingValue = String(pendingValue || '').trim();
+    const trimmedMaskedValue = String(maskedValue || '').trim();
+    const hasNewValue =
+      trimmedPendingValue !== '' && trimmedPendingValue !== trimmedMaskedValue;
     let content = t('当前数据库未保存');
     if (maskedValue) {
       content = `${t('当前已保存')}：${maskedValue}`;
     }
     if (clearFlag) {
       content = t('保存后将清空已保存的值');
-    } else if (pendingValue) {
+    } else if (hasNewValue) {
       content = t('已填写新值，保存后生效');
     }
 
@@ -101,6 +142,87 @@ export default function SettingsPaymentSuccessNotify(props) {
     }
     return trimmedValue;
   };
+
+  const updateSecretEntries = (field, setter, index, value) => {
+    setter((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      const normalizedValue = joinSecretEntries(next);
+      setInputs((prevInputs) => ({
+        ...prevInputs,
+        [field]: normalizedValue,
+      }));
+      formApiRef.current?.setValue(field, normalizedValue);
+      return next;
+    });
+  };
+
+  const addSecretEntry = (field, setter) => {
+    setter((prev) => {
+      const next = [...prev, ''];
+      const normalizedValue = joinSecretEntries(next);
+      setInputs((prevInputs) => ({
+        ...prevInputs,
+        [field]: normalizedValue,
+      }));
+      formApiRef.current?.setValue(field, normalizedValue);
+      return next;
+    });
+  };
+
+  const removeSecretEntry = (field, setter, index) => {
+    setter((prev) => {
+      const filtered = prev.filter((_, itemIndex) => itemIndex !== index);
+      const next = filtered.length > 0 ? filtered : [''];
+      const normalizedValue = joinSecretEntries(next);
+      setInputs((prevInputs) => ({
+        ...prevInputs,
+        [field]: normalizedValue,
+      }));
+      formApiRef.current?.setValue(field, normalizedValue);
+      return next;
+    });
+  };
+
+  const renderDynamicSecretInputs = (
+    label,
+    entries,
+    field,
+    setter,
+    addLabel,
+    placeholder,
+  ) => (
+    <Form.Slot label={label}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {entries.map((entry, index) => (
+          <div key={`${field}-${index}`} style={{ display: 'flex', gap: 8 }}>
+            <Input
+              value={entry}
+              onChange={(value) => updateSecretEntries(field, setter, index, value)}
+              placeholder={placeholder}
+              style={{ flex: 1 }}
+            />
+            <Button
+              icon={<IconMinusCircle />}
+              theme='borderless'
+              type='danger'
+              disabled={entries.length === 1}
+              onClick={() => removeSecretEntry(field, setter, index)}
+            />
+          </div>
+        ))}
+        <div>
+          <Button
+            icon={<IconPlusCircle />}
+            theme='light'
+            onClick={() => addSecretEntry(field, setter)}
+          >
+            {addLabel}
+          </Button>
+        </div>
+      </div>
+    </Form.Slot>
+  );
 
   const submitPaymentNotifySetting = async () => {
     if (
@@ -133,6 +255,7 @@ export default function SettingsPaymentSuccessNotify(props) {
           clearPushPlusToken,
         ),
         clear_push_plus_token: clearPushPlusToken,
+        remark: inputs['payment_notify_setting.Remark'] || '',
       });
       if (!res?.data?.success) {
         showError(res?.data?.message || t('更新失败'));
@@ -144,6 +267,12 @@ export default function SettingsPaymentSuccessNotify(props) {
       if (res?.data?.data && formApiRef.current) {
         const nextInputs = buildPaymentNotifyInputs(res.data.data);
         setInputs(nextInputs);
+        setServerChanSendKeys(
+          buildSecretEntryList(nextInputs['payment_notify_setting.ServerChanSendKey']),
+        );
+        setPushPlusTokens(
+          buildSecretEntryList(nextInputs['payment_notify_setting.PushPlusToken']),
+        );
         formApiRef.current.setValues(nextInputs);
       }
       props.refresh?.();
@@ -178,6 +307,7 @@ export default function SettingsPaymentSuccessNotify(props) {
             clearPushPlusToken,
           ),
           clear_push_plus_token: clearPushPlusToken,
+          remark: inputs['payment_notify_setting.Remark'] || '',
         },
         {
           skipErrorHandler: true,
@@ -210,7 +340,7 @@ export default function SettingsPaymentSuccessNotify(props) {
           <Banner
             type='info'
             description={t(
-              '建议至少启用一个通知类型和一个推送通道，否则不会发送支付成功通知。',
+              '建议至少启用一个通知类型和一个推送通道，否则不会发送支付成功通知。多个 SendKey 或 Token 支持动态添加，每行一个输入框。',
             )}
           />
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}>
@@ -259,12 +389,14 @@ export default function SettingsPaymentSuccessNotify(props) {
               />
             </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
-              <Form.Input
-                field='payment_notify_setting.ServerChanSendKey'
-                label={t('Server酱³ SendKey')}
-                placeholder={t('请输入新的 SendKey，留空则保持已保存值')}
-                type='password'
-              />
+              {renderDynamicSecretInputs(
+                t('Server酱³ SendKey（支持多个）'),
+                serverChanSendKeys,
+                'payment_notify_setting.ServerChanSendKey',
+                setServerChanSendKeys,
+                t('添加 SendKey'),
+                t('请输入新的 SendKey，留空则保持已保存值'),
+              )}
               {renderSecretStatus(
                 maskedServerChanSendKey,
                 inputs['payment_notify_setting.ServerChanSendKey'],
@@ -280,12 +412,14 @@ export default function SettingsPaymentSuccessNotify(props) {
               />
             </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
-              <Form.Input
-                field='payment_notify_setting.PushPlusToken'
-                label={t('PushPlus Token')}
-                placeholder={t('请输入新的 Token，留空则保持已保存值')}
-                type='password'
-              />
+              {renderDynamicSecretInputs(
+                t('PushPlus Token（支持多个）'),
+                pushPlusTokens,
+                'payment_notify_setting.PushPlusToken',
+                setPushPlusTokens,
+                t('添加 Token'),
+                t('请输入新的 Token，留空则保持已保存值'),
+              )}
               {renderSecretStatus(
                 maskedPushPlusToken,
                 inputs['payment_notify_setting.PushPlusToken'],
@@ -298,6 +432,19 @@ export default function SettingsPaymentSuccessNotify(props) {
                 label={t('清空已保存的 PushPlus Token')}
                 checkedText={t('开关开')}
                 uncheckedText={t('开关关')}
+              />
+            </Col>
+          </Row>
+          <Row
+            gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+            style={{ marginTop: 16 }}
+          >
+            <Col xs={24} sm={24} md={24} lg={24} xl={24}>
+              <Form.TextArea
+                field='payment_notify_setting.Remark'
+                label={t('推送备注')}
+                placeholder={t('可选，会追加到支付成功推送内容中')}
+                autosize
               />
             </Col>
           </Row>

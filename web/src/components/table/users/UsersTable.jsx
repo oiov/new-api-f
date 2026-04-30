@@ -25,8 +25,6 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { getUsersColumns } from './UsersColumnDefs';
-import PromoteUserModal from './modals/PromoteUserModal';
-import DemoteUserModal from './modals/DemoteUserModal';
 import EnableDisableUserModal from './modals/EnableDisableUserModal';
 import DeleteUserModal from './modals/DeleteUserModal';
 import ResetPasskeyModal from './modals/ResetPasskeyModal';
@@ -56,8 +54,6 @@ const UsersTable = (usersData) => {
   } = usersData;
 
   // Modal states
-  const [showPromoteModal, setShowPromoteModal] = useState(false);
-  const [showDemoteModal, setShowDemoteModal] = useState(false);
   const [showEnableDisableModal, setShowEnableDisableModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [modalUser, setModalUser] = useState(null);
@@ -73,16 +69,6 @@ const UsersTable = (usersData) => {
     useState(false);
 
   // Modal handlers
-  const showPromoteUserModal = (user) => {
-    setModalUser(user);
-    setShowPromoteModal(true);
-  };
-
-  const showDemoteUserModal = (user) => {
-    setModalUser(user);
-    setShowDemoteModal(true);
-  };
-
   const showEnableDisableUserModal = (user, action) => {
     setModalUser(user);
     setEnableDisableAction(action);
@@ -117,7 +103,9 @@ const UsersTable = (usersData) => {
   const showResetAffCountModal = (user) => {
     Modal.confirm({
       title: t('确认重置邀请次数'),
-      content: t('此操作会将目标用户的邀请次数清零，但不会修改 aff、邀请收益和邀请关系。'),
+      content: t(
+        '此操作会将目标用户的邀请次数清零，但不会修改 aff、邀请收益和邀请关系。',
+      ),
       type: 'warning',
       onOk: () => manageUser(user.id, 'reset_aff_count', user),
     });
@@ -135,16 +123,6 @@ const UsersTable = (usersData) => {
   };
 
   // Modal confirm handlers
-  const handlePromoteConfirm = () => {
-    manageUser(modalUser.id, 'promote', modalUser);
-    setShowPromoteModal(false);
-  };
-
-  const handleDemoteConfirm = () => {
-    manageUser(modalUser.id, 'demote', modalUser);
-    setShowDemoteModal(false);
-  };
-
   const handleEnableDisableConfirm = () => {
     manageUser(modalUser.id, enableDisableAction, modalUser);
     setShowEnableDisableModal(false);
@@ -171,10 +149,9 @@ const UsersTable = (usersData) => {
   const columns = useMemo(() => {
     return getUsersColumns({
       t,
+      permissions: usersData.permissions,
       setEditingUser,
       setShowEditUser,
-      showPromoteModal: showPromoteUserModal,
-      showDemoteModal: showDemoteUserModal,
       showEnableDisableModal: showEnableDisableUserModal,
       showDeleteModal: showDeleteUserModal,
       showResetPasskeyModal: showResetPasskeyUserModal,
@@ -187,10 +164,9 @@ const UsersTable = (usersData) => {
     });
   }, [
     t,
+    usersData.permissions,
     setEditingUser,
     setShowEditUser,
-    showPromoteUserModal,
-    showDemoteUserModal,
     showEnableDisableUserModal,
     showDeleteUserModal,
     showResetPasskeyUserModal,
@@ -248,22 +224,6 @@ const UsersTable = (usersData) => {
       />
 
       {/* Modal components */}
-      <PromoteUserModal
-        visible={showPromoteModal}
-        onCancel={() => setShowPromoteModal(false)}
-        onConfirm={handlePromoteConfirm}
-        user={modalUser}
-        t={t}
-      />
-
-      <DemoteUserModal
-        visible={showDemoteModal}
-        onCancel={() => setShowDemoteModal(false)}
-        onConfirm={handleDemoteConfirm}
-        user={modalUser}
-        t={t}
-      />
-
       <EnableDisableUserModal
         visible={showEnableDisableModal}
         onCancel={() => setShowEnableDisableModal(false)}

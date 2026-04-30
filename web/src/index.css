@@ -4833,8 +4833,51 @@ html.dark .pricing-model-card--selected {
   background: rgba(var(--semi-blue-5), 0.16) !important;
 }
 
+.token-row--highlight > td {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--semi-yellow-4), 0.22) 0%,
+      rgba(var(--semi-orange-3), 0.18) 100%
+    ) !important;
+  box-shadow: inset 3px 0 0 rgba(var(--semi-orange-5), 0.8);
+}
+
+.token-row--highlight:hover > td {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--semi-yellow-4), 0.28) 0%,
+      rgba(var(--semi-orange-3), 0.22) 100%
+    ) !important;
+}
+
 .token-row--disabled > td {
   background: var(--semi-color-disabled-border) !important;
+}
+
+.token-row--disabled.token-row--highlight > td,
+.token-row--highlight.token-row--selected > td,
+.token-row--disabled.token-row--highlight.token-row--selected > td {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--semi-yellow-4), 0.24) 0%,
+      rgba(var(--semi-orange-3), 0.2) 100%
+    ) !important;
+}
+
+.semi-card.token-row--highlight {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--semi-yellow-4), 0.12) 0%,
+      rgba(var(--semi-orange-3), 0.1) 100%
+    ) !important;
+  border-color: rgba(var(--semi-orange-5), 0.45) !important;
+  box-shadow:
+    inset 3px 0 0 rgba(var(--semi-orange-5), 0.75),
+    0 10px 28px rgba(var(--semi-orange-5), 0.08) !important;
 }
 
 .token-row--disabled.token-row--selected > td {

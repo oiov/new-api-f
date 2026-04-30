@@ -57,8 +57,8 @@ func UniversalVerify(c *gin.Context) {
 		return
 	}
 
-	if user.Status != common.UserStatusEnabled {
-		common.ApiError(c, fmt.Errorf("该用户已被禁用"))
+	if !common.IsEnabledUserStatus(user.Status) {
+		common.ApiError(c, fmt.Errorf("该用户已被禁用或封禁"))
 		return
 	}
 

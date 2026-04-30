@@ -90,6 +90,27 @@ const UsersFilters = ({
             size='small'
           />
         </div>
+        <div className='w-full md:w-36'>
+          <Form.Select
+            field='searchStatus'
+            placeholder={t('选择状态')}
+            optionList={[
+              { label: t('全部状态'), value: '' },
+              { label: t('已启用'), value: '1' },
+              { label: t('已禁用'), value: '2' },
+              { label: t('已封禁'), value: '3' },
+            ]}
+            onChange={() => {
+              setTimeout(() => {
+                searchUsers(1, pageSize);
+              }, 100);
+            }}
+            className='w-full'
+            showClear
+            pure
+            size='small'
+          />
+        </div>
         <div className='w-full md:w-44'>
           <Form.Select
             field='sortBy'

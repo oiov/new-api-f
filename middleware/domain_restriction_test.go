@@ -11,22 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsAllowedFishxcodeHost(t *testing.T) {
+func TestIsAllowedNbilityHost(t *testing.T) {
 	t.Run("allow configured host family", func(t *testing.T) {
-		require.True(t, isAllowedFishxcodeHost("nbility.dev"))
-		require.True(t, isAllowedFishxcodeHost("api.nbility.dev"))
-		require.True(t, isAllowedFishxcodeHost("API.FISHXCODE.COM:443"))
+		require.True(t, isAllowedNbilityHost("nbility.dev"))
+		require.True(t, isAllowedNbilityHost("api.nbility.dev"))
+		require.True(t, isAllowedNbilityHost("API.NBILITY.DEV:443"))
 	})
 
 	t.Run("allow local development hosts", func(t *testing.T) {
-		require.True(t, isAllowedFishxcodeHost("localhost"))
-		require.True(t, isAllowedFishxcodeHost("127.0.0.1:3000"))
-		require.True(t, isAllowedFishxcodeHost("[::1]:8080"))
+		require.True(t, isAllowedNbilityHost("localhost"))
+		require.True(t, isAllowedNbilityHost("127.0.0.1:3000"))
+		require.True(t, isAllowedNbilityHost("[::1]:8080"))
 	})
 
 	t.Run("block non allowed hosts", func(t *testing.T) {
-		require.False(t, isAllowedFishxcodeHost("example.com"))
-		require.False(t, isAllowedFishxcodeHost("nbility.dev.evil.com"))
+		require.False(t, isAllowedNbilityHost("example.com"))
+		require.False(t, isAllowedNbilityHost("nbility.dev.evil.com"))
 	})
 }
 

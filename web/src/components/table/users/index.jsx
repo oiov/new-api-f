@@ -42,6 +42,7 @@ const UsersPage = () => {
     closeAddUser,
     closeEditUser,
     refresh,
+    updateUserInList,
 
     // Form state
     formInitValues,
@@ -75,6 +76,7 @@ const UsersPage = () => {
         visible={showEditUser}
         handleClose={closeEditUser}
         editingUser={editingUser}
+        updateUserInList={updateUserInList}
       />
 
       <CardPro
@@ -91,6 +93,7 @@ const UsersPage = () => {
             <UsersActions
               setShowAddUser={setShowAddUser}
               manageUser={usersData.manageUser}
+              permissions={usersData.permissions}
               t={t}
             />
 

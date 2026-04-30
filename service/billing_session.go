@@ -280,6 +280,8 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionPostDelta = 0
 		info.SubscriptionAmountTotal = sub.AmountTotal
 		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter
+		info.SubscriptionResetWindowStart = sub.ResetWindowStart
+		info.SubscriptionResetWindowEnd = sub.ResetWindowEnd
 		info.SubscriptionRequestCountTotal = sub.RequestCountTotal
 		info.SubscriptionRequestCountUsedAfterPreConsume = sub.RequestCountUsedAfter
 		info.SubscriptionPlanId = sub.PlanId
@@ -293,6 +295,8 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionPostDelta = 0
 		info.SubscriptionAmountTotal = 0
 		info.SubscriptionAmountUsedAfterPreConsume = 0
+		info.SubscriptionResetWindowStart = 0
+		info.SubscriptionResetWindowEnd = 0
 		info.SubscriptionRequestCountTotal = 0
 		info.SubscriptionRequestCountUsedAfterPreConsume = 0
 		info.SubscriptionPlanId = 0

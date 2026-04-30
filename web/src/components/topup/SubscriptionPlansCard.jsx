@@ -1064,6 +1064,17 @@ const SubscriptionPlansCard = ({
         const usageSummary = getSubscriptionUsageSummary(subscription);
         const resourceType = getSubscriptionResourceType(subscription);
         const state = getSubscriptionState(sub);
+        const startTime = Number(subscription?.start_time || 0);
+        const endTime = Number(subscription?.end_time || 0);
+        const nowUnix = Date.now() / 1000;
+        const effectiveEndTime = endTime > 0 ? Math.min(endTime, nowUnix) : nowUnix;
+        const usedDays =
+          startTime > 0
+            ? Math.max(
+                1,
+                Math.ceil(Math.max(0, effectiveEndTime - startTime) / 86400),
+              )
+            : 0;
         const remainingDays = subscription?.end_time
           ? Math.max(
               0,
@@ -1088,6 +1099,7 @@ const SubscriptionPlansCard = ({
             Number(preferredSubscriptionId || 0),
           usageSummary,
           resourceType,
+          usedDays,
           usageLabel: formatSubscriptionResourceLabel(subscription, t),
           title:
             subscription?.source === 'derived_day_pass'
@@ -1107,6 +1119,36 @@ const SubscriptionPlansCard = ({
         );
       });
   }, [allSubscriptions, planMap, planTitleMap, preferredSubscriptionId, t]);
+
+  const getSubscriptionPrimaryMetric = useCallback(
+    (item) => {
+      if (item?.resourceType === 'request_count') {
+        const totalLabel =
+          String(item?.subscription?.duration_unit || '') === 'month'
+            ? t('月度总次数')
+            : t('套餐总次数');
+        return {
+          label: totalLabel,
+          value: item?.usageSummary?.unlimited
+            ? t('不限')
+            : `${Number(item?.usageSummary?.total || 0)} ${t('次')}`,
+          helper: t('已用 {{used}} 次 · 使用 {{days}} 天', {
+            used: Number(item?.usageSummary?.used || 0),
+            days: Number(item?.usedDays || 0),
+          }),
+        };
+      }
+      return {
+        label: t('当前可用'),
+        value: `${t('剩余')} ${getUsageDisplayText(item?.usageSummary, item?.resourceType, t)}`,
+        helper:
+          item?.state === 'active'
+            ? `${t('还有')} ${item?.remainingDays || 0} ${t('天')}`
+            : formatDateTime(item?.subscription?.end_time),
+      };
+    },
+    [t],
+  );
 
   const activeDerivedDayPassParentIds = useMemo(() => {
     const set = new Set();
@@ -2109,6 +2151,7 @@ const SubscriptionPlansCard = ({
   }, [conversionPreview, latestConversionRequest, t]);
 
   const renderSubscriptionHeader = (item) => {
+    const primaryMetric = getSubscriptionPrimaryMetric(item);
     const stateTag =
       item.state === 'active' ? (
         <Tag
@@ -2167,13 +2210,10 @@ const SubscriptionPlansCard = ({
           </div>
           <div className='text-left lg:text-right'>
             <div className='font-semibold text-base'>
-              {t('剩余')}{' '}
-              {getUsageDisplayText(item.usageSummary, item.resourceType, t)}
+              {primaryMetric.label} {primaryMetric.value}
             </div>
             <Text type='tertiary' size='small'>
-              {item.state === 'active'
-                ? `${t('还有')} ${item.remainingDays} ${t('天')}`
-                : formatDateTime(item.subscription?.end_time)}
+              {primaryMetric.helper}
             </Text>
           </div>
         </div>
@@ -2211,15 +2251,25 @@ const SubscriptionPlansCard = ({
             </div>
           </div>
           <div className='rounded-lg bg-semi-color-fill-0 p-2'>
-            <div>{item.usageLabel}</div>
+            <div>
+              {item.resourceType === 'request_count' ? t('已用次数') : item.usageLabel}
+            </div>
             <div className='mt-1 font-medium text-semi-color-text-0'>
-              {getUsageDetailText(item.usageSummary, item.resourceType, t)}
+              {item.resourceType === 'request_count'
+                ? `${Number(item.usageSummary.used || 0)} ${t('次')}`
+                : getUsageDetailText(item.usageSummary, item.resourceType, t)}
             </div>
           </div>
           <div className='rounded-lg bg-semi-color-fill-0 p-2'>
-            <div>{t('已用进度')}</div>
+            <div>
+              {item.resourceType === 'request_count' ? t('使用天数') : t('已用进度')}
+            </div>
             <div className='mt-1 font-medium text-semi-color-text-0'>
-              {item.usageSummary.unlimited ? t('不限') : `${usagePercent}%`}
+              {item.resourceType === 'request_count'
+                ? `${Number(item.usedDays || 0)} ${t('天')}`
+                : item.usageSummary.unlimited
+                  ? t('不限')
+                  : `${usagePercent}%`}
             </div>
           </div>
         </div>
@@ -2229,6 +2279,7 @@ const SubscriptionPlansCard = ({
 
   const renderSubscriptionBody = (item) => {
     const plan = item.plan || {};
+    const primaryMetric = getSubscriptionPrimaryMetric(item);
     const activeDayPassPlan = activeDayPassPlanMap.get(
       Number(item?.subscription?.id || 0),
     );
@@ -2251,12 +2302,30 @@ const SubscriptionPlansCard = ({
         value: formatSubscriptionDuration(item.subscription, t),
       },
       {
-        label: t('结算资源'),
-        value: item.usageLabel,
+        label:
+          item.resourceType === 'request_count'
+            ? String(item?.subscription?.duration_unit || '') === 'month'
+              ? t('月度总次数')
+              : t('套餐总次数')
+            : t('结算资源'),
+        value:
+          item.resourceType === 'request_count'
+            ? primaryMetric.value
+            : item.usageLabel,
       },
       {
-        label: t('资源详情'),
-        value: getUsageDetailText(item.usageSummary, item.resourceType, t),
+        label: item.resourceType === 'request_count' ? t('已用次数') : t('资源详情'),
+        value:
+          item.resourceType === 'request_count'
+            ? `${Number(item.usageSummary.used || 0)} ${t('次')}`
+            : getUsageDetailText(item.usageSummary, item.resourceType, t),
+      },
+      {
+        label: item.resourceType === 'request_count' ? t('使用天数') : t('当前可用'),
+        value:
+          item.resourceType === 'request_count'
+            ? `${Number(item.usedDays || 0)} ${t('天')}`
+            : `${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
       },
     ];
     const timeItems = [
@@ -2326,19 +2395,25 @@ const SubscriptionPlansCard = ({
             <div className='flex flex-wrap items-end gap-x-6 gap-y-2'>
               <div>
                 <div className='text-xs font-medium uppercase tracking-[0.12em] text-semi-color-text-2'>
-                  {t('当前可用')}
+                  {primaryMetric.label}
                 </div>
                 <div className='mt-1 text-2xl font-semibold text-semi-color-text-0'>
-                  {t('剩余')}{' '}
-                  {getUsageDisplayText(item.usageSummary, item.resourceType, t)}
+                  {primaryMetric.value}
+                </div>
+                <div className='mt-1 text-xs text-semi-color-text-2'>
+                  {primaryMetric.helper}
                 </div>
               </div>
               <div>
                 <div className='text-xs font-medium uppercase tracking-[0.12em] text-semi-color-text-2'>
-                  {t('使用进度')}
+                  {item.resourceType === 'request_count' ? t('剩余次数') : t('使用进度')}
                 </div>
                 <div className='mt-1 text-lg font-semibold text-semi-color-text-0'>
-                  {item.usageSummary.unlimited ? t('不限') : `${usagePercent}%`}
+                  {item.resourceType === 'request_count'
+                    ? getUsageDisplayText(item.usageSummary, item.resourceType, t)
+                    : item.usageSummary.unlimited
+                      ? t('不限')
+                      : `${usagePercent}%`}
                 </div>
               </div>
             </div>
@@ -2521,7 +2596,10 @@ const SubscriptionPlansCard = ({
                 {
                   key: 'usage',
                   category: t('使用概览'),
-                  summary: `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
+                  summary:
+                    item.resourceType === 'request_count'
+                      ? `${primaryMetric.label} ${primaryMetric.value} · ${primaryMetric.helper}`
+                      : `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
                   details: usageItems,
                 },
                 {
@@ -2578,7 +2656,10 @@ const SubscriptionPlansCard = ({
                 {
                   key: 'usage',
                   category: t('使用概览'),
-                  summary: `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
+                  summary:
+                    item.resourceType === 'request_count'
+                      ? `${primaryMetric.label} ${primaryMetric.value} · ${primaryMetric.helper}`
+                      : `${t('当前可用')} ${t('剩余')} ${getUsageDisplayText(item.usageSummary, item.resourceType, t)}`,
                   details: usageItems,
                 },
                 {
@@ -4314,13 +4395,27 @@ const SubscriptionPlansCard = ({
                     <Text
                       link
                       className='mx-1'
-                      onClick={() => navigate('/console/token')}
+                      onClick={() =>
+                        navigate(
+                          '/console/token?highlight=Subscription%20Access&keyword=Subscription%20Access',
+                        )
+                      }
                     >
                       {t('令牌管理')}
                     </Text>
-                    <span>
-                      {t('选择 Subscription Access，使用 CC Switch 一键导入。')}
-                    </span>
+                    <span>{t('选择')}</span>
+                    <Text
+                      link
+                      className='mx-1'
+                      onClick={() =>
+                        navigate(
+                          '/console/token?highlight=Subscription%20Access&keyword=Subscription%20Access',
+                        )
+                      }
+                    >
+                      Subscription Access
+                    </Text>
+                    <span>{t('，使用 CC Switch 一键导入。')}</span>
                   </div>
                 </div>
 

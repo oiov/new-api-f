@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useRef, useEffect, useState, useContext } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Button,
   Typography,
@@ -32,7 +32,6 @@ import {
   Switch,
   Row,
   Col,
-  Badge,
 } from '@douyinfe/semi-ui';
 import { IconMail, IconKey, IconBell, IconLink } from '@douyinfe/semi-icons';
 import { ShieldCheck, Bell, DollarSign, Settings } from 'lucide-react';
@@ -55,7 +54,6 @@ import {
   mergeAdminConfig,
   useSidebar,
 } from '../../../../hooks/common/useSidebar';
-import SiteNotificationsTab from './SiteNotificationsTab';
 
 const NotificationSettings = ({
   t,
@@ -64,14 +62,11 @@ const NotificationSettings = ({
   saveNotificationSettings,
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const formApiRef = useRef(null);
-  const cardRef = useRef(null);
   const [statusState] = useContext(StatusContext);
   const [userState] = useContext(UserContext);
   const isAdminOrRoot = (userState?.user?.role || 0) >= 10;
-  const unreadSiteNotificationCount = Number(
-    userState?.user?.site_notification_unread_count || 0,
-  );
 
   // 左侧边栏设置相关状态
   const [sidebarLoading, setSidebarLoading] = useState(false);
@@ -284,23 +279,11 @@ const NotificationSettings = ({
   }, [t]);
 
   useEffect(() => {
-    const syncFromHash = () => {
-      if (window.location.hash !== '#site-notifications') {
-        return;
-      }
-      setActiveTabKey('site-notifications');
-      requestAnimationFrame(() => {
-        cardRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-      });
-    };
-
-    syncFromHash();
-    window.addEventListener('hashchange', syncFromHash);
-    return () => window.removeEventListener('hashchange', syncFromHash);
-  }, [location.key]);
+    if (location.hash !== '#site-notifications') {
+      return;
+    }
+    navigate('/console/site-notifications', { replace: true });
+  }, [location.hash, navigate]);
 
   // 初始化表单值
   useEffect(() => {
@@ -446,7 +429,7 @@ const NotificationSettings = ({
   const quotaNotifyDisabled = !notificationSettings.quotaNotifyEnabled;
 
   return (
-    <div ref={cardRef} id='site-notifications-card'>
+    <div>
       <Card
       className='!rounded-2xl shadow-sm border-0'
       footer={
@@ -491,6 +474,20 @@ const NotificationSettings = ({
           <div className='text-xs text-gray-600'>
             {t('通知、价格和隐私相关设置')}
           </div>
+        </div>
+      </div>
+
+      <div className='mb-4 rounded-2xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-4'>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <div>
+            <Typography.Text strong>{t('站内信已迁移为独立页面')}</Typography.Text>
+            <div className='mt-1 text-xs text-[var(--semi-color-text-2)]'>
+              {t('管理员通知、发放提醒和售后说明现在统一在独立页面查看。')}
+            </div>
+          </div>
+          <Button type='primary' onClick={() => navigate('/console/site-notifications')}>
+            {t('打开站内信')}
+          </Button>
         </div>
       </div>
 
@@ -908,22 +905,6 @@ const NotificationSettings = ({
                   </>
                 )}
               </div>
-            </TabPane>
-
-            {/* 价格设置 Tab */}
-            <TabPane
-              tab={
-                <div className='flex items-center gap-2'>
-                  <Bell size={16} />
-                  <span>{t('站内信')}</span>
-                  {unreadSiteNotificationCount > 0 ? (
-                    <Badge count={unreadSiteNotificationCount} overflowCount={99} />
-                  ) : null}
-                </div>
-              }
-              itemKey='site-notifications'
-            >
-              <SiteNotificationsTab t={t} />
             </TabPane>
 
             {/* 价格设置 Tab */}

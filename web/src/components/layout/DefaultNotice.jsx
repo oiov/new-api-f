@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { Tag, Typography, Divider, ImagePreview } from '@douyinfe/semi-ui';
 import {
   IconAlertTriangle,
@@ -27,6 +27,8 @@ import {
 } from '@douyinfe/semi-icons';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { StatusContext } from '../../context/Status';
+import { parseSubscriptionRefundSettings } from '../../helpers/subscriptionRefund';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -87,7 +89,15 @@ const Row = ({ label, value }) => (
 
 const DefaultNotice = () => {
   const { t } = useTranslation();
+  const [statusState] = useContext(StatusContext);
   const [previewVisible, setPreviewVisible] = useState(false);
+  const refundSettings = useMemo(
+    () =>
+      parseSubscriptionRefundSettings(
+        statusState?.status?.SubscriptionRefundSettings,
+      ),
+    [statusState?.status?.SubscriptionRefundSettings],
+  );
 
   return (
     <div style={{ fontSize: 13, lineHeight: 1.7 }}>
@@ -156,14 +166,20 @@ const DefaultNotice = () => {
         <Row label={t('退款规则')} value={t('支持无理由退款')} />
         <Row label={t('退款金额')} value={t('实充金额 - 实消金额')} />
         <Item style={{ marginTop: 6 }}>
-          {t('退款请前往')}
-          <Link
-            to='/contact'
-            style={{ color: 'var(--semi-color-primary)', margin: '0 2px' }}
-          >
-            {t('联系我们')}
-          </Link>
-          {t('页面咨询。补单联系管理员处理即可。')}
+          {refundSettings.page_enabled && refundSettings.enabled ? (
+            <>
+              {t('退款请前往')}
+              <Link
+                to='/console/refund'
+                style={{ color: 'var(--semi-color-primary)', margin: '0 2px' }}
+              >
+                {t('退款售后')}
+              </Link>
+              {t('页面提交或查看处理规则。补单联系管理员处理即可。')}
+            </>
+          ) : (
+            t('退款与售后入口当前由后台关闭，如需处理请直接联系管理员。')
+          )}
         </Item>
       </Section>
 

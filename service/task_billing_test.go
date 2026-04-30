@@ -664,7 +664,7 @@ func TestPreConsumeUserSubscription_AllowsVendorScopeWithDefaultVendorRule(t *te
 	assert.Equal(t, int64(500), res.PreConsumed)
 }
 
-func TestSyncActiveSubscriptionsForPlanTx_PreservesRestrictionSnapshot(t *testing.T) {
+func TestSyncActiveSubscriptionsForPlanTx_RefreshesRestrictionSnapshot(t *testing.T) {
 	truncate(t)
 
 	seedSubscriptionPlan(t, 117, model.SubscriptionResourceRequestCount)
@@ -698,7 +698,7 @@ func TestSyncActiveSubscriptionsForPlanTx_PreservesRestrictionSnapshot(t *testin
 	var refreshed model.UserSubscription
 	require.NoError(t, model.DB.Where("id = ?", 117).First(&refreshed).Error)
 	assert.Equal(t, int64(200), refreshed.RequestCountTotal)
-	assert.Equal(t, `["claude-3-7-sonnet"]`, refreshed.AllowedModelsJSON)
+	assert.Equal(t, `["gpt-4o"]`, refreshed.AllowedModelsJSON)
 }
 
 func TestCreateMigratedUserSubscriptionTx_CopiesTargetRestrictionSnapshot(t *testing.T) {

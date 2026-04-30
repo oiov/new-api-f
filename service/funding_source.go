@@ -94,6 +94,8 @@ type SubscriptionFunding struct {
 	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
 	AmountTotal           int64
 	AmountUsedAfter       int64
+	ResetWindowStart      int64
+	ResetWindowEnd        int64
 	RequestCountTotal     int64
 	RequestCountUsedAfter int64
 	PlanId                int
@@ -129,6 +131,8 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 	s.ResourceType = model.NormalizeSubscriptionResourceType(res.ResourceType)
 	s.AmountTotal = res.AmountTotal
 	s.AmountUsedAfter = res.AmountUsedAfter
+	s.ResetWindowStart = res.ResetWindowStart
+	s.ResetWindowEnd = res.ResetWindowEnd
 	s.RequestCountTotal = res.RequestCountTotal
 	s.RequestCountUsedAfter = res.RequestCountAfter
 	// 获取订阅计划信息
@@ -143,7 +147,7 @@ func (s *SubscriptionFunding) Settle(delta int) error {
 	if delta == 0 {
 		return nil
 	}
-	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+	return model.PostConsumeUserSubscriptionDeltaForWindow(s.subscriptionId, int64(delta), s.ResetWindowStart, s.ResetWindowEnd)
 }
 
 func (s *SubscriptionFunding) SettleDelta(actualQuota int, preConsumedQuota int) int {

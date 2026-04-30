@@ -1598,6 +1598,22 @@ func syncSubscriptionPlanSnapshotFields(sub *UserSubscription, plan *Subscriptio
 		sub.ResetFixedSeconds = plan.QuotaResetFixedSeconds
 		changed = true
 	}
+	if strings.TrimSpace(sub.AllowedGroupsJSON) != strings.TrimSpace(plan.AllowedGroupsJSON) {
+		sub.AllowedGroupsJSON = strings.TrimSpace(plan.AllowedGroupsJSON)
+		changed = true
+	}
+	if strings.TrimSpace(sub.AllowedModelsJSON) != strings.TrimSpace(plan.AllowedModelsJSON) {
+		sub.AllowedModelsJSON = strings.TrimSpace(plan.AllowedModelsJSON)
+		changed = true
+	}
+	if strings.TrimSpace(sub.AllowedVendorIDsJSON) != strings.TrimSpace(plan.AllowedVendorIDsJSON) {
+		sub.AllowedVendorIDsJSON = strings.TrimSpace(plan.AllowedVendorIDsJSON)
+		changed = true
+	}
+	if strings.TrimSpace(sub.UpgradeGroup) != strings.TrimSpace(plan.UpgradeGroup) {
+		sub.UpgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+		changed = true
+	}
 
 	if recalculateSubscriptionResetWindow(sub, now) {
 		changed = true
@@ -1649,6 +1665,36 @@ func getSubscriptionUsageWindowStart(sub *UserSubscription) int64 {
 		return sub.LastResetTime
 	}
 	return sub.StartTime
+}
+
+func getSubscriptionResetWindowForTimestamp(sub *UserSubscription, timestamp int64) (int64, int64) {
+	if sub == nil || timestamp <= 0 {
+		return 0, 0
+	}
+	resetPeriod := NormalizeResetPeriod(sub.ResetPeriod)
+	if resetPeriod == SubscriptionResetNever {
+		return sub.StartTime, 0
+	}
+	baseUnix := sub.StartTime
+	if baseUnix <= 0 {
+		baseUnix = sub.LastResetTime
+	}
+	if baseUnix <= 0 {
+		return 0, 0
+	}
+	snapshotPlan := &SubscriptionPlan{
+		QuotaResetPeriod:        resetPeriod,
+		QuotaResetCustomSeconds: sub.ResetCustomSeconds,
+		QuotaResetUseFixedClock: sub.ResetUseFixedClock,
+		QuotaResetFixedSeconds:  sub.ResetFixedSeconds,
+	}
+	windowStart := baseUnix
+	windowEnd := calcNextResetTime(time.Unix(windowStart, 0), snapshotPlan, sub.EndTime)
+	for windowEnd > 0 && timestamp >= windowEnd {
+		windowStart = windowEnd
+		windowEnd = calcNextResetTime(time.Unix(windowStart, 0), snapshotPlan, sub.EndTime)
+	}
+	return windowStart, windowEnd
 }
 
 func getSubscriptionRequestCountPeriodLimit(sub *UserSubscription) int64 {
@@ -2009,10 +2055,19 @@ func summarizeUserSubscriptionUsageFromPreConsumeRecords(sub *UserSubscription, 
 	if err != nil {
 		return 0, 0, nil, err
 	}
+	finalizedRequestIDs, err := findFinalizedSubscriptionConsumeRequestIDs(sub, startTimestamp, endTimestamp)
+	if err != nil {
+		return 0, 0, nil, err
+	}
 	requestIDs := make(map[string]struct{}, len(records))
 	var amountUsed int64
 	var countUsed int64
 	for _, record := range records {
+		if record.RequestId != "" {
+			if _, ok := finalizedRequestIDs[record.RequestId]; ok {
+				continue
+			}
+		}
 		amountUsed += record.Amount
 		countUsed += record.Count
 		if record.RequestId != "" {
@@ -2020,6 +2075,49 @@ func summarizeUserSubscriptionUsageFromPreConsumeRecords(sub *UserSubscription, 
 		}
 	}
 	return amountUsed, countUsed, requestIDs, nil
+}
+
+func findFinalizedSubscriptionConsumeRequestIDs(sub *UserSubscription, startTimestamp int64, endTimestamp int64) (map[string]struct{}, error) {
+	result := map[string]struct{}{}
+	if sub == nil {
+		return result, nil
+	}
+	rows := make([]subscriptionConsumeSummaryRow, 0)
+	tx := buildSubscriptionConsumeLogsQuery(0, sub.Id, 0, sub.UserId, startTimestamp, endTimestamp)
+	if err := tx.Select("logs.request_id, logs.other").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.RequestId == "" {
+			continue
+		}
+		otherMap := map[string]interface{}{}
+		if err := common.UnmarshalJsonStr(row.Other, &otherMap); err != nil {
+			continue
+		}
+		if hasSubscriptionSettlementFields(otherMap) {
+			result[row.RequestId] = struct{}{}
+		}
+	}
+	return result, nil
+}
+
+func hasSubscriptionSettlementFields(otherMap map[string]interface{}) bool {
+	if otherMap == nil {
+		return false
+	}
+	settlementFields := []string{
+		"subscription_amount_consumed",
+		"subscription_request_count_consumed",
+		"subscription_consumed",
+		"subscription_post_delta",
+	}
+	for _, field := range settlementFields {
+		if _, ok := otherMap[field]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {
@@ -2351,7 +2449,7 @@ func createDerivedDayPassFromParentTx(tx *gorm.DB, parent *UserSubscription, tra
 	if err := tx.Create(child).Error; err != nil {
 		return nil, 0, err
 	}
-	if _, err := syncDerivedDayPassAccessTokenTx(tx, child, false); err != nil {
+	if _, _, err := syncDerivedDayPassAccessTokenTx(tx, child, false); err != nil {
 		return nil, 0, err
 	}
 	return child, getUserSubscriptionRemainingRequestCount(parent), nil
@@ -2403,6 +2501,11 @@ func CreateDerivedDayPassFromSubscription(userId int, parentSubscriptionId int, 
 	})
 	if err != nil {
 		return nil, err
+	}
+	if result.DayPass != nil {
+		if err := SyncDerivedDayPassAccessTokenCacheForSubscription(result.DayPass.Id, ""); err != nil {
+			return nil, err
+		}
 	}
 	return result, nil
 }
@@ -2509,6 +2612,11 @@ func CompleteSubscriptionOrderWithResult(tradeNo string, providerPayload string)
 	if err != nil {
 		return false, err
 	}
+	if createdSub != nil {
+		if err := SyncSubscriptionAccessTokenCachesForUser(logUserId); err != nil {
+			return false, err
+		}
+	}
 	if upgradeGroup != "" && logUserId > 0 {
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
 	}
@@ -2532,33 +2640,57 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	return err
 }
 
-func SyncActiveSubscriptionsForPlanTx(tx *gorm.DB, planId int) error {
+func SyncActiveSubscriptionsForPlanUsersTx(tx *gorm.DB, planId int) ([]int, error) {
 	if tx == nil {
-		return errors.New("tx is nil")
+		return nil, errors.New("tx is nil")
 	}
 	if planId <= 0 {
-		return errors.New("invalid planId")
+		return nil, errors.New("invalid planId")
 	}
 	plan, err := getSubscriptionPlanByIdForUpdateTx(tx, planId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	now := GetDBTimestampWithTx(tx)
 	var subs []UserSubscription
 	if err := tx.Where("plan_id = ? AND status = ? AND end_time > ?", planId, "active", now).
 		Find(&subs).Error; err != nil {
-		return err
+		return nil, err
 	}
+	affectedUsers := make(map[int]struct{}, len(subs))
+	affectedSubIDs := make([]int, 0, len(subs))
 	for i := range subs {
 		sub := subs[i]
 		if !syncSubscriptionPlanSnapshotFields(&sub, plan, now) {
 			continue
 		}
 		if err := tx.Save(&sub).Error; err != nil {
-			return err
+			return nil, err
+		}
+		affectedUsers[sub.UserId] = struct{}{}
+		affectedSubIDs = append(affectedSubIDs, sub.Id)
+	}
+	if len(affectedSubIDs) > 0 {
+		if err := ensureDerivedDayPassAccessTokensForSubscriptionIDsTx(tx, affectedSubIDs); err != nil {
+			return nil, err
+		}
+		for userID := range affectedUsers {
+			if err := ensureSubscriptionAggregateAccessTokenForUserTx(tx, userID); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return nil
+	userIDs := make([]int, 0, len(affectedUsers))
+	for userID := range affectedUsers {
+		userIDs = append(userIDs, userID)
+	}
+	slices.Sort(userIDs)
+	return userIDs, nil
+}
+
+func SyncActiveSubscriptionsForPlanTx(tx *gorm.DB, planId int) error {
+	_, err := SyncActiveSubscriptionsForPlanUsersTx(tx, planId)
+	return err
 }
 
 func RefreshActiveSubscriptionResetWindows(batchSize int) (int, error) {
@@ -2749,6 +2881,11 @@ func AdminBindSubscriptionWithResult(userId int, planId int, sourceNote string) 
 	})
 	if err != nil {
 		return "", nil, err
+	}
+	if createdSub != nil {
+		if err := SyncSubscriptionAccessTokenCachesForUser(userId); err != nil {
+			return "", nil, err
+		}
 	}
 	if isManualDelivery {
 		if refreshChannelCache {
@@ -3565,6 +3702,9 @@ func GetAdminUserSubscriptions(
 	if err := ensureDerivedDayPassAccessTokensForSubscriptionIDsTx(DB, subscriptionIDs); err != nil {
 		return nil, 0, err
 	}
+	if err := SyncDerivedDayPassAccessTokenCacheForSubscriptionIDs(subscriptionIDs); err != nil {
+		return nil, 0, err
+	}
 	userIDSet := make(map[int]struct{}, len(rows))
 	for _, row := range rows {
 		if row.UserId > 0 {
@@ -3704,11 +3844,13 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 	var deliveryLogPlanTitle string
 	var deliveryLogTradeNo string
 	var deliveryLogAt int64
+	var needSyncAggregateTokenCache bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", orderId).First(&order).Error; err != nil {
 			return err
 		}
+		targetUserId = order.UserId
 		if order.PlanDeliveryMode != SubscriptionDeliveryModeManualDelivery {
 			return errors.New("该订单不是人工发放套餐")
 		}
@@ -3805,7 +3947,6 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 				keyIndex = order.ReservedChannelKeyIndex
 			}
 			if sub == nil {
-				targetUserId = order.UserId
 				upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
 				sub, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
 				if err != nil {
@@ -3849,12 +3990,7 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 			if err := refreshSubscriptionAggregateAccessTokenTx(tx, aggregateToken); err != nil {
 				return err
 			}
-			if common.RedisEnabled {
-				tokenCopy := *aggregateToken
-				gopool.Go(func() {
-					_ = cacheSetToken(tokenCopy)
-				})
-			}
+			needSyncAggregateTokenCache = true
 			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "api_key", "sk-"+aggregateToken.Key)
 
 			normalizedPayload = upsertSubscriptionDeliveryPayloadValue(normalizedPayload, schema, "base_url", baseURL)
@@ -3885,6 +4021,11 @@ func AdminDeliverManualDeliveryOrder(orderId int, adminId int, payload []Subscri
 	})
 	if err != nil {
 		return nil, err
+	}
+	if needSyncAggregateTokenCache && targetUserId > 0 {
+		if err := SyncSubscriptionAccessTokenCachesForUser(targetUserId); err != nil {
+			return nil, err
+		}
 	}
 	if upgradeGroup != "" && targetUserId > 0 {
 		_ = UpdateUserGroupCache(targetUserId, upgradeGroup)
@@ -4291,15 +4432,15 @@ func getDerivedDayPassAccessTokenTx(tx *gorm.DB, userSubscriptionId int) (*Token
 	return &token, nil
 }
 
-func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateKey bool) (*Token, error) {
+func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateKey bool) (*Token, string, error) {
 	if tx == nil {
-		return nil, errors.New("tx is nil")
+		return nil, "", errors.New("tx is nil")
 	}
 	if sub == nil || sub.Id <= 0 {
-		return nil, errors.New("invalid subscription")
+		return nil, "", errors.New("invalid subscription")
 	}
 	if !isDerivedDayPassSubscription(sub) {
-		return nil, nil
+		return nil, "", nil
 	}
 	routeGroup := strings.TrimSpace(getUserSubscriptionRouteGroup(sub))
 	allowedModels := decodeUserSubscriptionAllowedModels(sub)
@@ -4309,15 +4450,15 @@ func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateK
 	active := sub.Status == "active" && sub.EndTime > now
 	token, err := getDerivedDayPassAccessTokenTx(tx, sub.Id)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if token == nil {
 		if !active {
-			return nil, nil
+			return nil, "", nil
 		}
 		key, err := common.GenerateKey()
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		token = &Token{
 			UserId:                  sub.UserId,
@@ -4337,21 +4478,15 @@ func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateK
 			SpecificChannelKeyIndex: sub.SpecificChannelKeyIndex,
 		}
 		if err := tx.Create(token).Error; err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		if common.RedisEnabled {
-			tokenCopy := *token
-			gopool.Go(func() {
-				_ = cacheSetToken(tokenCopy)
-			})
-		}
-		return token, nil
+		return token, "", nil
 	}
 	oldKey := strings.TrimSpace(token.Key)
 	if rotateKey {
 		newKey, err := common.GenerateKey()
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		token.Key = newKey
 	}
@@ -4376,7 +4511,7 @@ func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateK
 		updates["key"] = token.Key
 	}
 	if err := tx.Model(&Token{}).Where("id = ?", token.Id).Updates(updates).Error; err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	token.UserId = sub.UserId
 	token.UserSubscriptionId = sub.Id
@@ -4390,22 +4525,7 @@ func syncDerivedDayPassAccessTokenTx(tx *gorm.DB, sub *UserSubscription, rotateK
 	token.Group = routeGroup
 	token.SpecificChannelId = sub.SpecificChannelId
 	token.SpecificChannelKeyIndex = sub.SpecificChannelKeyIndex
-	if common.RedisEnabled {
-		tokenCopy := *token
-		gopool.Go(func() {
-			if rotateKey && oldKey != "" && oldKey != tokenCopy.Key {
-				_ = cacheDeleteToken(oldKey)
-			}
-			if tokenCopy.Status == common.TokenStatusEnabled {
-				_ = cacheSetToken(tokenCopy)
-				return
-			}
-			if tokenCopy.Key != "" {
-				_ = cacheDeleteToken(tokenCopy.Key)
-			}
-		})
-	}
-	return token, nil
+	return token, oldKey, nil
 }
 
 func disableSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token, error) {
@@ -4445,6 +4565,162 @@ func disableSubscriptionAggregateAccessTokenTx(tx *gorm.DB, userId int) (*Token,
 	token.SpecificChannelId = 0
 	token.SpecificChannelKeyIndex = -1
 	return &token, nil
+}
+
+func syncSubscriptionAggregateAccessTokenCache(token *Token) error {
+	if !common.RedisEnabled || token == nil {
+		return nil
+	}
+	if token.Status == common.TokenStatusEnabled && strings.TrimSpace(token.Key) != "" {
+		return cacheSetToken(*token)
+	}
+	if strings.TrimSpace(token.Key) != "" {
+		return cacheDeleteToken(token.Key)
+	}
+	return nil
+}
+
+func syncDerivedDayPassAccessTokenCache(token *Token, oldKey string) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	oldKey = strings.TrimSpace(oldKey)
+	if token != nil && oldKey != "" && oldKey != strings.TrimSpace(token.Key) {
+		if err := cacheDeleteToken(oldKey); err != nil {
+			return err
+		}
+	}
+	if token == nil {
+		return nil
+	}
+	if token.Status == common.TokenStatusEnabled && strings.TrimSpace(token.Key) != "" {
+		return cacheSetToken(*token)
+	}
+	if strings.TrimSpace(token.Key) != "" {
+		return cacheDeleteToken(token.Key)
+	}
+	return nil
+}
+
+func SyncSubscriptionAggregateAccessTokenCacheForUser(userId int) error {
+	if !common.RedisEnabled || userId <= 0 {
+		return nil
+	}
+	token, err := getSubscriptionAggregateAccessTokenTx(DB, userId)
+	if err != nil {
+		return err
+	}
+	return syncSubscriptionAggregateAccessTokenCache(token)
+}
+
+func SyncSubscriptionAggregateAccessTokenCacheForUsers(userIDs []int) error {
+	if !common.RedisEnabled || len(userIDs) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(userIDs))
+	for _, userID := range userIDs {
+		if userID <= 0 {
+			continue
+		}
+		if _, ok := seen[userID]; ok {
+			continue
+		}
+		seen[userID] = struct{}{}
+		if err := SyncSubscriptionAggregateAccessTokenCacheForUser(userID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func SyncDerivedDayPassAccessTokenCacheForSubscription(userSubscriptionId int, oldKey string) error {
+	if !common.RedisEnabled || userSubscriptionId <= 0 {
+		return nil
+	}
+	token, err := getDerivedDayPassAccessTokenTx(DB, userSubscriptionId)
+	if err != nil {
+		return err
+	}
+	return syncDerivedDayPassAccessTokenCache(token, oldKey)
+}
+
+func SyncDerivedDayPassAccessTokenCacheForSubscriptionIDs(subscriptionIDs []int) error {
+	if !common.RedisEnabled || len(subscriptionIDs) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(subscriptionIDs))
+	for _, subscriptionID := range subscriptionIDs {
+		if subscriptionID <= 0 {
+			continue
+		}
+		if _, ok := seen[subscriptionID]; ok {
+			continue
+		}
+		seen[subscriptionID] = struct{}{}
+		if err := SyncDerivedDayPassAccessTokenCacheForSubscription(subscriptionID, ""); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func SyncDerivedDayPassAccessTokenCacheForUser(userId int) error {
+	if !common.RedisEnabled || userId <= 0 {
+		return nil
+	}
+	var subs []UserSubscription
+	if err := DB.Select("id").
+		Where("user_id = ? AND parent_user_subscription_id > 0", userId).
+		Find(&subs).Error; err != nil {
+		return err
+	}
+	subscriptionIDs := make([]int, 0, len(subs))
+	for i := range subs {
+		if subs[i].Id > 0 {
+			subscriptionIDs = append(subscriptionIDs, subs[i].Id)
+		}
+	}
+	return SyncDerivedDayPassAccessTokenCacheForSubscriptionIDs(subscriptionIDs)
+}
+
+func SyncDerivedDayPassAccessTokenCacheForUsers(userIDs []int) error {
+	if !common.RedisEnabled || len(userIDs) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(userIDs))
+	for _, userID := range userIDs {
+		if userID <= 0 {
+			continue
+		}
+		if _, ok := seen[userID]; ok {
+			continue
+		}
+		seen[userID] = struct{}{}
+		if err := SyncDerivedDayPassAccessTokenCacheForUser(userID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func SyncSubscriptionAccessTokenCachesForUser(userId int) error {
+	if userId <= 0 {
+		return nil
+	}
+	if err := SyncDerivedDayPassAccessTokenCacheForUser(userId); err != nil {
+		return err
+	}
+	return SyncSubscriptionAggregateAccessTokenCacheForUser(userId)
+}
+
+func SyncSubscriptionAccessTokenCachesForUsers(userIDs []int) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	if err := SyncDerivedDayPassAccessTokenCacheForUsers(userIDs); err != nil {
+		return err
+	}
+	return SyncSubscriptionAggregateAccessTokenCacheForUsers(userIDs)
 }
 
 func refreshSubscriptionAggregateAccessTokenTx(tx *gorm.DB, token *Token) error {
@@ -4595,7 +4871,7 @@ func ensureDerivedDayPassAccessTokensForUserTx(tx *gorm.DB, userId int) error {
 		return err
 	}
 	for i := range subs {
-		if _, err := syncDerivedDayPassAccessTokenTx(tx, &subs[i], false); err != nil {
+		if _, _, err := syncDerivedDayPassAccessTokenTx(tx, &subs[i], false); err != nil {
 			return err
 		}
 	}
@@ -4606,9 +4882,12 @@ func EnsureDerivedDayPassAccessTokensForUser(userId int) error {
 	if userId <= 0 {
 		return errors.New("invalid userId")
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
+	if err := DB.Transaction(func(tx *gorm.DB) error {
 		return ensureDerivedDayPassAccessTokensForUserTx(tx, userId)
-	})
+	}); err != nil {
+		return err
+	}
+	return SyncDerivedDayPassAccessTokenCacheForUser(userId)
 }
 
 func ensureDerivedDayPassAccessTokensForSubscriptionIDsTx(tx *gorm.DB, subscriptionIDs []int) error {
@@ -4624,7 +4903,7 @@ func ensureDerivedDayPassAccessTokensForSubscriptionIDsTx(tx *gorm.DB, subscript
 		return err
 	}
 	for i := range subs {
-		if _, err := syncDerivedDayPassAccessTokenTx(tx, &subs[i], false); err != nil {
+		if _, _, err := syncDerivedDayPassAccessTokenTx(tx, &subs[i], false); err != nil {
 			return err
 		}
 	}
@@ -4687,11 +4966,8 @@ func EnsureSubscriptionAggregateAccessTokenForUser(userId int) (*Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	if result != nil && common.RedisEnabled {
-		tokenCopy := *result
-		gopool.Go(func() {
-			_ = cacheSetToken(tokenCopy)
-		})
+	if err := syncSubscriptionAggregateAccessTokenCache(result); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -5542,6 +5818,7 @@ func AdminTransferUserSubscription(userSubscriptionId int, options AdminTransfer
 	var movedLogCount int64
 	var reactivated bool
 	var transferredSub *UserSubscription
+	var transferredDerivedOldKey string
 	preservedToken := false
 	externalLogTransfer := LOG_DB != nil && LOG_DB != DB
 
@@ -5615,9 +5892,11 @@ func AdminTransferUserSubscription(userSubscriptionId int, options AdminTransfer
 			Updates(updates).Error; err != nil {
 			return err
 		}
-		if _, err := syncDerivedDayPassAccessTokenTx(tx, &sub, true); err != nil {
+		_, oldKey, err := syncDerivedDayPassAccessTokenTx(tx, &sub, true)
+		if err != nil {
 			return err
 		}
+		transferredDerivedOldKey = oldKey
 
 		if deliveredAccessToken != nil &&
 			sourceAggregateToken != nil &&
@@ -5672,6 +5951,14 @@ func AdminTransferUserSubscription(userSubscriptionId int, options AdminTransfer
 	if sourceCacheGroup != "" && sourceUserId > 0 {
 		_ = UpdateUserGroupCache(sourceUserId, sourceCacheGroup)
 	}
+	if transferredSub != nil && isDerivedDayPassSubscription(transferredSub) {
+		if err := SyncDerivedDayPassAccessTokenCacheForSubscription(transferredSub.Id, transferredDerivedOldKey); err != nil {
+			return "", err
+		}
+	}
+	if err := SyncSubscriptionAccessTokenCachesForUsers([]int{sourceUserId, targetUserId}); err != nil {
+		return "", err
+	}
 	logTransferWarning := ""
 	if externalLogTransfer {
 		moved, logErr := transferSubscriptionConsumeLogsOwner(nil, userSubscriptionId, sourceUserId, targetUserId, targetUsername)
@@ -5719,6 +6006,7 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	downgradeGroup := ""
 	releasedManualSlot := false
 	var userId int
+	var derivedOldKey string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").
@@ -5752,9 +6040,11 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 		sub.EndTime = now
 		sub.SpecificChannelId = 0
 		sub.SpecificChannelKeyIndex = -1
-		if _, err := syncDerivedDayPassAccessTokenTx(tx, &sub, true); err != nil {
+		_, oldKey, err := syncDerivedDayPassAccessTokenTx(tx, &sub, true)
+		if err != nil {
 			return err
 		}
+		derivedOldKey = oldKey
 		if err := clearUserPreferredSubscriptionIfMatchesTx(tx, sub.UserId, sub.Id); err != nil {
 			return err
 		}
@@ -5773,6 +6063,12 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	}
 	if cacheGroup != "" && userId > 0 {
 		_ = UpdateUserGroupCache(userId, cacheGroup)
+	}
+	if err := SyncDerivedDayPassAccessTokenCacheForSubscription(userSubscriptionId, derivedOldKey); err != nil {
+		return "", err
+	}
+	if err := SyncSubscriptionAccessTokenCachesForUser(userId); err != nil {
+		return "", err
 	}
 	msgParts := make([]string, 0, 2)
 	if releasedManualSlot {
@@ -5796,6 +6092,7 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	cacheGroup := ""
 	downgradeGroup := ""
 	var userId int
+	var derivedOldKey string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").
@@ -5817,6 +6114,7 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		if token, err := getDerivedDayPassAccessTokenTx(tx, sub.Id); err != nil {
 			return err
 		} else if token != nil {
+			derivedOldKey = strings.TrimSpace(token.Key)
 			if err := tx.Model(&Token{}).Where("id = ?", token.Id).Updates(map[string]any{
 				"status":       common.TokenStatusDisabled,
 				"expired_time": now,
@@ -5834,6 +6132,12 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	}
 	if cacheGroup != "" && userId > 0 {
 		_ = UpdateUserGroupCache(userId, cacheGroup)
+	}
+	if err := SyncDerivedDayPassAccessTokenCacheForSubscription(userSubscriptionId, derivedOldKey); err != nil {
+		return "", err
+	}
+	if err := SyncSubscriptionAccessTokenCachesForUser(userId); err != nil {
+		return "", err
 	}
 	if downgradeGroup != "" {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
@@ -6035,6 +6339,9 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 	}
 	now := GetDBTimestamp()
 	message := ""
+	affectedUserId := 0
+	affectedSubscriptionId := 0
+	derivedOldKey := ""
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").
@@ -6042,6 +6349,8 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 			First(&sub).Error; err != nil {
 			return err
 		}
+		affectedUserId = sub.UserId
+		affectedSubscriptionId = sub.Id
 		if sub.Status == "cancelled" {
 			return errors.New("subscription has been cancelled")
 		}
@@ -6140,12 +6449,20 @@ func AdminOperateUserSubscription(userSubscriptionId int, action string, value i
 		if err := tx.Save(&sub).Error; err != nil {
 			return err
 		}
-		if _, err := syncDerivedDayPassAccessTokenTx(tx, &sub, false); err != nil {
+		_, oldKey, err := syncDerivedDayPassAccessTokenTx(tx, &sub, false)
+		if err != nil {
 			return err
 		}
+		derivedOldKey = oldKey
 		return ensureSubscriptionAggregateAccessTokenForUserTx(tx, sub.UserId)
 	})
 	if err != nil {
+		return "", err
+	}
+	if err := SyncDerivedDayPassAccessTokenCacheForSubscription(affectedSubscriptionId, derivedOldKey); err != nil {
+		return "", err
+	}
+	if err := SyncSubscriptionAccessTokenCachesForUser(affectedUserId); err != nil {
 		return "", err
 	}
 	return message, nil
@@ -6169,6 +6486,8 @@ type SubscriptionPreConsumeResult struct {
 	RequestCountAfter        int64
 	RequestCountPeriodBefore int64
 	RequestCountPeriodAfter  int64
+	ResetWindowStart         int64
+	ResetWindowEnd           int64
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -6498,6 +6817,9 @@ func GetAggregateSubscriptionRouteForPreferredSubscription(userId int, preferred
 	if err != nil {
 		return nil, err
 	}
+	if err := SyncSubscriptionAccessTokenCachesForUser(userId); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -6600,6 +6922,9 @@ func GetPreferredSubscriptionRouteForAggregateToken(userId int, modelName string
 		return nil
 	})
 	if err != nil {
+		return nil, err
+	}
+	if err := SyncSubscriptionAccessTokenCachesForUser(userId); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -6747,6 +7072,7 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 			returnValue.RequestCountAfter = sub.RequestCountUsed
 			returnValue.RequestCountPeriodBefore = sub.RequestCountPeriodUsed
 			returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
+			returnValue.ResetWindowStart, returnValue.ResetWindowEnd = getSubscriptionResetWindowForTimestamp(sub, dup.CreatedAt)
 			return nil
 		}
 		return err
@@ -6782,6 +7108,8 @@ func applyUserSubscriptionPreConsumeTx(tx *gorm.DB, requestId string, userId int
 	returnValue.RequestCountAfter = sub.RequestCountUsed
 	returnValue.RequestCountPeriodBefore = requestCountPeriodBefore
 	returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
+	returnValue.ResetWindowStart = getSubscriptionUsageWindowStart(sub)
+	returnValue.ResetWindowEnd = sub.NextResetTime
 	return nil
 }
 
@@ -6868,6 +7196,7 @@ func preConsumeUserSubscriptionWithPreference(requestId string, userId int, mode
 			returnValue.RequestCountAfter = sub.RequestCountUsed
 			returnValue.RequestCountPeriodBefore = sub.RequestCountPeriodUsed
 			returnValue.RequestCountPeriodAfter = sub.RequestCountPeriodUsed
+			returnValue.ResetWindowStart, returnValue.ResetWindowEnd = getSubscriptionResetWindowForTimestamp(&sub, existing.CreatedAt)
 			return nil
 		}
 
@@ -7099,6 +7428,18 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 	})
 }
 
+func PostConsumeUserSubscriptionDeltaForWindow(userSubscriptionId int, delta int64, windowStart int64, windowEnd int64) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	if delta == 0 {
+		return nil
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return postConsumeUserSubscriptionDeltaForWindowTx(tx, userSubscriptionId, delta, 0, windowStart, windowEnd)
+	})
+}
+
 func PostConsumeUserSubscriptionUsage(userSubscriptionId int, amountDelta int64, countDelta int64) error {
 	if userSubscriptionId <= 0 {
 		return errors.New("invalid userSubscriptionId")
@@ -7115,7 +7456,15 @@ func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, del
 	return postConsumeUserSubscriptionDeltaDetailedTx(tx, userSubscriptionId, delta, 0)
 }
 
+func postConsumeUserSubscriptionDeltaForWindowTx(tx *gorm.DB, userSubscriptionId int, amountDelta int64, countDelta int64, windowStart int64, windowEnd int64) error {
+	return postConsumeUserSubscriptionDeltaDetailedForWindowTx(tx, userSubscriptionId, amountDelta, countDelta, windowStart, windowEnd)
+}
+
 func postConsumeUserSubscriptionDeltaDetailedTx(tx *gorm.DB, userSubscriptionId int, amountDelta int64, countDelta int64) error {
+	return postConsumeUserSubscriptionDeltaDetailedForWindowTx(tx, userSubscriptionId, amountDelta, countDelta, 0, 0)
+}
+
+func postConsumeUserSubscriptionDeltaDetailedForWindowTx(tx *gorm.DB, userSubscriptionId int, amountDelta int64, countDelta int64, windowStart int64, windowEnd int64) error {
 	if tx == nil {
 		return errors.New("tx is nil")
 	}
@@ -7130,6 +7479,12 @@ func postConsumeUserSubscriptionDeltaDetailedTx(tx *gorm.DB, userSubscriptionId 
 		Where("id = ?", userSubscriptionId).
 		First(&sub).Error; err != nil {
 		return err
+	}
+	if windowStart > 0 && sub.LastResetTime > windowStart {
+		return nil
+	}
+	if windowEnd > 0 && sub.LastResetTime >= windowEnd {
+		return nil
 	}
 	if countDelta != 0 {
 		if hasLifetimeRequestCountLimit(&sub) || !hasSeparatePeriodRequestCounter(&sub) {

@@ -47,3 +47,17 @@ export const DATE_RANGE_PRESETS = [
     end: () => dayjs().endOf('month').toDate(),
   },
 ];
+
+export const USAGE_LOG_DATE_RANGE_PRESETS = [
+  {
+    text: '过去 1 小时',
+    start: () => dayjs().subtract(1, 'hour').toDate(),
+    end: () => dayjs().toDate(),
+  },
+  {
+    text: '过去 24 小时',
+    start: () => dayjs().subtract(24, 'hour').toDate(),
+    end: () => dayjs().toDate(),
+  },
+  ...DATE_RANGE_PRESETS,
+];

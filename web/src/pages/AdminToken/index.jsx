@@ -18,12 +18,37 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
+import { Tabs } from '@douyinfe/semi-ui';
+import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
+import TokensTable from '../../components/table/tokens';
 import AdminTokensTable from '../../components/table/admin-tokens';
 
 const AdminToken = () => {
+  const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'admin' ? 'admin' : 'tokens';
+
+  const handleTabChange = (key) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (key === 'admin') {
+      nextParams.set('tab', 'admin');
+    } else {
+      nextParams.delete('tab');
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
+
   return (
     <div className='mt-[60px] px-2 w-full'>
-      <AdminTokensTable />
+      <Tabs activeKey={activeTab} onChange={handleTabChange} type='line'>
+        <Tabs.TabPane tab={t('令牌管理')} itemKey='tokens'>
+          <TokensTable />
+        </Tabs.TabPane>
+        <Tabs.TabPane tab={t('管理员令牌')} itemKey='admin'>
+          <AdminTokensTable />
+        </Tabs.TabPane>
+      </Tabs>
     </div>
   );
 };

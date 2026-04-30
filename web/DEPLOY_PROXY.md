@@ -24,8 +24,8 @@
 
 仓库内已提供：
 
-- [vercel.json](/Users/admin/Developer/fishxcode/new-api/web/vercel.json)
-- [api/_proxy.js](/Users/admin/Developer/fishxcode/new-api/web/api/_proxy.js)
+- [vercel.json](web/vercel.json)
+- [api/_proxy.js](web/api/_proxy.js)
 
 转发规则：
 
@@ -46,12 +46,12 @@
 
 仓库内已提供：
 
-- [functions/api/[[path]].js](/Users/admin/Developer/fishxcode/new-api/web/functions/api/[[path]].js)
-- [functions/v1/[[path]].js](/Users/admin/Developer/fishxcode/new-api/web/functions/v1/[[path]].js)
-- [functions/mj/[[path]].js](/Users/admin/Developer/fishxcode/new-api/web/functions/mj/[[path]].js)
-- [functions/pg/[[path]].js](/Users/admin/Developer/fishxcode/new-api/web/functions/pg/[[path]].js)
-- [public/_redirects](/Users/admin/Developer/fishxcode/new-api/web/public/_redirects)
-- [.npmrc](/Users/admin/Developer/fishxcode/new-api/web/.npmrc)
+- [functions/api/[[path]].js](web/functions/api/[[path]].js)
+- [functions/v1/[[path]].js](web/functions/v1/[[path]].js)
+- [functions/mj/[[path]].js](web/functions/mj/[[path]].js)
+- [functions/pg/[[path]].js](web/functions/pg/[[path]].js)
+- [public/_redirects](web/public/_redirects)
+- [.npmrc](web/.npmrc)
 
 `_redirects` 里的最后一条用于 React Router SPA fallback。
 如果 Cloudflare 仍先执行 `npm install`，`.npmrc` 已启用 `legacy-peer-deps=true` 作为兜底，避免 `@lobehub/icons` 的 peer 依赖解析中断构建。
@@ -79,9 +79,9 @@
 
 仓库内已提供独立前端镜像方案：
 
-- [Dockerfile](/Users/admin/Developer/fishxcode/new-api/web/Dockerfile)
-- [nginx/default.conf.template](/Users/admin/Developer/fishxcode/new-api/web/nginx/default.conf.template)
-- [docker/docker-entrypoint.sh](/Users/admin/Developer/fishxcode/new-api/web/docker/docker-entrypoint.sh)
+- [Dockerfile](web/Dockerfile)
+- [nginx/default.conf.template](web/nginx/default.conf.template)
+- [docker/docker-entrypoint.sh](web/docker/docker-entrypoint.sh)
 
 用途：
 

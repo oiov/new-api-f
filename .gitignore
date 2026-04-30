@@ -41,3 +41,5 @@ scripts/
 .env.back
 .playwright-mcp
 tsconfig.tsbuildinfo
+.superpowers/
+accounts_final.json

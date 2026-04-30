@@ -114,9 +114,9 @@ func TelegramLogin(c *gin.Context) {
 			})
 			return
 		}
-		if user.Status != common.UserStatusEnabled {
+		if !common.IsEnabledUserStatus(user.Status) {
 			c.JSON(http.StatusOK, gin.H{
-				"message": "用户已被封禁",
+				"message": "用户已被禁用或封禁",
 				"success": false,
 			})
 			return

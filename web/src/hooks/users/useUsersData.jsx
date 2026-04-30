@@ -23,9 +23,15 @@ import { useSearchParams } from 'react-router-dom';
 import { API, buildGroupOptions, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useUserPermissions } from '../common/useUserPermissions';
+import {
+  ACTION_PERMISSION_POINTS,
+  PAGE_PERMISSION_POINTS,
+} from '../../constants/permission.constants';
 
 export const useUsersData = () => {
   const { t } = useTranslation();
+  const { can } = useUserPermissions();
   const [compactMode, setCompactMode] = useTableCompactMode('users');
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -55,6 +61,7 @@ export const useUsersData = () => {
   const formInitValues = {
     searchKeyword: initialKeyword,
     searchGroup: '',
+    searchStatus: '',
     sortBy: 'id',
     sortOrder: 'desc',
   };
@@ -68,6 +75,7 @@ export const useUsersData = () => {
     return {
       searchKeyword: formValues.searchKeyword || '',
       searchGroup: formValues.searchGroup || '',
+      searchStatus: formValues.searchStatus || '',
       sortBy: formValues.sortBy || 'id',
       sortOrder: formValues.sortOrder || 'desc',
     };
@@ -78,6 +86,7 @@ export const useUsersData = () => {
     size,
     searchKeyword = '',
     searchGroup = '',
+    searchStatus = '',
     sortBy = 'id',
     sortOrder = 'desc',
   }) => {
@@ -86,6 +95,7 @@ export const useUsersData = () => {
     params.set('page_size', size);
     if (searchKeyword) params.set('keyword', searchKeyword);
     if (searchGroup) params.set('group', searchGroup);
+    if (searchStatus !== '') params.set('status', searchStatus);
     if (sortBy) params.set('sort_by', sortBy);
     if (sortOrder) params.set('sort_order', sortOrder);
     return params.toString();
@@ -99,14 +109,26 @@ export const useUsersData = () => {
     setUsers(users);
   };
 
+  const updateUserInList = (user) => {
+    if (!user?.id) {
+      return;
+    }
+    setUsers((prevUsers) =>
+      prevUsers.map((item) =>
+        item.id === user.id ? { ...item, ...user, key: user.id } : item,
+      ),
+    );
+  };
+
   // Load users data
   const loadUsers = async (startIdx, pageSize) => {
     setLoading(true);
-    const { sortBy, sortOrder } = getFormValues();
+    const { searchStatus, sortBy, sortOrder } = getFormValues();
     const res = await API.get(
       `/api/user/?${buildUserListQuery({
         page: startIdx,
         size: pageSize,
+        searchStatus,
         sortBy,
         sortOrder,
       })}`,
@@ -129,6 +151,7 @@ export const useUsersData = () => {
     pageSize,
     searchKeyword = null,
     searchGroup = null,
+    searchStatus = null,
     sortBy = null,
     sortOrder = null,
   ) => {
@@ -136,18 +159,19 @@ export const useUsersData = () => {
     if (
       searchKeyword === null ||
       searchGroup === null ||
+      searchStatus === null ||
       sortBy === null ||
       sortOrder === null
     ) {
       const formValues = getFormValues();
       searchKeyword = formValues.searchKeyword;
       searchGroup = formValues.searchGroup;
+      searchStatus = formValues.searchStatus;
       sortBy = formValues.sortBy;
       sortOrder = formValues.sortOrder;
     }
 
-    if (searchKeyword === '' && searchGroup === '') {
-      // If keyword is blank, load files instead
+    if (searchKeyword === '' && searchGroup === '' && searchStatus === '') {
       await loadUsers(startIdx, pageSize);
       return;
     }
@@ -158,6 +182,7 @@ export const useUsersData = () => {
         size: pageSize,
         searchKeyword,
         searchGroup,
+        searchStatus,
         sortBy,
         sortOrder,
       })}`,
@@ -262,8 +287,9 @@ export const useUsersData = () => {
   // Handle page change
   const handlePageChange = (page) => {
     setActivePage(page);
-    const { searchKeyword, searchGroup, sortBy, sortOrder } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const { searchKeyword, searchGroup, searchStatus, sortBy, sortOrder } =
+      getFormValues();
+    if (searchKeyword === '' && searchGroup === '' && searchStatus === '') {
       loadUsers(page, pageSize).then();
     } else {
       searchUsers(
@@ -271,6 +297,7 @@ export const useUsersData = () => {
         pageSize,
         searchKeyword,
         searchGroup,
+        searchStatus,
         sortBy,
         sortOrder,
       ).then();
@@ -304,8 +331,9 @@ export const useUsersData = () => {
 
   // Refresh data
   const refresh = async (page = activePage) => {
-    const { searchKeyword, searchGroup, sortBy, sortOrder } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const { searchKeyword, searchGroup, searchStatus, sortBy, sortOrder } =
+      getFormValues();
+    if (searchKeyword === '' && searchGroup === '' && searchStatus === '') {
       await loadUsers(page, pageSize);
     } else {
       await searchUsers(
@@ -313,6 +341,7 @@ export const useUsersData = () => {
         pageSize,
         searchKeyword,
         searchGroup,
+        searchStatus,
         sortBy,
         sortOrder,
       );
@@ -369,6 +398,15 @@ export const useUsersData = () => {
   }, [initialKeyword, formApi, urlKeywordProcessed]);
 
   return {
+    permissions: {
+      canViewUsers: can(PAGE_PERMISSION_POINTS.user, false),
+      canCreateUser: can(ACTION_PERMISSION_POINTS.userCreate, false),
+      canEditUser: can(ACTION_PERMISSION_POINTS.userEdit, false),
+      canDisableUser: can(ACTION_PERMISSION_POINTS.userDisable, false),
+      canDeleteUser: can(ACTION_PERMISSION_POINTS.userDelete, false),
+      canNotifyUser: can(ACTION_PERMISSION_POINTS.userNotify, false),
+      canViewSubscriptions: can(PAGE_PERMISSION_POINTS.subscription, false),
+    },
     // Data state
     users,
     loading,
@@ -405,6 +443,7 @@ export const useUsersData = () => {
     handlePageSizeChange,
     handleRow,
     refresh,
+    updateUserInList,
     closeAddUser,
     closeEditUser,
     getFormValues,

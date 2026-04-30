@@ -143,6 +143,9 @@ const CardTable = ({
     const [showDetails, setShowDetails] = useState(false);
     const rowKeyVal = getRowKey(record, index);
     const isSelected = selectedRowKeys.includes(rowKeyVal);
+    const rowProps = tableProps.onRow ? tableProps.onRow(record, index) || {} : {};
+    const rowClassName = rowProps.className || '';
+    const rowStyle = rowProps.style || {};
 
     const hasDetails =
       tableProps.expandedRowRender &&
@@ -162,7 +165,8 @@ const CardTable = ({
     return (
       <Card
         key={rowKeyVal}
-        className={`!rounded-2xl shadow-sm ${isSelected ? 'ring-1 ring-[var(--semi-color-primary)]' : ''}`}
+        className={`!rounded-2xl shadow-sm ${isSelected ? 'ring-1 ring-[var(--semi-color-primary)]' : ''} ${rowClassName}`.trim()}
+        style={rowStyle}
       >
         {tableProps.rowSelection && (
           <div

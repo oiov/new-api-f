@@ -21,7 +21,7 @@ import React from 'react';
 import { Button, Modal } from '@douyinfe/semi-ui';
 import { isRoot } from '../../../helpers';
 
-const UsersActions = ({ setShowAddUser, manageUser, t }) => {
+const UsersActions = ({ setShowAddUser, manageUser, permissions, t }) => {
   // Add new user
   const handleAddUser = () => {
     setShowAddUser(true);
@@ -38,9 +38,15 @@ const UsersActions = ({ setShowAddUser, manageUser, t }) => {
 
   return (
     <div className='flex gap-2 w-full md:w-auto order-2 md:order-1'>
-      <Button className='w-full md:w-auto' onClick={handleAddUser} size='small'>
-        {t('添加用户')}
-      </Button>
+      {permissions?.canCreateUser && (
+        <Button
+          className='w-full md:w-auto'
+          onClick={handleAddUser}
+          size='small'
+        >
+          {t('添加用户')}
+        </Button>
+      )}
       {isRoot() && (
         <Button
           className='w-full md:w-auto'

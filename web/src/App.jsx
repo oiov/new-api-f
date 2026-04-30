@@ -21,10 +21,16 @@ import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import Loading from './components/common/ui/Loading';
-import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute } from './helpers/auth';
+import {
+  AuthRedirect,
+  PrivateRoute,
+  AdminRoute,
+  RootRoute,
+} from './helpers/auth';
 import { StatusContext } from './context/Status';
 import SeoMeta from './components/common/seo/SeoMeta';
 import { getRouteSeo } from './helpers/seo';
+import { ADMIN_PERMISSION_POINTS } from './constants/permission.constants';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -51,15 +57,18 @@ const EcomAgent = lazy(() => import('./pages/EcomAgent'));
 const Redemption = lazy(() => import('./pages/Redemption'));
 const TopUp = lazy(() => import('./pages/TopUp'));
 const InvoicePage = lazy(() => import('./pages/Invoice'));
+const RefundPage = lazy(() => import('./pages/Refund'));
 const InvoiceAdminPage = lazy(() => import('./pages/InvoiceAdmin'));
 const CheckinAdminPage = lazy(() => import('./pages/CheckinAdmin'));
 const ActivityLotteryPage = lazy(() => import('./pages/ActivityLottery'));
 const CheckinLotteryPage = lazy(() => import('./pages/CheckinLottery'));
+const SiteNotificationsPage = lazy(() => import('./pages/SiteNotifications'));
 const PackagePage = lazy(() => import('./pages/Package'));
 const InvitePage = lazy(() => import('./pages/Invite'));
 const Log = lazy(() => import('./pages/Log'));
 const FinancePage = lazy(() => import('./pages/Finance'));
 const R2StoragePage = lazy(() => import('./pages/R2Storage'));
+const R2StoragePreviewPage = lazy(() => import('./pages/R2Storage/Preview'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Chat2Link = lazy(() => import('./pages/Chat2Link'));
 const Midjourney = lazy(() => import('./pages/Midjourney'));
@@ -166,7 +175,7 @@ function App() {
           <Route
             path='/console/models'
             element={
-              <AdminRoute>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.models}>
                 <ModelPage />
               </AdminRoute>
             }
@@ -174,7 +183,7 @@ function App() {
           <Route
             path='/console/deployment'
             element={
-              <AdminRoute>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.deployment}>
                 <ModelDeploymentPage />
               </AdminRoute>
             }
@@ -182,7 +191,7 @@ function App() {
           <Route
             path='/console/subscription'
             element={
-              <AdminRoute>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.subscription}>
                 <Subscription />
               </AdminRoute>
             }
@@ -190,7 +199,7 @@ function App() {
           <Route
             path='/console/channel'
             element={
-              <AdminRoute>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.channel}>
                 <Channel />
               </AdminRoute>
             }
@@ -206,7 +215,7 @@ function App() {
           <Route
             path='/console/token/admin'
             element={
-              <AdminRoute>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.tokenAdmin}>
                 <AdminToken />
               </AdminRoute>
             }
@@ -222,7 +231,7 @@ function App() {
           <Route
             path='/console/ecomagent'
             element={
-              <RootRoute>
+              <RootRoute permission={ADMIN_PERMISSION_POINTS.ecomagent}>
                 <EcomAgent />
               </RootRoute>
             }
@@ -230,7 +239,7 @@ function App() {
           <Route
             path='/console/redemption'
             element={
-              <AdminRoute>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.redemption}>
                 <Redemption />
               </AdminRoute>
             }
@@ -238,7 +247,7 @@ function App() {
           <Route
             path='/console/user'
             element={
-              <AdminRoute>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.user}>
                 <User />
               </AdminRoute>
             }
@@ -246,8 +255,11 @@ function App() {
           <Route
             path='/console/risk-control'
             element={
-              <AdminRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.riskControl}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <RiskControl />
                 </Suspense>
               </AdminRoute>
@@ -332,8 +344,11 @@ function App() {
           <Route
             path='/console/setting'
             element={
-              <AdminRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.setting}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <Setting />
                 </Suspense>
               </AdminRoute>
@@ -344,12 +359,18 @@ function App() {
             element={
               packageRequireAuth ? (
                 <PrivateRoute>
-                  <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                  <Suspense
+                    fallback={<Loading></Loading>}
+                    key={location.pathname}
+                  >
                     <PackagePage />
                   </Suspense>
                 </PrivateRoute>
               ) : (
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <PackagePage />
                 </Suspense>
               )
@@ -359,7 +380,10 @@ function App() {
             path='/console/personal'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <PersonalSetting />
                 </Suspense>
               </PrivateRoute>
@@ -369,7 +393,10 @@ function App() {
             path='/console/topup'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <TopUp />
                 </Suspense>
               </PrivateRoute>
@@ -379,8 +406,24 @@ function App() {
             path='/console/invoice'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <InvoicePage />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/refund'
+            element={
+              <PrivateRoute>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
+                  <RefundPage />
                 </Suspense>
               </PrivateRoute>
             }
@@ -388,28 +431,42 @@ function App() {
           <Route
             path='/console/invoice-admin'
             element={
-              <RootRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.invoiceAdmin}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <InvoiceAdminPage />
                 </Suspense>
-              </RootRoute>
+              </AdminRoute>
             }
           />
           <Route
             path='/console/checkin-admin'
             element={
-              <RootRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <AdminRoute
+                anyPermissions={[
+                  ADMIN_PERMISSION_POINTS.checkinAdmin,
+                  ADMIN_PERMISSION_POINTS.activityAdmin,
+                ]}
+              >
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <CheckinAdminPage />
                 </Suspense>
-              </RootRoute>
+              </AdminRoute>
             }
           />
           <Route
             path='/console/invite'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <InvitePage />
                 </Suspense>
               </PrivateRoute>
@@ -419,7 +476,10 @@ function App() {
             path='/console/activity-lottery'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <ActivityLotteryPage />
                 </Suspense>
               </PrivateRoute>
@@ -429,8 +489,24 @@ function App() {
             path='/console/checkin-lottery'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <CheckinLotteryPage />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path='/console/site-notifications'
+            element={
+              <PrivateRoute>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
+                  <SiteNotificationsPage />
                 </Suspense>
               </PrivateRoute>
             }
@@ -446,8 +522,11 @@ function App() {
           <Route
             path='/console/finance'
             element={
-              <AdminRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <AdminRoute permission={ADMIN_PERMISSION_POINTS.financeAdmin}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <FinancePage />
                 </Suspense>
               </AdminRoute>
@@ -456,9 +535,25 @@ function App() {
           <Route
             path='/console/r2-storage'
             element={
-              <RootRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <RootRoute permission={ADMIN_PERMISSION_POINTS.r2Storage}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <R2StoragePage />
+                </Suspense>
+              </RootRoute>
+            }
+          />
+          <Route
+            path='/console/r2-storage/preview'
+            element={
+              <RootRoute permission={ADMIN_PERMISSION_POINTS.r2Storage}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
+                  <R2StoragePreviewPage />
                 </Suspense>
               </RootRoute>
             }
@@ -467,7 +562,10 @@ function App() {
             path='/console'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <Dashboard />
                 </Suspense>
               </PrivateRoute>
@@ -477,7 +575,10 @@ function App() {
             path='/console/midjourney'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <Midjourney />
                 </Suspense>
               </PrivateRoute>
@@ -487,7 +588,10 @@ function App() {
             path='/console/task'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <Task />
                 </Suspense>
               </PrivateRoute>
@@ -506,7 +610,10 @@ function App() {
                   </Suspense>
                 </PrivateRoute>
               ) : (
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <Pricing />
                 </Suspense>
               )
@@ -525,7 +632,10 @@ function App() {
                   </Suspense>
                 </PrivateRoute>
               ) : (
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <SubscriptionPlanDetail />
                 </Suspense>
               )
@@ -584,7 +694,10 @@ function App() {
             path='/chat2link'
             element={
               <PrivateRoute>
-                <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
                   <Chat2Link />
                 </Suspense>
               </PrivateRoute>

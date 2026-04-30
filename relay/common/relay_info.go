@@ -150,6 +150,9 @@ type RelayInfo struct {
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64
+	// SubscriptionResetWindowStart / SubscriptionResetWindowEnd identify the period where pre-consume happened.
+	SubscriptionResetWindowStart int64
+	SubscriptionResetWindowEnd   int64
 	// SubscriptionRequestCountTotal / SubscriptionRequestCountUsedAfterPreConsume are used for request_count plans.
 	SubscriptionRequestCountTotal               int64
 	SubscriptionRequestCountUsedAfterPreConsume int64

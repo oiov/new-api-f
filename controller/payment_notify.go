@@ -13,27 +13,29 @@ import (
 )
 
 type PaymentNotifySaveRequest struct {
-	TopUpEnabled         bool   `json:"top_up_enabled"`
-	SubscriptionEnabled  bool   `json:"subscription_enabled"`
-	ServerChanEnabled    bool   `json:"server_chan_enabled"`
-	ServerChanUID        string `json:"server_chan_uid"`
-	ServerChanSendKey    string `json:"server_chan_send_key"`
-	ClearServerChanSendKey bool `json:"clear_server_chan_send_key"`
-	PushPlusEnabled      bool   `json:"push_plus_enabled"`
-	PushPlusToken        string `json:"push_plus_token"`
-	ClearPushPlusToken   bool   `json:"clear_push_plus_token"`
+	TopUpEnabled           bool   `json:"top_up_enabled"`
+	SubscriptionEnabled    bool   `json:"subscription_enabled"`
+	ServerChanEnabled      bool   `json:"server_chan_enabled"`
+	ServerChanUID          string `json:"server_chan_uid"`
+	ServerChanSendKey      string `json:"server_chan_send_key"`
+	ClearServerChanSendKey bool   `json:"clear_server_chan_send_key"`
+	PushPlusEnabled        bool   `json:"push_plus_enabled"`
+	PushPlusToken          string `json:"push_plus_token"`
+	ClearPushPlusToken     bool   `json:"clear_push_plus_token"`
+	Remark                 string `json:"remark"`
 }
 
 type PaymentNotifyTestRequest struct {
-	TopUpEnabled          bool   `json:"top_up_enabled"`
-	SubscriptionEnabled   bool   `json:"subscription_enabled"`
-	ServerChanEnabled     bool   `json:"server_chan_enabled"`
-	ServerChanUID         string `json:"server_chan_uid"`
-	ServerChanSendKey     string `json:"server_chan_send_key"`
-	ClearServerChanSendKey bool  `json:"clear_server_chan_send_key"`
-	PushPlusEnabled       bool   `json:"push_plus_enabled"`
-	PushPlusToken         string `json:"push_plus_token"`
-	ClearPushPlusToken    bool   `json:"clear_push_plus_token"`
+	TopUpEnabled           bool   `json:"top_up_enabled"`
+	SubscriptionEnabled    bool   `json:"subscription_enabled"`
+	ServerChanEnabled      bool   `json:"server_chan_enabled"`
+	ServerChanUID          string `json:"server_chan_uid"`
+	ServerChanSendKey      string `json:"server_chan_send_key"`
+	ClearServerChanSendKey bool   `json:"clear_server_chan_send_key"`
+	PushPlusEnabled        bool   `json:"push_plus_enabled"`
+	PushPlusToken          string `json:"push_plus_token"`
+	ClearPushPlusToken     bool   `json:"clear_push_plus_token"`
+	Remark                 string `json:"remark"`
 }
 
 func buildPaymentNotifySettingFromRequest(req PaymentNotifySaveRequest, current *payment_notify_setting.PaymentNotifySetting) payment_notify_setting.PaymentNotifySetting {
@@ -46,6 +48,7 @@ func buildPaymentNotifySettingFromRequest(req PaymentNotifySaveRequest, current 
 	cfg.ServerChanEnabled = req.ServerChanEnabled
 	cfg.PushPlusEnabled = req.PushPlusEnabled
 	cfg.ServerChanUID = strings.TrimSpace(req.ServerChanUID)
+	cfg.Remark = strings.TrimSpace(req.Remark)
 	if req.ClearServerChanSendKey {
 		cfg.ServerChanSendKey = ""
 	} else if sendKey := strings.TrimSpace(req.ServerChanSendKey); sendKey != "" {
@@ -81,6 +84,7 @@ func buildPaymentNotifyOptionValues(cfg payment_notify_setting.PaymentNotifySett
 		"payment_notify_setting.ServerChanSendKey":   cfg.ServerChanSendKey,
 		"payment_notify_setting.PushPlusEnabled":     common.Interface2String(cfg.PushPlusEnabled),
 		"payment_notify_setting.PushPlusToken":       cfg.PushPlusToken,
+		"payment_notify_setting.Remark":              cfg.Remark,
 	}
 }
 
@@ -93,19 +97,11 @@ func buildMaskedPaymentNotifyOptionValues(cfg payment_notify_setting.PaymentNoti
 			if trimmed == "" {
 				values[key] = ""
 			} else {
-				values[key] = controllerMaskSensitiveOptionValue(trimmed)
+				values[key] = maskSensitiveOptionValue(trimmed)
 			}
 		}
 	}
 	return values
-}
-
-func controllerMaskSensitiveOptionValue(value string) string {
-	runes := []rune(value)
-	if len(runes) <= 8 {
-		return "********"
-	}
-	return string(runes[:4]) + "****" + string(runes[len(runes)-4:])
 }
 
 func UpdatePaymentSuccessNotifySetting(c *gin.Context) {

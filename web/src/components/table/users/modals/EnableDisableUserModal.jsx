@@ -29,16 +29,27 @@ const EnableDisableUserModal = ({
   t,
 }) => {
   const isDisable = action === 'disable';
+  const isBan = action === 'ban';
+  const title = isDisable
+    ? t('确定要禁用此用户吗？')
+    : isBan
+      ? t('确定要封禁此用户吗？')
+      : t('确定要启用此用户吗？');
+  const content = isDisable
+    ? t('此操作将禁用用户账户，但保留用户资料。')
+    : isBan
+      ? t('此操作将封禁用户账户，用户将无法继续登录和使用服务。')
+      : t('此操作将重新启用用户账户。');
 
   return (
     <Modal
-      title={isDisable ? t('确定要禁用此用户吗？') : t('确定要启用此用户吗？')}
+      title={title}
       visible={visible}
       onCancel={onCancel}
       onOk={onConfirm}
       type='warning'
     >
-      {isDisable ? t('此操作将禁用用户账户') : t('此操作将启用用户账户')}
+      {content}
     </Modal>
   );
 };

@@ -56,6 +56,7 @@ const PaymentSetting = () => {
     'payment_notify_setting.ServerChanSendKey': '',
     'payment_notify_setting.PushPlusEnabled': false,
     'payment_notify_setting.PushPlusToken': '',
+    'payment_notify_setting.Remark': '',
   });
 
   let [loading, setLoading] = useState(false);

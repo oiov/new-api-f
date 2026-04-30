@@ -262,6 +262,6 @@ func hostMatchesPattern(host string, pattern string) bool {
 	return false
 }
 
-func isAllowedFishxcodeHost(host string) bool {
+func isAllowedNbilityHost(host string) bool {
 	return hostMatchesAny(host, system_setting.GetErrorSetting().RestrictProxyDistributionAllowedHosts)
 }

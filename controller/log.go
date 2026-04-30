@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -157,7 +158,8 @@ func getLogQueryParams(c *gin.Context) logQueryParams {
 func GetAllLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	query := getLogQueryParams(c)
-	logs, total, err := model.GetAllLogs(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, total, err := model.GetAllLogs(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -172,7 +174,8 @@ func GetUserLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	userId := c.GetInt("id")
 	query := getLogQueryParams(c)
-	logs, total, err := model.GetUserLogs(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, total, err := model.GetUserLogs(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -258,7 +261,8 @@ func ExportAllLogs(c *gin.Context) {
 		return
 	}
 	query := getLogQueryParams(c)
-	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -273,7 +277,8 @@ func ExportUserLogs(c *gin.Context) {
 	}
 	userId := c.GetInt("id")
 	query := getLogQueryParams(c)
-	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -306,7 +311,8 @@ func GetLogByKey(c *gin.Context) {
 		})
 		return
 	}
-	logs, err := model.GetLogByTokenId(tokenId)
+	isRootUser := c.GetInt("role") == common.RoleRootUser
+	logs, err := model.GetLogByTokenId(tokenId, isRootUser)
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,
@@ -373,6 +379,118 @@ func GetLogsSelfStat(c *gin.Context) {
 		},
 	})
 	return
+}
+
+func buildGroupLogHealthStatsQuery(query logQueryParams) model.GroupLogHealthStatsQuery {
+	return model.GroupLogHealthStatsQuery{
+		StartTimestamp:        query.StartTimestamp,
+		EndTimestamp:          query.EndTimestamp,
+		UserId:                query.UserId,
+		Username:              query.Username,
+		TokenName:             query.TokenName,
+		ModelName:             query.ModelName,
+		Channel:               query.Channel,
+		Group:                 query.Group,
+		StatusCode:            query.StatusCode,
+		RequestId:             query.RequestId,
+		ErrorMessage:          query.ErrorMessage,
+		SubscriptionId:        query.SubscriptionId,
+		SubscriptionPlanId:    query.SubscriptionPlanId,
+		IgnoreRateLimitErrors: true,
+	}
+}
+
+func GetGroupLogHealthStats(c *gin.Context) {
+	query := buildGroupLogHealthStatsQuery(getLogQueryParams(c))
+	stats, err := model.GetGroupLogHealthStats(query)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, stats)
+}
+
+func GetGroupLogSelfHealthStats(c *gin.Context) {
+	query := buildGroupLogHealthStatsQuery(getLogQueryParams(c))
+	userId := c.GetInt("id")
+	user, err := model.GetUserById(userId, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	hasQuotaBalance := true
+	if setting.EnableGroupBillingFilter {
+		hasQuotaBalance = user.Quota > 0
+	}
+	usableGroups := service.GetUserUsableGroupsForUser(userId, user.Group, hasQuotaBalance)
+	if query.Group == "auto" {
+		query.Group = ""
+		query.Groups = service.GetAutoGroupsFromUsableGroups(usableGroups)
+	} else if query.Group != "" {
+		if _, ok := usableGroups[query.Group]; !ok {
+			common.ApiErrorMsg(c, "无权查看该分组健康状态")
+			return
+		}
+	} else {
+		groups := make([]string, 0, len(usableGroups))
+		for groupName := range usableGroups {
+			groupName = strings.TrimSpace(groupName)
+			if groupName != "" && groupName != "auto" {
+				groups = append(groups, groupName)
+			}
+		}
+		query.Groups = groups
+	}
+	query.UserId = userId
+	query.Username = ""
+	query.Channel = 0
+
+	stats, err := model.GetGroupLogHealthStats(query)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, stats)
+}
+
+const maxBatchDeleteLogCount = 1000
+
+type batchDeleteLogsRequest struct {
+	Ids []int `json:"ids"`
+}
+
+func BatchDeleteLogs(c *gin.Context) {
+	req := batchDeleteLogsRequest{}
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	ids := make([]int, 0, len(req.Ids))
+	seen := make(map[int]struct{}, len(req.Ids))
+	for _, id := range req.Ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		common.ApiErrorMsg(c, "请选择要删除的日志")
+		return
+	}
+	if len(ids) > maxBatchDeleteLogCount {
+		common.ApiErrorMsg(c, fmt.Sprintf("单次最多删除 %d 条日志", maxBatchDeleteLogCount))
+		return
+	}
+	count, err := model.DeleteLogsByIds(ids)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, count)
 }
 
 func DeleteHistoryLogs(c *gin.Context) {

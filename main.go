@@ -121,6 +121,9 @@ func main() {
 	// Activity lottery task (auto finalize)
 	service.StartActivityLotteryTask()
 
+	// Mail assistant auto receive session restore
+	service.StartMailAssistantAutoReceiveTask()
+
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)

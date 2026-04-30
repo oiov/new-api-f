@@ -200,6 +200,11 @@ var (
 	CriticalRateLimitNum            = 20
 	CriticalRateLimitDuration int64 = 20 * 60
 
+	// Per-user token test rate limit (applies after authentication, keyed by user ID)
+	TokenTestRateLimitEnable         = true
+	TokenTestRateLimitNum            = 60
+	TokenTestRateLimitDuration int64 = 20 * 60
+
 	UploadRateLimitNum            = 10
 	UploadRateLimitDuration int64 = 60
 
@@ -217,7 +222,21 @@ var RateLimitKeyExpirationDuration = 20 * time.Minute
 const (
 	UserStatusEnabled  = 1 // don't use 0, 0 is the default value!
 	UserStatusDisabled = 2 // also don't use 0
+	UserStatusBanned   = 3
 )
+
+func IsValidUserStatus(status int) bool {
+	switch status {
+	case UserStatusEnabled, UserStatusDisabled, UserStatusBanned:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsEnabledUserStatus(status int) bool {
+	return status == UserStatusEnabled
+}
 
 const (
 	TokenStatusEnabled   = 1 // don't use 0, 0 is the default value!

@@ -726,16 +726,16 @@ const CheckinCalendar = ({
     t('低价 Claude Codex 套餐');
   const subscriptionPromoBadgeRight =
     String(status?.subscription_promo_badge_right || '').trim() ||
-    t('限时优惠');
+    t('稳定套餐');
   const subscriptionPromoTitle =
     String(status?.subscription_promo_title || '').trim() ||
-    t('Claude / Codex 套餐当前5折热销中');
+    t('Claude / Codex 套餐稳定供应中');
   const subscriptionPromoSubtitle =
     String(status?.subscription_promo_subtitle || '').trim() ||
     t('天卡、Lite 和轻量方案更适合先试再升级，成本更低，开通更快。');
   const subscriptionPromoButtonText =
     String(status?.subscription_promo_button_text || '').trim() ||
-    t('查看低价套餐');
+    t('查看套餐');
 
   const subscriptionPromoBanner = !subscriptionPromoEnabled ? null : (
     <div

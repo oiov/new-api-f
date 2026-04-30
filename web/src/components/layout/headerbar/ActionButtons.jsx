@@ -49,7 +49,7 @@ const ActionButtons = ({
       {userState?.user ? (
         <SiteNotificationButton
           unreadCount={siteNotificationUnreadCount}
-          onClick={() => navigate('/console/personal#site-notifications')}
+          onClick={() => navigate('/console/site-notifications')}
           t={t}
         />
       ) : null}

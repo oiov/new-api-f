@@ -33,30 +33,38 @@ type SelfServiceSubscriptionConversionCampaign struct {
 }
 
 type SelfServiceSubscriptionConversionPreviewItem struct {
-	UserSubscriptionId      int     `json:"user_subscription_id"`
-	PlanId                  int     `json:"plan_id"`
-	PlanTitle               string  `json:"plan_title"`
-	ResourceType            string  `json:"resource_type"`
-	Source                  string  `json:"source"`
-	StartTime               int64   `json:"start_time"`
-	EndTime                 int64   `json:"end_time"`
-	TotalSeconds            int64   `json:"total_seconds"`
-	RemainingSeconds        int64   `json:"remaining_seconds"`
-	RemainingRatio          float64 `json:"remaining_ratio"`
-	DurationDays            float64 `json:"duration_days"`
-	UsedDays                int64   `json:"used_days"`
-	BillableUsedDays        float64 `json:"billable_used_days"`
-	PriceBasisAmount        float64 `json:"price_basis_amount"`
-	PriceBasisSource        string  `json:"price_basis_source"`
-	ConvertibleAmount       float64 `json:"convertible_amount"`
-	ConvertibleQuota        int     `json:"convertible_quota"`
-	Formula                 string  `json:"formula"`
-	AmountUsed              int64   `json:"amount_used"`
-	AmountTotal             int64   `json:"amount_total"`
-	RequestCountUsed        int64   `json:"request_count_used"`
-	RequestCountTotal       int64   `json:"request_count_total"`
-	RequestCountPeriodUsed  int64   `json:"request_count_period_used"`
-	RequestCountPeriodTotal int64   `json:"request_count_period_total"`
+	UserSubscriptionId      int                             `json:"user_subscription_id"`
+	PlanId                  int                             `json:"plan_id"`
+	PlanTitle               string                          `json:"plan_title"`
+	ResourceType            string                          `json:"resource_type"`
+	Source                  string                          `json:"source"`
+	RefundOrder             *SubscriptionRefundOrderSummary `json:"refund_order,omitempty"`
+	SettlementMode          string                          `json:"settlement_mode"`
+	StartTime               int64                           `json:"start_time"`
+	EndTime                 int64                           `json:"end_time"`
+	TotalSeconds            int64                           `json:"total_seconds"`
+	RemainingSeconds        int64                           `json:"remaining_seconds"`
+	RemainingRatio          float64                         `json:"remaining_ratio"`
+	DurationDays            float64                         `json:"duration_days"`
+	UsedDays                int64                           `json:"used_days"`
+	BillableUsedDays        float64                         `json:"billable_used_days"`
+	PriceBasisAmount        float64                         `json:"price_basis_amount"`
+	PriceBasisSource        string                          `json:"price_basis_source"`
+	ConsumedCostAmount      float64                         `json:"consumed_cost_amount"`
+	ConvertibleAmount       float64                         `json:"convertible_amount"`
+	ConvertibleQuota        int                             `json:"convertible_quota"`
+	Formula                 string                          `json:"formula"`
+	InputTokens             int64                           `json:"input_tokens"`
+	OutputTokens            int64                           `json:"output_tokens"`
+	CacheReadTokens         int64                           `json:"cache_read_tokens"`
+	CacheWriteTokens        int64                           `json:"cache_write_tokens"`
+	BilledInputTokens       int64                           `json:"billed_input_tokens"`
+	AmountUsed              int64                           `json:"amount_used"`
+	AmountTotal             int64                           `json:"amount_total"`
+	RequestCountUsed        int64                           `json:"request_count_used"`
+	RequestCountTotal       int64                           `json:"request_count_total"`
+	RequestCountPeriodUsed  int64                           `json:"request_count_period_used"`
+	RequestCountPeriodTotal int64                           `json:"request_count_period_total"`
 }
 
 type SelfServiceSubscriptionConversionPreview struct {
@@ -89,6 +97,13 @@ type SelfServiceSubscriptionConversionExecutionResult struct {
 	TotalAddedAmount float64                                          `json:"total_added_amount"`
 	CurrentQuota     int                                              `json:"current_quota"`
 	Items            []SelfServiceSubscriptionConversionExecutionItem `json:"items"`
+}
+
+type subscriptionConversionPreviewBuildOptions struct {
+	SkipStatusCheck      bool
+	SkipEligibilityCheck bool
+	ForcedSettlementMode string
+	RefundOrder          *SubscriptionRefundOrderSummary
 }
 
 func defaultSelfServiceSubscriptionConversionCampaign() SelfServiceSubscriptionConversionCampaign {
@@ -369,14 +384,14 @@ func resolveSelfServiceSubscriptionConversionDurationDays(sub *UserSubscription,
 	return 1
 }
 
-func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, plan *SubscriptionPlan, campaign SelfServiceSubscriptionConversionCampaign, now int64, tx *gorm.DB) (*SelfServiceSubscriptionConversionPreviewItem, error) {
+func buildSubscriptionConversionPreviewItemWithOptions(sub *UserSubscription, plan *SubscriptionPlan, campaign SelfServiceSubscriptionConversionCampaign, now int64, tx *gorm.DB, options subscriptionConversionPreviewBuildOptions) (*SelfServiceSubscriptionConversionPreviewItem, error) {
 	if sub == nil || plan == nil {
 		return nil, fmt.Errorf("invalid legacy migration subscription")
 	}
-	if sub.Status != "active" || sub.EndTime <= now {
+	if !options.SkipStatusCheck && (sub.Status != "active" || sub.EndTime <= now) {
 		return nil, nil
 	}
-	if !isSelfServiceSubscriptionConversionPlanEligible(sub, plan, campaign) {
+	if !options.SkipEligibilityCheck && !isSelfServiceSubscriptionConversionPlanEligible(sub, plan, campaign) {
 		return nil, nil
 	}
 	totalSeconds := sub.EndTime - sub.StartTime
@@ -414,14 +429,59 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 	if priceBasis <= 0 || priceBasisSource != "order" {
 		return nil, nil
 	}
+	refundSettings := GetSubscriptionRefundSettings()
+	settlementMode := SubscriptionRefundSettlementModeDurationRatio
+	if refundSettings.Enabled && refundSettings.SettlementMode == SubscriptionRefundSettlementModeTokenUsage {
+		settlementMode = SubscriptionRefundSettlementModeTokenUsage
+	}
+	if mode := strings.TrimSpace(options.ForcedSettlementMode); mode != "" {
+		settlementMode = mode
+	}
+	consumedCostAmount := 0.0
 	convertibleAmount := math.Round(priceBasis*ratio*100) / 100
+	formula := campaign.ConversionRule
+	inputTokens := int64(0)
+	outputTokens := int64(0)
+	cacheReadTokens := int64(0)
+	cacheWriteTokens := int64(0)
+	billedInputTokens := int64(0)
+	if refundSettings.Enabled && settlementMode == SubscriptionRefundSettlementModeTokenUsage {
+		usageSummary, err := summarizeSubscriptionRefundUsage(sub.UserId, sub.Id, sub.StartTime, now)
+		if err != nil {
+			return nil, err
+		}
+		inputTokens = usageSummary.InputTokens
+		outputTokens = usageSummary.OutputTokens
+		cacheReadTokens = usageSummary.CacheReadTokens
+		cacheWriteTokens = usageSummary.CacheWriteTokens
+		billedInputTokens = usageSummary.BilledInputTokens()
+		consumedCostAmount = calcSubscriptionRefundTokenCostAmount(usageSummary, refundSettings)
+		if consumedCostAmount > priceBasis {
+			consumedCostAmount = priceBasis
+		}
+		convertibleAmount = math.Round((priceBasis-consumedCostAmount)*100) / 100
+		if convertibleAmount < 0 {
+			convertibleAmount = 0
+		}
+		formula = buildSubscriptionRefundTokenFormula(refundSettings)
+	}
 	convertibleQuota := convertSubscriptionConversionAmountToQuota(convertibleAmount)
+	refundOrder := options.RefundOrder
+	if refundOrder == nil {
+		var err error
+		refundOrder, err = buildSubscriptionRefundOrderSummaryFromSubscription(sub, tx)
+		if err != nil {
+			return nil, err
+		}
+	}
 	item := &SelfServiceSubscriptionConversionPreviewItem{
 		UserSubscriptionId:      sub.Id,
 		PlanId:                  sub.PlanId,
 		PlanTitle:               strings.TrimSpace(plan.Title),
 		ResourceType:            NormalizeSubscriptionResourceType(sub.ResourceType),
 		Source:                  strings.TrimSpace(sub.Source),
+		RefundOrder:             refundOrder,
+		SettlementMode:          settlementMode,
 		StartTime:               sub.StartTime,
 		EndTime:                 sub.EndTime,
 		TotalSeconds:            totalSeconds,
@@ -432,9 +492,15 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 		BillableUsedDays:        math.Round(billableUsedDays*100) / 100,
 		PriceBasisAmount:        priceBasis,
 		PriceBasisSource:        priceBasisSource,
+		ConsumedCostAmount:      math.Round(consumedCostAmount*100) / 100,
 		ConvertibleAmount:       convertibleAmount,
 		ConvertibleQuota:        convertibleQuota,
-		Formula:                 campaign.ConversionRule,
+		Formula:                 formula,
+		InputTokens:             inputTokens,
+		OutputTokens:            outputTokens,
+		CacheReadTokens:         cacheReadTokens,
+		CacheWriteTokens:        cacheWriteTokens,
+		BilledInputTokens:       billedInputTokens,
 		AmountUsed:              sub.AmountUsed,
 		AmountTotal:             sub.AmountTotal,
 		RequestCountUsed:        sub.RequestCountUsed,
@@ -445,10 +511,108 @@ func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, pl
 	return item, nil
 }
 
+func buildSelfServiceSubscriptionConversionPreviewItem(sub *UserSubscription, plan *SubscriptionPlan, campaign SelfServiceSubscriptionConversionCampaign, now int64, tx *gorm.DB) (*SelfServiceSubscriptionConversionPreviewItem, error) {
+	return buildSubscriptionConversionPreviewItemWithOptions(sub, plan, campaign, now, tx, subscriptionConversionPreviewBuildOptions{})
+}
+
+type subscriptionRefundUsageLogRow struct {
+	PromptTokens     int    `gorm:"column:prompt_tokens"`
+	CompletionTokens int    `gorm:"column:completion_tokens"`
+	Other            string `gorm:"column:other"`
+}
+
+type subscriptionRefundUsageSummary struct {
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+}
+
+func (s subscriptionRefundUsageSummary) BilledInputTokens() int64 {
+	value := s.InputTokens - s.CacheReadTokens - s.CacheWriteTokens
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+
+func summarizeSubscriptionRefundUsage(userId int, subscriptionId int, startTimestamp int64, endTimestamp int64) (*subscriptionRefundUsageSummary, error) {
+	if userId <= 0 || subscriptionId <= 0 {
+		return &subscriptionRefundUsageSummary{}, nil
+	}
+	logDB := LOG_DB
+	if logDB == nil {
+		logDB = DB
+	}
+	rows := make([]subscriptionRefundUsageLogRow, 0)
+	query := logDB.Model(&Log{}).
+		Select("prompt_tokens, completion_tokens, other").
+		Where("type = ? AND user_id = ?", LogTypeConsume, userId)
+	if startTimestamp > 0 {
+		query = query.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp > 0 {
+		query = query.Where("created_at <= ?", endTimestamp)
+	}
+	query = query.Where("other LIKE ?", `%"billing_source":"subscription"%`)
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	summary := &subscriptionRefundUsageSummary{}
+	for _, row := range rows {
+		otherMap := map[string]any{}
+		if err := common.UnmarshalJsonStr(row.Other, &otherMap); err != nil {
+			continue
+		}
+		if readIntFromMap(otherMap, "subscription_id") != subscriptionId {
+			continue
+		}
+		summary.InputTokens += int64(row.PromptTokens)
+		summary.OutputTokens += int64(row.CompletionTokens)
+		summary.CacheReadTokens += readInt64FromMap(otherMap, "cache_tokens")
+		cacheWriteTokens := readInt64FromMap(otherMap, "cache_write_tokens")
+		if cacheWriteTokens <= 0 {
+			cacheWriteTokens = readInt64FromMap(otherMap, "cache_creation_tokens")
+		}
+		summary.CacheWriteTokens += cacheWriteTokens
+	}
+	return summary, nil
+}
+
+func calcSubscriptionRefundTokenCostAmount(summary *subscriptionRefundUsageSummary, settings SubscriptionRefundSettings) float64 {
+	if summary == nil {
+		return 0
+	}
+	total := float64(summary.BilledInputTokens())*settings.CodexInputPricePerMillion +
+		float64(summary.OutputTokens)*settings.CodexOutputPricePerMillion +
+		float64(summary.CacheReadTokens)*settings.CodexCacheReadPricePerMillion +
+		float64(summary.CacheWriteTokens)*settings.CodexCacheWritePricePerMillion
+	return math.Round(total/1_000_000*100) / 100
+}
+
+func buildSubscriptionRefundTokenFormula(settings SubscriptionRefundSettings) string {
+	currency := strings.ToUpper(strings.TrimSpace(settings.Currency))
+	if currency == "" {
+		currency = "USD"
+	}
+	return fmt.Sprintf(
+		"返还余额 = 折算基价 - 已消耗成本；已消耗成本 = 标准输入 Token × %.4f/%s/1M + 标准输出 Token × %.4f/%s/1M + Cache Read Token × %.4f/%s/1M + Cache Write Token × %.4f/%s/1M。",
+		settings.CodexInputPricePerMillion,
+		currency,
+		settings.CodexOutputPricePerMillion,
+		currency,
+		settings.CodexCacheReadPricePerMillion,
+		currency,
+		settings.CodexCacheWritePricePerMillion,
+		currency,
+	)
+}
+
 func PreviewSelfServiceSubscriptionConversion(userId int) (*SelfServiceSubscriptionConversionPreview, error) {
 	if userId <= 0 {
 		return nil, fmt.Errorf("invalid user id")
 	}
+	refundSettings := GetSubscriptionRefundSettings()
 	campaign := GetSelfServiceSubscriptionConversionCampaign()
 	now := common.GetTimestamp()
 	user, err := GetUserById(userId, false)
@@ -464,6 +628,19 @@ func PreviewSelfServiceSubscriptionConversion(userId int) (*SelfServiceSubscript
 	items := make([]SelfServiceSubscriptionConversionPreviewItem, 0, len(subs))
 	totalQuota := 0
 	totalAmount := 0.0
+	if !refundSettings.IsRefundPageEnabled() {
+		return &SelfServiceSubscriptionConversionPreview{
+			Campaign:               campaign,
+			Now:                    now,
+			CurrentQuota:           user.Quota,
+			EstimatedQuotaAfter:    user.Quota,
+			TotalConvertibleQuota:  0,
+			TotalConvertibleAmount: 0,
+			CanExecute:             false,
+			ClosedReason:           "当前退款入口未开启",
+			Items:                  items,
+		}, nil
+	}
 	for i := range subs {
 		plan, err := GetSubscriptionPlanById(subs[i].PlanId)
 		if err != nil {

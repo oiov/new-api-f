@@ -18,10 +18,12 @@ import (
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Log struct {
 	Id               int    `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2"`
+	DisplayId        int    `json:"display_id" gorm:"-"`
 	UserId           int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
 	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
 	Type             int    `json:"type" gorm:"index:idx_created_at_type"`
@@ -95,25 +97,41 @@ const (
 )
 
 func formatUserLogs(logs []*Log, startIdx int) {
+	formatLogs(logs, startIdx, true, false, false)
+}
+
+func formatLogs(logs []*Log, startIdx int, hideChannelName bool, hideAdminDebugFields bool, allowSensitivePreview bool) {
 	for i := range logs {
-		logs[i].ChannelName = ""
-		var otherMap map[string]interface{}
-		otherMap, _ = common.StrToMap(logs[i].Other)
-		if otherMap != nil {
-			// Remove admin-only debug fields.
-			delete(otherMap, "admin_info")
-			delete(otherMap, "reject_reason")
+		if hideChannelName {
+			logs[i].ChannelName = ""
 		}
-		logs[i].Other = common.MapToJsonStr(otherMap)
-		logs[i].Id = startIdx + i + 1
+		logs[i].Other = sanitizeLogOther(logs[i].Other, hideAdminDebugFields, allowSensitivePreview)
+		logs[i].DisplayId = startIdx + i + 1
 	}
 }
 
-func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
+func sanitizeLogOther(other string, hideAdminDebugFields bool, allowSensitivePreview bool) string {
+	otherMap, _ := common.StrToMap(other)
+	if otherMap == nil {
+		return common.MapToJsonStr(otherMap)
+	}
+	if hideAdminDebugFields {
+		delete(otherMap, "admin_info")
+		delete(otherMap, "reject_reason")
+	}
+	if !allowSensitivePreview {
+		delete(otherMap, "system_text")
+		delete(otherMap, "messages_preview")
+		delete(otherMap, "messages_count")
+	}
+	return common.MapToJsonStr(otherMap)
+}
+
+func GetLogByTokenId(tokenId int, allowSensitivePreview bool) (logs []*Log, err error) {
 	tx := LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId)
 	tx = applyErrorLogVisibilityFilter(tx, LogTypeUnknown, !common.ErrorDetailsEnabled || !common.ErrorLogDisplayEnabled)
 	err = tx.Order("id desc").Limit(common.MaxRecentItems).Find(&logs).Error
-	formatUserLogs(logs, 0)
+	formatLogs(logs, 0, true, true, allowSensitivePreview)
 	return logs, err
 }
 
@@ -449,7 +467,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, err error) {
 	tx := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -462,6 +480,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId in
 	if err = attachChannelNamesToLogs(logs); err != nil {
 		return logs, total, err
 	}
+	formatLogs(logs, startIdx, false, false, allowSensitivePreview)
 
 	return logs, total, err
 }
@@ -613,7 +632,7 @@ func attachChannelNamesToLogs(logs []*Log) error {
 	return nil
 }
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, err error) {
 	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, err
@@ -629,11 +648,11 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		return nil, 0, errors.New("查询日志失败")
 	}
 
-	formatUserLogs(logs, startIdx)
+	formatLogs(logs, startIdx, true, true, allowSensitivePreview)
 	return logs, total, err
 }
 
-func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, truncated bool, err error) {
+func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, truncated bool, err error) {
 	tx := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -648,10 +667,11 @@ func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, 
 	if err = attachChannelNamesToLogs(logs); err != nil {
 		return nil, 0, false, err
 	}
+	formatLogs(logs, 0, false, false, allowSensitivePreview)
 	return logs, total, truncated, nil
 }
 
-func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (logs []*Log, total int64, truncated bool, err error) {
+func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, truncated bool, err error) {
 	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, false, err
@@ -668,7 +688,7 @@ func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTime
 		common.SysError("failed to export user logs: " + err.Error())
 		return nil, 0, false, errors.New("导出日志失败")
 	}
-	formatUserLogs(logs, 0)
+	formatLogs(logs, 0, true, true, allowSensitivePreview)
 	for index := range logs {
 		logs[index].Id = 0
 	}
@@ -792,21 +812,11 @@ func summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(userId int, subscrip
 			continue
 		}
 		subscriptionID := readIntFromMap(otherMap, "subscription_id")
-		consumed := readInt64FromMap(otherMap, "subscription_consumed")
 		resourceType := resourceTypeMap[subscriptionID]
 		if resourceType == "" {
 			resourceType = SubscriptionResourceQuota
 		}
-		// Fallback for older records that lack subscription_consumed:
-		// derive from subscription_pre_consumed + subscription_post_delta.
-		if consumed <= 0 {
-			preConsumed := readInt64FromMap(otherMap, "subscription_pre_consumed")
-			postDelta := readInt64FromMap(otherMap, "subscription_post_delta")
-			fallback := preConsumed + postDelta
-			if fallback > 0 {
-				consumed = fallback
-			}
-		}
+		consumed := readSubscriptionConsumedFromOther(otherMap, resourceType)
 		if consumed <= 0 {
 			continue
 		}
@@ -836,6 +846,37 @@ func summarizeSubscriptionConsumeLogsWithExcludedRequestIDs(userId int, subscrip
 		}
 	}
 	return summary, nil
+}
+
+func readSubscriptionConsumedFromOther(otherMap map[string]interface{}, resourceType string) int64 {
+	if resourceType == SubscriptionResourceRequestCount {
+		if consumed := readInt64FromMap(otherMap, "subscription_request_count_consumed"); consumed > 0 {
+			return consumed
+		}
+		if consumed := readInt64FromMap(otherMap, "subscription_consumed"); consumed > 0 {
+			return consumed
+		}
+		if consumed := readInt64FromMap(otherMap, "subscription_pre_consumed_count"); consumed > 0 {
+			return consumed
+		}
+		return 0
+	}
+	if consumed := readInt64FromMap(otherMap, "subscription_amount_consumed"); consumed > 0 {
+		return consumed
+	}
+	if consumed := readInt64FromMap(otherMap, "subscription_consumed"); consumed > 0 {
+		return consumed
+	}
+	preConsumed := readInt64FromMap(otherMap, "subscription_pre_consumed_amount")
+	if preConsumed <= 0 {
+		preConsumed = readInt64FromMap(otherMap, "subscription_pre_consumed")
+	}
+	postDelta := readInt64FromMap(otherMap, "subscription_post_delta")
+	fallback := preConsumed + postDelta
+	if fallback > 0 {
+		return fallback
+	}
+	return 0
 }
 
 func buildSubscriptionResourceTypeMap(rows []subscriptionConsumeSummaryRow) (map[int]string, error) {
@@ -1008,6 +1049,231 @@ type Stat struct {
 	PromptCacheInputTokens int64   `json:"prompt_cache_input_tokens"`
 	PromptCacheReadTokens  int64   `json:"prompt_cache_read_tokens"`
 	PromptCacheWriteTokens int64   `json:"prompt_cache_write_tokens"`
+}
+
+type GroupLogHealthStatsQuery struct {
+	StartTimestamp        int64
+	EndTimestamp          int64
+	UserId                int
+	Username              string
+	TokenName             string
+	ModelName             string
+	Channel               int
+	Group                 string
+	Groups                []string
+	StatusCode            string
+	RequestId             string
+	ErrorMessage          string
+	SubscriptionId        int
+	SubscriptionPlanId    int
+	IgnoreRateLimitErrors bool
+}
+
+type GroupLogHealthStat struct {
+	Group        string                      `json:"group"`
+	TotalCount   int64                       `json:"total_count"`
+	SuccessCount int64                       `json:"success_count"`
+	ErrorCount   int64                       `json:"error_count"`
+	Quota        int64                       `json:"quota"`
+	Tokens       int64                       `json:"tokens"`
+	AvgUseTime   float64                     `json:"avg_use_time"`
+	SuccessRate  float64                     `json:"success_rate"`
+	FirstSeenAt  int64                       `json:"first_seen_at"`
+	LastSeenAt   int64                       `json:"last_seen_at"`
+	ErrorReasons []GroupLogHealthErrorReason `json:"error_reasons"`
+}
+
+type GroupLogHealthErrorReason struct {
+	Content    string `json:"content"`
+	Count      int64  `json:"count"`
+	StatusCode string `json:"status_code"`
+}
+
+type groupLogHealthStatRow struct {
+	Group        string  `gorm:"column:group_name"`
+	TotalCount   int64   `gorm:"column:total_count"`
+	SuccessCount int64   `gorm:"column:success_count"`
+	ErrorCount   int64   `gorm:"column:error_count"`
+	Quota        int64   `gorm:"column:quota"`
+	Tokens       int64   `gorm:"column:tokens"`
+	AvgUseTime   float64 `gorm:"column:avg_use_time"`
+	FirstSeenAt  int64   `gorm:"column:first_seen_at"`
+	LastSeenAt   int64   `gorm:"column:last_seen_at"`
+}
+
+type groupLogHealthErrorReasonRow struct {
+	Group   string `gorm:"column:group_name"`
+	Content string `gorm:"column:content"`
+	Count   int64  `gorm:"column:reason_count"`
+}
+
+const groupLogHealthErrorReasonLimit = 3
+
+func normalizeLogGroup(group string) string {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		return "default"
+	}
+	return group
+}
+
+func extractLogStatusCode(content string) string {
+	const prefix = "status_code="
+	if !strings.HasPrefix(content, prefix) {
+		return ""
+	}
+	remainder := strings.TrimPrefix(content, prefix)
+	if idx := strings.Index(remainder, ","); idx >= 0 {
+		return strings.TrimSpace(remainder[:idx])
+	}
+	return strings.TrimSpace(remainder)
+}
+
+func buildGroupLogHealthQuery(query GroupLogHealthStatsQuery, groupCol string, logTypes []int) (*gorm.DB, error) {
+	tx := LOG_DB.Table("logs").Where("type IN ?", logTypes)
+	if query.StartTimestamp > 0 {
+		tx = tx.Where("created_at >= ?", query.StartTimestamp)
+	}
+	if query.EndTimestamp > 0 {
+		tx = tx.Where("created_at <= ?", query.EndTimestamp)
+	}
+	if query.UserId > 0 {
+		tx = tx.Where("user_id = ?", query.UserId)
+	}
+	if query.Username != "" {
+		tx = tx.Where("username = ?", query.Username)
+	}
+	if query.TokenName != "" {
+		tx = tx.Where("token_name = ?", query.TokenName)
+	}
+	if query.ModelName != "" {
+		modelNamePattern, err := sanitizeLikePattern(query.ModelName)
+		if err != nil {
+			return nil, err
+		}
+		tx = tx.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
+	}
+	if query.Channel != 0 {
+		tx = tx.Where("channel_id = ?", query.Channel)
+	}
+	if query.Group != "" {
+		tx = tx.Where(groupCol+" = ?", query.Group)
+	} else if len(query.Groups) > 0 {
+		tx = tx.Where(groupCol+" IN ?", query.Groups)
+	}
+	if query.RequestId != "" {
+		tx = tx.Where("request_id = ?", query.RequestId)
+	}
+	if query.ErrorMessage != "" {
+		errorPattern := buildLogContentSearchPattern(query.ErrorMessage)
+		tx = tx.Where("(content LIKE ? ESCAPE '!' OR other LIKE ? ESCAPE '!')", errorPattern, errorPattern)
+	}
+	if query.SubscriptionId > 0 {
+		tx = applySubscriptionJSONIdFilter(tx, "subscription_id", query.SubscriptionId)
+	}
+	if query.SubscriptionPlanId > 0 {
+		tx = applySubscriptionJSONIdFilter(tx, "subscription_plan_id", query.SubscriptionPlanId)
+	}
+	if query.StatusCode != "" {
+		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns(query.StatusCode)
+		tx = tx.Where("(content = ? OR content LIKE ? ESCAPE '!')", statusCodeExact, statusCodePrefix)
+	}
+	if query.IgnoreRateLimitErrors {
+		statusCodeExact, statusCodePrefix := buildStatusCodeSearchPatterns("429")
+		tx = tx.Where("type != ? OR (content != ? AND content NOT LIKE ? ESCAPE '!')", LogTypeError, statusCodeExact, statusCodePrefix)
+	}
+	return tx, nil
+}
+
+func getGroupLogHealthErrorReasons(query GroupLogHealthStatsQuery, groupCol string) (map[string][]GroupLogHealthErrorReason, error) {
+	tx, err := buildGroupLogHealthQuery(query, groupCol, []int{LogTypeError})
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]groupLogHealthErrorReasonRow, 0)
+	if err = tx.Select(groupCol + " as group_name, content, count(*) as reason_count").
+		Clauses(clause.GroupBy{Columns: []clause.Column{{Name: groupCol, Raw: true}, {Name: "content"}}}).
+		Order("reason_count desc").
+		Order("content asc").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	reasonsByGroup := make(map[string][]GroupLogHealthErrorReason)
+	for _, row := range rows {
+		group := normalizeLogGroup(row.Group)
+		if len(reasonsByGroup[group]) >= groupLogHealthErrorReasonLimit {
+			continue
+		}
+		reasonsByGroup[group] = append(reasonsByGroup[group], GroupLogHealthErrorReason{
+			Content:    row.Content,
+			Count:      row.Count,
+			StatusCode: extractLogStatusCode(row.Content),
+		})
+	}
+	return reasonsByGroup, nil
+}
+
+func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthStat, error) {
+	groupCol := logGroupCol
+	if groupCol == "" {
+		if common.UsingPostgreSQL {
+			groupCol = `"group"`
+		} else {
+			groupCol = "`group`"
+		}
+	}
+	tx, err := buildGroupLogHealthQuery(query, groupCol, []int{LogTypeConsume, LogTypeError})
+	if err != nil {
+		return nil, err
+	}
+
+	selectExpr := groupCol + " as group_name, " +
+		"count(*) as total_count, " +
+		"sum(case when type = ? then 1 else 0 end) as success_count, " +
+		"sum(case when type = ? then 1 else 0 end) as error_count, " +
+		"sum(case when type = ? then quota else 0 end) as quota, " +
+		"sum(case when type = ? then prompt_tokens + completion_tokens else 0 end) as tokens, " +
+		"avg(use_time) as avg_use_time, " +
+		"min(created_at) as first_seen_at, " +
+		"max(created_at) as last_seen_at"
+
+	rows := make([]groupLogHealthStatRow, 0)
+	if err = tx.Select(selectExpr, LogTypeConsume, LogTypeError, LogTypeConsume, LogTypeConsume).
+		Clauses(clause.GroupBy{Columns: []clause.Column{{Name: groupCol, Raw: true}}}).
+		Order("total_count desc").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	reasonsByGroup, err := getGroupLogHealthErrorReasons(query, groupCol)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := make([]GroupLogHealthStat, 0, len(rows))
+	for _, row := range rows {
+		stat := GroupLogHealthStat{
+			Group:        normalizeLogGroup(row.Group),
+			TotalCount:   row.TotalCount,
+			SuccessCount: row.SuccessCount,
+			ErrorCount:   row.ErrorCount,
+			Quota:        row.Quota,
+			Tokens:       row.Tokens,
+			AvgUseTime:   row.AvgUseTime,
+			FirstSeenAt:  row.FirstSeenAt,
+			LastSeenAt:   row.LastSeenAt,
+			ErrorReasons: make([]GroupLogHealthErrorReason, 0),
+		}
+		if reasons, ok := reasonsByGroup[stat.Group]; ok {
+			stat.ErrorReasons = reasons
+		}
+		if stat.TotalCount > 0 {
+			stat.SuccessRate = float64(stat.SuccessCount) * 100 / float64(stat.TotalCount)
+		}
+		stats = append(stats, stat)
+	}
+	return stats, nil
 }
 
 func buildLogStatConsumeQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
@@ -1220,6 +1486,14 @@ func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 	tx.Where("type = ?", LogTypeConsume).Scan(&token)
 	return token
+}
+
+func DeleteLogsByIds(ids []int) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := LOG_DB.Where("id IN ?", ids).Delete(&Log{})
+	return result.RowsAffected, result.Error
 }
 
 func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64, error) {

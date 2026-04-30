@@ -52,6 +52,7 @@ type User struct {
 	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
 	Remark           string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	PermissionsJSON  string         `json:"permissions_json" gorm:"type:text;column:permissions_json"`
 	InviterUsername  string         `json:"inviter_username,omitempty" gorm:"-"`
 	InviteeUsernames []string       `json:"invitee_usernames,omitempty" gorm:"-"`
 	InviteeCount     int            `json:"invitee_count,omitempty" gorm:"-"`
@@ -61,15 +62,21 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
+		Id:              user.Id,
+		Group:           user.Group,
+		Quota:           user.Quota,
+		Status:          user.Status,
+		Role:            user.Role,
+		Username:        user.Username,
+		Setting:         user.Setting,
+		Email:           user.Email,
+		PermissionsJSON: user.PermissionsJSON,
 	}
 	return cache
+}
+
+func (user *User) GetPermissionPoints() []string {
+	return common.ResolvePermissionPoints(user.Role, user.PermissionsJSON)
 }
 
 func (user *User) GetAccessToken() string {
@@ -297,7 +304,24 @@ func enrichUsersInviteInfo(tx *gorm.DB, users []*User) error {
 	return nil
 }
 
-func GetAllUsers(pageInfo *common.PageInfo, sortBy string, sortOrder string) (users []*User, total int64, err error) {
+func applyUserStatusFilter(query *gorm.DB, status string) (*gorm.DB, error) {
+	trimmedStatus := strings.TrimSpace(status)
+	if trimmedStatus == "" {
+		return query, nil
+	}
+
+	statusInt, err := strconv.Atoi(trimmedStatus)
+	if err != nil {
+		return nil, errors.New("无效的用户状态")
+	}
+
+	if !common.IsValidUserStatus(statusInt) {
+		return nil, errors.New("无效的用户状态")
+	}
+	return query.Where("status = ?", statusInt), nil
+}
+
+func GetAllUsers(pageInfo *common.PageInfo, status string, sortBy string, sortOrder string) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -309,15 +333,21 @@ func GetAllUsers(pageInfo *common.PageInfo, sortBy string, sortOrder string) (us
 		}
 	}()
 
+	query, err := applyUserStatusFilter(tx.Unscoped().Model(&User{}), status)
+	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+
 	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
+	err = query.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().
+	err = query.
 		Order(normalizeUserListSort(sortBy, sortOrder)).
 		Limit(pageInfo.GetPageSize()).
 		Offset(pageInfo.GetStartIdx()).
@@ -340,7 +370,7 @@ func GetAllUsers(pageInfo *common.PageInfo, sortBy string, sortOrder string) (us
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, startIdx int, num int, sortBy string, sortOrder string) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, status string, startIdx int, num int, sortBy string, sortOrder string) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -358,6 +388,11 @@ func SearchUsers(keyword string, group string, startIdx int, num int, sortBy str
 
 	// 构建基础查询
 	query := tx.Model(&User{})
+	query, err = applyUserStatusFilter(query, status)
+	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
@@ -721,11 +756,14 @@ func (user *User) Edit(updatePassword bool) error {
 
 	newUser := *user
 	updates := map[string]interface{}{
-		"username":     newUser.Username,
-		"display_name": newUser.DisplayName,
-		"group":        newUser.Group,
-		"quota":        newUser.Quota,
-		"remark":       newUser.Remark,
+		"username":         newUser.Username,
+		"display_name":     newUser.DisplayName,
+		"group":            newUser.Group,
+		"quota":            newUser.Quota,
+		"remark":           newUser.Remark,
+		"role":             newUser.Role,
+		"status":           newUser.Status,
+		"permissions_json": newUser.PermissionsJSON,
 	}
 	if updatePassword {
 		updates["password"] = newUser.Password
@@ -733,6 +771,9 @@ func (user *User) Edit(updatePassword bool) error {
 
 	DB.First(&user, user.Id)
 	if err = DB.Model(user).Updates(updates).Error; err != nil {
+		return err
+	}
+	if err = DB.First(user, user.Id).Error; err != nil {
 		return err
 	}
 
@@ -805,8 +846,8 @@ func (user *User) ValidateAndFill() (err error) {
 	// find buy username or email
 	DB.Where("username = ? OR email = ?", username, username).First(user)
 	okay := common.ValidatePasswordAndHash(password, user.Password)
-	if !okay || user.Status != common.UserStatusEnabled {
-		return errors.New("用户名或密码错误，或用户已被封禁")
+	if !okay || !common.IsEnabledUserStatus(user.Status) {
+		return errors.New("用户名或密码错误，或用户已被禁用或封禁")
 	}
 	return nil
 }

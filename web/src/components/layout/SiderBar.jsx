@@ -17,15 +17,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { StatusContext } from '../../context/Status';
+import { parseSubscriptionRefundSettings } from '../../helpers/subscriptionRefund';
 import { getLucideIcon } from '../../helpers/lucideIcons';
 import { ChevronLeft } from 'lucide-react';
 import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useSidebar } from '../../hooks/common/useSidebar';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
-import { isAdmin, isRoot, showError } from '../../helpers/utils';
+import { showError } from '../../helpers/utils';
+import { getUserData } from '../../helpers/data';
+import { useUserPermissions } from '../../hooks/common/useUserPermissions';
+import {
+  ADMIN_PERMISSION_POINTS,
+  ADMIN_PERMISSION_POINT_LIST,
+} from '../../constants/permission.constants';
 import SkeletonWrapper from './components/SkeletonWrapper';
 
 import { Nav, Divider, Button } from '@douyinfe/semi-ui';
@@ -40,6 +48,7 @@ const routerMap = {
   redemption: '/console/redemption',
   topup: '/console/topup',
   invoice: '/console/invoice',
+  refund: '/console/refund',
   invoiceAdmin: '/console/invoice-admin',
   checkinAdmin: '/console/checkin-admin',
   financeAdmin: '/console/finance',
@@ -62,19 +71,30 @@ const routerMap = {
   personal: '/console/personal',
   activityLottery: '/console/activity-lottery',
   checkinLottery: '/console/checkin-lottery',
-  siteNotifications: '/console/personal#site-notifications',
+  siteNotifications: '/console/site-notifications',
 };
 
-const SiderBar = ({ onNavigate = () => { } }) => {
+const SiderBar = ({ onNavigate = () => {} }) => {
   const { t } = useTranslation();
+  const [statusState] = useContext(StatusContext);
+  const user = getUserData();
+  const isAdminUser = typeof user?.role === 'number' && user.role >= 10;
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const {
     isModuleVisible,
     hasSectionVisibleModules,
     loading: sidebarLoading,
   } = useSidebar();
+  const { can, canAny } = useUserPermissions();
 
   const showSkeleton = useMinimumLoadingTime(sidebarLoading, 200);
+  const refundSettings = useMemo(
+    () =>
+      parseSubscriptionRefundSettings(
+        statusState?.status?.SubscriptionRefundSettings,
+      ),
+    [statusState?.status?.SubscriptionRefundSettings],
+  );
 
   const [selectedKeys, setSelectedKeys] = useState(['home']);
   const [chatItems, setChatItems] = useState([]);
@@ -164,6 +184,11 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         to: '/invoice',
       },
       {
+        text: t('退款售后'),
+        itemKey: 'refund',
+        to: '/refund',
+      },
+      {
         text: t('邀请拉新'),
         itemKey: 'invite',
         to: '/invite',
@@ -176,18 +201,25 @@ const SiderBar = ({ onNavigate = () => { } }) => {
       {
         text: t('站内信'),
         itemKey: 'siteNotifications',
-        to: '/personal#site-notifications',
+        to: '/console/site-notifications',
       },
     ];
 
     // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
+      if (
+        item.itemKey === 'refund' &&
+        (!refundSettings.page_enabled || !refundSettings.enabled) &&
+        !isAdminUser
+      ) {
+        return false;
+      }
       const configVisible = isModuleVisible('personal', item.itemKey);
       return configVisible;
     });
 
     return filteredItems;
-  }, [t, isModuleVisible]);
+  }, [refundSettings.enabled, refundSettings.page_enabled, t, isModuleVisible]);
 
   const publicItems = useMemo(() => {
     const items = [
@@ -221,90 +253,125 @@ const SiderBar = ({ onNavigate = () => { } }) => {
   }, [t, isModuleVisible]);
 
   const adminItems = useMemo(() => {
+    const hasAdminAccess = (permissionKey) => can(permissionKey, false);
     const items = [
       {
         text: t('渠道管理'),
         itemKey: 'channel',
         to: '/channel',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.channel)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('订阅管理'),
         itemKey: 'subscription',
         to: '/subscription',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.subscription)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('模型管理'),
         itemKey: 'models',
         to: '/console/models',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.models)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('模型部署'),
         itemKey: 'deployment',
         to: '/deployment',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.deployment)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('兑换码管理'),
         itemKey: 'redemption',
         to: '/redemption',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.redemption)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('管理员令牌'),
         itemKey: 'tokenAdmin',
         to: '/console/token/admin',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.tokenAdmin)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('EcomAgent账户'),
         itemKey: 'ecomagent',
         to: '/console/ecomagent',
-        className: isRoot() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.ecomagent)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('用户管理'),
         itemKey: 'user',
         to: '/user',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.user)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('系统设置'),
         itemKey: 'setting',
         to: '/setting',
-        className: isRoot() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.setting)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('风险封控'),
         itemKey: 'riskControl',
         to: '/risk-control',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.riskControl)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('发票开具'),
         itemKey: 'invoiceAdmin',
         to: '/console/invoice-admin',
-        className: isRoot() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.invoiceAdmin)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('财务中心'),
         itemKey: 'financeAdmin',
         to: '/console/finance',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.financeAdmin)
+          ? ''
+          : 'tableHiddle',
       },
       {
         text: t('R2 存储'),
         itemKey: 'r2Storage',
         to: '/console/r2-storage',
-        className: isRoot() ? '' : 'tableHiddle',
+        className: hasAdminAccess(ADMIN_PERMISSION_POINTS.r2Storage)
+          ? ''
+          : 'tableHiddle',
       },
       {
-        text: t('签到管理'),
+        text: t('签到/活动后台'),
         itemKey: 'checkinAdmin',
         to: '/console/checkin-admin',
-        className: isRoot() ? '' : 'tableHiddle',
+        className: canAny(
+          [
+            ADMIN_PERMISSION_POINTS.checkinAdmin,
+            ADMIN_PERMISSION_POINTS.activityAdmin,
+          ],
+          false,
+        )
+          ? ''
+          : 'tableHiddle',
       },
     ];
 
@@ -315,7 +382,10 @@ const SiderBar = ({ onNavigate = () => { } }) => {
     });
 
     return filteredItems;
-  }, [isAdmin(), isRoot(), t, isModuleVisible]);
+  }, [can, canAny, t, isModuleVisible]);
+
+  const showAdminSection =
+    isAdminUser && canAny(ADMIN_PERMISSION_POINT_LIST, false);
 
   const chatMenuItems = useMemo(() => {
     const items = [
@@ -515,7 +585,7 @@ const SiderBar = ({ onNavigate = () => { } }) => {
         type='sidebar'
         className=''
         collapsed={collapsed}
-        showAdmin={isAdmin()}
+        showAdmin={showAdminSection}
       >
         <Nav
           className='sidebar-nav'
@@ -606,7 +676,7 @@ const SiderBar = ({ onNavigate = () => { } }) => {
           )}
 
           {/* 管理员区域 - 只在管理员时显示且配置允许时显示 */}
-          {isAdmin() && hasSectionVisibleModules('admin') && (
+          {showAdminSection && hasSectionVisibleModules('admin') && (
             <>
               <Divider className='sidebar-divider' />
               <div>

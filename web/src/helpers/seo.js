@@ -1,25 +1,11 @@
-import enLocale from '../i18n/locales/en.json';
-import frLocale from '../i18n/locales/fr.json';
-import jaLocale from '../i18n/locales/ja.json';
-import ruLocale from '../i18n/locales/ru.json';
-import viLocale from '../i18n/locales/vi.json';
-import zhCNLocale from '../i18n/locales/zh-CN.json';
-import zhTWLocale from '../i18n/locales/zh-TW.json';
 import { normalizeLanguage } from '../i18n/language';
+import { localeTranslations } from '../i18n/resources';
 
 const SITE_URL = (
   import.meta.env.VITE_PUBLIC_SITE_URL || 'https://nbility.dev'
 ).replace(/\/$/, '');
 const SITE_NAME = 'Nbility AI';
-const SEO_LOCALES = {
-  en: enLocale.translation,
-  fr: frLocale.translation,
-  ja: jaLocale.translation,
-  ru: ruLocale.translation,
-  vi: viLocale.translation,
-  'zh-CN': zhCNLocale.translation,
-  'zh-TW': zhTWLocale.translation,
-};
+const SEO_LOCALES = localeTranslations;
 
 function getDefaultImage(language) {
   return `${SITE_URL}/logo.svg`;
@@ -854,6 +840,17 @@ const ROUTE_SEO_CONFIGS = [
   },
   {
     pattern: '/console/personal',
+    build: (language, pathname) =>
+      buildRouteSeo({
+        language,
+        path: pathname,
+        titleKey: 'SEO 个人设置页标题',
+        descriptionKey: 'SEO 个人设置页描述',
+        robots: 'noindex,nofollow',
+      }),
+  },
+  {
+    pattern: '/console/site-notifications',
     build: (language, pathname) =>
       buildRouteSeo({
         language,

@@ -26,7 +26,12 @@ import {
   Typography,
   Select,
 } from '@douyinfe/semi-ui';
-import { API, showError, selectFilter } from '../../../helpers';
+import { useSearchParams } from 'react-router-dom';
+import {
+  API,
+  showError,
+  selectFilter,
+} from '../../../helpers';
 import { getModelCategories } from '../../../helpers/providerIcons';
 import CardPro from '../../common/ui/CardPro';
 import TokensTable from './TokensTable';
@@ -35,6 +40,8 @@ import TokensFilters from './TokensFilters';
 import TokensDescription from './TokensDescription';
 import EditTokenModal from './modals/EditTokenModal';
 import CCSwitchModal from './modals/CCSwitchModal';
+import TokenTestConfigModal from './modals/TokenTestConfigModal';
+import ColumnSelectorModal from './modals/ColumnSelectorModal';
 import { useTokensData } from '../../../hooks/tokens/useTokensData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -44,10 +51,17 @@ function TokensPage() {
   // Define the function first, then pass it into the hook to avoid TDZ errors
   const openFluentNotificationRef = useRef(null);
   const openCCSwitchModalRef = useRef(null);
+  const tokenFiltersFormApiRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const tokensData = useTokensData(
     (key) => openFluentNotificationRef.current?.(key),
     (key) => openCCSwitchModalRef.current?.(key),
   );
+  const {
+    pageSize: deepLinkPageSize,
+    searchTokens: runTokenSearch,
+    setHighlightedTokenName,
+  } = tokensData;
   const isMobile = useIsMobile();
   const latestRef = useRef({
     tokens: [],
@@ -64,6 +78,9 @@ function TokensPage() {
   const [prefillKey, setPrefillKey] = useState('');
   const [ccSwitchVisible, setCCSwitchVisible] = useState(false);
   const [ccSwitchToken, setCCSwitchToken] = useState(null);
+  const [testConfigVisible, setTestConfigVisible] = useState(false);
+  const [testingRecord, setTestingRecord] = useState(null);
+  const [filtersFormReady, setFiltersFormReady] = useState(false);
 
   // Keep latest data for handlers inside notifications
   useEffect(() => {
@@ -142,6 +159,46 @@ function TokensPage() {
   useEffect(() => {
     loadGroups();
   }, []);
+
+  useEffect(() => {
+    const keyword = searchParams.get('keyword') || '';
+    const highlight = searchParams.get('highlight') || keyword;
+
+    setHighlightedTokenName(highlight);
+
+    if (!keyword || !filtersFormReady || !tokenFiltersFormApiRef.current) {
+      return;
+    }
+
+    tokenFiltersFormApiRef.current.setValues({
+      searchKeyword: keyword,
+      searchToken: '',
+      status: '',
+      group: '',
+      expiredState: '',
+      unlimitedState: '',
+    });
+
+    runTokenSearch(1, deepLinkPageSize, {
+      searchKeyword: keyword,
+      searchToken: '',
+      status: '',
+      group: '',
+      expiredState: '',
+      unlimitedState: '',
+    });
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('keyword');
+    setSearchParams(next, { replace: true });
+  }, [
+    filtersFormReady,
+    deepLinkPageSize,
+    runTokenSearch,
+    searchParams,
+    setHighlightedTokenName,
+    setSearchParams,
+  ]);
 
   function openFluentNotification(key) {
     const { t } = latestRef.current;
@@ -223,6 +280,22 @@ function TokensPage() {
     setCCSwitchVisible(true);
   }
   openCCSwitchModalRef.current = openCCSwitchModal;
+
+  const openTokenTestConfigModal = (record) => {
+    setTestingRecord(record || null);
+    setTestConfigVisible(true);
+  };
+
+  const handleConfirmTokenTest = async (config) => {
+    if (!testingRecord?.id) {
+      return;
+    }
+    const success = await tokensData.testToken(testingRecord, config);
+    if (success) {
+      setTestConfigVisible(false);
+      setTestingRecord(null);
+    }
+  };
 
   // Prefill to Fluent handler
   const handlePrefillToFluent = async () => {
@@ -408,6 +481,8 @@ function TokensPage() {
         handleClose={closeEdit}
       />
 
+      <ColumnSelectorModal {...tokensData} />
+
       <CCSwitchModal
         visible={ccSwitchVisible}
         onClose={() => {
@@ -416,6 +491,20 @@ function TokensPage() {
         }}
         tokenRecord={ccSwitchToken}
         modelOptions={modelOptions}
+      />
+
+      <TokenTestConfigModal
+        visible={testConfigVisible}
+        onCancel={() => {
+          setTestConfigVisible(false);
+          setTestingRecord(null);
+        }}
+        onConfirm={handleConfirmTokenTest}
+        confirmLoading={Boolean(
+          testingRecord?.id && tokensData.testingTokenIds?.[testingRecord.id],
+        )}
+        tokenRecord={testingRecord}
+        t={t}
       />
 
       <CardPro
@@ -445,8 +534,13 @@ function TokensPage() {
             <div className='w-full md:w-full lg:w-auto order-1 md:order-2'>
               <TokensFilters
                 formInitValues={formInitValues}
-                setFormApi={setFormApi}
+                setFormApi={(api) => {
+                  tokenFiltersFormApiRef.current = api;
+                  setFiltersFormReady(Boolean(api));
+                  setFormApi(api);
+                }}
                 searchTokens={searchTokens}
+                setShowColumnSelector={tokensData.setShowColumnSelector}
                 loading={loading}
                 searching={searching}
                 groupOptions={groupOptions}
@@ -470,7 +564,7 @@ function TokensPage() {
           {...tokensData}
           showTestColumn={true}
           testingTokenIds={tokensData.testingTokenIds}
-          testToken={tokensData.testToken}
+          testToken={openTokenTestConfigModal}
           showLastTestColumn={true}
           lastTestResultsById={tokensData.lastTestResultsById}
         />

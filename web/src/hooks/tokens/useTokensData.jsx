@@ -31,10 +31,19 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import {
   fetchTokenKey as fetchTokenKeyById,
-  getTokenTestDefaults,
+  buildTokenTestPayload,
+  resolveTokenTestConfig,
 } from '../../helpers/token';
 
 const SUBSCRIPTION_ACCESS_TOKEN_NAME = 'Subscription Access';
+const BATCH_TOKEN_TEST_INTERVAL_MS = 400;
+
+const waitForBatchTokenTest = (duration = BATCH_TOKEN_TEST_INTERVAL_MS) =>
+  new Promise((resolve) => {
+    window.setTimeout(resolve, duration);
+  });
+
+const normalizeTokenName = (value) => String(value || '').trim().toLowerCase();
 
 const isProtectedSubscriptionAccessToken = (token) => {
   if (!token) {
@@ -96,6 +105,21 @@ const buildTokenTestRows = (results = []) => {
 
 export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const { t } = useTranslation();
+  const COLUMN_KEYS = {
+    NAME: 'name',
+    STATUS: 'status',
+    QUOTA_USAGE: 'quota_usage',
+    GROUP: 'group',
+    TOKEN_KEY: 'token_key',
+    MODEL_LIMITS: 'model_limits',
+    ALLOW_IPS: 'allow_ips',
+    CREATED_TIME: 'created_time',
+    EXPIRED_TIME: 'expired_time',
+    LAST_TEST: 'last_test',
+    USERNAME: 'username',
+    OPERATE: 'operate',
+  };
+  const COLUMN_STORAGE_KEY = 'tokens-table-columns-v2';
   const emptyFilters = {
     searchKeyword: '',
     searchToken: '',
@@ -115,8 +139,40 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const [searchMode, setSearchMode] = useState(false); // 是否处于搜索结果视图
   const [appliedFilters, setAppliedFilters] = useState(emptyFilters);
 
+  const getDefaultColumnVisibility = () => ({
+    [COLUMN_KEYS.NAME]: true,
+    [COLUMN_KEYS.STATUS]: true,
+    [COLUMN_KEYS.QUOTA_USAGE]: true,
+    [COLUMN_KEYS.GROUP]: true,
+    [COLUMN_KEYS.TOKEN_KEY]: true,
+    [COLUMN_KEYS.MODEL_LIMITS]: false,
+    [COLUMN_KEYS.ALLOW_IPS]: false,
+    [COLUMN_KEYS.CREATED_TIME]: false,
+    [COLUMN_KEYS.EXPIRED_TIME]: true,
+    [COLUMN_KEYS.LAST_TEST]: false,
+    [COLUMN_KEYS.USERNAME]: false,
+    [COLUMN_KEYS.OPERATE]: true,
+  });
+
+  const getInitialVisibleColumns = () => {
+    const defaults = getDefaultColumnVisibility();
+    const savedColumns = localStorage.getItem(COLUMN_STORAGE_KEY);
+    if (!savedColumns) {
+      return defaults;
+    }
+    try {
+      return { ...defaults, ...JSON.parse(savedColumns) };
+    } catch (error) {
+      return defaults;
+    }
+  };
+
   // Selection state
   const [selectedKeys, setSelectedKeys] = useState([]);
+  const [visibleColumns, setVisibleColumns] = useState(
+    getInitialVisibleColumns,
+  );
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
 
   // Edit state
   const [showEdit, setShowEdit] = useState(false);
@@ -125,17 +181,45 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   });
 
   // UI state
-  const [compactMode, setCompactMode] = useTableCompactMode('tokens');
+  const [compactMode, setCompactMode] = useTableCompactMode('tokens', true);
   const [showKeys, setShowKeys] = useState({});
   const [resolvedTokenKeys, setResolvedTokenKeys] = useState({});
   const [loadingTokenKeys, setLoadingTokenKeys] = useState({});
   const keyRequestsRef = useRef({});
   const [testingTokenIds, setTestingTokenIds] = useState({});
   const [lastTestResultsById, setLastTestResultsById] = useState({});
+  const [highlightedTokenName, setHighlightedTokenName] = useState('');
 
   // Form state
   const [formApi, setFormApi] = useState(null);
   const formInitValues = emptyFilters;
+
+  const initDefaultColumns = () => {
+    const defaults = getDefaultColumnVisibility();
+    setVisibleColumns(defaults);
+    localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(defaults));
+  };
+
+  const handleColumnVisibilityChange = (columnKey, checked) => {
+    setVisibleColumns((prev) => ({
+      ...prev,
+      [columnKey]: checked,
+    }));
+  };
+
+  const handleSelectAll = (checked) => {
+    const updatedColumns = {};
+    Object.values(COLUMN_KEYS).forEach((key) => {
+      updatedColumns[key] = checked;
+    });
+    setVisibleColumns(updatedColumns);
+  };
+
+  useEffect(() => {
+    if (Object.keys(visibleColumns).length > 0) {
+      localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(visibleColumns));
+    }
+  }, [visibleColumns]);
 
   // Get form values helper function
   const getFormValues = () => {
@@ -548,19 +632,17 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     },
   };
 
-  const testToken = async (record) => {
+  const testToken = async (record, options = null) => {
     const tokenId = record?.id;
-    if (!tokenId) return;
-    const testDefaults = getTokenTestDefaults();
+    if (!tokenId) return false;
+    const testConfig = options || resolveTokenTestConfig(record?.group);
 
     setTestingTokenIds((prev) => ({ ...prev, [tokenId]: true }));
     try {
-      const res = await API.post(`/api/token/${tokenId}/test`, {
-        mode: 'both',
-        claude_model: testDefaults.claude_model,
-        responses_model: testDefaults.responses_model,
-        max_tokens: 16,
-      });
+      const res = await API.post(
+        `/api/token/${tokenId}/test`,
+        buildTokenTestPayload(testConfig),
+      );
       const { success, message, data } = res.data || {};
       if (!success) {
         showError(message || t('测试失败'));
@@ -573,7 +655,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
             results: [],
           },
         }));
-        return;
+        return false;
       }
 
       const results = Array.isArray(data?.results) ? data.results : [];
@@ -601,8 +683,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
           </div>
         ),
       });
+      return true;
     } catch (error) {
       showError(error?.message || t('测试失败'));
+      return false;
     } finally {
       setTestingTokenIds((prev) => ({ ...prev, [tokenId]: false }));
     }
@@ -613,80 +697,73 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       showError(t('请先选择要测试的令牌！'));
       return;
     }
-    const testDefaults = getTokenTestDefaults();
-
     const tokenRecords = [...selectedKeys];
     const tokenIds = tokenRecords.map((item) => item.id);
     const results = [];
     const recordMap = new Map(tokenRecords.map((item) => [item.id, item]));
-    const concurrency = 3;
-    let cursor = 0;
-
-    const worker = async () => {
-      while (cursor < tokenIds.length) {
-        const current = tokenIds[cursor];
-        cursor += 1;
-        setTestingTokenIds((prev) => ({ ...prev, [current]: true }));
-        try {
-          const res = await API.post(`/api/token/${current}/test`, {
-            mode: 'both',
-            claude_model: testDefaults.claude_model,
-            responses_model: testDefaults.responses_model,
-            max_tokens: 16,
-          });
-          if (res?.data?.success) {
-            const payload = res.data.data || {};
-            results.push({ token_id: current, ...payload });
-            const list = Array.isArray(payload?.results) ? payload.results : [];
-            const allOk = list.length > 0 && list.every((item) => item?.ok);
-            setLastTestResultsById((prev) => ({
-              ...prev,
-              [current]: {
-                at: Number(payload?.last_test_at || 0) * 1000 || Date.now(),
-                ok: allOk,
-                error: '',
-                results: list,
-                mode: String(payload?.mode || 'both'),
-              },
-            }));
-          } else {
-            results.push({
-              token_id: current,
-              results: [],
-              error: res?.data?.message || t('测试失败'),
-            });
-            setLastTestResultsById((prev) => ({
-              ...prev,
-              [current]: {
-                at: Date.now(),
-                ok: false,
-                error: res?.data?.message || t('测试失败'),
-                results: [],
-              },
-            }));
-          }
-        } catch (error) {
+    for (let index = 0; index < tokenIds.length; index += 1) {
+      const current = tokenIds[index];
+      setTestingTokenIds((prev) => ({ ...prev, [current]: true }));
+      try {
+        const currentRecord = recordMap.get(current);
+        const res = await API.post(
+          `/api/token/${current}/test`,
+          buildTokenTestPayload(resolveTokenTestConfig(currentRecord?.group)),
+        );
+        if (res?.data?.success) {
+          const payload = res.data.data || {};
+          results.push({ token_id: current, ...payload });
+          const list = Array.isArray(payload?.results) ? payload.results : [];
+          const allOk = list.length > 0 && list.every((item) => item?.ok);
+          setLastTestResultsById((prev) => ({
+            ...prev,
+            [current]: {
+              at: Number(payload?.last_test_at || 0) * 1000 || Date.now(),
+              ok: allOk,
+              error: '',
+              results: list,
+              mode: String(payload?.mode || 'both'),
+            },
+          }));
+        } else {
           results.push({
             token_id: current,
             results: [],
-            error: error?.message || t('测试失败'),
+            error: res?.data?.message || t('测试失败'),
           });
           setLastTestResultsById((prev) => ({
             ...prev,
             [current]: {
               at: Date.now(),
               ok: false,
-              error: error?.message || t('测试失败'),
+              error: res?.data?.message || t('测试失败'),
               results: [],
             },
           }));
-        } finally {
-          setTestingTokenIds((prev) => ({ ...prev, [current]: false }));
         }
+      } catch (error) {
+        results.push({
+          token_id: current,
+          results: [],
+          error: error?.message || t('测试失败'),
+        });
+        setLastTestResultsById((prev) => ({
+          ...prev,
+          [current]: {
+            at: Date.now(),
+            ok: false,
+            error: error?.message || t('测试失败'),
+            results: [],
+          },
+        }));
+      } finally {
+        setTestingTokenIds((prev) => ({ ...prev, [current]: false }));
       }
-    };
 
-    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+      if (index < tokenIds.length - 1) {
+        await waitForBatchTokenTest();
+      }
+    }
 
     const okCount = results.filter((item) => {
       const list = Array.isArray(item?.results) ? item.results : [];
@@ -734,20 +811,24 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   // Handle row styling
   const handleRow = (record, index) => {
     const isSelected = selectedKeys.some((token) => token?.id === record?.id);
+    const isHighlighted =
+      normalizeTokenName(record?.name) !== '' &&
+      normalizeTokenName(record?.name) ===
+        normalizeTokenName(highlightedTokenName);
+    const classNames = ['token-row'];
+
     if (record.status !== 1) {
-      return {
-        className: isSelected
-          ? 'token-row token-row--disabled token-row--selected'
-          : 'token-row token-row--disabled',
-      };
+      classNames.push('token-row--disabled');
     }
     if (isSelected) {
-      return {
-        className: 'token-row token-row--selected',
-      };
+      classNames.push('token-row--selected');
     }
+    if (isHighlighted) {
+      classNames.push('token-row--highlight');
+    }
+
     return {
-      className: 'token-row',
+      className: classNames.join(' '),
     };
   };
 
@@ -887,6 +968,13 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     // UI state
     compactMode,
     setCompactMode,
+    visibleColumns,
+    showColumnSelector,
+    setShowColumnSelector,
+    handleColumnVisibilityChange,
+    handleSelectAll,
+    initDefaultColumns,
+    COLUMN_KEYS,
     showKeys,
     setShowKeys,
     resolvedTokenKeys,
@@ -918,6 +1006,8 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     batchCopyTokens,
     testingTokenIds,
     lastTestResultsById,
+    highlightedTokenName,
+    setHighlightedTokenName,
     testToken,
     batchTestTokens,
     syncPageData,

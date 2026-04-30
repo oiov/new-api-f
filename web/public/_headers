@@ -2,46 +2,40 @@
   Cache-Control: public, max-age=31536000, immutable
 
 /assets/*.png
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+  Cache-Control: public, max-age=31536000, immutable
 
 /assets/*.jpg
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+  Cache-Control: public, max-age=31536000, immutable
 
 /assets/*.jpeg
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+  Cache-Control: public, max-age=31536000, immutable
 
 /assets/*.gif
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+  Cache-Control: public, max-age=31536000, immutable
 
 /assets/*.webp
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+  Cache-Control: public, max-age=31536000, immutable
 
 /assets/*.ico
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+  Cache-Control: public, max-age=31536000, immutable
 
 /assets/*.svg
+  Cache-Control: public, max-age=31536000, immutable
+
+/wechat_group.jpg
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 
-/*.png
+/qq_group.jpg
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 
-/*.jpg
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/sitemap.xml
+  Cache-Control: public, max-age=300, s-maxage=300, stale-while-revalidate=1800
 
-/*.jpeg
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/rss.xml
+  Cache-Control: public, max-age=300, s-maxage=300, stale-while-revalidate=1800
 
-/*.gif
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
-
-/*.webp
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
-
-/*.ico
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
-
-/*.svg
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/robots.txt
+  Cache-Control: public, max-age=300, s-maxage=300, stale-while-revalidate=1800
 
 /*.woff
   Cache-Control: public, max-age=2592000
@@ -53,4 +47,46 @@
   Cache-Control: public, max-age=2592000
 
 /index.html
-  Cache-Control: no-cache
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/*.html
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/console
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/console/*
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/pricing
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/pricing/*
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/contact
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/contact/*
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/status
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/status/*
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/docs
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/docs/*
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/token
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+/token/*
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0

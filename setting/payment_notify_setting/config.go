@@ -10,6 +10,7 @@ type PaymentNotifySetting struct {
 	ServerChanSendKey   string
 	PushPlusEnabled     bool
 	PushPlusToken       string
+	Remark              string
 }
 
 var paymentNotifySetting = PaymentNotifySetting{
@@ -20,6 +21,7 @@ var paymentNotifySetting = PaymentNotifySetting{
 	ServerChanSendKey:   "",
 	PushPlusEnabled:     false,
 	PushPlusToken:       "",
+	Remark:              "",
 }
 
 func init() {
