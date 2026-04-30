@@ -23,6 +23,7 @@ import (
 
 type Log struct {
 	Id               int    `json:"id" gorm:"index:idx_created_at_id,priority:1;index:idx_user_id_id,priority:2"`
+	DisplayId        int    `json:"display_id" gorm:"-"`
 	UserId           int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
 	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:2;index:idx_created_at_type"`
 	Type             int    `json:"type" gorm:"index:idx_created_at_type"`
@@ -105,7 +106,7 @@ func formatLogs(logs []*Log, startIdx int, hideChannelName bool, hideAdminDebugF
 			logs[i].ChannelName = ""
 		}
 		logs[i].Other = sanitizeLogOther(logs[i].Other, hideAdminDebugFields, allowSensitivePreview)
-		logs[i].Id = startIdx + i + 1
+		logs[i].DisplayId = startIdx + i + 1
 	}
 }
 

@@ -33,7 +33,8 @@ func TestFormatLogsRemovesSensitivePreviewAndChannelNameForUserView(t *testing.T
 
 	formatLogs(logs, 10, true, true, false)
 
-	assert.Equal(t, 11, logs[0].Id)
+	assert.Equal(t, 99, logs[0].Id)
+	assert.Equal(t, 11, logs[0].DisplayId)
 	assert.Empty(t, logs[0].ChannelName)
 	assert.JSONEq(t, `{"safe":"ok"}`, logs[0].Other)
 }
