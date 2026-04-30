@@ -440,7 +440,7 @@ const MobileHomeLanding = ({
           </Title>
 
           <Paragraph className='!mb-0 !text-sm !leading-7 !text-semi-color-text-1'>
-            {t('当前所有 Claude 系列月卡五折。以 Claude Lite 为例，低至一天不到 5 块钱，500 次/天，月共 15000 次，支付成功后自动生效，适合长期稳定调用。')}
+            {t('Claude / Codex 套餐已恢复原价，支持天卡、轻量包和月卡等方案；支付后按套餐规则生效，适合长期稳定调用。')}
           </Paragraph>
 
           <div className='mt-5 flex flex-wrap gap-3 text-sm text-semi-color-text-1'>

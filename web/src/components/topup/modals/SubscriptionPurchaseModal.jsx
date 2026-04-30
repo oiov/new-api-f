@@ -190,7 +190,7 @@ const SubscriptionPurchaseModal = ({
       ? {
           key: 'claude_monthly_discount',
           type: 'success',
-          text: t('当前所有 Claude 系列月卡套餐五折'),
+          text: t('Claude 系列月卡套餐已恢复原价'),
         }
       : null,
     isClaudeMonthlyPlan
