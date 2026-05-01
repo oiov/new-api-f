@@ -43,7 +43,7 @@
     "sse.js": "^2.6.0",
     "unist-util-visit": "^5.0.0",
     "use-debounce": "^10.0.4",
-    "vercel": "^51.0.0"
+    "vercel": "^53.0.1"
   },
   "scripts": {
     "dev": "vite",

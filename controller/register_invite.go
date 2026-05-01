@@ -24,12 +24,11 @@ func countInviteRegistrations(inviterId int) (int64, error) {
 }
 
 func resolveInviteRegistration(c *gin.Context, affCode string) (int, string) {
-	if !common.InviteRegisterEnabled {
-		return 0, ""
-	}
-
 	trimmedCode := common.NormalizeInviteCode(affCode)
 	if trimmedCode == "" {
+		if !common.InviteRegisterEnabled {
+			return 0, ""
+		}
 		return 0, i18n.MsgUserInviteCodeRequired
 	}
 
