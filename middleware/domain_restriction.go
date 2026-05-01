@@ -31,6 +31,25 @@ func DisallowProxyDistribution() gin.HandlerFunc {
 		}
 
 		setting := system_setting.GetErrorSetting()
+		if detectRestrictedRouteKind(c) == "web" {
+			decision := EvaluateDirectWebAccessRequest(
+				getRequestHost(c),
+				getOriginHost(c),
+				getRefererHost(c),
+				setting.DirectWebAccessBlockedHosts,
+				setting.RestrictProxyDistributionLogOnly,
+			)
+			if !decision.Allowed {
+				recordAntiDistributionDecision(c, decision, "backend")
+				if decision.Action == "observe" {
+					c.Next()
+					return
+				}
+				abortDirectWebAccessRequest(c, decision)
+				return
+			}
+		}
+
 		if !setting.RestrictProxyDistribution {
 			c.Next()
 			return
@@ -63,6 +82,20 @@ func shouldBypassProxyDistributionCheck(c *gin.Context) bool {
 		return false
 	}
 	return c.Request.URL.Path == "/api/anti_distribution/public"
+}
+
+func EvaluateDirectWebAccessRequest(requestHost string, originHost string, refererHost string, blockedHosts []string, logOnly bool) ProxyDistributionDecision {
+	decision := ProxyDistributionDecision{
+		Allowed:     true,
+		Action:      "allow",
+		RequestHost: normalizeHost(requestHost),
+		OriginHost:  normalizeHost(originHost),
+		RefererHost: normalizeHost(refererHost),
+	}
+	if !hostMatchesAny(decision.RequestHost, blockedHosts) {
+		return decision
+	}
+	return blockProxyDistribution(decision, "request_host", "direct_web_access_blocked", "直连 API Host 禁止访问 web 入口", logOnly)
 }
 
 func EvaluateProxyDistributionRequest(requestHost string, originHost string, refererHost string, allowedHosts []string, allowedSources []string, logOnly bool) ProxyDistributionDecision {
@@ -120,6 +153,15 @@ func recordAntiDistributionDecision(c *gin.Context, decision ProxyDistributionDe
 		RequestID:     c.GetString(common.RequestIdKey),
 		MatchedSource: decision.MatchedSource,
 	})
+}
+
+func abortDirectWebAccessRequest(c *gin.Context, decision ProxyDistributionDecision) {
+	c.Header("X-Direct-Web-Access", "block")
+	c.Header("X-Anti-Distribution-Layer", "backend")
+	c.Header("X-Anti-Distribution-Action", "block")
+	c.Header("X-Anti-Distribution-Reason", decision.Reason)
+	c.Status(http.StatusNoContent)
+	c.Abort()
 }
 
 func abortProxyDistributionRequest(c *gin.Context, decision ProxyDistributionDecision, blockedMessage string) {
@@ -184,6 +226,8 @@ func detectRestrictedRouteKind(c *gin.Context) string {
 	switch {
 	case strings.HasPrefix(path, "/api/"):
 		return "api"
+	case path == "/uploads" || strings.HasPrefix(path, "/uploads/"):
+		return "static"
 	case strings.HasPrefix(path, "/v1/"),
 		strings.HasPrefix(path, "/v1beta/"),
 		strings.HasPrefix(path, "/mj/"),

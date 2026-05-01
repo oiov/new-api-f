@@ -50,6 +50,8 @@ const RiskControlSetting = () => {
     useState([]);
   const [antiDistributionAllowedSources, setAntiDistributionAllowedSources] =
     useState([]);
+  const [directWebAccessBlockedHosts, setDirectWebAccessBlockedHosts] =
+    useState([]);
   const [antiDistributionLogs, setAntiDistributionLogs] = useState([]);
   const [antiDistributionLogsLoading, setAntiDistributionLogsLoading] =
     useState(false);
@@ -98,6 +100,11 @@ const RiskControlSetting = () => {
           data['error_setting.restrict_proxy_distribution_allowed_sources'],
         )
           ? data['error_setting.restrict_proxy_distribution_allowed_sources']
+          : [],
+      );
+      setDirectWebAccessBlockedHosts(
+        Array.isArray(data['error_setting.direct_web_access_blocked_hosts'])
+          ? data['error_setting.direct_web_access_blocked_hosts']
           : [],
       );
 
@@ -180,6 +187,10 @@ const RiskControlSetting = () => {
         ),
       },
       {
+        key: 'error_setting.direct_web_access_blocked_hosts',
+        value: JSON.stringify(normalizeTagValues(directWebAccessBlockedHosts)),
+      },
+      {
         key: 'error_setting.show_site_domain_in_error',
         value: !!inputs['error_setting.show_site_domain_in_error'],
       },
@@ -193,7 +204,7 @@ const RiskControlSetting = () => {
     Modal.confirm({
       title: t('确认重置防分发配置'),
       content: t(
-        '这会把防分发开关、观察模式、白名单和提示文案恢复为默认值，用于快速回滚到稳定状态。',
+        '这会把防分发开关、观察模式、白名单、直连 Web 禁止域名和提示文案恢复为默认值，用于快速回滚到稳定状态。',
       ),
       okText: t('确认重置'),
       cancelText: t('取消'),
@@ -321,6 +332,29 @@ const RiskControlSetting = () => {
                       placeholder={t('例如：nbility.dev, *.nbility.dev')}
                     />
                   </Col>
+                  <Col
+                    xs={24}
+                    sm={24}
+                    md={24}
+                    lg={24}
+                    xl={24}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Text strong>{t('禁止直连打开 Web 的 Host')}</Text>
+                    <Text
+                      type='secondary'
+                      style={{ display: 'block', marginBottom: 8 }}
+                    >
+                      {t(
+                        '仅拦截这些 Host 的网页入口，/api、/v1 等接口请求仍按白名单规则正常处理',
+                      )}
+                    </Text>
+                    <TagInput
+                      value={directWebAccessBlockedHosts}
+                      onChange={setDirectWebAccessBlockedHosts}
+                      placeholder={t('例如：api.nbility.dev')}
+                    />
+                  </Col>
                 </Row>
                 <Row
                   gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
@@ -427,16 +461,20 @@ const RiskControlSetting = () => {
                             {t('路径')}：{log.method} {log.path}
                           </Text>
                           <Text style={{ display: 'block' }}>
-                            {t('IP：')}{log.client_ip || '-'}
+                            {t('IP：')}
+                            {log.client_ip || '-'}
                           </Text>
                           <Text style={{ display: 'block' }}>
-                            {t('Host：')}{log.request_host || '-'}
+                            {t('Host：')}
+                            {log.request_host || '-'}
                           </Text>
                           <Text style={{ display: 'block' }}>
-                            {t('Origin：')}{log.origin_host || '-'}
+                            {t('Origin：')}
+                            {log.origin_host || '-'}
                           </Text>
                           <Text style={{ display: 'block' }}>
-                            {t('Referer：')}{log.referer_host || '-'}
+                            {t('Referer：')}
+                            {log.referer_host || '-'}
                           </Text>
                           {log.note ? (
                             <Text

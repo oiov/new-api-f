@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -94,17 +94,20 @@ func TestDisallowProxyDistribution(t *testing.T) {
 	origLogOnly := setting.RestrictProxyDistributionLogOnly
 	origHosts := append([]string(nil), setting.RestrictProxyDistributionAllowedHosts...)
 	origSources := append([]string(nil), setting.RestrictProxyDistributionAllowedSources...)
+	origWebBlockedHosts := append([]string(nil), setting.DirectWebAccessBlockedHosts...)
 	origMessage := setting.RestrictProxyDistributionBlockedMessage
 	t.Cleanup(func() {
 		setting.RestrictProxyDistribution = origEnabled
 		setting.RestrictProxyDistributionLogOnly = origLogOnly
 		setting.RestrictProxyDistributionAllowedHosts = origHosts
 		setting.RestrictProxyDistributionAllowedSources = origSources
+		setting.DirectWebAccessBlockedHosts = origWebBlockedHosts
 		setting.RestrictProxyDistributionBlockedMessage = origMessage
 	})
 
 	setting.RestrictProxyDistributionAllowedHosts = []string{"nbility.dev", "*.nbility.dev", "localhost"}
 	setting.RestrictProxyDistributionAllowedSources = []string{"nbility.dev", "*.nbility.dev", "localhost"}
+	setting.DirectWebAccessBlockedHosts = []string{"api.nbility.dev"}
 
 	gin.SetMode(gin.TestMode)
 
@@ -157,7 +160,7 @@ func TestDisallowProxyDistribution(t *testing.T) {
 
 		require.Equal(t, http.StatusForbidden, recorder.Code)
 		var body map[string]map[string]string
-		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &body))
 		require.Contains(t, body["error"]["message"], "请求 Host 不在白名单")
 		require.Equal(t, "backend", recorder.Header().Get("X-Anti-Distribution-Layer"))
 	})
@@ -213,6 +216,57 @@ func TestDisallowProxyDistribution(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 		req.Host = "console.nbility.dev"
 		req.Header.Set("Origin", "https://www.nbility.dev")
+		engine.ServeHTTP(recorder, req)
+
+		require.Equal(t, http.StatusOK, recorder.Code)
+	})
+
+	t.Run("block direct api host web route without proxy restriction or blocking api route", func(t *testing.T) {
+		setting.RestrictProxyDistribution = false
+		setting.RestrictProxyDistributionLogOnly = false
+
+		webRecorder := httptest.NewRecorder()
+		_, webEngine := gin.CreateTestContext(webRecorder)
+		webEngine.Use(DisallowProxyDistribution())
+		webEngine.GET("/", func(c *gin.Context) {
+			c.String(http.StatusOK, "old web")
+		})
+
+		webReq := httptest.NewRequest(http.MethodGet, "/", nil)
+		webReq.Host = "api.nbility.dev"
+		webEngine.ServeHTTP(webRecorder, webReq)
+
+		require.Equal(t, http.StatusNoContent, webRecorder.Code)
+		require.Empty(t, webRecorder.Body.String())
+		require.Equal(t, "block", webRecorder.Header().Get("X-Direct-Web-Access"))
+
+		apiRecorder := httptest.NewRecorder()
+		_, apiEngine := gin.CreateTestContext(apiRecorder)
+		apiEngine.Use(DisallowProxyDistribution())
+		apiEngine.GET("/api/status", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"success": true})
+		})
+
+		apiReq := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+		apiReq.Host = "api.nbility.dev"
+		apiEngine.ServeHTTP(apiRecorder, apiReq)
+
+		require.Equal(t, http.StatusOK, apiRecorder.Code)
+	})
+
+	t.Run("allow uploads on direct api host", func(t *testing.T) {
+		setting.RestrictProxyDistribution = false
+		setting.RestrictProxyDistributionLogOnly = false
+
+		recorder := httptest.NewRecorder()
+		_, engine := gin.CreateTestContext(recorder)
+		engine.Use(DisallowProxyDistribution())
+		engine.GET("/uploads/:name", func(c *gin.Context) {
+			c.String(http.StatusOK, "file")
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/uploads/image.png", nil)
+		req.Host = "api.nbility.dev"
 		engine.ServeHTTP(recorder, req)
 
 		require.Equal(t, http.StatusOK, recorder.Code)

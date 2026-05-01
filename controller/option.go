@@ -308,7 +308,7 @@ func validateOptionUpdate(key string, value string) error {
 		if parseErr != nil || count < 1 || count > 1000 {
 			return fmt.Errorf("签到榜展示条数必须是 1 到 1000 的整数")
 		}
-	case "error_setting.restrict_proxy_distribution_allowed_hosts", "error_setting.restrict_proxy_distribution_allowed_sources":
+	case "error_setting.restrict_proxy_distribution_allowed_hosts", "error_setting.restrict_proxy_distribution_allowed_sources", "error_setting.direct_web_access_blocked_hosts":
 		var hosts []string
 		if err = common.UnmarshalJsonStr(value, &hosts); err != nil {
 			return fmt.Errorf("防分发白名单必须是字符串数组 JSON")

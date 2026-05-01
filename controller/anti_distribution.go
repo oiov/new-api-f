@@ -18,11 +18,13 @@ var antiDistributionOptionKeys = map[string]struct{}{
 	"error_setting.restrict_proxy_distribution_blocked_message": {},
 	"error_setting.restrict_proxy_distribution_allowed_hosts":   {},
 	"error_setting.restrict_proxy_distribution_allowed_sources": {},
+	"error_setting.direct_web_access_blocked_hosts":             {},
 }
 
 var antiDistributionJSONOptionKeys = map[string]struct{}{
 	"error_setting.restrict_proxy_distribution_allowed_hosts":   {},
 	"error_setting.restrict_proxy_distribution_allowed_sources": {},
+	"error_setting.direct_web_access_blocked_hosts":             {},
 }
 
 func validateStringSliceJSON(raw string) error {
@@ -66,11 +68,12 @@ func stringifyOptionValue(key string, value any) (string, error) {
 func GetAntiDistributionPublicConfig(c *gin.Context) {
 	setting := system_setting.GetErrorSetting()
 	common.ApiSuccess(c, gin.H{
-		"enabled":         setting.RestrictProxyDistribution,
-		"log_only":        setting.RestrictProxyDistributionLogOnly,
-		"allowed_hosts":   setting.RestrictProxyDistributionAllowedHosts,
-		"allowed_sources": setting.RestrictProxyDistributionAllowedSources,
-		"blocked_message": strings.TrimSpace(setting.RestrictProxyDistributionBlockedMessage),
+		"enabled":                         setting.RestrictProxyDistribution,
+		"log_only":                        setting.RestrictProxyDistributionLogOnly,
+		"allowed_hosts":                   setting.RestrictProxyDistributionAllowedHosts,
+		"allowed_sources":                 setting.RestrictProxyDistributionAllowedSources,
+		"direct_web_access_blocked_hosts": setting.DirectWebAccessBlockedHosts,
+		"blocked_message":                 strings.TrimSpace(setting.RestrictProxyDistributionBlockedMessage),
 	})
 }
 
@@ -99,6 +102,7 @@ func GetAntiDistributionOptions(c *gin.Context) {
 		"error_setting.restrict_proxy_distribution_blocked_message": setting.RestrictProxyDistributionBlockedMessage,
 		"error_setting.restrict_proxy_distribution_allowed_hosts":   setting.RestrictProxyDistributionAllowedHosts,
 		"error_setting.restrict_proxy_distribution_allowed_sources": setting.RestrictProxyDistributionAllowedSources,
+		"error_setting.direct_web_access_blocked_hosts":             setting.DirectWebAccessBlockedHosts,
 	})
 }
 

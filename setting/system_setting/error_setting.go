@@ -8,6 +8,7 @@ type ErrorSetting struct {
 	RestrictProxyDistributionLogOnly        bool     `json:"restrict_proxy_distribution_log_only"`
 	RestrictProxyDistributionAllowedHosts   []string `json:"restrict_proxy_distribution_allowed_hosts"`
 	RestrictProxyDistributionAllowedSources []string `json:"restrict_proxy_distribution_allowed_sources"`
+	DirectWebAccessBlockedHosts             []string `json:"direct_web_access_blocked_hosts"`
 	RestrictProxyDistributionBlockedMessage string   `json:"restrict_proxy_distribution_blocked_message"`
 }
 
@@ -17,6 +18,7 @@ var defaultErrorSetting = ErrorSetting{
 	RestrictProxyDistributionLogOnly:        false,
 	RestrictProxyDistributionAllowedHosts:   []string{"nbility.dev", "*.nbility.dev", "localhost", "127.0.0.1", "::1"},
 	RestrictProxyDistributionAllowedSources: []string{"nbility.dev", "*.nbility.dev", "localhost", "127.0.0.1", "::1"},
+	DirectWebAccessBlockedHosts:             []string{"api.nbility.dev"},
 	RestrictProxyDistributionBlockedMessage: "请勿使用反代等程序，请使用 https://nbility.dev 中转站，如需外接请联系。",
 }
 
@@ -35,6 +37,7 @@ func GetDefaultErrorSetting() ErrorSetting {
 		RestrictProxyDistributionLogOnly:        false,
 		RestrictProxyDistributionAllowedHosts:   []string{"nbility.dev", "*.nbility.dev", "localhost", "127.0.0.1", "::1"},
 		RestrictProxyDistributionAllowedSources: []string{"nbility.dev", "*.nbility.dev", "localhost", "127.0.0.1", "::1"},
+		DirectWebAccessBlockedHosts:             []string{"api.nbility.dev"},
 		RestrictProxyDistributionBlockedMessage: "请勿使用反代等程序，请使用 https://nbility.dev 中转站，如需外接请联系。",
 	}
 }
