@@ -1,18 +1,23 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestIsAsyncImageTaskRequestRequiresHeaderAndImageGenerationMode(t *testing.T) {
@@ -158,11 +163,20 @@ func TestNewAsyncImageGinContextPreservesContentType(t *testing.T) {
 		RequestURLPath:  "/v1/images/generations",
 		RelayMode:       relayconstant.RelayModeImagesGenerations,
 		OriginModelName: "gpt-image-2",
+		RequestHeaders: map[string]string{
+			"Content-Type":          "application/json",
+			asyncImageTaskHeader:    "true",
+			common.RequestIdKey:     "client-request-id",
+			"X-Client-Debug-Header": "keep-me",
+		},
 	}
 
 	ctx, _ := newAsyncImageGinContext(info, []byte(`{"model":"gpt-image-2"}`))
 
 	require.Equal(t, "application/json", ctx.Request.Header.Get("Content-Type"))
+	require.Empty(t, ctx.Request.Header.Get(asyncImageTaskHeader))
+	require.Empty(t, ctx.Request.Header.Get(common.RequestIdKey))
+	require.Equal(t, "keep-me", ctx.Request.Header.Get("X-Client-Debug-Header"))
 }
 
 func TestAsyncImageContextAllowsJSONModelParsing(t *testing.T) {
@@ -183,4 +197,84 @@ func TestAsyncImageContextAllowsJSONModelParsing(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "gpt-image-2", req.Model)
+}
+
+func TestRecordAsyncImageTaskErrorWritesErrorLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupImageTaskTestDB(t)
+	common.ErrorDetailsEnabled = true
+	constant.ErrorLogEnabled = true
+
+	engine := gin.New()
+	ctx := gin.CreateTestContextOnly(httptest.NewRecorder(), engine)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	ctx.Request.RemoteAddr = "127.0.0.1:12345"
+	recordIpLog := false
+	user := &model.User{Id: 7, Username: "async-user"}
+	user.SetSetting(dto.UserSetting{RecordIpLog: &recordIpLog})
+	require.NoError(t, model.DB.Create(user).Error)
+	info := &relaycommon.RelayInfo{
+		RequestId:       "req_async_error",
+		UserId:          7,
+		Username:        "async-user",
+		TokenId:         11,
+		TokenName:       "async-token",
+		UsingGroup:      "image",
+		OriginModelName: "gpt-image-2",
+		StartTime:       time.Now().Add(-3 * time.Second),
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:      36,
+			ChannelType:    constant.ChannelTypeOpenAI,
+			ChannelBaseUrl: "https://api.example.test",
+		},
+	}
+	copyRelayInfoToAsyncContext(ctx, info)
+	apiErr := types.NewOpenAIError(errors.New("upstream error: do request failed"), types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+
+	recordAsyncImageTaskError(ctx, info, "task_async_error", apiErr)
+
+	var log model.Log
+	require.NoError(t, model.LOG_DB.Where("request_id = ? AND type = ?", "req_async_error", model.LogTypeError).First(&log).Error)
+	require.Equal(t, 7, log.UserId)
+	require.Equal(t, 36, log.ChannelId)
+	require.Equal(t, 11, log.TokenId)
+	require.Equal(t, "async-token", log.TokenName)
+	require.Equal(t, "gpt-image-2", log.ModelName)
+	require.Equal(t, "image", log.Group)
+	require.Contains(t, log.Content, "status_code=500")
+	require.Contains(t, log.Content, "upstream error: do request failed")
+	require.GreaterOrEqual(t, log.UseTime, 2)
+	require.Contains(t, log.Other, "do_request_failed")
+	require.Contains(t, log.Other, "task_async_error")
+}
+
+func setupImageTaskTestDB(t *testing.T) {
+	t.Helper()
+	originalDB := model.DB
+	originalLogDB := model.LOG_DB
+	originalUsingSQLite := common.UsingSQLite
+	originalRedisEnabled := common.RedisEnabled
+	originalErrorDetailsEnabled := common.ErrorDetailsEnabled
+	originalErrorLogEnabled := constant.ErrorLogEnabled
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}))
+
+	model.DB = db
+	model.LOG_DB = db
+	common.UsingSQLite = true
+	common.RedisEnabled = false
+	t.Cleanup(func() {
+		model.DB = originalDB
+		model.LOG_DB = originalLogDB
+		common.UsingSQLite = originalUsingSQLite
+		common.RedisEnabled = originalRedisEnabled
+		common.ErrorDetailsEnabled = originalErrorDetailsEnabled
+		constant.ErrorLogEnabled = originalErrorLogEnabled
+		_ = sqlDB.Close()
+	})
 }

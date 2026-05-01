@@ -233,6 +233,7 @@ func runAsyncImageTask(task *model.Task, relayInfo *relaycommon.RelayInfo, body 
 		if relayInfo.Billing != nil {
 			relayInfo.Billing.Refund(ctx)
 		}
+		recordAsyncImageTaskError(ctx, relayInfo, task.TaskID, apiErr)
 		task.Status = model.TaskStatusFailure
 		task.Progress = "100%"
 		task.FinishTime = time.Now().Unix()
@@ -265,6 +266,51 @@ func runAsyncImageTask(task *model.Task, relayInfo *relaycommon.RelayInfo, body 
 	}
 }
 
+func recordAsyncImageTaskError(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, taskID string, apiErr *types.NewAPIError) {
+	if ctx == nil || relayInfo == nil || apiErr == nil {
+		return
+	}
+	if !common.ErrorDetailsEnabled || !constant.ErrorLogEnabled || !types.IsRecordErrorLog(apiErr) {
+		return
+	}
+	if ctx.GetString(common.RequestIdKey) == "" && relayInfo.RequestId != "" {
+		ctx.Set(common.RequestIdKey, relayInfo.RequestId)
+	}
+	other := map[string]interface{}{
+		"error_type":   apiErr.GetErrorType(),
+		"error_code":   apiErr.GetErrorCode(),
+		"status_code":  apiErr.StatusCode,
+		"channel_id":   relayInfo.ChannelId,
+		"channel_type": relayInfo.ChannelType,
+		"request_path": relayInfo.RequestURLPath,
+		"async_task":   true,
+	}
+	if taskID != "" {
+		other["task_id"] = taskID
+	}
+	useTimeSeconds := asyncImageTaskUseTimeSeconds(relayInfo)
+	model.RecordErrorLog(
+		ctx,
+		relayInfo.UserId,
+		relayInfo.ChannelId,
+		relayInfo.OriginModelName,
+		relayInfo.TokenName,
+		apiErr.MaskSensitiveErrorWithStatusCode(),
+		relayInfo.TokenId,
+		useTimeSeconds,
+		false,
+		relayInfo.UsingGroup,
+		other,
+	)
+}
+
+func asyncImageTaskUseTimeSeconds(relayInfo *relaycommon.RelayInfo) int {
+	if relayInfo == nil || relayInfo.StartTime.IsZero() {
+		return 0
+	}
+	return int(time.Since(relayInfo.StartTime).Seconds())
+}
+
 func newAsyncImageGinContext(relayInfo *relaycommon.RelayInfo, body []byte) (*gin.Context, *httptest.ResponseRecorder) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -272,10 +318,7 @@ func newAsyncImageGinContext(relayInfo *relaycommon.RelayInfo, body []byte) (*gi
 	if requestURL == nil {
 		requestURL = &url.URL{Path: "/v1/images/generations"}
 	}
-	headers := make(http.Header)
-	for key, value := range relayInfo.RequestHeaders {
-		headers.Set(key, value)
-	}
+	headers := asyncImageRequestHeaders(relayInfo.RequestHeaders)
 	if headers.Get("Content-Type") == "" {
 		headers.Set("Content-Type", "application/json")
 	}
@@ -289,6 +332,21 @@ func newAsyncImageGinContext(relayInfo *relaycommon.RelayInfo, body []byte) (*gi
 	ctx.Set(common.RequestIdKey, relayInfo.RequestId)
 	copyRelayInfoToAsyncContext(ctx, relayInfo)
 	return ctx, recorder
+}
+
+func asyncImageRequestHeaders(source map[string]string) http.Header {
+	headers := make(http.Header)
+	for key, value := range source {
+		if isInternalAsyncImageHeader(key) {
+			continue
+		}
+		headers.Set(key, value)
+	}
+	return headers
+}
+
+func isInternalAsyncImageHeader(key string) bool {
+	return strings.EqualFold(key, asyncImageTaskHeader) || strings.EqualFold(key, common.RequestIdKey)
 }
 
 func copyRelayInfoToAsyncContext(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) {
