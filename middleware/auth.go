@@ -45,22 +45,22 @@ func authHelper(c *gin.Context, minRole int) {
 			})
 			c.Abort()
 			return
-			}
-			user := model.ValidateAccessToken(accessToken)
-			if user != nil && user.Username != "" {
-				if !validUserInfo(user.Username, user.Role) {
+		}
+		user := model.ValidateAccessToken(accessToken)
+		if user != nil && user.Username != "" {
+			if !validUserInfo(user.Username, user.Role) {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,
 					"message": "无权进行此操作，用户信息无效",
 				})
 				c.Abort()
 				return
-				}
-				// Token is valid
-				username = user.Username
-				id = user.Id
-				useAccessToken = true
-			} else {
+			}
+			// Token is valid
+			username = user.Username
+			id = user.Id
+			useAccessToken = true
+		} else {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "无权进行此操作，access token 无效",
@@ -399,24 +399,35 @@ func TokenAuth() func(c *gin.Context) {
 
 		userGroup := userCache.Group
 		tokenGroup := token.Group
+		tokenGroups, err := service.NormalizeTokenGroups(tokenGroup)
+		if err != nil {
+			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+			return
+		}
 		if token.IsSubscriptionAggregateAccessToken() {
 			// 聚合订阅访问 key 在 distributor 中会基于实际可用订阅重写路由分组，
 			// 这里不能先按默认分组做静态权限拦截。
 			tokenGroup = ""
+			tokenGroups = nil
 		}
-		if tokenGroup != "" {
+		for _, groupName := range tokenGroups {
 			// check common.UserUsableGroups[userGroup]
-			if !service.GroupInUserUsableGroupsForUser(token.UserId, userCache.Group, userCache.Quota > 0, tokenGroup) {
-				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
+			if !service.GroupInUserUsableGroupsForUser(token.UserId, userCache.Group, userCache.Quota > 0, groupName) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", groupName))
 				return
 			}
 			// check group in common.GroupRatio
-			if !ratio_setting.ContainsGroupRatio(tokenGroup) {
-				if tokenGroup != "auto" {
-					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
+			if !ratio_setting.ContainsGroupRatio(groupName) {
+				if groupName != "auto" {
+					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", groupName))
 					return
 				}
 			}
+		}
+		if len(tokenGroups) > 0 {
+			tokenGroup = service.JoinTokenGroups(tokenGroups)
+			userGroup = tokenGroups[0]
+		} else if tokenGroup != "" {
 			userGroup = tokenGroup
 		}
 		common.SetContextKey(c, constant.ContextKeyUsingGroup, userGroup)
@@ -448,6 +459,9 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 		c.Set("token_model_limit_enabled", false)
 	}
 	common.SetContextKey(c, constant.ContextKeyTokenGroup, token.Group)
+	if tokenGroups, err := service.NormalizeTokenGroups(token.Group); err == nil {
+		common.SetContextKey(c, constant.ContextKeyTokenGroups, tokenGroups)
+	}
 	common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, token.CrossGroupRetry)
 	if token.UserSubscriptionId > 0 {
 		common.SetContextKey(c, constant.ContextKeyPreferredSubscriptionId, token.UserSubscriptionId)

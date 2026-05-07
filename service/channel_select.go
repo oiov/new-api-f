@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -17,6 +18,21 @@ type RetryParam struct {
 	ModelName    string
 	Retry        *int
 	resetNextTry bool
+}
+
+func tokenGroupsFromContextOrParam(ctx *gin.Context, tokenGroup string) []string {
+	if ctx != nil {
+		if rawGroups, ok := common.GetContextKey(ctx, constant.ContextKeyTokenGroups); ok {
+			if groups, ok := rawGroups.([]string); ok && len(groups) > 0 {
+				return groups
+			}
+		}
+	}
+	groups, err := NormalizeTokenGroups(tokenGroup)
+	if err != nil || len(groups) == 0 {
+		return nil
+	}
+	return groups
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -85,6 +101,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
+	tokenGroups := tokenGroupsFromContextOrParam(param.Ctx, param.TokenGroup)
 
 	if param.TokenGroup == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {
@@ -153,6 +170,17 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i)
 			}
 			break
+		}
+	} else if len(tokenGroups) > 1 && strings.Contains(param.TokenGroup, ",") {
+		for _, groupName := range tokenGroups {
+			channel, err = model.GetRandomSatisfiedChannel(groupName, param.ModelName, param.GetRetry())
+			if err != nil {
+				return nil, groupName, err
+			}
+			if channel != nil {
+				selectGroup = groupName
+				break
+			}
 		}
 	} else {
 		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry())

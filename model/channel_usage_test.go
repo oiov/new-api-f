@@ -120,6 +120,39 @@ func TestGetSpecificKeyReturnsErrorWhenMultiKeyLimitReached(t *testing.T) {
 	})
 }
 
+func TestTokenGroupSearchMatchesCommaSeparatedGroup(t *testing.T) {
+	withChannelUsageTestDB(t, func() {
+		require.NoError(t, DB.AutoMigrate(&Token{}))
+
+		require.NoError(t, DB.Create(&Token{
+			Id:             1,
+			UserId:         10,
+			Name:           "multi-group-token",
+			Key:            "multi-group-token-key",
+			Status:         common.TokenStatusEnabled,
+			Group:          "claude,codex",
+			ExpiredTime:    -1,
+			UnlimitedQuota: true,
+		}).Error)
+		require.NoError(t, DB.Create(&Token{
+			Id:             2,
+			UserId:         10,
+			Name:           "single-group-token",
+			Key:            "single-group-token-key",
+			Status:         common.TokenStatusEnabled,
+			Group:          "default",
+			ExpiredTime:    -1,
+			UnlimitedQuota: true,
+		}).Error)
+
+		tokens, total, err := SearchUserTokens(10, UserTokenSearchFilters{Group: "codex"}, 0, 10)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, total)
+		require.Len(t, tokens, 1)
+		assert.Equal(t, "multi-group-token", tokens[0].Name)
+	})
+}
+
 func TestGetSpecificKeyReturnsErrorWhenSingleKeyLimitReached(t *testing.T) {
 	withChannelUsageTestDB(t, func() {
 		channel := &Channel{

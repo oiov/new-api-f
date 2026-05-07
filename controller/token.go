@@ -261,23 +261,26 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
-
-	// 校验分组权限：检查用户是否有权使用该分组
-	userId := c.GetInt("id")
-	allowedGroups := resolveUserGroupAccess(userId)
-
-	// 检查令牌分组是否在允许列表中（auto 分组特殊处理）
-	if token.Group != "auto" {
-		if _, ok := allowedGroups[token.Group]; !ok {
+	tokenGroups, err := service.NormalizeTokenGroups(token.Group)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	allowedGroups := resolveUserGroupAccess(c.GetInt("id"))
+	for _, tokenGroup := range tokenGroups {
+		if tokenGroup == "auto" {
+			continue
+		}
+		if _, ok := allowedGroups[tokenGroup]; !ok {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": fmt.Sprintf("无权使用分组 '%s'，请选择您可用的分组", token.Group),
+				"message": fmt.Sprintf("无权使用分组 '%s'，请选择您可用的分组", tokenGroup),
 			})
 			return
 		}
 	}
+	token.Group = service.JoinTokenGroups(tokenGroups)
 
-	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
@@ -289,7 +292,6 @@ func AddToken(c *gin.Context) {
 			return
 		}
 	}
-	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
 	count, err := model.CountUserTokens(c.GetInt("id"))
 	if err != nil {
@@ -396,19 +398,25 @@ func UpdateToken(c *gin.Context) {
 	if statusOnly != "" {
 		cleanToken.Status = token.Status
 	} else {
-		// 校验分组权限：检查用户是否有权使用该分组
+		tokenGroups, err := service.NormalizeTokenGroups(token.Group)
+		if err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
 		allowedGroups := resolveUserGroupAccess(userId)
-
-		// 检查令牌分组是否在允许列表中（auto 分组特殊处理）
-		if token.Group != "auto" {
-			if _, ok := allowedGroups[token.Group]; !ok {
+		for _, tokenGroup := range tokenGroups {
+			if tokenGroup == "auto" {
+				continue
+			}
+			if _, ok := allowedGroups[tokenGroup]; !ok {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,
-					"message": fmt.Sprintf("无权使用分组 '%s'，请选择您可用的分组", token.Group),
+					"message": fmt.Sprintf("无权使用分组 '%s'，请选择您可用的分组", tokenGroup),
 				})
 				return
 			}
 		}
+		token.Group = service.JoinTokenGroups(tokenGroups)
 
 		// If you add more fields, please also update token.Update()
 		cleanToken.Name = token.Name

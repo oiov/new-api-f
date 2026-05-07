@@ -1,13 +1,21 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func newTokenTestRateLimitEngine(userID int, middlewareFunc gin.HandlerFunc) *gin.Engine {
@@ -23,6 +31,84 @@ func newTokenTestRateLimitEngine(userID int, middlewareFunc gin.HandlerFunc) *gi
 		c.Status(http.StatusNoContent)
 	})
 	return engine
+}
+
+func setupMiddlewareTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	gin.SetMode(gin.TestMode)
+	common.UsingSQLite = true
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
+	common.RedisEnabled = false
+
+	oldUserUsableGroups := setting.UserUsableGroups2JSONString()
+	oldGroupRatio := ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"VIP"}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	model.LOG_DB = db
+
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(oldUserUsableGroups))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(oldGroupRatio))
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	return db
+}
+
+func TestTokenAuthStoresAuthorizedTokenGroups(t *testing.T) {
+	db := setupMiddlewareTestDB(t)
+
+	require.NoError(t, db.Create(&model.User{
+		Id:          10,
+		Username:    "multi-group-user",
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		Quota:       1000,
+		AccessToken: common.GetPointer("access-token"),
+	}).Error)
+	require.NoError(t, db.Create(&model.Token{
+		Id:             20,
+		UserId:         10,
+		Name:           "multi-group-token",
+		Key:            "multigroupkey",
+		Status:         common.TokenStatusEnabled,
+		Group:          "default,vip",
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+	}).Error)
+
+	var tokenGroup string
+	var tokenGroups []string
+	engine := gin.New()
+	engine.Use(TokenAuth())
+	engine.GET("/test", func(c *gin.Context) {
+		tokenGroup = common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
+		rawGroups, ok := common.GetContextKey(c, constant.ContextKeyTokenGroups)
+		require.True(t, ok)
+		tokenGroups = rawGroups.([]string)
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer sk-multigroupkey")
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "default,vip", tokenGroup)
+	require.Equal(t, []string{"default", "vip"}, tokenGroups)
 }
 
 func TestTokenTestRateLimit(t *testing.T) {

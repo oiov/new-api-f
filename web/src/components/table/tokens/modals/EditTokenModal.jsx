@@ -72,10 +72,25 @@ const EditTokenModal = (props) => {
     model_limits_enabled: false,
     model_limits: [],
     allow_ips: '',
-    group: '',
+    group: [],
     cross_group_retry: false,
     tokenCount: 1,
   });
+
+  const normalizeGroupValue = (value) => {
+    const groups = Array.isArray(value)
+      ? value
+      : String(value || '')
+          .split(',')
+          .map((item) => item.trim());
+    const deduped = [...new Set(groups.filter(Boolean))];
+    if (deduped.includes('auto') && deduped.length > 1) {
+      return ['auto'];
+    }
+    return deduped;
+  };
+
+  const serializeGroupValue = (value) => normalizeGroupValue(value).join(',');
 
   const handleCancel = () => {
     props.handleClose();
@@ -128,19 +143,19 @@ const EditTokenModal = (props) => {
 
   const loadGroups = async () => {
     let res = await API.get(`/api/user/self/groups`);
-      const { success, message, data } = res.data;
-      if (success) {
-        let localGroupOptions = Object.entries(data).map(([group, info]) => ({
-          label: info.desc,
-          value: group,
-          ratio: info.ratio,
-          billingType: info.billing_type,
-          billingLabel: info.billing_label,
-        }));
-        if (statusState?.status?.default_use_auto_group) {
-          if (localGroupOptions.some((group) => group.value === 'auto')) {
-            localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
-          }
+    const { success, message, data } = res.data;
+    if (success) {
+      let localGroupOptions = Object.entries(data).map(([group, info]) => ({
+        label: info.desc,
+        value: group,
+        ratio: info.ratio,
+        billingType: info.billing_type,
+        billingLabel: info.billing_label,
+      }));
+      if (statusState?.status?.default_use_auto_group) {
+        if (localGroupOptions.some((group) => group.value === 'auto')) {
+          localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
+        }
       }
       setGroups(localGroupOptions);
       // if (statusState?.status?.default_use_auto_group && formApiRef.current) {
@@ -164,6 +179,7 @@ const EditTokenModal = (props) => {
       } else {
         data.model_limits = [];
       }
+      data.group = normalizeGroupValue(data.group);
       if (formApiRef.current) {
         formApiRef.current.setValues({ ...getInitValues(), ...data });
       }
@@ -223,6 +239,9 @@ const EditTokenModal = (props) => {
       }
       localInputs.model_limits = localInputs.model_limits.join(',');
       localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+      localInputs.group = serializeGroupValue(localInputs.group);
+      localInputs.cross_group_retry =
+        localInputs.group === 'auto' ? localInputs.cross_group_retry : false;
       let res = await API.put(`/api/token/`, {
         ...localInputs,
         id: parseInt(props.editingToken.id),
@@ -260,6 +279,9 @@ const EditTokenModal = (props) => {
         }
         localInputs.model_limits = localInputs.model_limits.join(',');
         localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+        localInputs.group = serializeGroupValue(localInputs.group);
+        localInputs.cross_group_retry =
+          localInputs.group === 'auto' ? localInputs.cross_group_retry : false;
         let res = await API.post(`/api/token/`, localInputs);
         const { success, message } = res.data;
         if (success) {
@@ -365,10 +387,27 @@ const EditTokenModal = (props) => {
                       <Form.Select
                         field='group'
                         label={t('令牌分组')}
-                        placeholder={t('令牌分组，默认为用户的分组')}
-                        optionList={groups}
+                        placeholder={t(
+                          '可选择多个令牌分组，留空则使用用户分组',
+                        )}
+                        optionList={groups.map((group) => {
+                          const selectedGroups = normalizeGroupValue(
+                            values.group,
+                          );
+                          const hasAuto = selectedGroups.includes('auto');
+                          const hasNormalGroup = selectedGroups.some(
+                            (value) => value !== 'auto',
+                          );
+                          return {
+                            ...group,
+                            disabled:
+                              (hasAuto && group.value !== 'auto') ||
+                              (hasNormalGroup && group.value === 'auto'),
+                          };
+                        })}
                         renderOptionItem={renderGroupOption}
                         extraText={t('分组标签会标明订阅、按量或通用计费类型')}
+                        multiple
                         showClear
                         style={{ width: '100%' }}
                       />
@@ -384,7 +423,11 @@ const EditTokenModal = (props) => {
                   <Col
                     span={24}
                     style={{
-                      display: values.group === 'auto' ? 'block' : 'none',
+                      display: normalizeGroupValue(values.group).includes(
+                        'auto',
+                      )
+                        ? 'block'
+                        : 'none',
                     }}
                   >
                     <Form.Switch

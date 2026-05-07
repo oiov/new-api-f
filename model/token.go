@@ -524,7 +524,7 @@ func buildAdminTokenSearchQuery(filters AdminTokenSearchFilters) (*gorm.DB, erro
 	}
 
 	if filters.Group != "" {
-		baseQuery = baseQuery.Where(qualifiedTokenGroupCol()+" = ?", filters.Group)
+		baseQuery = applyTokenGroupMemberFilter(baseQuery, qualifiedTokenGroupCol(), filters.Group)
 	}
 
 	now := common.GetTimestamp()
@@ -591,7 +591,7 @@ func buildUserTokenSearchQuery(userId int, filters UserTokenSearchFilters) (*gor
 	}
 
 	if group := strings.TrimSpace(filters.Group); group != "" {
-		baseQuery = baseQuery.Where(qualifiedTokenGroupCol()+" = ?", group)
+		baseQuery = applyTokenGroupMemberFilter(baseQuery, qualifiedTokenGroupCol(), group)
 	}
 
 	now := common.GetTimestamp()
@@ -610,6 +610,20 @@ func buildUserTokenSearchQuery(userId int, filters UserTokenSearchFilters) (*gor
 	}
 
 	return baseQuery, nil
+}
+
+func applyTokenGroupMemberFilter(query *gorm.DB, groupCol string, group string) *gorm.DB {
+	group = strings.TrimSpace(group)
+	if query == nil || group == "" {
+		return query
+	}
+	return query.Where(
+		"("+groupCol+" = ? OR "+groupCol+" LIKE ? OR "+groupCol+" LIKE ? OR "+groupCol+" LIKE ?)",
+		group,
+		group+",%",
+		"%,"+group+",%",
+		"%,"+group,
+	)
 }
 
 func applyInvalidTokenFilter(query *gorm.DB, now int64) *gorm.DB {

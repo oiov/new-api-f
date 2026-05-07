@@ -15,6 +15,7 @@ const (
 	ContextKeyTokenKey                     ContextKey = "token_key"
 	ContextKeyTokenId                      ContextKey = "token_id"
 	ContextKeyTokenGroup                   ContextKey = "token_group"
+	ContextKeyTokenGroups                  ContextKey = "token_groups"
 	ContextKeyTokenSpecificChannelId       ContextKey = "specific_channel_id"
 	ContextKeyTokenSpecificChannelKeyIndex ContextKey = "specific_channel_key_index"
 	ContextKeyTokenModelLimitEnabled       ContextKey = "token_model_limit_enabled"

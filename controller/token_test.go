@@ -12,6 +12,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -292,6 +294,44 @@ func TestSearchTokensSupportsCompositeFilters(t *testing.T) {
 	}
 	if page.Items[0].ID != target.Id {
 		t.Fatalf("expected target token, got %+v", page.Items[0])
+	}
+}
+
+func TestAddTokenAcceptsMultipleAuthorizedGroups(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "multi-group-user", common.RoleCommonUser)
+	oldUserUsableGroups := setting.UserUsableGroups2JSONString()
+	oldGroupRatio := ratio_setting.GroupRatio2JSONString()
+	if err := setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"VIP"}`); err != nil {
+		t.Fatalf("failed to set usable groups: %v", err)
+	}
+	if err := ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`); err != nil {
+		t.Fatalf("failed to set group ratios: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = setting.UpdateUserUsableGroupsByJSONString(oldUserUsableGroups)
+		_ = ratio_setting.UpdateGroupRatioByJSONString(oldGroupRatio)
+	})
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", map[string]any{
+		"name":            "multi-group-token",
+		"expired_time":    -1,
+		"unlimited_quota": true,
+		"group":           "default,vip,default",
+	}, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var token model.Token
+	if err := db.Where("user_id = ? AND name = ?", 1, "multi-group-token").First(&token).Error; err != nil {
+		t.Fatalf("failed to load created token: %v", err)
+	}
+	if token.Group != "default,vip" {
+		t.Fatalf("expected normalized group default,vip, got %q", token.Group)
 	}
 }
 

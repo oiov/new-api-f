@@ -27,6 +27,23 @@ type ModelRequest struct {
 	Group string `json:"group,omitempty"`
 }
 
+func getChannelSelectionTokenGroup(c *gin.Context, usingGroup string) string {
+	tokenGroup := strings.TrimSpace(common.GetContextKeyString(c, constant.ContextKeyTokenGroup))
+	if tokenGroup == "" || tokenGroup == usingGroup {
+		return usingGroup
+	}
+	tokenGroups, err := service.NormalizeTokenGroups(tokenGroup)
+	if err != nil || len(tokenGroups) < 2 {
+		return usingGroup
+	}
+	for _, groupName := range tokenGroups {
+		if groupName == usingGroup {
+			return service.JoinTokenGroups(tokenGroups)
+		}
+	}
+	return usingGroup
+}
+
 func validateRequestedModelAccess(c *gin.Context, modelName string) bool {
 	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
 	if !modelLimitEnable {
@@ -206,20 +223,32 @@ func Distribute() func(c *gin.Context) {
 							channel = preferred
 							selectGroup = usingGroup
 							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+						} else if tokenGroups, ok := common.GetContextKey(c, constant.ContextKeyTokenGroups); ok {
+							if groups, ok := tokenGroups.([]string); ok {
+								for _, groupName := range groups {
+									if model.IsChannelEnabledForGroupModel(groupName, modelRequest.Model, preferred.Id) {
+										channel = preferred
+										selectGroup = groupName
+										service.MarkChannelAffinityUsed(c, groupName, preferred.Id)
+										break
+									}
+								}
+							}
 						}
 					}
 				}
 
 				if channel == nil {
+					selectionTokenGroup := getChannelSelectionTokenGroup(c, usingGroup)
 					channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
 						Ctx:        c,
 						ModelName:  modelRequest.Model,
-						TokenGroup: usingGroup,
+						TokenGroup: selectionTokenGroup,
 						Retry:      common.GetPointer(0),
 					})
 					if err != nil {
-						showGroup := usingGroup
-						if usingGroup == "auto" {
+						showGroup := selectionTokenGroup
+						if selectionTokenGroup == "auto" {
 							showGroup = fmt.Sprintf("auto(%s)", selectGroup)
 						}
 						message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Group": showGroup, "Model": modelRequest.Model, "Error": err.Error()})
@@ -232,9 +261,13 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if channel == nil {
-						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
+						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": selectionTokenGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 						return
 					}
+				}
+				if selectGroup != "" {
+					common.SetContextKey(c, constant.ContextKeyUsingGroup, selectGroup)
+					common.SetContextKey(c, constant.ContextKeyTokenGroup, selectGroup)
 				}
 			}
 		}

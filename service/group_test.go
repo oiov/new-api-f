@@ -63,6 +63,22 @@ func TestGetUserUsableGroupsForUser_IncludesActiveSubscriptionGroups(t *testing.
 	assert.False(t, hasCodex)
 }
 
+func TestNormalizeTokenGroupsDeduplicatesAndRejectsAutoMixedWithGroups(t *testing.T) {
+	groups, err := NormalizeTokenGroups(" claude, codex, claude ,, ")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"claude", "codex"}, groups)
+	assert.Equal(t, "claude,codex", JoinTokenGroups(groups))
+
+	groups, err = NormalizeTokenGroups("")
+	require.NoError(t, err)
+	assert.Empty(t, groups)
+	assert.Equal(t, "", JoinTokenGroups(groups))
+
+	_, err = NormalizeTokenGroups("auto,claude")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "auto")
+}
+
 func TestGetUserUsableGroupsForUser_UnionsMultipleSubscriptionGroups(t *testing.T) {
 	truncate(t)
 
