@@ -178,26 +178,31 @@ func StripeWebhook(c *gin.Context) {
 		return
 	}
 
+	statusCode := http.StatusOK
 	switch event.Type {
 	case stripe.EventTypeCheckoutSessionCompleted:
-		sessionCompleted(event)
+		if err := sessionCompleted(event); err != nil {
+			statusCode = http.StatusInternalServerError
+		}
 	case stripe.EventTypeCheckoutSessionExpired:
-		sessionExpired(event)
+		if err := sessionExpired(event); err != nil {
+			statusCode = http.StatusInternalServerError
+		}
 	default:
 		log.Printf("不支持的Stripe Webhook事件类型: %s\n", event.Type)
 	}
 
-	c.Status(http.StatusOK)
+	c.Status(statusCode)
 }
 
-func sessionCompleted(event stripe.Event) {
+func sessionCompleted(event stripe.Event) error {
 	customerId := event.GetObjectValue("customer")
 	referenceId := event.GetObjectValue("client_reference_id")
 	sessionId := event.GetObjectValue("id")
 	status := event.GetObjectValue("status")
 	if "complete" != status {
 		log.Println("错误的Stripe Checkout完成状态:", status, ",", referenceId)
-		return
+		return fmt.Errorf("错误的Stripe Checkout完成状态: %s", status)
 	}
 
 	// Try complete subscription order first
@@ -213,31 +218,31 @@ func sessionCompleted(event stripe.Event) {
 		if completedNow {
 			notifySubscriptionPaymentSuccessAsync(referenceId)
 		}
-		return
+		return nil
 	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
 		log.Println("complete subscription order failed:", err.Error(), referenceId)
-		return
+		return err
 	}
 
 	topUp := model.GetTopUpByTradeNo(referenceId)
 	if topUp == nil {
 		log.Println("Stripe充值订单不存在", referenceId)
-		return
+		return fmt.Errorf("Stripe充值订单不存在: %s", referenceId)
 	}
 	paidTotal, err := strconv.ParseInt(event.GetObjectValue("amount_total"), 10, 64)
 	if err != nil {
 		log.Printf("Stripe支付金额解析失败: %v, order=%s", err, referenceId)
-		return
+		return err
 	}
 	if err := validateStripeTopUpSession(sessionId, topUp, paidTotal); err != nil {
 		log.Printf("Stripe充值会话校验失败: %v, order=%s, session=%s", err, referenceId, sessionId)
-		return
+		return err
 	}
 
 	completed, err := model.Recharge(referenceId, customerId)
 	if err != nil {
 		log.Println(err.Error(), referenceId)
-		return
+		return err
 	}
 	if completed {
 		service.NotifyPaymentSuccessAsync(service.PaymentSuccessNotification{
@@ -260,6 +265,7 @@ func sessionCompleted(event stripe.Event) {
 	total, _ := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)
 	currency := strings.ToUpper(event.GetObjectValue("currency"))
 	log.Printf("收到款项：%s, %.2f(%s)", referenceId, total/100, currency)
+	return nil
 }
 
 func validateStripeTopUpSession(sessionId string, topUp *model.TopUp, paidTotal int64) error {
@@ -303,11 +309,19 @@ func validateStripeTopUpSession(sessionId string, topUp *model.TopUp, paidTotal 
 		return fmt.Errorf("Stripe 实付金额不匹配: expected=%d actual=%d", lineItem.AmountTotal, paidTotal)
 	}
 
-	if lineItem.Price.ID != setting.StripePriceId {
-		return fmt.Errorf("Stripe PriceId 不匹配: expected=%s actual=%s", setting.StripePriceId, lineItem.Price.ID)
-	}
 	if lineItem.Quantity != topUp.Amount {
-		return fmt.Errorf("Stripe 购买数量不匹配: expected=%d actual=%d", topUp.Amount, lineItem.Quantity)
+		if lineItem.Quantity != 1 {
+			return fmt.Errorf("Stripe 购买数量不匹配: expected=%d or 1 actual=%d", topUp.Amount, lineItem.Quantity)
+		}
+		group, err := model.GetUserGroup(topUp.UserId, true)
+		if err != nil {
+			return fmt.Errorf("获取用户分组失败: %w", err)
+		}
+		expectedTotal := stripeAmountCents(getStripePayMoney(float64(topUp.Amount), group))
+		if paidTotal != expectedTotal {
+			return fmt.Errorf("Stripe 折扣金额不匹配: expected=%d actual=%d", expectedTotal, paidTotal)
+		}
+		return nil
 	}
 	expectedSubtotal := lineItem.Price.UnitAmount * lineItem.Quantity
 	if lineItem.AmountSubtotal != expectedSubtotal {
@@ -317,33 +331,33 @@ func validateStripeTopUpSession(sessionId string, topUp *model.TopUp, paidTotal 
 	return nil
 }
 
-func sessionExpired(event stripe.Event) {
+func sessionExpired(event stripe.Event) error {
 	referenceId := event.GetObjectValue("client_reference_id")
 	status := event.GetObjectValue("status")
 	if "expired" != status {
 		log.Println("错误的Stripe Checkout过期状态:", status, ",", referenceId)
-		return
+		return fmt.Errorf("错误的Stripe Checkout过期状态: %s", status)
 	}
 
 	if len(referenceId) == 0 {
 		log.Println("未提供支付单号")
-		return
+		return errors.New("未提供支付单号")
 	}
 
 	// Subscription order expiration
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
 	if err := model.ExpireSubscriptionOrder(referenceId); err == nil {
-		return
+		return nil
 	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
 		log.Println("过期订阅订单失败", referenceId, ", err:", err.Error())
-		return
+		return err
 	}
 
 	topUp := model.GetTopUpByTradeNo(referenceId)
 	if topUp == nil {
 		log.Println("充值订单不存在", referenceId)
-		return
+		return fmt.Errorf("充值订单不存在: %s", referenceId)
 	}
 
 	if topUp.Status != common.TopUpStatusPending {
@@ -354,10 +368,11 @@ func sessionExpired(event stripe.Event) {
 	err := topUp.Update()
 	if err != nil {
 		log.Println("过期充值订单失败", referenceId, ", err:", err.Error())
-		return
+		return err
 	}
 
 	log.Println("充值订单已过期", referenceId)
+	return nil
 }
 
 // genStripeLink generates a Stripe Checkout session URL for payment.
