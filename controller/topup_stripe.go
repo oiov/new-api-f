@@ -100,16 +100,15 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)
 	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
-	payMoney := getStripePayMoney(float64(req.Amount), user.Group)
 
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 
-	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, payMoney, req.SuccessURL, req.CancelURL)
+	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL)
 	if err != nil && isStripeMissingCustomerError(err) && user.StripeCustomer != "" {
 		log.Printf("Stripe customer %s 不存在，已清空用户 %d 的绑定并重试", user.StripeCustomer, user.Id)
 		_ = model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("stripe_customer", "").Error
-		payLink, err = genStripeLink(referenceId, "", user.Email, payMoney, req.SuccessURL, req.CancelURL)
+		payLink, err = genStripeLink(referenceId, "", user.Email, req.Amount, req.SuccessURL, req.CancelURL)
 	}
 	if err != nil {
 		log.Println("获取Stripe Checkout支付链接失败", err)
@@ -304,24 +303,15 @@ func validateStripeTopUpSession(sessionId string, topUp *model.TopUp, paidTotal 
 		return fmt.Errorf("Stripe 实付金额不匹配: expected=%d actual=%d", lineItem.AmountTotal, paidTotal)
 	}
 
-	if lineItem.Quantity == topUp.Amount {
-		expectedSubtotal := lineItem.Price.UnitAmount * lineItem.Quantity
-		if lineItem.AmountSubtotal != expectedSubtotal {
-			return fmt.Errorf("Stripe 小计异常: expected=%d actual=%d", expectedSubtotal, lineItem.AmountSubtotal)
-		}
-		return nil
+	if lineItem.Price.ID != setting.StripePriceId {
+		return fmt.Errorf("Stripe PriceId 不匹配: expected=%s actual=%s", setting.StripePriceId, lineItem.Price.ID)
 	}
-
-	if lineItem.Quantity != 1 {
-		return fmt.Errorf("Stripe 购买数量不匹配: expected=%d or 1 actual=%d", topUp.Amount, lineItem.Quantity)
+	if lineItem.Quantity != topUp.Amount {
+		return fmt.Errorf("Stripe 购买数量不匹配: expected=%d actual=%d", topUp.Amount, lineItem.Quantity)
 	}
-	group, err := model.GetUserGroup(topUp.UserId, true)
-	if err != nil {
-		return fmt.Errorf("获取用户分组失败: %w", err)
-	}
-	expectedTotal := stripeAmountCents(getStripePayMoney(float64(topUp.Amount), group))
-	if paidTotal != expectedTotal {
-		return fmt.Errorf("Stripe 折扣金额不匹配: expected=%d actual=%d", expectedTotal, paidTotal)
+	expectedSubtotal := lineItem.Price.UnitAmount * lineItem.Quantity
+	if lineItem.AmountSubtotal != expectedSubtotal {
+		return fmt.Errorf("Stripe 小计异常: expected=%d actual=%d", expectedSubtotal, lineItem.AmountSubtotal)
 	}
 
 	return nil
@@ -382,9 +372,12 @@ func sessionExpired(event stripe.Event) {
 //   - cancelURL: custom URL to redirect when payment is canceled (empty for default)
 //
 // Returns the checkout session URL or an error if the session creation fails.
-func genStripeLink(referenceId string, customerId string, email string, payMoney float64, successURL string, cancelURL string) (string, error) {
+func genStripeLink(referenceId string, customerId string, email string, amount int64, successURL string, cancelURL string) (string, error) {
 	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
 		return "", fmt.Errorf("无效的Stripe API密钥")
+	}
+	if !strings.HasPrefix(setting.StripePriceId, "price_") {
+		return "", fmt.Errorf("无效的Stripe价格ID")
 	}
 
 	stripe.Key = setting.StripeApiSecret
@@ -403,14 +396,8 @@ func genStripeLink(referenceId string, customerId string, email string, payMoney
 		CancelURL:         stripe.String(cancelURL),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
-				PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
-					Currency: stripe.String("usd"),
-					ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
-						Name: stripe.String("Account top-up"),
-					},
-					UnitAmount: stripe.Int64(stripeAmountCents(payMoney)),
-				},
-				Quantity: stripe.Int64(1),
+				Price:    stripe.String(setting.StripePriceId),
+				Quantity: stripe.Int64(amount),
 			},
 		},
 		Mode:                stripe.String(string(stripe.CheckoutSessionModePayment)),
