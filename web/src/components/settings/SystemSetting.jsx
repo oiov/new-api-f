@@ -76,6 +76,11 @@ const SystemSetting = () => {
     SMTPAccount: '',
     SMTPFrom: '',
     SMTPToken: '',
+    EmailSenderType: 'smtp',
+    CloudflareEmailWorkerURL: '',
+    CloudflareEmailWorkerToken: '',
+    CloudflareEmailWorkerFromAddress: '',
+    CloudflareEmailWorkerFromName: '',
     WorkerUrl: '',
     WorkerValidKey: '',
     WorkerAllowHttpImageRequestEnabled: '',
@@ -359,9 +364,12 @@ const SystemSetting = () => {
     await updateOptions([{ key: 'ServerAddress', value: ServerAddress }]);
   };
 
-  const submitSMTP = async () => {
+  const submitEmailSender = async () => {
     const options = [];
 
+    if (originInputs['EmailSenderType'] !== inputs.EmailSenderType) {
+      options.push({ key: 'EmailSenderType', value: inputs.EmailSenderType });
+    }
     if (originInputs['SMTPServer'] !== inputs.SMTPServer) {
       options.push({ key: 'SMTPServer', value: inputs.SMTPServer });
     }
@@ -382,6 +390,45 @@ const SystemSetting = () => {
       inputs.SMTPToken !== ''
     ) {
       options.push({ key: 'SMTPToken', value: inputs.SMTPToken });
+    }
+    const CloudflareEmailWorkerURL = removeTrailingSlash(
+      inputs.CloudflareEmailWorkerURL || '',
+    );
+    if (
+      originInputs['CloudflareEmailWorkerURL'] !== CloudflareEmailWorkerURL
+    ) {
+      options.push({
+        key: 'CloudflareEmailWorkerURL',
+        value: CloudflareEmailWorkerURL,
+      });
+    }
+    if (
+      originInputs['CloudflareEmailWorkerToken'] !==
+        inputs.CloudflareEmailWorkerToken &&
+      inputs.CloudflareEmailWorkerToken !== ''
+    ) {
+      options.push({
+        key: 'CloudflareEmailWorkerToken',
+        value: inputs.CloudflareEmailWorkerToken,
+      });
+    }
+    if (
+      originInputs['CloudflareEmailWorkerFromAddress'] !==
+      inputs.CloudflareEmailWorkerFromAddress
+    ) {
+      options.push({
+        key: 'CloudflareEmailWorkerFromAddress',
+        value: inputs.CloudflareEmailWorkerFromAddress,
+      });
+    }
+    if (
+      originInputs['CloudflareEmailWorkerFromName'] !==
+      inputs.CloudflareEmailWorkerFromName
+    ) {
+      options.push({
+        key: 'CloudflareEmailWorkerFromName',
+        value: inputs.CloudflareEmailWorkerFromName,
+      });
     }
 
     if (options.length > 0) {
@@ -1449,8 +1496,26 @@ const SystemSetting = () => {
                 </Form.Section>
               </Card>
               <Card>
-                <Form.Section text={t('配置 SMTP')}>
+                <Form.Section text={t('配置邮件发送')}>
                   <Text>{t('用以支持系统的邮件发送')}</Text>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.Select
+                        field='EmailSenderType'
+                        label={t('发件渠道')}
+                        optionList={[
+                          { label: t('SMTP'), value: 'smtp' },
+                          {
+                            label: t('Cloudflare Worker'),
+                            value: 'cloudflare_worker',
+                          },
+                        ]}
+                      />
+                    </Col>
+                  </Row>
                   <Row
                     gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
                   >
@@ -1497,7 +1562,50 @@ const SystemSetting = () => {
                       </Form.Checkbox>
                     </Col>
                   </Row>
-                  <Button onClick={submitSMTP}>{t('保存 SMTP 设置')}</Button>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='CloudflareEmailWorkerURL'
+                        label={t('CF Worker Base URL')}
+                        placeholder={t(
+                          '例如：https://likedo-email-worker.yesmore.workers.dev',
+                        )}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='CloudflareEmailWorkerToken'
+                        label={t('CF Worker SEND_API_KEY')}
+                        type='password'
+                        placeholder={t('敏感信息不会发送到前端显示')}
+                      />
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='CloudflareEmailWorkerFromAddress'
+                        label={t('CF Worker 发件邮箱')}
+                        placeholder={t('默认：noreply@nbility.dev')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Input
+                        field='CloudflareEmailWorkerFromName'
+                        label={t('CF Worker 发件人名称')}
+                        placeholder={t('默认使用系统名称')}
+                      />
+                    </Col>
+                  </Row>
+                  <Button onClick={submitEmailSender}>
+                    {t('保存邮件设置')}
+                  </Button>
                 </Form.Section>
               </Card>
               <Card>

@@ -124,9 +124,9 @@ func GetStatus(c *gin.Context) {
 		"subscription_promo_button_link": cs.SubscriptionPromoButtonLink,
 
 		// 模块管理配置
-		"HeaderNavModules":                    common.OptionMap["HeaderNavModules"],
-		"SidebarModulesAdmin":                 common.OptionMap["SidebarModulesAdmin"],
-		"SubscriptionRefundSettings":          common.OptionMap["SubscriptionRefundSettings"],
+		"HeaderNavModules":                          common.OptionMap["HeaderNavModules"],
+		"SidebarModulesAdmin":                       common.OptionMap["SidebarModulesAdmin"],
+		"SubscriptionRefundSettings":                common.OptionMap["SubscriptionRefundSettings"],
 		"SelfServiceSubscriptionConversionCampaign": common.OptionMap["SelfServiceSubscriptionConversionCampaign"],
 
 		"oidc_enabled":                                  system_setting.IsOIDCLoginEnabled(),
@@ -165,7 +165,7 @@ func GetStatus(c *gin.Context) {
 		}
 	}
 	data["token_test_defaults"] = gin.H{
-		"mode":             "both",
+		"mode":            "both",
 		"claude_model":    strings.TrimSpace(common.OptionMap["TokenTestDefaultClaudeModel"]),
 		"responses_model": strings.TrimSpace(common.OptionMap["TokenTestDefaultResponsesModel"]),
 	}
@@ -341,9 +341,7 @@ func SendEmailVerification(c *gin.Context) {
 	code := common.GenerateVerificationCode(6)
 	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
 	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
-	content := fmt.Sprintf("<p>您好，你正在进行%s邮箱验证。</p>"+
-		"<p>您的验证码为: <strong>%s</strong></p>"+
-		"<p>验证码 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, code, common.VerificationValidMinutes)
+	content := buildEmailVerificationContent(code)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
 		common.ApiError(c, err)
@@ -376,10 +374,7 @@ func SendPasswordResetEmail(c *gin.Context) {
 	common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
 	link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
 	subject := fmt.Sprintf("%s密码重置", common.SystemName)
-	content := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
-		"<p>点击 <a href='%s'>此处</a> 进行密码重置。</p>"+
-		"<p>如果链接无法点击，请尝试点击下面的链接或将其复制到浏览器中打开：<br> %s </p>"+
-		"<p>重置链接 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, link, link, common.VerificationValidMinutes)
+	content := buildPasswordResetContent(link)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
 		common.ApiError(c, err)
@@ -390,6 +385,42 @@ func SendPasswordResetEmail(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+func buildEmailVerificationContent(code string) string {
+	return buildAuthEmailContent(
+		"邮箱验证",
+		"你正在注册或绑定邮箱，请在页面中输入下面的验证码完成验证。",
+		fmt.Sprintf(`<div style="font-size:32px;font-weight:700;letter-spacing:6px;color:#111827;margin:14px 0 8px;">%s</div>`, code),
+		"验证码",
+	)
+}
+
+func buildPasswordResetContent(link string) string {
+	return buildAuthEmailContent(
+		"重置密码",
+		"你正在重置账户密码。点击下面的按钮继续操作。",
+		fmt.Sprintf(`<p style="margin:18px 0;"><a href="%s" style="display:inline-block;padding:10px 18px;border-radius:6px;background:#111827;color:#ffffff;text-decoration:none;font-weight:600;">重置密码</a></p><p style="margin:14px 0 0;color:#4b5563;font-size:13px;line-height:1.7;">如果按钮无法打开，请复制以下链接到浏览器：<br><span style="word-break:break-all;color:#2563eb;">%s</span></p>`, link, link),
+		"重置链接",
+	)
+}
+
+func buildAuthEmailContent(title string, intro string, actionHTML string, expiryTarget string) string {
+	return fmt.Sprintf(`<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#f6f7fb;color:#111827;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:28px 16px;">
+    <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:28px;">
+      <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">%s</p>
+      <h1 style="margin:0 0 16px;font-size:22px;line-height:1.35;color:#111827;">%s</h1>
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.7;">%s</p>
+      %s
+      <p style="margin:18px 0 0;color:#374151;font-size:14px;line-height:1.7;">%s %d 分钟内有效。为了账户安全，请不要将邮件内容转发给他人。</p>
+      <p style="margin:12px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">如果不是你本人操作，可以忽略这封邮件。</p>
+    </div>
+  </div>
+</body>
+</html>`, common.SystemName, title, intro, actionHTML, expiryTarget, common.VerificationValidMinutes)
 }
 
 type PasswordResetRequest struct {

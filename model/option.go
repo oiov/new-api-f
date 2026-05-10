@@ -69,6 +69,11 @@ func InitOptionMap() {
 	common.OptionMap["SMTPAccount"] = ""
 	common.OptionMap["SMTPToken"] = ""
 	common.OptionMap["SMTPSSLEnabled"] = strconv.FormatBool(common.SMTPSSLEnabled)
+	common.OptionMap["EmailSenderType"] = common.EmailSenderType
+	common.OptionMap["CloudflareEmailWorkerURL"] = common.CloudflareEmailWorkerURL
+	common.OptionMap["CloudflareEmailWorkerToken"] = ""
+	common.OptionMap["CloudflareEmailWorkerFromAddress"] = common.CloudflareEmailWorkerFromAddress
+	common.OptionMap["CloudflareEmailWorkerFromName"] = common.CloudflareEmailWorkerFromName
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
@@ -414,6 +419,22 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SMTPFrom = value
 	case "SMTPToken":
 		common.SMTPToken = value
+	case "EmailSenderType":
+		if value == "" {
+			value = common.EmailSenderTypeSMTP
+		}
+		common.EmailSenderType = value
+	case "CloudflareEmailWorkerURL":
+		common.CloudflareEmailWorkerURL = value
+	case "CloudflareEmailWorkerToken":
+		common.CloudflareEmailWorkerToken = value
+	case "CloudflareEmailWorkerFromAddress":
+		if value == "" {
+			value = common.DefaultCloudflareEmailWorkerFromAddress
+		}
+		common.CloudflareEmailWorkerFromAddress = value
+	case "CloudflareEmailWorkerFromName":
+		common.CloudflareEmailWorkerFromName = value
 	case "ServerAddress":
 		system_setting.ServerAddress = value
 	case "WorkerUrl":

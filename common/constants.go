@@ -94,6 +94,19 @@ var SMTPAccount = ""
 var SMTPFrom = ""
 var SMTPToken = ""
 
+const (
+	EmailSenderTypeSMTP             = "smtp"
+	EmailSenderTypeCloudflareWorker = "cloudflare_worker"
+
+	DefaultCloudflareEmailWorkerFromAddress = "noreply@nbility.dev"
+)
+
+var EmailSenderType = EmailSenderTypeSMTP
+var CloudflareEmailWorkerURL = "https://likedo-email-worker.yesmore.workers.dev"
+var CloudflareEmailWorkerToken = ""
+var CloudflareEmailWorkerFromAddress = DefaultCloudflareEmailWorkerFromAddress
+var CloudflareEmailWorkerFromName = ""
+
 var GoogleClientId = ""
 var GoogleClientSecret = ""
 var GitHubClientId = ""

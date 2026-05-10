@@ -186,6 +186,12 @@ func normalizeOptionValue(value any) string {
 func validateOptionUpdate(key string, value string) error {
 	var err error
 	switch key {
+	case "EmailSenderType":
+		switch value {
+		case common.EmailSenderTypeSMTP, common.EmailSenderTypeCloudflareWorker:
+		default:
+			return fmt.Errorf("发件渠道不支持")
+		}
 	case "GoogleOAuthEnabled", "GoogleOAuthRegisterEnabled":
 		if value == "true" && (common.GoogleClientId == "" || common.GoogleClientSecret == "") {
 			return fmt.Errorf("无法启用 Google OAuth，请先填入 Google Client Id 以及 Google Client Secret！")
