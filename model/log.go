@@ -38,6 +38,7 @@ type Log struct {
 	IsStream         bool   `json:"is_stream"`
 	ChannelId        int    `json:"channel" gorm:"index"`
 	ChannelName      string `json:"channel_name" gorm:"->"`
+	ChannelTag       string `json:"channel_tag" gorm:"->"`
 	TokenId          int    `json:"token_id" gorm:"default:0;index"`
 	Group            string `json:"group" gorm:"index"`
 	Ip               string `json:"ip" gorm:"index;default:''"`
@@ -104,6 +105,7 @@ func formatLogs(logs []*Log, startIdx int, hideChannelName bool, hideAdminDebugF
 	for i := range logs {
 		if hideChannelName {
 			logs[i].ChannelName = ""
+			logs[i].ChannelTag = ""
 		}
 		logs[i].Other = sanitizeLogOther(logs[i].Other, hideAdminDebugFields, allowSensitivePreview)
 		logs[i].DisplayId = startIdx + i + 1
@@ -604,32 +606,45 @@ func attachChannelNamesToLogs(logs []*Log) error {
 	}
 
 	var channels []struct {
-		Id   int    `gorm:"column:id"`
-		Name string `gorm:"column:name"`
+		Id   int     `gorm:"column:id"`
+		Name string  `gorm:"column:name"`
+		Tag  *string `gorm:"column:tag"`
 	}
 	if common.MemoryCacheEnabled {
 		for _, channelId := range channelIds.Items() {
 			if cacheChannel, err := CacheGetChannel(channelId); err == nil {
 				channels = append(channels, struct {
-					Id   int    `gorm:"column:id"`
-					Name string `gorm:"column:name"`
+					Id   int     `gorm:"column:id"`
+					Name string  `gorm:"column:name"`
+					Tag  *string `gorm:"column:tag"`
 				}{
 					Id:   channelId,
 					Name: cacheChannel.Name,
+					Tag:  cacheChannel.Tag,
 				})
 			}
 		}
 	} else {
-		if err := DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
+		if err := DB.Table("channels").Select("id, name, tag").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
 			return err
 		}
 	}
-	channelMap := make(map[int]string, len(channels))
+	type channelLogMetadata struct {
+		name string
+		tag  string
+	}
+	channelMap := make(map[int]channelLogMetadata, len(channels))
 	for _, channel := range channels {
-		channelMap[channel.Id] = channel.Name
+		metadata := channelLogMetadata{name: channel.Name}
+		if channel.Tag != nil {
+			metadata.tag = *channel.Tag
+		}
+		channelMap[channel.Id] = metadata
 	}
 	for i := range logs {
-		logs[i].ChannelName = channelMap[logs[i].ChannelId]
+		metadata := channelMap[logs[i].ChannelId]
+		logs[i].ChannelName = metadata.name
+		logs[i].ChannelTag = metadata.tag
 	}
 	return nil
 }
