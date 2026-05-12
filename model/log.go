@@ -488,6 +488,8 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId in
 const logSearchCountLimit = 10000
 const logExportLimit = 10000
 
+var logExportBatchSize = 500
+
 func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) *gorm.DB {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
@@ -652,7 +654,71 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	return logs, total, err
 }
 
-func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, truncated bool, err error) {
+func logExportColumns(compact bool) []string {
+	columns := []string{
+		"logs.id",
+		"logs.created_at",
+		"logs.type",
+		"logs.user_id",
+		"logs.username",
+		"logs.token_name",
+		"logs.model_name",
+		"logs.quota",
+		"logs.prompt_tokens",
+		"logs.completion_tokens",
+		"logs.use_time",
+		"logs.is_stream",
+		"logs.channel_id",
+		"logs." + logGroupCol,
+		"logs.ip",
+		"logs.request_id",
+	}
+	if !compact {
+		columns = append(columns, "logs.content", "logs.other")
+	}
+	return columns
+}
+
+func findLogsForExport(tx *gorm.DB, limit int, compact bool) ([]*Log, error) {
+	if limit <= 0 {
+		return []*Log{}, nil
+	}
+	batchSize := logExportBatchSize
+	if batchSize <= 0 {
+		batchSize = limit
+	}
+
+	logs := make([]*Log, 0)
+	lastId := 0
+	for len(logs) < limit {
+		remaining := limit - len(logs)
+		currentBatchSize := batchSize
+		if currentBatchSize > remaining {
+			currentBatchSize = remaining
+		}
+
+		var batch []*Log
+		batchQuery := tx.Select(logExportColumns(compact)).Order("logs.id desc").Limit(currentBatchSize)
+		if lastId > 0 {
+			batchQuery = batchQuery.Where("logs.id < ?", lastId)
+		}
+		if err := batchQuery.Find(&batch).Error; err != nil {
+			return nil, err
+		}
+		if len(batch) == 0 {
+			break
+		}
+
+		logs = append(logs, batch...)
+		lastId = batch[len(batch)-1].Id
+		if len(batch) < currentBatchSize {
+			break
+		}
+	}
+	return logs, nil
+}
+
+func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool) (logs []*Log, total int64, truncated bool, err error) {
 	tx := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -660,18 +726,20 @@ func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, 
 	}
 	limit := logExportLimit
 	truncated = total > int64(limit)
-	err = tx.Order("logs.id desc").Limit(limit).Find(&logs).Error
+	logs, err = findLogsForExport(tx, limit, compact)
 	if err != nil {
 		return nil, 0, false, err
 	}
 	if err = attachChannelNamesToLogs(logs); err != nil {
 		return nil, 0, false, err
 	}
-	formatLogs(logs, 0, false, false, allowSensitivePreview)
+	if !compact {
+		formatLogs(logs, 0, false, false, allowSensitivePreview)
+	}
 	return logs, total, truncated, nil
 }
 
-func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, truncated bool, err error) {
+func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool) (logs []*Log, total int64, truncated bool, err error) {
 	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, false, err
@@ -683,14 +751,17 @@ func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTime
 	}
 	limit := logExportLimit
 	truncated = total > int64(limit)
-	err = tx.Order("logs.id desc").Limit(limit).Find(&logs).Error
+	logs, err = findLogsForExport(tx, limit, compact)
 	if err != nil {
 		common.SysError("failed to export user logs: " + err.Error())
 		return nil, 0, false, errors.New("导出日志失败")
 	}
-	formatLogs(logs, 0, true, true, allowSensitivePreview)
+	if !compact {
+		formatLogs(logs, 0, true, true, allowSensitivePreview)
+	}
 	for index := range logs {
 		logs[index].Id = 0
+		logs[index].ChannelName = ""
 	}
 	return logs, total, truncated, nil
 }
@@ -1040,15 +1111,18 @@ func readInt64FromMap(values map[string]interface{}, key string) int64 {
 }
 
 type Stat struct {
-	Quota                  int     `json:"quota"`
-	Rpm                    int     `json:"rpm"`
-	Tpm                    int     `json:"tpm"`
-	PromptCacheHitCount    int64   `json:"prompt_cache_hit_count"`
-	PromptCacheTotalCount  int64   `json:"prompt_cache_total_count"`
-	PromptCacheHitRate     float64 `json:"prompt_cache_hit_rate"`
-	PromptCacheInputTokens int64   `json:"prompt_cache_input_tokens"`
-	PromptCacheReadTokens  int64   `json:"prompt_cache_read_tokens"`
-	PromptCacheWriteTokens int64   `json:"prompt_cache_write_tokens"`
+	Quota                  int             `json:"quota"`
+	RequestCount           int64           `json:"request_count"`
+	Rpm                    int             `json:"rpm"`
+	Tpm                    int             `json:"tpm"`
+	PromptCacheHitCount    int64           `json:"prompt_cache_hit_count"`
+	PromptCacheTotalCount  int64           `json:"prompt_cache_total_count"`
+	PromptCacheHitRate     float64         `json:"prompt_cache_hit_rate"`
+	PromptCacheInputTokens int64           `json:"prompt_cache_input_tokens"`
+	PromptCacheReadTokens  int64           `json:"prompt_cache_read_tokens"`
+	PromptCacheWriteTokens int64           `json:"prompt_cache_write_tokens"`
+	PromptCacheOpenAI      PromptCacheStat `gorm:"-"`
+	PromptCacheClaude      PromptCacheStat `gorm:"-"`
 }
 
 type GroupLogHealthStatsQuery struct {
@@ -1326,89 +1400,83 @@ func buildLogStatConsumeQuery(logType int, startTimestamp int64, endTimestamp in
 	return tx.Where("type = ?", LogTypeConsume), nil
 }
 
-type promptCacheStat struct {
+type PromptCacheStat struct {
 	HitCount    int64
 	TotalCount  int64
 	InputTokens int64
 	ReadTokens  int64
 	WriteTokens int64
+	HitRate     float64
 }
 
-type promptCacheStatRow struct {
-	PromptTokens int    `gorm:"column:prompt_tokens"`
-	Other        string `gorm:"column:other"`
+type promptCacheAggregateRow struct {
+	TotalCount        int64 `gorm:"column:total_count"`
+	InputTokens       int64 `gorm:"column:input_tokens"`
+	HitCount          int64 `gorm:"column:hit_count"`
+	OpenAITotalCount  int64 `gorm:"column:openai_total_count"`
+	OpenAIInputTokens int64 `gorm:"column:openai_input_tokens"`
+	OpenAIHitCount    int64 `gorm:"column:openai_hit_count"`
+	ClaudeTotalCount  int64 `gorm:"column:claude_total_count"`
+	ClaudeInputTokens int64 `gorm:"column:claude_input_tokens"`
+	ClaudeHitCount    int64 `gorm:"column:claude_hit_count"`
 }
 
-type promptCacheTotalRow struct {
-	TotalCount  int64 `gorm:"column:total_count"`
-	InputTokens int64 `gorm:"column:input_tokens"`
+func sumPromptCacheStats(query *gorm.DB) (PromptCacheStat, PromptCacheStat, PromptCacheStat, error) {
+	hitCondition := promptCacheHitConditionSQL()
+	openAICondition := promptCacheOpenAIConditionSQL()
+	claudeCondition := promptCacheClaudeConditionSQL()
+	selectExpr := strings.Join([]string{
+		"count(*) total_count",
+		"COALESCE(sum(prompt_tokens), 0) input_tokens",
+		promptCacheCountSQL(hitCondition) + " hit_count",
+		promptCacheCountSQL(openAICondition) + " openai_total_count",
+		promptCacheSumSQL(openAICondition, "prompt_tokens") + " openai_input_tokens",
+		promptCacheCountSQL("("+openAICondition+" AND "+hitCondition+")") + " openai_hit_count",
+		promptCacheCountSQL(claudeCondition) + " claude_total_count",
+		promptCacheSumSQL(claudeCondition, "prompt_tokens") + " claude_input_tokens",
+		promptCacheCountSQL("("+claudeCondition+" AND "+hitCondition+")") + " claude_hit_count",
+	}, ", ")
+
+	row := promptCacheAggregateRow{}
+	if err := query.Select(selectExpr).Scan(&row).Error; err != nil {
+		return PromptCacheStat{}, PromptCacheStat{}, PromptCacheStat{}, err
+	}
+	total := newPromptCacheStat(row.HitCount, row.TotalCount, row.InputTokens)
+	openAI := newPromptCacheStat(row.OpenAIHitCount, row.OpenAITotalCount, row.OpenAIInputTokens)
+	claude := newPromptCacheStat(row.ClaudeHitCount, row.ClaudeTotalCount, row.ClaudeInputTokens)
+	return total, openAI, claude, nil
 }
 
-func sumPromptCacheStat(countQuery *gorm.DB, rowsQuery *gorm.DB) (promptCacheStat, error) {
-	stat := promptCacheStat{}
-	total := promptCacheTotalRow{}
-	if err := countQuery.Select("count(*) total_count, COALESCE(sum(prompt_tokens), 0) input_tokens").Scan(&total).Error; err != nil {
-		return stat, err
+func newPromptCacheStat(hitCount int64, totalCount int64, inputTokens int64) PromptCacheStat {
+	stat := PromptCacheStat{
+		HitCount:    hitCount,
+		TotalCount:  totalCount,
+		InputTokens: inputTokens,
 	}
-	stat.TotalCount = total.TotalCount
-	stat.InputTokens = total.InputTokens
-	if stat.TotalCount == 0 {
-		return stat, nil
+	if totalCount > 0 {
+		stat.HitRate = float64(hitCount) / float64(totalCount)
 	}
-
-	var rows []promptCacheStatRow
-	err := rowsQuery.
-		Select("prompt_tokens, other").
-		Where(
-			"(other LIKE ? OR other LIKE ? OR other LIKE ? OR other LIKE ?)",
-			`%"cache_tokens"%`,
-			`%"prompt_cache_hit_tokens"%`,
-			`%"cache_write_tokens"%`,
-			`%"cache_creation_tokens%`,
-		).
-		Find(&rows).Error
-	if err != nil {
-		return stat, err
-	}
-
-	for _, row := range rows {
-		if row.Other == "" {
-			continue
-		}
-		other := map[string]interface{}{}
-		if err := common.UnmarshalJsonStr(row.Other, &other); err != nil {
-			continue
-		}
-		readTokens := promptCacheReadTokens(other)
-		writeTokens := promptCacheWriteTokens(other)
-		if readTokens > 0 {
-			stat.HitCount++
-		}
-		stat.ReadTokens += readTokens
-		stat.WriteTokens += writeTokens
-	}
-	return stat, nil
+	return stat
 }
 
-func promptCacheReadTokens(other map[string]interface{}) int64 {
-	cacheTokens := readPositiveInt64FromMap(other, "cache_tokens")
-	promptCacheHitTokens := readPositiveInt64FromMap(other, "prompt_cache_hit_tokens")
-	if promptCacheHitTokens > cacheTokens {
-		return promptCacheHitTokens
-	}
-	return cacheTokens
+func promptCacheCountSQL(condition string) string {
+	return "COALESCE(sum(CASE WHEN " + condition + " THEN 1 ELSE 0 END), 0)"
 }
 
-func promptCacheWriteTokens(other map[string]interface{}) int64 {
-	cacheWriteTokens := readPositiveInt64FromMap(other, "cache_write_tokens")
-	if cacheWriteTokens > 0 {
-		return cacheWriteTokens
-	}
-	splitTokens := readPositiveInt64FromMap(other, "cache_creation_tokens_5m") + readPositiveInt64FromMap(other, "cache_creation_tokens_1h")
-	if splitTokens > 0 {
-		return splitTokens
-	}
-	return readPositiveInt64FromMap(other, "cache_creation_tokens")
+func promptCacheSumSQL(condition string, column string) string {
+	return "COALESCE(sum(CASE WHEN " + condition + " THEN " + column + " ELSE 0 END), 0)"
+}
+
+func promptCacheHitConditionSQL() string {
+	return `((other LIKE '%"cache_tokens":%' AND other NOT LIKE '%"cache_tokens":0%') OR (other LIKE '%"prompt_cache_hit_tokens":%' AND other NOT LIKE '%"prompt_cache_hit_tokens":0%'))`
+}
+
+func promptCacheOpenAIConditionSQL() string {
+	return `(LOWER(model_name) LIKE 'gpt-%' OR LOWER(model_name) LIKE 'o1%' OR LOWER(model_name) LIKE 'o3%' OR LOWER(model_name) LIKE 'o4%' OR LOWER(model_name) LIKE 'chatgpt-%' OR LOWER(model_name) LIKE 'text-embedding-%' OR LOWER(model_name) LIKE 'dall-e-%' OR LOWER(model_name) LIKE 'tts-%' OR LOWER(model_name) LIKE 'whisper-%' OR LOWER(model_name) LIKE 'openai/%' OR other LIKE '%"usage_semantic":"openai"%')`
+}
+
+func promptCacheClaudeConditionSQL() string {
+	return `(LOWER(model_name) LIKE '%claude%' OR other LIKE '%"claude":true%' OR other LIKE '%"usage_semantic":"anthropic"%')`
 }
 
 func readPositiveInt64FromMap(values map[string]interface{}, key string) int64 {
@@ -1433,7 +1501,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId 
 	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
 
 	// 执行查询
-	if err := tx.Select("sum(quota) quota").Scan(&stat).Error; err != nil {
+	if err := tx.Select("COALESCE(sum(quota), 0) quota, count(*) request_count").Scan(&stat).Error; err != nil {
 		common.SysError("failed to query log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
@@ -1442,27 +1510,23 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId 
 		return stat, errors.New("查询统计数据失败")
 	}
 
-	cacheCountQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	cacheQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return stat, err
 	}
-	cacheRowsQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
-	if err != nil {
-		return stat, err
-	}
-	cacheStat, err := sumPromptCacheStat(cacheCountQuery, cacheRowsQuery)
+	cacheStat, cacheOpenAIStat, cacheClaudeStat, err := sumPromptCacheStats(cacheQuery.Where("is_stream = ?", true))
 	if err != nil {
 		common.SysError("failed to query prompt cache stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
 	stat.PromptCacheHitCount = cacheStat.HitCount
 	stat.PromptCacheTotalCount = cacheStat.TotalCount
-	if cacheStat.TotalCount > 0 {
-		stat.PromptCacheHitRate = float64(cacheStat.HitCount) / float64(cacheStat.TotalCount)
-	}
+	stat.PromptCacheHitRate = cacheStat.HitRate
 	stat.PromptCacheInputTokens = cacheStat.InputTokens
 	stat.PromptCacheReadTokens = cacheStat.ReadTokens
 	stat.PromptCacheWriteTokens = cacheStat.WriteTokens
+	stat.PromptCacheOpenAI = cacheOpenAIStat
+	stat.PromptCacheClaude = cacheClaudeStat
 
 	return stat, nil
 }

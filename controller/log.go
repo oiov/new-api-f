@@ -36,6 +36,7 @@ type logQueryParams struct {
 	StatusCode         string
 	SubscriptionId     int
 	SubscriptionPlanId int
+	CompactExport      bool
 }
 
 func getLogImageURLs(logItem *model.Log) []string {
@@ -152,6 +153,7 @@ func getLogQueryParams(c *gin.Context) logQueryParams {
 		StatusCode:         c.Query("status_code"),
 		SubscriptionId:     subscriptionId,
 		SubscriptionPlanId: subscriptionPlanId,
+		CompactExport:      c.Query("compact") == "true" || c.Query("compact") == "1",
 	}
 }
 
@@ -262,7 +264,7 @@ func ExportAllLogs(c *gin.Context) {
 	}
 	query := getLogQueryParams(c)
 	isRootUser := c.GetInt("role") == common.RoleRootUser
-	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
+	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -278,7 +280,7 @@ func ExportUserLogs(c *gin.Context) {
 	userId := c.GetInt("id")
 	query := getLogQueryParams(c)
 	isRootUser := c.GetInt("role") == common.RoleRootUser
-	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
+	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -340,6 +342,7 @@ func GetLogsStat(c *gin.Context) {
 		"message": "",
 		"data": gin.H{
 			"quota":                     stat.Quota,
+			"request_count":             stat.RequestCount,
 			"rpm":                       stat.Rpm,
 			"tpm":                       stat.Tpm,
 			"prompt_cache_hit_count":    stat.PromptCacheHitCount,
@@ -348,6 +351,8 @@ func GetLogsStat(c *gin.Context) {
 			"prompt_cache_input_tokens": stat.PromptCacheInputTokens,
 			"prompt_cache_read_tokens":  stat.PromptCacheReadTokens,
 			"prompt_cache_write_tokens": stat.PromptCacheWriteTokens,
+			"prompt_cache_openai":       promptCacheStatPayload(stat.PromptCacheOpenAI),
+			"prompt_cache_claude":       promptCacheStatPayload(stat.PromptCacheClaude),
 		},
 	})
 	return
@@ -367,6 +372,7 @@ func GetLogsSelfStat(c *gin.Context) {
 		"message": "",
 		"data": gin.H{
 			"quota":                     quotaNum.Quota,
+			"request_count":             quotaNum.RequestCount,
 			"rpm":                       quotaNum.Rpm,
 			"tpm":                       quotaNum.Tpm,
 			"prompt_cache_hit_count":    quotaNum.PromptCacheHitCount,
@@ -375,10 +381,21 @@ func GetLogsSelfStat(c *gin.Context) {
 			"prompt_cache_input_tokens": quotaNum.PromptCacheInputTokens,
 			"prompt_cache_read_tokens":  quotaNum.PromptCacheReadTokens,
 			"prompt_cache_write_tokens": quotaNum.PromptCacheWriteTokens,
+			"prompt_cache_openai":       promptCacheStatPayload(quotaNum.PromptCacheOpenAI),
+			"prompt_cache_claude":       promptCacheStatPayload(quotaNum.PromptCacheClaude),
 			//"token": tokenNum,
 		},
 	})
 	return
+}
+
+func promptCacheStatPayload(stat model.PromptCacheStat) gin.H {
+	return gin.H{
+		"hit_count":    stat.HitCount,
+		"total_count":  stat.TotalCount,
+		"hit_rate":     stat.HitRate,
+		"input_tokens": stat.InputTokens,
+	}
 }
 
 func buildGroupLogHealthStatsQuery(query logQueryParams) model.GroupLogHealthStatsQuery {
