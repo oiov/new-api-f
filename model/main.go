@@ -293,6 +293,8 @@ func migrateDB() error {
 		&Invoice{},
 		&EcomAgentAccount{},
 		&SiteNotification{},
+		&SupportTicket{},
+		&SupportTicketMessage{},
 		&MailAssistantAccount{},
 		&MailAssistantStoredMessage{},
 	)
