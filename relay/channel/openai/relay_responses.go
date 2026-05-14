@@ -53,6 +53,10 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			usage.PromptTokensDetails.CachedTokens = responsesResponse.Usage.InputTokensDetails.CachedTokens
 		}
 	}
+	if usage.TotalTokens == 0 && info != nil {
+		usage.PromptTokens = info.GetEstimatePromptTokens()
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
 	if info == nil || info.ResponsesUsageInfo == nil || info.ResponsesUsageInfo.BuiltInTools == nil {
 		return &usage, nil
 	}
@@ -140,7 +144,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 	}
 
-	if usage.PromptTokens == 0 && usage.CompletionTokens != 0 {
+	if usage.PromptTokens == 0 {
 		usage.PromptTokens = info.GetEstimatePromptTokens()
 	}
 
