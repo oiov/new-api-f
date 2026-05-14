@@ -465,6 +465,16 @@ func SetApiRouter(router *gin.Engine) {
 			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
 		}
 
+		supportTicketRoute := apiRouter.Group("/support/tickets")
+		supportTicketRoute.Use(middleware.UserAuth())
+		{
+			supportTicketRoute.GET("", controller.ListSupportTickets)
+			supportTicketRoute.POST("", controller.CreateSupportTicket)
+			supportTicketRoute.GET("/:id", controller.GetSupportTicketDetail)
+			supportTicketRoute.POST("/:id/messages", controller.AddSupportTicketMessage)
+			supportTicketRoute.PUT("/:id", controller.UpdateSupportTicket)
+		}
+
 		vendorRoute := apiRouter.Group("/vendors")
 		vendorRoute.Use(middleware.AdminAuth())
 		{
