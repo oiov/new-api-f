@@ -34,6 +34,19 @@ func getScannerBufferSize() int {
 	return DefaultMaxScannerBufferSize
 }
 
+type firstResponseTimeReader struct {
+	reader io.Reader
+	info   *relaycommon.RelayInfo
+}
+
+func (r *firstResponseTimeReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 && r.info != nil {
+		r.info.SetFirstResponseTime()
+	}
+	return n, err
+}
+
 func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string) bool) {
 
 	if resp == nil || dataHandler == nil {
@@ -55,7 +68,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 	var (
 		stopChan   = make(chan bool, 3) // 增加缓冲区避免阻塞
-		scanner    = bufio.NewScanner(resp.Body)
+		scanner    = bufio.NewScanner(&firstResponseTimeReader{reader: resp.Body, info: info})
 		ticker     = time.NewTicker(streamingTimeout)
 		pingTicker *time.Ticker
 		writeMutex sync.Mutex     // Mutex to protect concurrent writes
@@ -246,8 +259,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 				continue
 			}
 			if !strings.HasPrefix(data, "[DONE]") {
-				info.SetFirstResponseTime()
-				info.ReceivedResponseCount++
+				if info != nil {
+					info.ReceivedResponseCount++
+				}
 
 				select {
 				case dataChan <- data:

@@ -11,9 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,6 +69,24 @@ type slowReader struct {
 func (s *slowReader) Read(p []byte) (int, error) {
 	time.Sleep(s.delay)
 	return s.r.Read(p)
+}
+
+type chunkedDelayReader struct {
+	chunks []string
+	delays []time.Duration
+	index  int
+}
+
+func (r *chunkedDelayReader) Read(p []byte) (int, error) {
+	if r.index >= len(r.chunks) {
+		return 0, io.EOF
+	}
+	if r.index < len(r.delays) && r.delays[r.index] > 0 {
+		time.Sleep(r.delays[r.index])
+	}
+	chunk := r.chunks[r.index]
+	r.index++
+	return copy(p, chunk), nil
 }
 
 // ---------- Basic correctness ----------
@@ -216,6 +237,74 @@ func TestStreamScannerHandler_SkipsNonDataLines(t *testing.T) {
 	})
 
 	assert.Equal(t, int64(100), count.Load())
+}
+
+func TestStreamScannerHandler_FirstResponseTimeRecordedOnFirstUpstreamLine(t *testing.T) {
+	t.Parallel()
+
+	start := time.Now()
+	body := &chunkedDelayReader{
+		chunks: []string{
+			": upstream keepalive\n",
+			"data: payload\n",
+			"data: [DONE]\n",
+		},
+		delays: []time.Duration{
+			0,
+			250 * time.Millisecond,
+			0,
+		},
+	}
+	c, resp, info := setupStreamTest(t, body)
+	common.SetContextKey(c, constant.ContextKeyRequestStartTime, start)
+	stream := true
+	info, err := relaycommon.GenRelayInfo(c, types.RelayFormatOpenAI, &dto.GeneralOpenAIRequest{Stream: &stream}, nil)
+	require.NoError(t, err)
+
+	var count atomic.Int64
+	StreamScannerHandler(c, resp, info, func(data string) bool {
+		count.Add(1)
+		return true
+	})
+
+	require.Equal(t, int64(1), count.Load())
+	require.True(t, info.HasSendResponse())
+	assert.Less(t, info.FirstResponseTime.Sub(start), 100*time.Millisecond)
+}
+
+func TestStreamScannerHandler_FirstResponseTimeRecordedOnFirstBodyByte(t *testing.T) {
+	t.Parallel()
+
+	start := time.Now()
+	body := &chunkedDelayReader{
+		chunks: []string{
+			":",
+			" upstream keepalive\n",
+			"data: payload\n",
+			"data: [DONE]\n",
+		},
+		delays: []time.Duration{
+			0,
+			250 * time.Millisecond,
+			0,
+			0,
+		},
+	}
+	c, resp, info := setupStreamTest(t, body)
+	common.SetContextKey(c, constant.ContextKeyRequestStartTime, start)
+	stream := true
+	info, err := relaycommon.GenRelayInfo(c, types.RelayFormatOpenAI, &dto.GeneralOpenAIRequest{Stream: &stream}, nil)
+	require.NoError(t, err)
+
+	var count atomic.Int64
+	StreamScannerHandler(c, resp, info, func(data string) bool {
+		count.Add(1)
+		return true
+	})
+
+	require.Equal(t, int64(1), count.Load())
+	require.True(t, info.HasSendResponse())
+	assert.Less(t, info.FirstResponseTime.Sub(start), 100*time.Millisecond)
 }
 
 func TestStreamScannerHandler_DataWithExtraSpaces(t *testing.T) {
