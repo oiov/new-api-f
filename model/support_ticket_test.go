@@ -169,6 +169,43 @@ func TestSupportTicketClosedRejectsNewMessagesUntilAdminReopens(t *testing.T) {
 	})
 }
 
+func TestSupportTicketReplyAndCloseDoNotOverwriteConcurrentPriorityChanges(t *testing.T) {
+	withSupportTicketTestDB(t, func() {
+		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "问题", "初始消息")
+		require.NoError(t, err)
+
+		var injected bool
+		var callbackErr error
+		callbackName := "support_ticket_test_priority_update"
+		require.NoError(t, DB.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+			if injected || tx.Statement == nil || tx.Statement.Table != "support_tickets" {
+				return
+			}
+			injected = true
+			callbackErr = tx.Session(&gorm.Session{NewDB: true}).
+				Model(&SupportTicket{}).
+				Where("id = ?", ticket.Id).
+				Update("priority", SupportTicketPriorityUrgent).Error
+		}))
+		t.Cleanup(func() {
+			require.NoError(t, DB.Callback().Update().Remove(callbackName))
+		})
+
+		_, updated, err := AddSupportTicketMessage(ticket.Id, 7, false, "补充信息")
+		require.NoError(t, callbackErr)
+		require.NoError(t, err)
+		require.Equal(t, SupportTicketPriorityUrgent, updated.Priority)
+
+		require.NoError(t, DB.Model(&SupportTicket{}).Where("id = ?", ticket.Id).Update("priority", SupportTicketPriorityNormal).Error)
+		injected = false
+		closed, err := CloseSupportTicketByUser(ticket.Id, 7)
+		require.NoError(t, callbackErr)
+		require.NoError(t, err)
+		require.Equal(t, SupportTicketStatusClosed, closed.Status)
+		require.Equal(t, SupportTicketPriorityUrgent, closed.Priority)
+	})
+}
+
 func TestSupportTicketUserCanOnlyCloseOwnTicket(t *testing.T) {
 	withSupportTicketTestDB(t, func() {
 		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "问题", "初始消息")

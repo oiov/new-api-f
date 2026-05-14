@@ -249,11 +249,16 @@ func AddSupportTicketMessage(ticketId int, senderUserId int, isAdmin bool, conte
 			return err
 		}
 
-		ticket.LastMessageAt = common.GetTimestamp()
-		if isAdmin && ticket.Status == SupportTicketStatusPending {
-			ticket.Status = SupportTicketStatusInProgress
+		updates := map[string]interface{}{
+			"last_message_at": common.GetTimestamp(),
 		}
-		return tx.Save(&ticket).Error
+		if isAdmin && ticket.Status == SupportTicketStatusPending {
+			updates["status"] = SupportTicketStatusInProgress
+		}
+		if err := tx.Model(&SupportTicket{}).Where("id = ?", ticket.Id).Updates(updates).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", ticket.Id).First(&ticket).Error
 	})
 	if err != nil {
 		return nil, nil, err
@@ -303,14 +308,16 @@ func UpdateSupportTicketByAdmin(id int, status string, priority string) (*Suppor
 func CloseSupportTicketByUser(id int, userId int) (*SupportTicket, error) {
 	var ticket SupportTicket
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("id = ? AND user_id = ?", id, userId).First(&ticket).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return errors.New("工单不存在")
-			}
-			return err
+		result := tx.Model(&SupportTicket{}).
+			Where("id = ? AND user_id = ?", id, userId).
+			Update("status", SupportTicketStatusClosed)
+		if result.Error != nil {
+			return result.Error
 		}
-		ticket.Status = SupportTicketStatusClosed
-		return tx.Save(&ticket).Error
+		if result.RowsAffected == 0 {
+			return errors.New("工单不存在")
+		}
+		return tx.Where("id = ?", id).First(&ticket).Error
 	})
 	if err != nil {
 		return nil, err
