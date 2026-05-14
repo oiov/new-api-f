@@ -10,6 +10,8 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
+const supportTicketAdminEmail = "support@nbility.dev"
+
 func SupportTicketStatusText(status string) string {
 	switch strings.TrimSpace(status) {
 	case model.SupportTicketStatusPending:
@@ -22,6 +24,30 @@ func SupportTicketStatusText(status string) string {
 		return "已关闭"
 	default:
 		return strings.TrimSpace(status)
+	}
+}
+
+func SupportTicketTypeText(ticketType string) string {
+	switch strings.TrimSpace(ticketType) {
+	case model.SupportTicketTypeRefund:
+		return "退款工单"
+	case model.SupportTicketTypeInvoice:
+		return "发票申请"
+	default:
+		return "普通工单"
+	}
+}
+
+func SupportTicketPriorityText(priority string) string {
+	switch strings.TrimSpace(priority) {
+	case model.SupportTicketPriorityLow:
+		return "低"
+	case model.SupportTicketPriorityHigh:
+		return "高"
+	case model.SupportTicketPriorityUrgent:
+		return "紧急"
+	default:
+		return "普通"
 	}
 }
 
@@ -57,18 +83,35 @@ func NotifySupportTicketStatusUpdatedAsync(ticket *model.SupportTicket, senderUs
 }
 
 func notifySupportTicketCreated(user *model.User, ticket *model.SupportTicket) {
-	if user == nil || ticket == nil || strings.TrimSpace(user.Email) == "" {
+	if user == nil || ticket == nil {
 		return
 	}
-	subject := fmt.Sprintf("工单已提交：#%d %s", ticket.Id, strings.TrimSpace(ticket.Subject))
-	content := fmt.Sprintf(
-		"你的工单已提交，我们会尽快处理。<br/>工单 ID：<strong>#%d</strong><br/>主题：<strong>%s</strong><br/>当前状态：<strong>%s</strong>",
+	escapedSubject := html.EscapeString(strings.TrimSpace(ticket.Subject))
+	if strings.TrimSpace(user.Email) != "" {
+		subject := fmt.Sprintf("工单已提交：#%d %s", ticket.Id, strings.TrimSpace(ticket.Subject))
+		content := fmt.Sprintf(
+			"你的工单已提交，我们会尽快处理。<br/>工单 ID：<strong>#%d</strong><br/>主题：<strong>%s</strong><br/>当前状态：<strong>%s</strong>",
+			ticket.Id,
+			escapedSubject,
+			SupportTicketStatusText(ticket.Status),
+		)
+		if err := common.SendEmail(subject, user.Email, content); err != nil {
+			common.SysLog(fmt.Sprintf("failed to send support ticket created email to user %d: %s", user.Id, err.Error()))
+		}
+	}
+
+	adminSubject := fmt.Sprintf("新工单：#%d %s", ticket.Id, strings.TrimSpace(ticket.Subject))
+	adminContent := fmt.Sprintf(
+		"用户提交了新工单。<br/>工单 ID：<strong>#%d</strong><br/>用户：<strong>%s</strong><br/>类型：<strong>%s</strong><br/>优先级：<strong>%s</strong><br/>主题：<strong>%s</strong><br/>当前状态：<strong>%s</strong>",
 		ticket.Id,
-		html.EscapeString(strings.TrimSpace(ticket.Subject)),
+		html.EscapeString(strings.TrimSpace(user.Username)),
+		SupportTicketTypeText(ticket.Type),
+		SupportTicketPriorityText(ticket.Priority),
+		escapedSubject,
 		SupportTicketStatusText(ticket.Status),
 	)
-	if err := common.SendEmail(subject, user.Email, content); err != nil {
-		common.SysLog(fmt.Sprintf("failed to send support ticket created email to user %d: %s", user.Id, err.Error()))
+	if err := common.SendEmail(adminSubject, supportTicketAdminEmail, adminContent); err != nil {
+		common.SysLog(fmt.Sprintf("failed to send support ticket created email to admin: %s", err.Error()))
 	}
 }
 

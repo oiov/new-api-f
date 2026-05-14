@@ -98,10 +98,14 @@ func TestSupportTicketCreatedNotificationEmailsBoundUser(t *testing.T) {
 
 		notifySupportTicketCreated(user, ticket)
 
-		require.Len(t, *emails, 1)
+		require.Len(t, *emails, 2)
 		require.Equal(t, "alice@example.com", (*emails)[0].To.Address)
 		require.Contains(t, (*emails)[0].Subject, "工单已提交")
 		require.Contains(t, (*emails)[0].HTML, "退款问题")
+		require.Equal(t, "support@nbility.dev", (*emails)[1].To.Address)
+		require.Contains(t, (*emails)[1].Subject, "新工单")
+		require.Contains(t, (*emails)[1].HTML, "alice")
+		require.Contains(t, (*emails)[1].HTML, "退款问题")
 	})
 }
 
