@@ -2,8 +2,8 @@
 
 > Status: Approved for implementation planning
 > Date: 2026-05-14
-> Scope: 新增用户/管理员共用的工单功能，包含后端工单与消息接口、数据库模型、`web-worker` 控制台页面
-> Out of scope: 自动创建退款单、自动创建发票申请、邮件/站内信通知、文件附件、SLA 规则、管理员独立后台页面
+> Scope: 新增用户/管理员共用的工单功能，包含后端工单与消息接口、数据库模型、`web-worker` 工单页面、`web-worker` 站内信页面、工单邮件/站内信通知
+> Out of scope: 自动创建退款单、自动创建发票申请、文件附件、SLA 规则、管理员独立后台页面
 
 ---
 
@@ -19,6 +19,9 @@
 4. 工单列表项固定包含：ID、主题、状态、优先级、更新时间、操作。
 5. 状态包含：待处理、处理中、已解决、已关闭。
 6. 退款工单和发票申请只作为工单分类处理，不自动打通现有退款或发票业务流程。
+7. 用户创建工单后，向用户绑定邮箱发送创建确认邮件；发送失败记录日志，不回滚工单创建。
+8. 工单状态更新后，向用户发送站内信，并在用户绑定邮箱时发送邮件；发送失败记录日志，不回滚状态更新。
+9. `web-worker` 补齐站内信页面，用户可以查看站内信、筛选未读、标记已读和全部已读。
 
 ## 2. Current Context
 
@@ -27,7 +30,9 @@
 - 后端已有发票申请接口和管理接口，位于 `/api/user/invoice` 和 `/api/invoice/admin`。
 - 订阅退款已有部分自助退款/转换申请逻辑，但它是订阅业务流程的一部分。
 - `web-worker` 已有 `/console/tasks`、`/console/log`、`/console/billing` 等控制台页面，使用 TanStack Router、React Query、`apiFetch` 和 shadcn-style UI 组件。
+- 后端已有站内信模型、用户自查接口和管理员发送接口：`/api/user/self/notifications`、`/api/user/self/notifications/unread_count`、`/api/user/self/notifications/:id/read`、`/api/user/self/notifications/read_all`。
 - 未发现独立的工单、支持会话或用户-管理员持续沟通模块。
+- `web-worker` 目前没有完整的站内信列表页面，本次与工单页面一起补齐。
 
 因此本功能应新增独立 support ticket 模块，不复用发票或订阅退款表，以避免把人工支持沟通和已有业务审批流程耦合。
 
@@ -78,6 +83,16 @@
 - 发票申请：`high`
 
 用户创建时不选择优先级，管理员可以在详情面板中调整。
+
+### 3.5 Notifications
+
+通知规则：
+
+- 创建工单后，后端向工单用户的绑定邮箱发送确认邮件。
+- 工单状态发生变化后，后端向工单用户发送站内信，并在用户绑定邮箱时同步发送邮件。
+- 通知发送异步执行，失败只记录系统日志，不回滚工单创建、回复或状态更新。
+- 管理员回复待处理工单并自动推进到 `in_progress` 时，也视为状态变化，需要触发状态更新通知。
+- 仅状态变化触发站内信；普通追加消息不单独发站内信。
 
 ## 4. Backend Design
 
@@ -464,7 +479,39 @@ Use a local server and browser to verify:
 - Closed ticket hides or disables the reply box for normal users.
 - Mobile layout uses a usable sheet/detail flow.
 
-## 9. Risks And Mitigations
+## 9. Current Serial Task Board
+
+当前执行方式：串行任务模式，不再派发子任务。
+
+- [x] 合并 `support-ticket` worktree 后端基线到当前 `fishxcode` 工作区。
+  - 已包含工单模型、枚举校验、并发更新修正、控制器/路由、通知服务。
+- [x] 将新增通知范围纳入设计。
+  - 创建工单后给用户发送邮件确认。
+  - 工单状态更新后给用户发送站内信，并在用户已绑定邮箱时发送邮件。
+  - 通知失败只记录日志，不回滚工单创建或状态更新。
+- [x] 验证后端合并结果。
+  - `go test ./model ./controller ./service -run 'TestSupportTicket' -count=1`
+  - 可选扩大验证：`go test ./controller ./router ./model ./service -count=1`
+- [x] 验证并提交 `web-worker` 工单 API、hooks、纯工具函数。
+  - 包含 ticket API、站内信 API、React Query hooks、状态/类型/优先级展示 helper。
+- [x] 验证并提交 `web-worker` i18n 与侧边栏。
+  - 工单和站内信入口需要出现在控制台导航中。
+  - `ticket` 命名空间覆盖 zh、zh-TW、en、fr、ru、ja、vi。
+- [x] 验证并提交 `/console/tickets` 页面。
+  - 普通用户只看自己的工单；管理员 `role >= 10` 查看全部工单。
+  - 列表列包含 ID、主题、状态、优先级、更新时间、操作。
+  - 详情面板支持继续沟通、用户关闭工单、管理员更新状态和优先级。
+- [x] 验证并提交 `/console/notifications` 页面。
+  - 用户可查看站内信、筛选未读、单条标记已读、全部标记已读。
+  - 站内信内容以前端文本形式展示，不直接渲染原始 HTML。
+- [x] 最终验证。
+  - `web-worker`: `bunx tsx --test src/api-client/tickets.test.ts src/lib/tickets.test.ts src/api-client/site-notifications.test.ts`
+  - `web-worker`: `pnpm build`
+  - 可选：`pnpm check` 全仓库因既有格式问题失败；本次 touched 文件已通过局部 `pnpm exec biome check --write ...`
+
+注意：父仓库中的 `web-worker/` 是嵌套前端 worktree，父仓库不要添加该路径；前端变更应在 `web-worker` 仓库内独立提交。
+
+## 10. Risks And Mitigations
 
 Risk: The shared user/admin page could become cluttered.
 Mitigation: Keep admin-only controls inside the detail panel and only show username/admin filters when the current user is admin.
@@ -478,7 +525,7 @@ Mitigation: First version searches subject and admin username only. Message sear
 Risk: Role thresholds may differ from future granular permissions.
 Mitigation: Keep role checks isolated in controller helper logic so permission middleware can replace it later.
 
-## 10. Implementation Boundaries
+## 11. Implementation Boundaries
 
 Do not modify protected project identity, metadata, README branding, module paths, package names, or author attributions.
 
