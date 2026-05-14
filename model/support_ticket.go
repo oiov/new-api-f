@@ -58,45 +58,51 @@ type SupportTicketFilters struct {
 	Keyword  string
 }
 
-func normalizeSupportTicketType(ticketType string) string {
+func normalizeSupportTicketType(ticketType string) (string, error) {
 	switch strings.TrimSpace(ticketType) {
+	case "", SupportTicketTypeNormal:
+		return SupportTicketTypeNormal, nil
 	case SupportTicketTypeRefund:
-		return SupportTicketTypeRefund
+		return SupportTicketTypeRefund, nil
 	case SupportTicketTypeInvoice:
-		return SupportTicketTypeInvoice
+		return SupportTicketTypeInvoice, nil
 	default:
-		return SupportTicketTypeNormal
+		return "", errors.New("无效的工单类型")
 	}
 }
 
-func normalizeSupportTicketStatus(status string) string {
+func normalizeSupportTicketStatus(status string) (string, error) {
 	switch strings.TrimSpace(status) {
+	case SupportTicketStatusPending:
+		return SupportTicketStatusPending, nil
 	case SupportTicketStatusInProgress:
-		return SupportTicketStatusInProgress
+		return SupportTicketStatusInProgress, nil
 	case SupportTicketStatusResolved:
-		return SupportTicketStatusResolved
+		return SupportTicketStatusResolved, nil
 	case SupportTicketStatusClosed:
-		return SupportTicketStatusClosed
+		return SupportTicketStatusClosed, nil
 	default:
-		return SupportTicketStatusPending
+		return "", errors.New("无效的工单状态")
 	}
 }
 
-func normalizeSupportTicketPriority(priority string) string {
+func normalizeSupportTicketPriority(priority string) (string, error) {
 	switch strings.TrimSpace(priority) {
 	case SupportTicketPriorityLow:
-		return SupportTicketPriorityLow
+		return SupportTicketPriorityLow, nil
+	case SupportTicketPriorityNormal:
+		return SupportTicketPriorityNormal, nil
 	case SupportTicketPriorityHigh:
-		return SupportTicketPriorityHigh
+		return SupportTicketPriorityHigh, nil
 	case SupportTicketPriorityUrgent:
-		return SupportTicketPriorityUrgent
+		return SupportTicketPriorityUrgent, nil
 	default:
-		return SupportTicketPriorityNormal
+		return "", errors.New("无效的工单优先级")
 	}
 }
 
 func defaultSupportTicketPriority(ticketType string) string {
-	switch normalizeSupportTicketType(ticketType) {
+	switch ticketType {
 	case SupportTicketTypeRefund, SupportTicketTypeInvoice:
 		return SupportTicketPriorityHigh
 	default:
@@ -127,7 +133,10 @@ func normalizeSupportTicketContent(content string) (string, error) {
 }
 
 func CreateSupportTicket(userId int, ticketType string, subject string, content string) (*SupportTicket, error) {
-	normalizedType := normalizeSupportTicketType(ticketType)
+	normalizedType, err := normalizeSupportTicketType(ticketType)
+	if err != nil {
+		return nil, err
+	}
 	normalizedSubject, err := normalizeSupportTicketSubject(subject)
 	if err != nil {
 		return nil, err
@@ -264,10 +273,18 @@ func UpdateSupportTicketByAdmin(id int, status string, priority string) (*Suppor
 
 		updates := map[string]interface{}{}
 		if strings.TrimSpace(status) != "" {
-			updates["status"] = normalizeSupportTicketStatus(status)
+			normalizedStatus, err := normalizeSupportTicketStatus(status)
+			if err != nil {
+				return err
+			}
+			updates["status"] = normalizedStatus
 		}
 		if strings.TrimSpace(priority) != "" {
-			updates["priority"] = normalizeSupportTicketPriority(priority)
+			normalizedPriority, err := normalizeSupportTicketPriority(priority)
+			if err != nil {
+				return err
+			}
+			updates["priority"] = normalizedPriority
 		}
 		if len(updates) == 0 {
 			return nil
@@ -308,17 +325,27 @@ func applySupportTicketFilters(query *gorm.DB, userId int, isAdmin bool, filters
 		query = query.Where("support_tickets.user_id = ?", filters.UserId)
 	}
 	if ticketType := strings.TrimSpace(filters.Type); ticketType != "" {
-		query = query.Where("support_tickets.type = ?", normalizeSupportTicketType(ticketType))
+		if normalizedType, err := normalizeSupportTicketType(ticketType); err == nil {
+			query = query.Where("support_tickets.type = ?", normalizedType)
+		}
 	}
 	if status := strings.TrimSpace(filters.Status); status != "" {
-		query = query.Where("support_tickets.status = ?", normalizeSupportTicketStatus(status))
+		if normalizedStatus, err := normalizeSupportTicketStatus(status); err == nil {
+			query = query.Where("support_tickets.status = ?", normalizedStatus)
+		}
 	}
 	if priority := strings.TrimSpace(filters.Priority); priority != "" {
-		query = query.Where("support_tickets.priority = ?", normalizeSupportTicketPriority(priority))
+		if normalizedPriority, err := normalizeSupportTicketPriority(priority); err == nil {
+			query = query.Where("support_tickets.priority = ?", normalizedPriority)
+		}
 	}
 	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
 		like := "%%" + keyword + "%%"
-		query = query.Where("support_tickets.subject LIKE ? OR users.username LIKE ?", like, like)
+		if isAdmin {
+			query = query.Where("support_tickets.subject LIKE ? OR users.username LIKE ?", like, like)
+		} else {
+			query = query.Where("support_tickets.subject LIKE ?", like)
+		}
 	}
 	return query
 }

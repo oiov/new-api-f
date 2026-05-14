@@ -69,6 +69,27 @@ func TestSupportTicketCreateSetsHighPriorityForRefundAndInvoice(t *testing.T) {
 	})
 }
 
+func TestSupportTicketRejectsInvalidTypeStatusAndPriority(t *testing.T) {
+	withSupportTicketTestDB(t, func() {
+		_, err := CreateSupportTicket(7, "unknown", "问题", "初始消息")
+		require.EqualError(t, err, "无效的工单类型")
+
+		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "问题", "初始消息")
+		require.NoError(t, err)
+
+		_, err = UpdateSupportTicketByAdmin(ticket.Id, "unknown", "")
+		require.EqualError(t, err, "无效的工单状态")
+
+		_, err = UpdateSupportTicketByAdmin(ticket.Id, "", "unknown")
+		require.EqualError(t, err, "无效的工单优先级")
+
+		unchanged, err := UpdateSupportTicketByAdmin(ticket.Id, "", "")
+		require.NoError(t, err)
+		require.Equal(t, SupportTicketStatusPending, unchanged.Status)
+		require.Equal(t, SupportTicketPriorityNormal, unchanged.Priority)
+	})
+}
+
 func TestSupportTicketListScopesUsersAndAllowsAdminAllTickets(t *testing.T) {
 	withSupportTicketTestDB(t, func() {
 		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
@@ -90,6 +111,29 @@ func TestSupportTicketListScopesUsersAndAllowsAdminAllTickets(t *testing.T) {
 		require.EqualValues(t, 2, total)
 		require.Len(t, adminItems, 2)
 		require.Equal(t, "bob", adminItems[0].Username)
+	})
+}
+
+func TestSupportTicketUserKeywordSearchDoesNotMatchUsername(t *testing.T) {
+	withSupportTicketTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
+		require.NoError(t, DB.Create(&User{Id: 8, Username: "bob", AffCode: "bob"}).Error)
+		_, err := CreateSupportTicket(7, SupportTicketTypeNormal, "API issue", "a")
+		require.NoError(t, err)
+		_, err = CreateSupportTicket(8, SupportTicketTypeNormal, "Billing issue", "b")
+		require.NoError(t, err)
+
+		page := &common.PageInfo{Page: 1, PageSize: 20}
+		userItems, total, err := ListSupportTickets(7, false, page, SupportTicketFilters{Keyword: "alice"})
+		require.NoError(t, err)
+		require.EqualValues(t, 0, total)
+		require.Empty(t, userItems)
+
+		adminItems, total, err := ListSupportTickets(0, true, page, SupportTicketFilters{Keyword: "alice"})
+		require.NoError(t, err)
+		require.EqualValues(t, 1, total)
+		require.Len(t, adminItems, 1)
+		require.Equal(t, "API issue", adminItems[0].Subject)
 	})
 }
 
