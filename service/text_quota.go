@@ -64,6 +64,18 @@ func cacheWriteTokensTotal(summary textQuotaSummary) int {
 	return summary.CacheCreationTokens
 }
 
+func textQuotaSummaryHasBillableUsage(summary textQuotaSummary) bool {
+	return summary.TotalTokens > 0 ||
+		summary.CacheTokens > 0 ||
+		cacheWriteTokensTotal(summary) > 0 ||
+		summary.ImageTokens > 0 ||
+		summary.AudioTokens > 0 ||
+		summary.WebSearchCallCount > 0 ||
+		summary.ClaudeWebSearchCallCount > 0 ||
+		summary.FileSearchCallCount > 0 ||
+		summary.ImageGenerationCallPrice > 0
+}
+
 func isLegacyClaudeDerivedOpenAIUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) bool {
 	if relayInfo == nil || usage == nil {
 		return false
@@ -75,6 +87,40 @@ func isLegacyClaudeDerivedOpenAIUsage(relayInfo *relaycommon.RelayInfo, usage *d
 		return false
 	}
 	return usage.ClaudeCacheCreation5mTokens > 0 || usage.ClaudeCacheCreation1hTokens > 0
+}
+
+func usageHasInputBillingSignals(usage *dto.Usage) bool {
+	if usage == nil {
+		return false
+	}
+	return usage.PromptTokens > 0 ||
+		usage.InputTokens > 0 ||
+		usage.PromptTokensDetails.CachedTokens > 0 ||
+		usage.PromptTokensDetails.CachedCreationTokens > 0 ||
+		usage.PromptTokensDetails.ImageTokens > 0 ||
+		usage.PromptTokensDetails.AudioTokens > 0 ||
+		usage.ClaudeCacheCreation5mTokens > 0 ||
+		usage.ClaudeCacheCreation1hTokens > 0 ||
+		(usage.InputTokensDetails != nil &&
+			(usage.InputTokensDetails.CachedTokens > 0 ||
+				usage.InputTokensDetails.CachedCreationTokens > 0 ||
+				usage.InputTokensDetails.ImageTokens > 0 ||
+				usage.InputTokensDetails.AudioTokens > 0))
+}
+
+func ApplyEstimatedPromptTokensFallback(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) *dto.Usage {
+	if usage == nil {
+		usage = &dto.Usage{}
+	}
+	if relayInfo == nil {
+		return usage
+	}
+	estimatedPromptTokens := relayInfo.GetEstimatePromptTokens()
+	if !usageHasInputBillingSignals(usage) && estimatedPromptTokens > 0 {
+		usage.PromptTokens = estimatedPromptTokens
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+	return usage
 }
 
 func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) textQuotaSummary {
@@ -95,13 +141,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	}
 	summary.IsClaudeUsageSemantic = summary.UsageSemantic == "anthropic"
 
-	if usage == nil {
-		usage = &dto.Usage{
-			PromptTokens:     relayInfo.GetEstimatePromptTokens(),
-			CompletionTokens: 0,
-			TotalTokens:      relayInfo.GetEstimatePromptTokens(),
-		}
-	}
+	usage = ApplyEstimatedPromptTokensFallback(relayInfo, usage)
 
 	summary.PromptTokens = usage.PromptTokens
 	summary.CompletionTokens = usage.CompletionTokens
@@ -269,7 +309,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		summary.Quota = int(quotaCalculateDecimal.Round(0).IntPart())
 	}
 
-	if summary.TotalTokens == 0 {
+	if !textQuotaSummaryHasBillableUsage(summary) {
 		summary.Quota = 0
 	} else if !ratio.IsZero() && summary.Quota == 0 {
 		summary.Quota = 1
@@ -293,6 +333,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if usage == nil {
 		extraContent = append(extraContent, "上游无计费信息")
 	}
+	usage = ApplyEstimatedPromptTokensFallback(relayInfo, usage)
 	if originUsage != nil {
 		ObserveChannelAffinityUsageCacheByRelayFormat(ctx, usage, relayInfo.GetFinalRequestRelayFormat())
 	}
@@ -316,7 +357,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, fmt.Sprintf("Image Generation Call 花费 %s", decimal.NewFromFloat(summary.ImageGenerationCallPrice).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
 	}
 
-	if summary.TotalTokens == 0 {
+	if !textQuotaSummaryHasBillableUsage(summary) {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {

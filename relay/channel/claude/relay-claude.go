@@ -807,6 +807,10 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 	if claudeInfo.Usage != nil {
 		claudeInfo.Usage.UsageSemantic = "anthropic"
 	}
+	claudeInfo.Usage = service.ApplyEstimatedPromptTokensFallback(info, claudeInfo.Usage)
+	if claudeInfo.Usage != nil {
+		claudeInfo.Usage.UsageSemantic = "anthropic"
+	}
 
 	if info.RelayFormat == types.RelayFormatClaude {
 		//

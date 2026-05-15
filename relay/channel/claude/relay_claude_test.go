@@ -1,10 +1,20 @@
 package claude
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFormatClaudeResponseInfo_MessageStart(t *testing.T) {
@@ -172,6 +182,46 @@ func TestFormatClaudeResponseInfo_ContentBlockDelta(t *testing.T) {
 	if claudeInfo.ResponseText.String() != "hello" {
 		t.Errorf("ResponseText = %q, want %q", claudeInfo.ResponseText.String(), "hello")
 	}
+}
+
+func TestClaudeStreamHandlerFallsBackToEstimatedPromptTokensWhenUpstreamUsageIsZero(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	start := time.Now()
+	common.SetContextKey(c, constant.ContextKeyRequestStartTime, start)
+
+	stream := true
+	info, err := relaycommon.GenRelayInfo(c, types.RelayFormatClaude, &dto.ClaudeRequest{
+		Model:  "claude-opus-4-7",
+		Stream: &stream,
+	}, nil)
+	require.NoError(t, err)
+	info.ChannelMeta = &relaycommon.ChannelMeta{}
+	info.UpstreamModelName = "claude-opus-4-7"
+	info.FinalRequestRelayFormat = types.RelayFormatClaude
+	info.SetEstimatePromptTokens(1234)
+
+	body := strings.Join([]string{
+		`data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-4-7","content":[],"usage":{"input_tokens":0,"output_tokens":0}}}`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":0}}`,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(body))}
+
+	usage, apiErr := ClaudeStreamHandler(c, resp, info)
+
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	require.Equal(t, 1234, usage.PromptTokens)
+	require.Equal(t, 0, usage.CompletionTokens)
+	require.Equal(t, 1234, usage.TotalTokens)
+	require.Equal(t, "anthropic", usage.UsageSemantic)
+	require.True(t, info.HasSendResponse())
+	require.GreaterOrEqual(t, info.FirstResponseTime.Sub(start), time.Duration(0))
 }
 
 func TestBuildOpenAIStyleUsageFromClaudeUsage(t *testing.T) {

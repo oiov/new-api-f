@@ -146,6 +146,104 @@ func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t 
 	require.Equal(t, 1488, summary.Quota)
 }
 
+func TestCalculateTextQuotaSummaryFallsBackToEstimatedPromptTokensWhenUsageIsZero(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		FinalRequestRelayFormat: types.RelayFormatClaude,
+		OriginModelName:         "claude-opus-4-7",
+		PriceData: types.PriceData{
+			ModelRatio:      2.5,
+			CompletionRatio: 5,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 3.2,
+			},
+		},
+		StartTime: time.Now(),
+	}
+	relayInfo.SetEstimatePromptTokens(1234)
+
+	usage := &dto.Usage{UsageSemantic: "anthropic"}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 1234, summary.PromptTokens)
+	require.Equal(t, 0, summary.CompletionTokens)
+	require.Equal(t, 1234, summary.TotalTokens)
+	require.Equal(t, "anthropic", summary.UsageSemantic)
+	require.Equal(t, 9872, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryFallsBackToEstimatedPromptTokensWhenOnlyCompletionUsageExists(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.5",
+		PriceData: types.PriceData{
+			ModelRatio:      1,
+			CompletionRatio: 4,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+	relayInfo.SetEstimatePromptTokens(500)
+
+	usage := &dto.Usage{
+		CompletionTokens: 8,
+		TotalTokens:      8,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 500, summary.PromptTokens)
+	require.Equal(t, 8, summary.CompletionTokens)
+	require.Equal(t, 508, summary.TotalTokens)
+	require.Equal(t, 532, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryDoesNotFallbackWhenCacheUsageExists(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		FinalRequestRelayFormat: types.RelayFormatClaude,
+		OriginModelName:         "claude-opus-4-7",
+		PriceData: types.PriceData{
+			ModelRatio:           1,
+			CompletionRatio:      1,
+			CacheRatio:           0.1,
+			CacheCreationRatio:   1.25,
+			CacheCreation5mRatio: 1.25,
+			CacheCreation1hRatio: 2,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+	relayInfo.SetEstimatePromptTokens(500)
+
+	usage := &dto.Usage{
+		UsageSemantic: "anthropic",
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens: 100,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 0, summary.PromptTokens)
+	require.Equal(t, 100, summary.CacheTokens)
+	require.Equal(t, 10, summary.Quota)
+}
+
 func TestCacheWriteTokensTotal(t *testing.T) {
 	t.Run("split cache creation", func(t *testing.T) {
 		summary := textQuotaSummary{
