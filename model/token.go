@@ -793,19 +793,14 @@ func BatchDeleteInvalidTokensByFilter(userId int, filters UserTokenSearchFilters
 
 func ValidateUserToken(key string) (token *Token, err error) {
 	if key == "" {
-		return nil, errors.New("https://nbility.dev/ 提示 未提供令牌")
+		return nil, ErrTokenNotProvided
 	}
 	token, err = GetTokenByKey(key, false)
 	if err == nil {
-		if token.Status == common.TokenStatusExhausted {
-			keyPrefix := key[:3]
-			keySuffix := key[len(key)-3:]
-			return token, errors.New("https://nbility.dev/ 提示 该令牌额度已用尽 TokenStatusExhausted[sk-" + keyPrefix + "***" + keySuffix + "]")
-		} else if token.Status == common.TokenStatusExpired {
-			return token, errors.New("https://nbility.dev/ 提示 该令牌已过期")
-		}
-		if token.Status != common.TokenStatusEnabled {
-			return token, errors.New("https://nbility.dev/ 提示 该令牌状态不可用")
+		if token.Status == common.TokenStatusExhausted ||
+			token.Status == common.TokenStatusExpired ||
+			token.Status != common.TokenStatusEnabled {
+			return token, ErrTokenInvalid
 		}
 		if token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
 			if !common.RedisEnabled {
@@ -815,29 +810,25 @@ func ValidateUserToken(key string) (token *Token, err error) {
 					common.SysLog("https://nbility.dev/ 提示 failed to update token status" + err.Error())
 				}
 			}
-			return token, errors.New("https://nbility.dev/ 提示 该令牌已过期")
+			return token, ErrTokenInvalid
 		}
 		if !token.UnlimitedQuota && token.RemainQuota <= 0 {
 			if !common.RedisEnabled {
-				// in this case, we can make sure the token is exhausted
 				token.Status = common.TokenStatusExhausted
 				err := token.SelectUpdate()
 				if err != nil {
 					common.SysLog("failed to update token status" + err.Error())
 				}
 			}
-			keyPrefix := key[:3]
-			keySuffix := key[len(key)-3:]
-			return token, fmt.Errorf("[sk-%s***%s] https://nbility.dev/ 提示 该令牌额度已用尽 !token.UnlimitedQuota && token.RemainQuota = %d", keyPrefix, keySuffix, token.RemainQuota)
+			return token, ErrTokenInvalid
 		}
 		return token, nil
 	}
 	common.SysLog("ValidateUserToken: failed to get token: " + err.Error())
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errors.New("https://nbility.dev/ 提示 无效的令牌")
-	} else {
-		return nil, errors.New("https://nbility.dev/ 提示 无效的令牌，数据库查询出错，请联系管理员")
+		return nil, ErrTokenInvalid
 	}
+	return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
 }
 
 func GetTokenByIds(id int, userId int) (*Token, error) {
@@ -1186,4 +1177,37 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	}
 
 	return len(deletableIDs), nil
+}
+
+func InvalidateUserTokensCache(userId int) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	if userId <= 0 {
+		return errors.New("userId 无效")
+	}
+	keyCol := commonKeyCol
+	if strings.TrimSpace(keyCol) == "" {
+		keyCol = "`key`"
+		if common.UsingPostgreSQL {
+			keyCol = `"key"`
+		}
+	}
+	var tokens []Token
+	if err := DB.Unscoped().
+		Select("id", keyCol).
+		Where("user_id = ?", userId).
+		Find(&tokens).Error; err != nil {
+		return err
+	}
+	var firstErr error
+	for _, token := range tokens {
+		if token.Key == "" {
+			continue
+		}
+		if err := cacheDeleteToken(token.Key); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }

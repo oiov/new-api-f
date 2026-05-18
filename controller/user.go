@@ -52,10 +52,15 @@ func Login(c *gin.Context) {
 	}
 	err = user.ValidateAndFill()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"message": err.Error(),
-			"success": false,
-		})
+		switch {
+		case errors.Is(err, model.ErrDatabase):
+			common.SysLog(fmt.Sprintf("Login database error for user %s: %v", username, err))
+			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		case errors.Is(err, model.ErrUserEmptyCredentials):
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		default:
+			common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
+		}
 		return
 	}
 
@@ -1062,6 +1067,9 @@ func ManageUser(c *gin.Context) {
 			})
 			return
 		}
+		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+		}
 	case "promote":
 		if myRole != common.RoleRootUser || !hasPermission(common.PermissionPointUserEdit) {
 			common.ApiErrorI18n(c, i18n.MsgUserAdminCannotPromote)
@@ -1141,6 +1149,15 @@ func ManageUser(c *gin.Context) {
 	if err := user.Update(false); err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	switch req.Action {
+	case "disable", "ban", "enable", "promote", "demote":
+		if err := model.InvalidateUserCache(user.Id); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+		}
+		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+		}
 	}
 	clearUser := model.User{
 		Role:   user.Role,

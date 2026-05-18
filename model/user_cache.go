@@ -59,6 +59,10 @@ func invalidateUserCache(userId int) error {
 	return common.RedisDelKey(getUserCacheKey(userId))
 }
 
+func InvalidateUserCache(userId int) error {
+	return invalidateUserCache(userId)
+}
+
 // updateUserCache updates all user cache fields using hash
 func updateUserCache(user User) error {
 	if !common.RedisEnabled {

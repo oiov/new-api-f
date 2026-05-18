@@ -111,6 +111,46 @@ func TestTokenAuthStoresAuthorizedTokenGroups(t *testing.T) {
 	require.Equal(t, []string{"default", "vip"}, tokenGroups)
 }
 
+func TestTokenAuthDoesNotLeakTokenStatusForInvalidToken(t *testing.T) {
+	db := setupMiddlewareTestDB(t)
+
+	require.NoError(t, db.Create(&model.User{
+		Id:       11,
+		Username: "exhausted-user",
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		Quota:    1000,
+	}).Error)
+	require.NoError(t, db.Create(&model.Token{
+		Id:             21,
+		UserId:         11,
+		Name:           "exhausted-token",
+		Key:            "leakyexhaustedkey",
+		Status:         common.TokenStatusExhausted,
+		Group:          "default",
+		ExpiredTime:    -1,
+		RemainQuota:    0,
+		UnlimitedQuota: false,
+	}).Error)
+
+	engine := gin.New()
+	engine.Use(TokenAuth())
+	engine.GET("/test", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer sk-leakyexhaustedkey")
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.NotContains(t, rec.Body.String(), "TokenStatusExhausted")
+	require.NotContains(t, rec.Body.String(), "leakyexhaustedkey")
+	require.NotContains(t, rec.Body.String(), "额度已用尽")
+	require.Contains(t, rec.Body.String(), "无效的令牌")
+}
+
 func TestTokenTestRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

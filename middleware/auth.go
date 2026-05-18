@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func validUserInfo(username string, role int) bool {
@@ -46,7 +48,23 @@ func authHelper(c *gin.Context, minRole int) {
 			c.Abort()
 			return
 		}
-		user := model.ValidateAccessToken(accessToken)
+		user, authErr := model.ValidateAccessToken(accessToken)
+		if authErr != nil {
+			if errors.Is(authErr, model.ErrDatabase) {
+				common.SysLog("ValidateAccessToken database error: " + authErr.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "数据库错误，请联系管理员",
+				})
+			} else {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "无权进行此操作，access token 无效",
+				})
+			}
+			c.Abort()
+			return
+		}
 		if user != nil && user.Username != "" {
 			if !validUserInfo(user.Username, user.Role) {
 				c.JSON(http.StatusOK, gin.H{
@@ -105,7 +123,7 @@ func authHelper(c *gin.Context, minRole int) {
 		return
 	}
 	username = userCache.Username
-	if userCache.Status == common.UserStatusDisabled {
+	if !common.IsEnabledUserStatus(userCache.Status) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "用户已被封禁",
@@ -267,19 +285,28 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 
 		token, err := model.GetTokenByKey(key, false)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "无效的令牌",
-			})
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				common.SysLog("TokenAuthReadOnly GetTokenByKey database error: " + err.Error())
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "数据库错误，请联系管理员",
+				})
+			} else {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"success": false,
+					"message": "无效的令牌",
+				})
+			}
 			c.Abort()
 			return
 		}
 
 		userCache, err := model.GetUserCache(token.UserId)
 		if err != nil {
+			common.SysLog(fmt.Sprintf("TokenAuthReadOnly GetUserCache error for user %d: %v", token.UserId, err))
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
-				"message": err.Error(),
+				"message": "数据库错误，请联系管理员",
 			})
 			c.Abort()
 			return
@@ -364,7 +391,12 @@ func TokenAuth() func(c *gin.Context) {
 			}
 		}
 		if err != nil {
-			abortWithOpenAiMessage(c, http.StatusUnauthorized, err.Error())
+			if errors.Is(err, model.ErrDatabase) {
+				common.SysLog("TokenAuth ValidateUserToken database error: " + err.Error())
+				abortWithOpenAiMessage(c, http.StatusInternalServerError, "数据库错误，请联系管理员")
+			} else {
+				abortWithOpenAiMessage(c, http.StatusUnauthorized, "无效的令牌")
+			}
 			return
 		}
 
@@ -386,7 +418,8 @@ func TokenAuth() func(c *gin.Context) {
 
 		userCache, err := model.GetUserCache(token.UserId)
 		if err != nil {
-			abortWithOpenAiMessage(c, http.StatusInternalServerError, err.Error())
+			common.SysLog(fmt.Sprintf("TokenAuth GetUserCache error for user %d: %v", token.UserId, err))
+			abortWithOpenAiMessage(c, http.StatusInternalServerError, "数据库错误，请联系管理员")
 			return
 		}
 		userEnabled := userCache.Status == common.UserStatusEnabled

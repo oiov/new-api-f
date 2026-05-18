@@ -296,7 +296,7 @@ Each batch should get focused tests before implementation. Avoid broad cherry-pi
 
 ## Backport Execution Log
 
-This section is updated after each selective backport step. `HEAD` stays `ae0e3528de4d22e4611a1c14b59c92a301adf375` until these manual backports are committed.
+This section is updated after each selective backport step. Relay/provider fixes were committed locally as `69a31879c2ceee9c5ea62109042359ea34bada1c` (`fix: backport upstream relay protocol fixes`). Auth/token/cache fixes below are currently uncommitted working-tree changes on top of that commit.
 
 ### 2026-05-18 Relay Protocol Batch
 
@@ -328,16 +328,52 @@ Module verification after the above relay/provider backports:
 Continuation marker for next run:
 
 - Branch updated locally: `fishxcode`.
-- Local commit after this batch: still `ae0e3528de4d22e4611a1c14b59c92a301adf375` because these relay backports are currently uncommitted working-tree changes.
+- Local commit after this batch: `69a31879c2ceee9c5ea62109042359ea34bada1c` (`fix: backport upstream relay protocol fixes`).
 - Direct upstream ref compared: `upstream/fishxcode` at `7af2f0e4a33069650b5cb8c9869c21ffc55d6067`.
 - Original upstream ref compared: `quantumnous/main` at `5dd0d3bcbd7b1d523bd046a5f9cf9fc8ce28d579`.
-- Selective upstream commits applied in this uncommitted batch: `38a3314b9`, `db89b57e1`, `8ca103342`, `23fde25b1`, `45cc95a25`/`5b9dcf1bd`, `274307b0a`, `160cb2857`, `f7cdc727d`, `82c2008d2`.
+- Selective upstream commits applied in committed relay batch: `38a3314b9`, `db89b57e1`, `8ca103342`, `23fde25b1`, `45cc95a25`/`5b9dcf1bd`, `274307b0a`, `160cb2857`, `f7cdc727d`, `82c2008d2`.
 - Do not reapply the above commits on the next run; first check whether this working tree has been committed, then continue from deferred relay/provider candidates or ask user to choose another module.
 
 Deferred relay/provider candidates still requiring separate confirmation before implementation:
 
 - `8b2216152` / `bb5b9eaca`: Claude `TopP` API compatibility. Still needs local audit before deciding.
 - `3cad6b9d7`, `c04f82bfb`, `41cd051ea`: OpenAI-to-Claude empty content/file media conversion improvements. Still needs local audit before deciding.
+
+### 2026-05-18 Auth / Token / User Cache Security Batch
+
+Scope approved by user: auth/token/cache safety fixes. Payment/subscription changes remain excluded from this batch.
+
+| Upstream commit | Local status | Files touched | Verification | Notes |
+| --- | --- | --- | --- | --- |
+| `59c582d13` QuantumNous, `fix: harden token auth error handling to prevent info leakage` | Applied as uncommitted manual backport on top of local commit `69a31879c2ceee9c5ea62109042359ea34bada1c`. | `model/errors.go`, `model/token.go`, `model/user.go`, `middleware/auth.go`, tests in `model/auth_security_test.go`, `middleware/rate_limit_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestValidateUserTokenReturnsGenericSentinelForInvalidStates|TestValidateAccessTokenDistinguishesMissingFromDatabaseErrors|TestValidateAndFillReturnsSentinelErrors|TestInvalidateUserTokensCacheDeletesAllUserTokenCaches' -count=1` failed to compile because sentinel errors/new access-token signature/cache invalidation function were missing. Red first: `GOCACHE=/tmp/go-build-cache go test ./middleware -run 'TestTokenAuthDoesNotLeakTokenStatusForInvalidToken' -count=1` failed because the response leaked `TokenStatusExhausted` and token key fragments. Green after patch: both target commands passed. | Keeps local Chinese response style instead of importing the whole upstream i18n auth rewrite. TokenAuth now returns generic `无效的令牌` for expired/exhausted/disabled/not-found tokens and logs DB errors server-side. `ValidateAccessToken` now returns `(*User, error)` so DB failures are not treated as invalid credentials. |
+| `2819e3a1d` QuantumNous, `fix: improve login error handling to distinguish database errors from auth failures` | Applied as uncommitted manual backport. | `model/user.go`, `controller/user.go`, tests in `model/auth_security_test.go`. | Target model command passed: `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestValidateUserTokenReturnsGenericSentinelForInvalidStates|TestValidateAccessTokenDistinguishesMissingFromDatabaseErrors|TestValidateAndFillReturnsSentinelErrors|TestInvalidateUserTokensCacheDeletesAllUserTokenCaches' -count=1`. | `ValidateAndFill` now returns sentinel errors for empty credentials, invalid credentials, and database failures. `Login` maps DB errors to generic database error responses and invalid credentials to the existing username/password error message. |
+| `925342622` QuantumNous, `fix(user): invalidate user and token caches when disabling user` | Applied as uncommitted manual backport, adapted for local `disable`, `ban`, `enable`, `promote`, and `demote` actions. | `controller/user.go`, `model/token.go`, `model/user_cache.go`, tests in `model/auth_security_test.go`. | Target model command passed: `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestValidateUserTokenReturnsGenericSentinelForInvalidStates|TestValidateAccessTokenDistinguishesMissingFromDatabaseErrors|TestValidateAndFillReturnsSentinelErrors|TestInvalidateUserTokensCacheDeletesAllUserTokenCaches' -count=1`. | Adds exported `InvalidateUserCache` and `InvalidateUserTokensCache`. `ManageUser` invalidates all user token caches after delete and invalidates user plus token caches after status/role changes. Local extra `ban` action is included. |
+
+Auth batch implementation notes:
+
+- `middleware/auth.go` also now uses `common.IsEnabledUserStatus` for dashboard/access-token user cache checks, so locally added `UserStatusBanned` is treated as blocked alongside disabled users.
+- `TokenAuthReadOnly` now treats record-not-found as invalid token and other token/user-cache errors as database errors without returning raw DB error text to clients.
+- No `web-worker` API type change is expected: response status/message behavior changes only for invalid token/login/database failures. The frontend should already handle `success:false` and OpenAI-style error objects.
+
+Auth batch verification:
+
+- `git diff --check`: passed.
+- Target red/green tests passed after implementation:
+  - `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestValidateUserTokenReturnsGenericSentinelForInvalidStates|TestValidateAccessTokenDistinguishesMissingFromDatabaseErrors|TestValidateAndFillReturnsSentinelErrors|TestInvalidateUserTokensCacheDeletesAllUserTokenCaches' -count=1`
+  - `GOCACHE=/tmp/go-build-cache go test ./middleware -run 'TestTokenAuthDoesNotLeakTokenStatusForInvalidToken|TestTokenAuthStoresAuthorizedTokenGroups' -count=1`
+- Follow-up focused tests passed:
+  - `GOCACHE=/tmp/go-build-cache go test ./middleware -count=1`
+  - `GOCACHE=/tmp/go-build-cache go test ./controller -run 'Test.*User|Test.*Token|TestLogin|TestManage' -count=1`
+  - `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestValidateUserTokenReturnsGenericSentinelForInvalidStates|TestValidateAccessTokenDistinguishesMissingFromDatabaseErrors|TestValidateAndFillReturnsSentinelErrors|TestInvalidateUserTokensCacheDeletesAllUserTokenCaches|TestGetAllUsersStatusFilter|TestSearchUsersStatusFilter' -count=1`
+- Attempted `GOCACHE=/tmp/go-build-cache go test ./model ./middleware ./controller -count=1` and `GOCACHE=/tmp/go-build-cache go test ./model ./middleware -count=1`; both were stopped after the existing `model` package test binary produced no output for more than a minute. Focused `model` tests and full `middleware` tests passed afterward.
+
+Continuation marker for next run:
+
+- Branch updated locally: `fishxcode`.
+- Current committed base for this auth batch: `69a31879c2ceee9c5ea62109042359ea34bada1c`.
+- Auth/token/cache selective upstream commits applied in uncommitted working tree: `59c582d13`, `2819e3a1d`, `925342622`.
+- Direct upstream ref compared: `upstream/fishxcode` at `7af2f0e4a33069650b5cb8c9869c21ffc55d6067`.
+- Original upstream ref compared: `quantumnous/main` at `5dd0d3bcbd7b1d523bd046a5f9cf9fc8ce28d579`.
 
 ## Commands Used For This Snapshot
 
