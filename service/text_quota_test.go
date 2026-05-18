@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
@@ -205,6 +207,33 @@ func TestCalculateTextQuotaSummaryFallsBackToEstimatedPromptTokensWhenOnlyComple
 	require.Equal(t, 8, summary.CompletionTokens)
 	require.Equal(t, 508, summary.TotalTokens)
 	require.Equal(t, 532, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryFallsBackToImageResultCountForConvertedImageRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	common.SetContextKey(ctx, constant.ContextKeyImageResultURLs, []string{"https://cdn.example.com/a.png"})
+
+	relayInfo := &relaycommon.RelayInfo{
+		RelayFormat:            types.RelayFormatOpenAI,
+		RequestConversionChain: []types.RelayFormat{types.RelayFormatOpenAI, types.RelayFormatOpenAIImage},
+		OriginModelName:        "gpt-image-2",
+		PriceData: types.PriceData{
+			UsePrice:   true,
+			ModelPrice: 0.08,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{})
+
+	require.Equal(t, 1, summary.PromptTokens)
+	require.Equal(t, 1, summary.TotalTokens)
+	require.Equal(t, 40000, summary.Quota)
 }
 
 func TestCalculateTextQuotaSummaryDoesNotFallbackWhenCacheUsageExists(t *testing.T) {

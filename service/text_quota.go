@@ -123,6 +123,26 @@ func ApplyEstimatedPromptTokensFallback(relayInfo *relaycommon.RelayInfo, usage 
 	return usage
 }
 
+func applyImageResultUsageFallback(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) *dto.Usage {
+	if usage == nil {
+		usage = &dto.Usage{}
+	}
+	if ctx == nil || relayInfo == nil || relayInfo.GetFinalRequestRelayFormat() != types.RelayFormatOpenAIImage {
+		return usage
+	}
+	if usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 ||
+		usage.InputTokens > 0 || usage.OutputTokens > 0 || usageHasInputBillingSignals(usage) {
+		return usage
+	}
+	imageURLs := common.GetContextKeyStringSlice(ctx, constant.ContextKeyImageResultURLs)
+	if len(imageURLs) == 0 {
+		return usage
+	}
+	usage.PromptTokens = len(imageURLs)
+	usage.TotalTokens = len(imageURLs)
+	return usage
+}
+
 func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) textQuotaSummary {
 	summary := textQuotaSummary{
 		ModelName:            relayInfo.OriginModelName,
@@ -141,6 +161,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	}
 	summary.IsClaudeUsageSemantic = summary.UsageSemantic == "anthropic"
 
+	usage = applyImageResultUsageFallback(ctx, relayInfo, usage)
 	usage = ApplyEstimatedPromptTokensFallback(relayInfo, usage)
 
 	summary.PromptTokens = usage.PromptTokens
