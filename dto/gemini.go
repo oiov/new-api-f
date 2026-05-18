@@ -44,8 +44,9 @@ func (r *GeminiChatRequest) UnmarshalJSON(data []byte) error {
 }
 
 type ToolConfig struct {
-	FunctionCallingConfig *FunctionCallingConfig `json:"functionCallingConfig,omitempty"`
-	RetrievalConfig       *RetrievalConfig       `json:"retrievalConfig,omitempty"`
+	FunctionCallingConfig            *FunctionCallingConfig `json:"functionCallingConfig,omitempty"`
+	RetrievalConfig                  *RetrievalConfig       `json:"retrievalConfig,omitempty"`
+	IncludeServerSideToolInvocations *bool                  `json:"includeServerSideToolInvocations,omitempty"`
 }
 
 type FunctionCallingConfig struct {
@@ -119,6 +120,9 @@ func (r *GeminiChatRequest) GetTokenCountMeta() *types.TokenCountMeta {
 
 func (r *GeminiChatRequest) IsStream(c *gin.Context) bool {
 	if c.Query("alt") == "sse" {
+		return true
+	}
+	if c != nil && c.Request != nil && strings.Contains(c.Request.URL.Path, "streamGenerateContent") {
 		return true
 	}
 	return false

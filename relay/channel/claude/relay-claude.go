@@ -534,12 +534,14 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse, info *relaycommon
 	}
 	choice.SetStringContent(responseText)
 	if len(responseThinking) > 0 {
-		choice.ReasoningContent = responseThinking
+		choice.ReasoningContent = &responseThinking
 	}
 	if len(tools) > 0 {
 		choice.Message.SetToolCalls(tools)
 	}
-	choice.Message.ReasoningContent = thinkingContent
+	if thinkingContent != "" {
+		choice.Message.ReasoningContent = &thinkingContent
+	}
 	fullTextResponse.Model = relaycommon.DisplayedResponseModelName(info, claudeResponse.Model)
 	choices = append(choices, choice)
 	fullTextResponse.Choices = choices
@@ -574,6 +576,11 @@ func buildOpenAIStyleUsageFromClaudeUsage(usage *dto.Usage) dto.Usage {
 		return dto.Usage{}
 	}
 	clone := *usage
+	clone.ClaudeCacheCreation5mTokens, clone.ClaudeCacheCreation1hTokens = service.NormalizeCacheCreationSplit(
+		usage.PromptTokensDetails.CachedCreationTokens,
+		usage.ClaudeCacheCreation5mTokens,
+		usage.ClaudeCacheCreation1hTokens,
+	)
 	cacheCreationTokens := cacheCreationTokensForOpenAIUsage(usage)
 	totalInputTokens := usage.PromptTokens + usage.PromptTokensDetails.CachedTokens + cacheCreationTokens
 	clone.PromptTokens = totalInputTokens
@@ -603,11 +610,26 @@ func buildMessageDeltaPatchUsage(claudeResponse *dto.ClaudeResponse, claudeInfo 
 	if usage.CacheCreationInputTokens == 0 && claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens > 0 {
 		usage.CacheCreationInputTokens = claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens
 	}
-	if usage.CacheCreation == nil && (claudeInfo.Usage.ClaudeCacheCreation5mTokens > 0 || claudeInfo.Usage.ClaudeCacheCreation1hTokens > 0) {
-		usage.CacheCreation = &dto.ClaudeCacheCreationUsage{
-			Ephemeral5mInputTokens: claudeInfo.Usage.ClaudeCacheCreation5mTokens,
-			Ephemeral1hInputTokens: claudeInfo.Usage.ClaudeCacheCreation1hTokens,
-		}
+	cacheCreation5m := 0
+	cacheCreation1h := 0
+	if usage.CacheCreation != nil {
+		cacheCreation5m = usage.CacheCreation.Ephemeral5mInputTokens
+		cacheCreation1h = usage.CacheCreation.Ephemeral1hInputTokens
+	} else {
+		cacheCreation5m = claudeInfo.Usage.ClaudeCacheCreation5mTokens
+		cacheCreation1h = claudeInfo.Usage.ClaudeCacheCreation1hTokens
+	}
+	cacheCreation5m, cacheCreation1h = service.NormalizeCacheCreationSplit(
+		usage.CacheCreationInputTokens,
+		cacheCreation5m,
+		cacheCreation1h,
+	)
+	if usage.CacheCreation == nil && (cacheCreation5m > 0 || cacheCreation1h > 0) {
+		usage.CacheCreation = &dto.ClaudeCacheCreationUsage{}
+	}
+	if usage.CacheCreation != nil {
+		usage.CacheCreation.Ephemeral5mInputTokens = cacheCreation5m
+		usage.CacheCreation.Ephemeral1hInputTokens = cacheCreation1h
 	}
 	return usage
 }
@@ -802,7 +824,14 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 		if common.DebugEnabled {
 			common.SysLog("claude response usage is not complete, maybe upstream error")
 		}
-		claudeInfo.Usage = service.ResponseText2Usage(c, claudeInfo.ResponseText.String(), info.UpstreamModelName, claudeInfo.Usage.PromptTokens)
+		fallback := service.ResponseText2Usage(c, claudeInfo.ResponseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		if claudeInfo.Usage.CompletionTokens == 0 {
+			claudeInfo.Usage.CompletionTokens = fallback.CompletionTokens
+		}
+		if claudeInfo.Usage.PromptTokens == 0 {
+			claudeInfo.Usage.PromptTokens = fallback.PromptTokens
+		}
+		claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens
 	}
 	if claudeInfo.Usage != nil {
 		claudeInfo.Usage.UsageSemantic = "anthropic"

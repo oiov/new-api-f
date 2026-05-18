@@ -224,6 +224,64 @@ func TestClaudeStreamHandlerFallsBackToEstimatedPromptTokensWhenUpstreamUsageIsZ
 	require.GreaterOrEqual(t, info.FirstResponseTime.Sub(start), time.Duration(0))
 }
 
+func TestHandleStreamFinalResponsePreservesClaudeCacheUsageWhenCompletionMissing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	info := &relaycommon.RelayInfo{
+		RelayFormat:        types.RelayFormatClaude,
+		ShouldIncludeUsage: false,
+		ChannelMeta:        &relaycommon.ChannelMeta{UpstreamModelName: "claude-3-5-sonnet"},
+	}
+	info.SetEstimatePromptTokens(1234)
+
+	claudeInfo := &ClaudeResponseInfo{
+		ResponseText: strings.Builder{},
+		Usage: &dto.Usage{
+			PromptTokens: 100,
+			PromptTokensDetails: dto.InputTokenDetails{
+				CachedTokens:         30,
+				CachedCreationTokens: 50,
+			},
+			ClaudeCacheCreation5mTokens: 10,
+			ClaudeCacheCreation1hTokens: 20,
+		},
+	}
+	claudeInfo.ResponseText.WriteString("hello")
+
+	HandleStreamFinalResponse(c, info, claudeInfo)
+
+	require.NotNil(t, claudeInfo.Usage)
+	require.Equal(t, 100, claudeInfo.Usage.PromptTokens)
+	require.Greater(t, claudeInfo.Usage.CompletionTokens, 0)
+	require.Equal(t, 30, claudeInfo.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, 50, claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens)
+	require.Equal(t, 10, claudeInfo.Usage.ClaudeCacheCreation5mTokens)
+	require.Equal(t, 20, claudeInfo.Usage.ClaudeCacheCreation1hTokens)
+	require.Equal(t, claudeInfo.Usage.PromptTokens+claudeInfo.Usage.CompletionTokens, claudeInfo.Usage.TotalTokens)
+}
+
+func TestBuildOpenAIStyleUsageFromClaudeUsageDefaultsAggregateCacheCreationTo5m(t *testing.T) {
+	usage := &dto.Usage{
+		PromptTokens:     100,
+		CompletionTokens: 20,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:         30,
+			CachedCreationTokens: 50,
+		},
+		UsageSemantic: "anthropic",
+	}
+
+	openAIUsage := buildOpenAIStyleUsageFromClaudeUsage(usage)
+
+	require.Equal(t, 50, openAIUsage.ClaudeCacheCreation5mTokens)
+	require.Equal(t, 0, openAIUsage.ClaudeCacheCreation1hTokens)
+	require.Equal(t, 180, openAIUsage.PromptTokens)
+	require.Equal(t, 200, openAIUsage.TotalTokens)
+}
+
 func TestBuildOpenAIStyleUsageFromClaudeUsage(t *testing.T) {
 	usage := &dto.Usage{
 		PromptTokens:     100,
