@@ -10,12 +10,48 @@ Purpose: record the current comparison between this fork, `dext7r/Zeabur` branch
 
 | Role | Ref | Commit | Notes |
 | --- | --- | --- | --- |
-| This fork | `HEAD`, `origin/fishxcode` | `ae0e3528de4d22e4611a1c14b59c92a301adf375` | `feat: 添加图像结果计数回退逻辑及相关单元测试` |
-| Direct upstream | `upstream/fishxcode` | `7af2f0e4a33069650b5cb8c9869c21ffc55d6067` | `Merge pull request #18 from dext7r/claude/amazing-dirac-d55317` |
+| This fork | `HEAD` | `28f19a5468306b82797bc16c4caae94bbebee915` | `fix: harden epay stripe topup callbacks`; one commit ahead of `origin/fishxcode` |
+| Fork remote | `origin/fishxcode` | `ca1f26586caf019c2d59d6bfdf8f4a6706f7c700` | `fix: backport upstream ssrf hardening` |
+| Direct upstream | `upstream/fishxcode` | `404d54bd976942bd1b25ba5cff309a5c830f5368` | `优化活动抽奖历史报名展示` |
 | Zeabur mirror of original upstream | `upstream/new-api` | `5d93351d04269d9504e5fd0a5fd32ded674ddef2` | Mirror sync commit only, `sync: QuantumNous/new-api@fbf235d2` |
 | Original upstream | `quantumnous/main` | `5dd0d3bcbd7b1d523bd046a5f9cf9fc8ce28d579` | `fix: add analytics placeholder (#4928)` |
 
 Working tree note: `web-worker/` is untracked. Do not modify or delete it unless explicitly requested.
+
+## Current Check 2026-05-19
+
+Fresh fetch of `upstream` and `QuantumNous/new-api` produced no ref changes during this check.
+
+- Local `HEAD`: `28f19a5468306b82797bc16c4caae94bbebee915` (`fix: harden epay stripe topup callbacks`).
+- `origin/fishxcode`: `ca1f26586caf019c2d59d6bfdf8f4a6706f7c700` (`fix: backport upstream ssrf hardening`), one commit behind local `HEAD`.
+- Direct upstream `upstream/fishxcode`: `404d54bd976942bd1b25ba5cff309a5c830f5368` (`优化活动抽奖历史报名展示`).
+- Zeabur mirror sync marker `upstream/new-api`: `5d93351d04269d9504e5fd0a5fd32ded674ddef2`.
+- Original upstream `quantumnous/main`: `5dd0d3bcbd7b1d523bd046a5f9cf9fc8ce28d579` (`fix: add analytics placeholder (#4928)`).
+- Worktree note remains: `web-worker/` is untracked and should not be touched during upstream triage unless explicitly requested.
+
+Merge bases remain unchanged:
+
+- Local vs Zeabur: `8aa8b81e03522f306d24134725378228e64b03ab`
+- Local vs QuantumNous main: `9ae9040b3c9dab88660fb9724d182393d0137861`
+- Zeabur fishxcode vs QuantumNous main: `8aa8b81e03522f306d24134725378228e64b03ab`
+
+Current ancestry counts:
+
+- `upstream/fishxcode ^HEAD --no-merges`: 473 upstream non-merge commits not in local by ancestry.
+- `quantumnous/main ^HEAD --no-merges`: 231 original-upstream non-merge commits not in local by ancestry.
+- `HEAD ^upstream/fishxcode --no-merges`: 412 local non-merge commits not in Zeabur by ancestry.
+- `HEAD ^quantumnous/main --no-merges`: 374 local non-merge commits not in QuantumNous by ancestry.
+
+Progress checkpoint:
+
+- Relay/provider protocol batch is committed locally as `69a31879c2ceee9c5ea62109042359ea34bada1c`.
+- Auth/token/user-cache security batch is committed locally as `ddd501c95`.
+- Auth/relay real smoke-test results are recorded in `656743e5e7f6f93ad591a11de83db4d70590ff82`.
+- SSRF/URL-fetch safety batch is committed locally as `ca1f26586caf019c2d59d6bfdf8f4a6706f7c700`.
+- EPay/Stripe ordinary top-up provider-guard subset is committed locally as `28f19a5468306b82797bc16c4caae94bbebee915`.
+- Because these were manual backports, their upstream commit hashes can still appear in ancestry-only `git log upstream ^HEAD` output. Treat the local batch commits above as the source of truth for progress.
+
+Recommendation remains unchanged: do not direct-merge `upstream/fishxcode` or `quantumnous/main`. Continue manual backport batches. The next high-value backend batches are payment/subscription callback provider guards not covered by `28f19a546`, top-up query DoS limits, admin/query correctness, and cross-DB/config correctness.
 
 ## Recheck 2026-05-18
 
@@ -105,10 +141,10 @@ Interpretation:
 
 Quick counts from current refs:
 
-- `git log --oneline upstream/fishxcode ^HEAD --no-merges | wc -l`: 467 upstream non-merge commits not in local by ancestry.
+- `git log --oneline upstream/fishxcode ^HEAD --no-merges | wc -l`: 473 upstream non-merge commits not in local by ancestry.
 - `git log --oneline quantumnous/main ^HEAD --no-merges | wc -l`: 231 original-upstream non-merge commits not in local by ancestry.
-- `git log --oneline HEAD ^upstream/fishxcode --no-merges | wc -l`: 406 local non-merge commits not in Zeabur by ancestry.
-- `git log --oneline HEAD ^quantumnous/main --no-merges | wc -l`: 368 local non-merge commits not in QuantumNous by ancestry.
+- `git log --oneline HEAD ^upstream/fishxcode --no-merges | wc -l`: 412 local non-merge commits not in Zeabur by ancestry.
+- `git log --oneline HEAD ^quantumnous/main --no-merges | wc -l`: 374 local non-merge commits not in QuantumNous by ancestry.
 
 Conclusion: do not directly merge either upstream branch. The histories and product direction diverged enough that direct merge would pull large DIY feature sets and old/new web frontend work that is not aligned with this fork's `web-worker` focus.
 
@@ -128,11 +164,11 @@ These should be handled as manual backports with focused tests. Do not cherry-pi
 
 | Commit | Source | Status in local | Recommendation |
 | --- | --- | --- | --- |
-| `59c582d13` | QuantumNous | Not applied. Local `model.ValidateAccessToken` still returns only `*User` and swallows DB errors; `middleware.authHelper` still exposes exact invalid/disabled access-token state. | Backport manually. Preserve local `Fish-X-Code-User` header behavior while hiding token state and surfacing DB errors correctly. |
-| `2819e3a1d` | QuantumNous | Not applied. Login/access-token validation still lacks the upstream DB-error distinction. | Backport with `59c582d13` as one auth hardening batch. |
-| `925342622` | QuantumNous | Not applied. Local `ManageUser` disable/ban/enable/delete path does not invalidate user cache or all token caches. Local has only unexported `invalidateUserCache`; there is no `InvalidateUserTokensCache`. | Backport manually into local user/token cache model. Include tests for disabled user token invalidation. |
+| `59c582d13` | QuantumNous | Applied as committed manual backport in `ddd501c95`. | Already covered. Preserve local `Fish-X-Code-User` header behavior if this area is touched again. |
+| `2819e3a1d` | QuantumNous | Applied as committed manual backport in `ddd501c95`. | Already covered. |
+| `925342622` | QuantumNous | Applied as committed manual backport in `ddd501c95`, including local `ban`, `promote`, and `demote` paths. | Already covered. |
 
-Local evidence:
+Historical local evidence before the auth batch:
 
 - `middleware/auth.go`: `authHelper` calls `model.ValidateAccessToken(accessToken)` and returns distinct messages for missing/invalid access token and disabled user.
 - `model/user.go`: `ValidateAccessToken(token string) *User` uses `DB.Where("access_token = ?", token).First(user).RowsAffected == 1`, no error return.
@@ -153,10 +189,10 @@ These were checked while writing the snapshot:
 
 | Commit | Source | Status in local | Recommendation |
 | --- | --- | --- | --- |
-| `20399d3c8` | QuantumNous | Not fully applied. Local `service/download.go`, `service/webhook.go`, `service/payment_notify.go`, and `service/user_notify.go` use fetch settings, but unauthenticated/user-level endpoints such as video proxy/MJ need audit. Default `ApplyIPFilterForDomain` is still false. | Backport manually. Treat as security priority. |
-| `e2807c5f9` | QuantumNous | Not fully applied. Local `common/ssrf_protection.go` has private/link-local checks but lacks the expanded/reserved range hardening from upstream. | Backport with `20399d3c8`; add tests for IPv4/IPv6 private/reserved, domain resolution, and allowed ports. |
+| `20399d3c8` | QuantumNous | Applied as committed manual backport in `ca1f26586`, adapted to local video proxy, MJ proxy, fetch defaults, and channel model-fetch route. | Already covered for audited unauthenticated/user-level fetch paths. Re-audit any newly added outbound URL fetcher. |
+| `e2807c5f9` | QuantumNous | Applied as committed manual backport in `ca1f26586`. | Already covered. Keep expanded IPv4/IPv6 special-purpose range tests if touching SSRF code. |
 
-Local evidence:
+Historical local evidence before the SSRF batch:
 
 - `common/ssrf_protection.go`: `DefaultSSRFProtection` does not set `ApplyIPFilterForDomain`; `setting/system_setting/fetch_setting.go` default is false.
 - Current implementation performs DNS lookup only when `ApplyIPFilterForDomain` is true.
@@ -167,16 +203,16 @@ Local evidence:
 
 | Commit | Source | Status in local | Recommendation |
 | --- | --- | --- | --- |
-| `a7c38ec85` | QuantumNous | Not applied. Local `TopUp` and `SubscriptionOrder` have `PaymentMethod`, but no separate `PaymentProvider`. Subscription completion still completes by trade number only. | Manual security backport. Add provider guard to topup and subscription callbacks; migrate old rows carefully for SQLite/MySQL/Postgres. |
+| `a7c38ec85` | QuantumNous | Partially applied as committed manual backport in `28f19a546` for ordinary EPay and Stripe top-up only. Subscription, Creem, and Waffo behavior remain unchanged. | Continue manual security backport for subscription callback provider guards only after separate scope confirmation. |
 | `b2e62a44e` | QuantumNous | Not applied. Local top-up filtering has payment method filters, but no hard query window / DoS cap equivalent. | Backport after provider guard. |
 | `e70eaec4d` / `6f26145bf` | QuantumNous/Zeabur | Partially applied locally via payment method checks. | Audit before merging; keep local Stripe/Waffo/Creem behavior intact. |
 
-Local evidence:
+Current payment evidence:
 
-- `model/topup.go` contains `PaymentMethod` and `ErrPaymentMethodMismatch`, but no `PaymentProvider`.
+- `model/topup.go` now contains an internal `PaymentProvider` field and provider checks for ordinary EPay/Stripe top-up completion/expiry.
 - `model/subscription.go` has `CompleteSubscriptionOrderWithResult(tradeNo, providerPayload)` without provider argument.
 - Callback controllers call completion by `tradeNo` only.
-- QuantumNous adds `PaymentProvider` to both `TopUp` and `SubscriptionOrder`; local subscription model is heavily extended, so this must be a manual backport rather than cherry-pick.
+- QuantumNous adds `PaymentProvider` to both `TopUp` and `SubscriptionOrder`; local top-up EPay/Stripe subset is covered, but local subscription model is heavily extended and still needs a separate manual backport rather than cherry-pick.
 - Local `model/subscription.go` already has `ProviderPayload`, so keep that field and add provider guard parameters around the existing completion/expiry APIs.
 - `b2e62a44e` should be adapted to local filtered top-up search: local has admin/user filters, but lacks upstream's `sanitizeLikePattern`, count hard limit, and user-side time cutoff.
 
@@ -184,22 +220,22 @@ Local evidence:
 
 | Commit | Source | Status in local | Recommendation |
 | --- | --- | --- | --- |
-| `38a3314b9` | QuantumNous | Not applied. Local `dto.ImageRequest` lacks `Images`, `Mask`, and `InputFidelity`; image edit validation still likely drops reference fields. | Backport. Important for OpenAI image edit compatibility. |
-| `db89b57e1` | QuantumNous | Not applied. Local Responses tool `Arguments` fields are still `string`; no `common.JsonRawMessageToString`. | Backport. Important for raw JSON tool arguments. |
-| `8ca103342` | QuantumNous | Not applied. Local request `dto.Message.ReasoningContent` and `Reasoning` are still `string` with `omitempty`, so explicit empty values are dropped. | Backport. Aligns with AGENTS.md Rule 6 about preserving explicit zero values. |
-| `f7cdc727d` | QuantumNous | Applied as uncommitted manual backport in the current working tree. | Covered in the 2026-05-18 relay protocol batch with Claude stream tests and real-call smoke tests. |
-| `82c2008d2` | QuantumNous | Applied as uncommitted manual backport in the current working tree. | Covered in the 2026-05-18 relay protocol batch with Claude stream tests and real-call smoke tests. |
-| `23fde25b1` | QuantumNous | Not applied. Gemini stream detection should include `:streamGenerateContent` URL path. | Backport. |
-| `45cc95a25` / `5b9dcf1bd` | QuantumNous | Not applied. Local `dto.Gemini ToolConfig` lacks `IncludeServerSideToolInvocations`. | Backport with `23fde25b1`; this is tiny and low conflict. |
+| `38a3314b9` | QuantumNous | Applied as committed manual backport in `69a31879c`. | Already covered. |
+| `db89b57e1` | QuantumNous | Applied as committed manual backport in `69a31879c`. | Already covered. |
+| `8ca103342` | QuantumNous | Applied as committed manual backport in `69a31879c`. | Already covered. |
+| `f7cdc727d` | QuantumNous | Applied as committed manual backport in `69a31879c`. | Already covered with Claude stream tests and real-call smoke tests. |
+| `82c2008d2` | QuantumNous | Applied as committed manual backport in `69a31879c`. | Already covered with Claude stream tests and real-call smoke tests. |
+| `23fde25b1` | QuantumNous | Applied as committed manual backport in `69a31879c`. | Already covered. |
+| `45cc95a25` / `5b9dcf1bd` | QuantumNous | Applied as committed manual backport in `69a31879c`. | Already covered. |
 | `8b2216152` / `bb5b9eaca` | QuantumNous | Not fully verified. Claude `TopP` should be nil for API compatibility in relevant paths. | Backport if local still sends zero TopP. |
 | `3cad6b9d7`, `c04f82bfb`, `41cd051ea` | QuantumNous | Needs manual inspection. These improve OpenAI-to-Claude empty content/file media conversion. | Candidate if Claude Messages/media compatibility is important. |
 | `3ab65a822` | QuantumNous | Needs inspection. Azure `/v1/responses/compact` routing support. | Candidate if Azure Responses compact is used. |
-| `53cf37a46` / `274307b0a` | QuantumNous | Needs inspection. Ali task polling accepts string usage values. | Candidate for Ali task billing robustness. |
-| `160cb2857` | QuantumNous | Needs inspection. Zhipu coding-plan image endpoint. | Candidate if Zhipu image generation is used. |
+| `53cf37a46` / `274307b0a` | QuantumNous | `274307b0a` applied as committed manual backport in `69a31879c`; `53cf37a46` still needs separate inspection if it contains additional behavior. | Mostly covered for Ali string usage values. |
+| `160cb2857` | QuantumNous | Applied as committed manual backport in `69a31879c`. | Already covered. |
 | `987b7ecd2` | QuantumNous | Not applied. Vertex adapters still need custom `base_url` gateway prefix audit. | Backport only if custom Vertex gateways are used; otherwise medium priority. |
 | `4ba328a2c` | Zeabur | Already covered. Local Claude adaptor applies forced beta query at final URL construction and reads `ChannelOtherSettings.ClaudeBetaQuery`. | Skip. |
 
-Local evidence:
+Historical local evidence before the relay batch:
 
 - `dto/openai_image.go`: `ImageRequest` has `Image json.RawMessage`, but not `Images`, `Mask`, or `InputFidelity`.
 - `dto/openai_request.go`: request `Message.ReasoningContent string` and `Reasoning string`.
@@ -213,8 +249,8 @@ Local evidence:
 Additional relay/provider inspection:
 
 - `3ab65a822`: rechecked; local `relay/channel/openai/adaptor.go` already has Azure `RelayModeResponsesCompact` URL routing. Treat as already covered.
-- `274307b0a` / `53cf37a46`: rechecked; local Ali task usage fields are still `int`. `dto.IntValue` already exists, so this is a low-risk backport for upstreams that return usage numbers as strings.
-- `160cb2857`: rechecked; local Zhipu v4 uses `specialPlan.OpenAIBaseURL` for embeddings/chat but not image generation. Backport if Zhipu coding-plan image generation is in use.
+- `274307b0a`: applied in `69a31879c`; local Ali task usage fields now accept string values via `dto.IntValue`.
+- `160cb2857`: applied in `69a31879c`; local Zhipu coding-plan image generation now uses the special OpenAI base URL.
 - `4ba328a2c`: rechecked; local Claude forced beta final-URL fix is already present.
 
 ### Logs, Channel Lists, And Admin Query Correctness
@@ -349,14 +385,14 @@ Scope approved by user: relay/provider protocol compatibility only. Payment/subs
 
 | Upstream commit | Local status | Files touched | Verification | Notes |
 | --- | --- | --- | --- | --- |
-| `38a3314b9` QuantumNous, `fix: preserve OpenAI image edit reference fields (#4646)` | Applied as uncommitted manual backport. | `dto/openai_image.go`, `relay/helper/valid_request.go`, `relay/channel/openai/adaptor.go`, tests in `dto/openai_image_test.go`, `relay/channel/openai/image_edit_json_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./dto ./relay/channel/openai -run 'TestImageRequestPreservesEditReferenceFields|TestConvertImageRequestLeavesJSONEditRequestAsJSON' -count=1` failed because fields were dropped and JSON edit was parsed as multipart. Green after patch: same command passed. | Adds `ImageRequest.Images`, `Mask`, `InputFidelity`; JSON `images/edits` requests now stay JSON instead of forcing multipart/form-data. No `web-worker` API change expected because this is provider request passthrough/compatibility. |
-| `db89b57e1` QuantumNous, `fix: support raw JSON response tool arguments` | Applied as uncommitted manual backport. | `common/json.go`, `dto/openai_response.go`, `relay/channel/openai/chat_via_responses.go`, `service/openaicompat/responses_to_chat.go`, tests in `common/json_test.go`, `dto/openai_response_arguments_test.go`, `service/openaicompat/responses_to_chat_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./common ./dto ./service/openaicompat -run 'TestJsonRawMessageToString|TestResponsesOutputArguments|TestResponsesResponseToChatCompletionsResponseConvertsRawJSONToolArguments' -count=1` failed to compile because helper/methods were missing and `Arguments` was `string`. Green after patch: `GOCACHE=/tmp/go-build-cache go test ./common ./dto ./service/openaicompat ./relay/channel/openai -run 'TestJsonRawMessageToString|TestResponsesOutputArguments|TestResponsesResponseToChatCompletionsResponseConvertsRawJSONToolArguments' -count=1` passed. | `ResponsesOutput.Arguments` now accepts raw JSON and converts back to Chat Completions string form. No `web-worker` change expected unless it directly depends on internal Responses DTO typing, which will be checked at module end. |
-| `8ca103342` QuantumNous, `fix: Message.ReasoningContent/Reasoning 改为 *string` | Applied as uncommitted manual backport. | `dto/openai_request.go`, `relay/channel/openai/relay-openai.go`, `relay/channel/claude/relay-claude.go`, `relay/channel/gemini/relay-gemini.go`, `relay/channel/ollama/stream.go`, test in `dto/message_reasoning_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./dto -run 'TestMessageReasoningContent|TestMessageGetReasoningContent' -count=1` failed to compile because fields were `string` and getter was missing. Green after patch: `GOCACHE=/tmp/go-build-cache go test ./dto ./relay/channel/openai ./relay/channel/claude ./relay/channel/gemini ./relay/channel/ollama -run 'TestMessageReasoningContent|TestMessageGetReasoningContent' -count=1` passed. | Preserves explicit empty `reasoning_content` / `reasoning` when forwarding requests, aligning with AGENTS.md optional scalar rule. Provider conversions now assign pointer values where needed. |
-| `23fde25b1` QuantumNous, `fix(gemini): detect streaming from URL path :streamGenerateContent`; `45cc95a25` / `5b9dcf1bd`, `fix(gemini): add IncludeServerSideToolInvocations field to ToolConfig` | Applied as uncommitted manual backport. | `dto/gemini.go`, tests in `dto/gemini_isstream_test.go`, `dto/gemini_tool_config_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./dto -run 'TestGeminiChatRequestIsStream|TestGeminiToolConfigPreservesIncludeServerSideToolInvocationsFalse' -count=1` failed to compile because `ToolConfig.IncludeServerSideToolInvocations` was missing. Green after patch: same command passed. | Native Gemini `:streamGenerateContent` requests now set stream mode even without `alt=sse`; `includeServerSideToolInvocations:false` is preserved as an explicit optional bool. |
-| `274307b0a` QuantumNous, `fix(ali): accept string usage values in task polling` | Applied as uncommitted manual backport. | `relay/channel/task/ali/adaptor.go`, test in `relay/channel/task/ali/adaptor_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./relay/channel/task/ali ./relay/channel/zhipu_4v -run 'TestAliUsageAcceptsStringValues|TestGetRequestURLUsesSpecialOpenAIBaseForImageGeneration' -count=1` failed on Ali with `cannot unmarshal string into ... int`. Green after patch: same command passed. | Uses existing `dto.IntValue` for Ali usage counters, accepting both numeric and string values. |
-| `160cb2857` QuantumNous, `fix(zhipu_4v): use correct endpoint for coding plan image generation (#4146)` | Applied as uncommitted manual backport. | `relay/channel/zhipu_4v/adaptor.go`, test in `relay/channel/zhipu_4v/adaptor_test.go`. | Red first: same command as Ali/Zhipu above failed because `glm-coding-plan` image generation produced `glm-coding-plan/api/paas/v4/images/generations`. Green after patch: same command passed. | Zhipu coding-plan image generation now uses `ChannelSpecialBases[baseURL].OpenAIBaseURL + /images/generations`, matching existing special-base behavior for chat/embeddings. |
-| `f7cdc727d` QuantumNous, `fix: Claude 流式断流时不再整份覆盖 usage，保留 cache 计费字段` | Applied as uncommitted manual backport. | `relay/channel/claude/relay-claude.go`, tests in `relay/channel/claude/relay_claude_test.go`. | Red/green coverage added around `HandleStreamFinalResponse`: fallback completion estimation now patches missing prompt/completion values only, instead of replacing the whole usage object. Target command passed: `GOCACHE=/tmp/go-build-cache go test ./relay/channel/claude ./service -run 'TestHandleStreamFinalResponsePreservesClaudeCacheUsageWhenCompletionMissing|TestBuildOpenAIStyleUsageFromClaudeUsageDefaultsAggregateCacheCreationTo5m|TestBuildMessageDeltaPatchUsage|TestStreamResponseOpenAI2ClaudeEmitsUsageOnlyFinalChunk|TestBuildClaudeUsageFromOpenAIUsageDefaultsAggregateCacheCreationTo5m' -count=1`. | Preserves Claude cache read/cache creation fields when a stream ends without complete upstream usage. This is billing/accounting correctness, not a frontend feature. |
-| `82c2008d2` QuantumNous, `fix: emit claude message_delta for usage-only final stream chunk` | Applied as uncommitted manual backport. | `service/convert.go`, `relay/channel/claude/relay-claude.go`, tests in `service/convert_claude_stream_test.go`, `relay/channel/claude/message_delta_usage_patch_test.go`, `relay/channel/claude/relay_claude_test.go`. | Target command passed: `GOCACHE=/tmp/go-build-cache go test ./relay/channel/claude ./service -run 'TestHandleStreamFinalResponsePreservesClaudeCacheUsageWhenCompletionMissing|TestBuildOpenAIStyleUsageFromClaudeUsageDefaultsAggregateCacheCreationTo5m|TestBuildMessageDeltaPatchUsage|TestStreamResponseOpenAI2ClaudeEmitsUsageOnlyFinalChunk|TestBuildClaudeUsageFromOpenAIUsageDefaultsAggregateCacheCreationTo5m' -count=1`. Follow-up package command passed: `GOCACHE=/tmp/go-build-cache go test ./relay/channel/claude ./service ./dto ./relay/helper -count=1`. | OpenAI-to-Claude streaming conversion now defers close events until a usage-only final chunk arrives, then emits Claude `message_delta` usage and `message_stop`. Aggregate cache creation token remainders default to the 5m bucket to match upstream semantics. |
+| `38a3314b9` QuantumNous, `fix: preserve OpenAI image edit reference fields (#4646)` | Applied as committed manual backport in `69a31879c`. | `dto/openai_image.go`, `relay/helper/valid_request.go`, `relay/channel/openai/adaptor.go`, tests in `dto/openai_image_test.go`, `relay/channel/openai/image_edit_json_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./dto ./relay/channel/openai -run 'TestImageRequestPreservesEditReferenceFields|TestConvertImageRequestLeavesJSONEditRequestAsJSON' -count=1` failed because fields were dropped and JSON edit was parsed as multipart. Green after patch: same command passed. | Adds `ImageRequest.Images`, `Mask`, `InputFidelity`; JSON `images/edits` requests now stay JSON instead of forcing multipart/form-data. No `web-worker` API change expected because this is provider request passthrough/compatibility. |
+| `db89b57e1` QuantumNous, `fix: support raw JSON response tool arguments` | Applied as committed manual backport in `69a31879c`. | `common/json.go`, `dto/openai_response.go`, `relay/channel/openai/chat_via_responses.go`, `service/openaicompat/responses_to_chat.go`, tests in `common/json_test.go`, `dto/openai_response_arguments_test.go`, `service/openaicompat/responses_to_chat_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./common ./dto ./service/openaicompat -run 'TestJsonRawMessageToString|TestResponsesOutputArguments|TestResponsesResponseToChatCompletionsResponseConvertsRawJSONToolArguments' -count=1` failed to compile because helper/methods were missing and `Arguments` was `string`. Green after patch: `GOCACHE=/tmp/go-build-cache go test ./common ./dto ./service/openaicompat ./relay/channel/openai -run 'TestJsonRawMessageToString|TestResponsesOutputArguments|TestResponsesResponseToChatCompletionsResponseConvertsRawJSONToolArguments' -count=1` passed. | `ResponsesOutput.Arguments` now accepts raw JSON and converts back to Chat Completions string form. No `web-worker` change expected unless it directly depends on internal Responses DTO typing, which will be checked at module end. |
+| `8ca103342` QuantumNous, `fix: Message.ReasoningContent/Reasoning 改为 *string` | Applied as committed manual backport in `69a31879c`. | `dto/openai_request.go`, `relay/channel/openai/relay-openai.go`, `relay/channel/claude/relay-claude.go`, `relay/channel/gemini/relay-gemini.go`, `relay/channel/ollama/stream.go`, test in `dto/message_reasoning_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./dto -run 'TestMessageReasoningContent|TestMessageGetReasoningContent' -count=1` failed to compile because fields were `string` and getter was missing. Green after patch: `GOCACHE=/tmp/go-build-cache go test ./dto ./relay/channel/openai ./relay/channel/claude ./relay/channel/gemini ./relay/channel/ollama -run 'TestMessageReasoningContent|TestMessageGetReasoningContent' -count=1` passed. | Preserves explicit empty `reasoning_content` / `reasoning` when forwarding requests, aligning with AGENTS.md optional scalar rule. Provider conversions now assign pointer values where needed. |
+| `23fde25b1` QuantumNous, `fix(gemini): detect streaming from URL path :streamGenerateContent`; `45cc95a25` / `5b9dcf1bd`, `fix(gemini): add IncludeServerSideToolInvocations field to ToolConfig` | Applied as committed manual backport in `69a31879c`. | `dto/gemini.go`, tests in `dto/gemini_isstream_test.go`, `dto/gemini_tool_config_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./dto -run 'TestGeminiChatRequestIsStream|TestGeminiToolConfigPreservesIncludeServerSideToolInvocationsFalse' -count=1` failed to compile because `ToolConfig.IncludeServerSideToolInvocations` was missing. Green after patch: same command passed. | Native Gemini `:streamGenerateContent` requests now set stream mode even without `alt=sse`; `includeServerSideToolInvocations:false` is preserved as an explicit optional bool. |
+| `274307b0a` QuantumNous, `fix(ali): accept string usage values in task polling` | Applied as committed manual backport in `69a31879c`. | `relay/channel/task/ali/adaptor.go`, test in `relay/channel/task/ali/adaptor_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./relay/channel/task/ali ./relay/channel/zhipu_4v -run 'TestAliUsageAcceptsStringValues|TestGetRequestURLUsesSpecialOpenAIBaseForImageGeneration' -count=1` failed on Ali with `cannot unmarshal string into ... int`. Green after patch: same command passed. | Uses existing `dto.IntValue` for Ali usage counters, accepting both numeric and string values. |
+| `160cb2857` QuantumNous, `fix(zhipu_4v): use correct endpoint for coding plan image generation (#4146)` | Applied as committed manual backport in `69a31879c`. | `relay/channel/zhipu_4v/adaptor.go`, test in `relay/channel/zhipu_4v/adaptor_test.go`. | Red first: same command as Ali/Zhipu above failed because `glm-coding-plan` image generation produced `glm-coding-plan/api/paas/v4/images/generations`. Green after patch: same command passed. | Zhipu coding-plan image generation now uses `ChannelSpecialBases[baseURL].OpenAIBaseURL + /images/generations`, matching existing special-base behavior for chat/embeddings. |
+| `f7cdc727d` QuantumNous, `fix: Claude 流式断流时不再整份覆盖 usage，保留 cache 计费字段` | Applied as committed manual backport in `69a31879c`. | `relay/channel/claude/relay-claude.go`, tests in `relay/channel/claude/relay_claude_test.go`. | Red/green coverage added around `HandleStreamFinalResponse`: fallback completion estimation now patches missing prompt/completion values only, instead of replacing the whole usage object. Target command passed: `GOCACHE=/tmp/go-build-cache go test ./relay/channel/claude ./service -run 'TestHandleStreamFinalResponsePreservesClaudeCacheUsageWhenCompletionMissing|TestBuildOpenAIStyleUsageFromClaudeUsageDefaultsAggregateCacheCreationTo5m|TestBuildMessageDeltaPatchUsage|TestStreamResponseOpenAI2ClaudeEmitsUsageOnlyFinalChunk|TestBuildClaudeUsageFromOpenAIUsageDefaultsAggregateCacheCreationTo5m' -count=1`. | Preserves Claude cache read/cache creation fields when a stream ends without complete upstream usage. This is billing/accounting correctness, not a frontend feature. |
+| `82c2008d2` QuantumNous, `fix: emit claude message_delta for usage-only final stream chunk` | Applied as committed manual backport in `69a31879c`. | `service/convert.go`, `relay/channel/claude/relay-claude.go`, tests in `service/convert_claude_stream_test.go`, `relay/channel/claude/message_delta_usage_patch_test.go`, `relay/channel/claude/relay_claude_test.go`. | Target command passed: `GOCACHE=/tmp/go-build-cache go test ./relay/channel/claude ./service -run 'TestHandleStreamFinalResponsePreservesClaudeCacheUsageWhenCompletionMissing|TestBuildOpenAIStyleUsageFromClaudeUsageDefaultsAggregateCacheCreationTo5m|TestBuildMessageDeltaPatchUsage|TestStreamResponseOpenAI2ClaudeEmitsUsageOnlyFinalChunk|TestBuildClaudeUsageFromOpenAIUsageDefaultsAggregateCacheCreationTo5m' -count=1`. Follow-up package command passed: `GOCACHE=/tmp/go-build-cache go test ./relay/channel/claude ./service ./dto ./relay/helper -count=1`. | OpenAI-to-Claude streaming conversion now defers close events until a usage-only final chunk arrives, then emits Claude `message_delta` usage and `message_stop`. Aggregate cache creation token remainders default to the 5m bucket to match upstream semantics. |
 
 Module verification after the above relay/provider backports:
 
