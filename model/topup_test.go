@@ -64,6 +64,51 @@ func TestGetAllTopUpsByFilter(t *testing.T) {
 	})
 }
 
+func TestGetUserTopUpsLimitsDefaultWindow(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		now := common.GetTimestamp()
+		require.NoError(t, DB.Create(&User{Id: 3, Username: "u3", AffCode: "aff_u3", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{UserId: 3, Amount: 100, Money: 1.0, TradeNo: "recent-topup", PaymentMethod: "alipay", CreateTime: now - 3600, Status: common.TopUpStatusSuccess}).Error)
+		require.NoError(t, DB.Create(&TopUp{UserId: 3, Amount: 100, Money: 1.0, TradeNo: "old-topup", PaymentMethod: "alipay", CreateTime: now - 31*24*3600, Status: common.TopUpStatusSuccess}).Error)
+
+		items, total, err := GetUserTopUpsWithFilters(3, &common.PageInfo{Page: 1, PageSize: 20}, TopUpUserFilters{})
+		require.NoError(t, err)
+		require.EqualValues(t, 1, total)
+		require.Len(t, items, 1)
+		require.Equal(t, "recent-topup", items[0].TradeNo)
+	})
+}
+
+func TestTopUpSearchRejectsWildcardFlood(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 4, Username: "u4", AffCode: "aff_u4", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{UserId: 4, Amount: 100, Money: 1.0, TradeNo: "wildcard-target", PaymentMethod: "alipay", CreateTime: common.GetTimestamp(), Status: common.TopUpStatusSuccess}).Error)
+
+		_, _, err := SearchUserTopUps(4, "%%", &common.PageInfo{Page: 1, PageSize: 20})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "连续的 %")
+
+		_, _, err = SearchAllTopUps("%%%target", &common.PageInfo{Page: 1, PageSize: 20})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "连续的 %")
+	})
+}
+
+func TestTopUpSearchEscapesUnderscore(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		now := common.GetTimestamp()
+		require.NoError(t, DB.Create(&User{Id: 5, Username: "u5", AffCode: "aff_u5", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{UserId: 5, Amount: 100, Money: 1.0, TradeNo: "abc_def", PaymentMethod: "alipay", CreateTime: now, Status: common.TopUpStatusSuccess}).Error)
+		require.NoError(t, DB.Create(&TopUp{UserId: 5, Amount: 100, Money: 1.0, TradeNo: "abcXdef", PaymentMethod: "alipay", CreateTime: now, Status: common.TopUpStatusSuccess}).Error)
+
+		items, total, err := SearchUserTopUps(5, "abc_def", &common.PageInfo{Page: 1, PageSize: 20})
+		require.NoError(t, err)
+		require.EqualValues(t, 1, total)
+		require.Len(t, items, 1)
+		require.Equal(t, "abc_def", items[0].TradeNo)
+	})
+}
+
 func TestValidateTopUpPaidMoney(t *testing.T) {
 	topUp := &TopUp{Money: 12.345}
 	require.NoError(t, ValidateTopUpPaidMoney(topUp, decimal.RequireFromString("12.35")))
@@ -172,5 +217,117 @@ func TestStripeExpireRejectsEpayProviderEvenIfMethodWasTampered(t *testing.T) {
 		var topUp TopUp
 		require.NoError(t, DB.Where("trade_no = ?", "epay-order-from-stripe-expire").First(&topUp).Error)
 		require.Equal(t, common.TopUpStatusPending, topUp.Status)
+	})
+}
+
+func TestRechargeCreemRejectsStripeProviderEvenIfMethodWasTampered(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 15, Username: "u15", AffCode: "aff_u15", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{
+			UserId:          15,
+			Amount:          100,
+			Money:           1,
+			TradeNo:         "stripe-order-with-creem-method",
+			PaymentMethod:   PaymentMethodCreem,
+			PaymentProvider: PaymentProviderStripe,
+			CreateTime:      time.Now().Unix(),
+			Status:          common.TopUpStatusPending,
+		}).Error)
+
+		completed, err := RechargeCreem("stripe-order-with-creem-method", "pay@example.com", "payer")
+		require.Error(t, err)
+		require.False(t, completed)
+
+		var topUp TopUp
+		require.NoError(t, DB.Where("trade_no = ?", "stripe-order-with-creem-method").First(&topUp).Error)
+		require.Equal(t, common.TopUpStatusPending, topUp.Status)
+
+		var user User
+		require.NoError(t, DB.First(&user, 15).Error)
+		require.Zero(t, user.Quota)
+	})
+}
+
+func TestRechargeCreemAcceptsLegacyCreemOrderAndBackfillsProvider(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 16, Username: "u16", AffCode: "aff_u16", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{
+			UserId:        16,
+			Amount:        100,
+			Money:         1,
+			TradeNo:       "legacy-creem-order",
+			PaymentMethod: PaymentMethodCreem,
+			CreateTime:    time.Now().Unix(),
+			Status:        common.TopUpStatusPending,
+		}).Error)
+
+		completed, err := RechargeCreem("legacy-creem-order", "pay@example.com", "payer")
+		require.NoError(t, err)
+		require.True(t, completed)
+
+		var topUp TopUp
+		require.NoError(t, DB.Where("trade_no = ?", "legacy-creem-order").First(&topUp).Error)
+		require.Equal(t, common.TopUpStatusSuccess, topUp.Status)
+		require.Equal(t, PaymentProviderCreem, topUp.PaymentProvider)
+
+		var user User
+		require.NoError(t, DB.First(&user, 16).Error)
+		require.Equal(t, 100, user.Quota)
+	})
+}
+
+func TestRechargeWaffoRejectsStripeProviderEvenIfMethodWasTampered(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 17, Username: "u17", AffCode: "aff_u17", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{
+			UserId:          17,
+			Amount:          10,
+			Money:           1,
+			TradeNo:         "stripe-order-with-waffo-method",
+			PaymentMethod:   PaymentMethodWaffo,
+			PaymentProvider: PaymentProviderStripe,
+			CreateTime:      time.Now().Unix(),
+			Status:          common.TopUpStatusPending,
+		}).Error)
+
+		completed, err := RechargeWaffo("stripe-order-with-waffo-method")
+		require.Error(t, err)
+		require.False(t, completed)
+
+		var topUp TopUp
+		require.NoError(t, DB.Where("trade_no = ?", "stripe-order-with-waffo-method").First(&topUp).Error)
+		require.Equal(t, common.TopUpStatusPending, topUp.Status)
+
+		var user User
+		require.NoError(t, DB.First(&user, 17).Error)
+		require.Zero(t, user.Quota)
+	})
+}
+
+func TestRechargeWaffoAcceptsLegacyWaffoOrderAndBackfillsProvider(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 18, Username: "u18", AffCode: "aff_u18", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{
+			UserId:        18,
+			Amount:        10,
+			Money:         1,
+			TradeNo:       "legacy-waffo-order",
+			PaymentMethod: PaymentMethodWaffo,
+			CreateTime:    time.Now().Unix(),
+			Status:        common.TopUpStatusPending,
+		}).Error)
+
+		completed, err := RechargeWaffo("legacy-waffo-order")
+		require.NoError(t, err)
+		require.True(t, completed)
+
+		var topUp TopUp
+		require.NoError(t, DB.Where("trade_no = ?", "legacy-waffo-order").First(&topUp).Error)
+		require.Equal(t, common.TopUpStatusSuccess, topUp.Status)
+		require.Equal(t, PaymentProviderWaffo, topUp.PaymentProvider)
+
+		var user User
+		require.NoError(t, DB.First(&user, 18).Error)
+		require.Equal(t, int(10*common.QuotaPerUnit), user.Quota)
 	})
 }

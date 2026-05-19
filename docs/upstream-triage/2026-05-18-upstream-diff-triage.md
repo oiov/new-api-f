@@ -10,13 +10,56 @@ Purpose: record the current comparison between this fork, `dext7r/Zeabur` branch
 
 | Role | Ref | Commit | Notes |
 | --- | --- | --- | --- |
-| This fork | `HEAD` | `28f19a5468306b82797bc16c4caae94bbebee915` | `fix: harden epay stripe topup callbacks`; one commit ahead of `origin/fishxcode` |
-| Fork remote | `origin/fishxcode` | `ca1f26586caf019c2d59d6bfdf8f4a6706f7c700` | `fix: backport upstream ssrf hardening` |
-| Direct upstream | `upstream/fishxcode` | `404d54bd976942bd1b25ba5cff309a5c830f5368` | `优化活动抽奖历史报名展示` |
+| This fork | `HEAD` | `HEAD` | `fix: backport payment provider guards`; one commit ahead of `origin/fishxcode` |
+| Fork remote | `origin/fishxcode` | `dd5a29233ca6bda210c2f939ee5ae874de6a834f` | `docs: 更新上游差异快照，记录最新合并状态和手动回退进度` |
+| Direct upstream | `upstream/fishxcode` | `d2e755b99c99b35cf51e92b707e1ea26faccdb1d` | `feat: allow editing checkin record time` |
 | Zeabur mirror of original upstream | `upstream/new-api` | `5d93351d04269d9504e5fd0a5fd32ded674ddef2` | Mirror sync commit only, `sync: QuantumNous/new-api@fbf235d2` |
-| Original upstream | `quantumnous/main` | `5dd0d3bcbd7b1d523bd046a5f9cf9fc8ce28d579` | `fix: add analytics placeholder (#4928)` |
+| Original upstream | `quantumnous/main` | `0936e2504655a5cbf7bc3c388f6d3e2bb24916d3` | `perf: avoid eager formatting in debug log calls (#4929)` |
 
 Working tree note: `web-worker/` is untracked. Do not modify or delete it unless explicitly requested.
+
+## Current Check 2026-05-19 Late
+
+Fresh fetch results:
+
+- Local `HEAD`: `HEAD` (`fix: backport payment provider guards`), one commit ahead of `origin/fishxcode`.
+- `origin/fishxcode`: `dd5a29233ca6bda210c2f939ee5ae874de6a834f` (`docs: 更新上游差异快照，记录最新合并状态和手动回退进度`).
+- Direct upstream `upstream/fishxcode`: advanced to `d2e755b99c99b35cf51e92b707e1ea26faccdb1d` (`feat: allow editing checkin record time`).
+- Zeabur mirror sync marker `upstream/new-api`: unchanged at `5d93351d04269d9504e5fd0a5fd32ded674ddef2`.
+- Original upstream `quantumnous/main`: advanced to `0936e2504655a5cbf7bc3c388f6d3e2bb24916d3` (`perf: avoid eager formatting in debug log calls (#4929)`).
+- Fetch note: the local `refs/remotes/quantumnous/main` ref was broken and was repaired with `git update-ref -d refs/remotes/quantumnous/main`, then refetched.
+- Worktree note remains: `web-worker/` is untracked and should not be touched during upstream triage unless explicitly requested.
+
+Merge bases remain unchanged:
+
+- Local vs Zeabur: `8aa8b81e03522f306d24134725378228e64b03ab`
+- Local vs QuantumNous main: `9ae9040b3c9dab88660fb9724d182393d0137861`
+- Zeabur fishxcode vs QuantumNous main: `8aa8b81e03522f306d24134725378228e64b03ab`
+
+Current ancestry counts:
+
+- `upstream/fishxcode ^HEAD --no-merges`: 474 upstream non-merge commits not in local by ancestry.
+- `quantumnous/main ^HEAD --no-merges`: 232 original-upstream non-merge commits not in local by ancestry.
+- `HEAD ^upstream/fishxcode --no-merges`: 414 local non-merge commits not in Zeabur by ancestry.
+- `HEAD ^quantumnous/main --no-merges`: 376 local non-merge commits not in QuantumNous by ancestry.
+
+New upstream commits since the previous check:
+
+| Commit | Source | Area | Status | Recommendation |
+| --- | --- | --- | --- | --- |
+| `d2e755b99` | Zeabur | Check-in record time editing, likely activity/check-in admin flow | Not applied. | Defer/conditional. This is outside the current payment-safety backend batch; inspect only if check-in admin correctness becomes in scope. |
+| `0936e2504` | QuantumNous | Debug logging performance: avoid eager formatting in debug log calls | Not applied. | Low-risk optimization candidate. Defer until after safety/accounting/admin correctness batches unless local profiling shows log formatting overhead. |
+
+Progress checkpoint:
+
+- Relay/provider protocol batch is committed locally as `69a31879c2ceee9c5ea62109042359ea34bada1c`.
+- Auth/token/user-cache security batch is committed locally as `ddd501c95`.
+- Auth/relay real smoke-test results are recorded in `656743e5e7f6f93ad591a11de83db4d70590ff82`.
+- SSRF/URL-fetch safety batch is committed locally as `ca1f26586caf019c2d59d6bfdf8f4a6706f7c700`.
+- EPay/Stripe ordinary top-up provider-guard subset is committed locally as `28f19a5468306b82797bc16c4caae94bbebee915`.
+- Payment provider guard continuation is committed locally as `HEAD`.
+
+Recommendation remains unchanged: do not direct-merge `upstream/fishxcode` or `quantumnous/main`. Continue manual backport batches. The next high-value backend batches after committing payment safety are admin/query correctness and cross-DB/config correctness.
 
 ## Current Check 2026-05-19
 
@@ -49,9 +92,10 @@ Progress checkpoint:
 - Auth/relay real smoke-test results are recorded in `656743e5e7f6f93ad591a11de83db4d70590ff82`.
 - SSRF/URL-fetch safety batch is committed locally as `ca1f26586caf019c2d59d6bfdf8f4a6706f7c700`.
 - EPay/Stripe ordinary top-up provider-guard subset is committed locally as `28f19a5468306b82797bc16c4caae94bbebee915`.
+- Payment safety continuation is committed locally as `HEAD`.
 - Because these were manual backports, their upstream commit hashes can still appear in ancestry-only `git log upstream ^HEAD` output. Treat the local batch commits above as the source of truth for progress.
 
-Recommendation remains unchanged: do not direct-merge `upstream/fishxcode` or `quantumnous/main`. Continue manual backport batches. The next high-value backend batches are payment/subscription callback provider guards not covered by `28f19a546`, top-up query DoS limits, admin/query correctness, and cross-DB/config correctness.
+Recommendation remains unchanged: do not direct-merge `upstream/fishxcode` or `quantumnous/main`. Continue manual backport batches. The next high-value backend batches after committing the payment continuation are admin/query correctness and cross-DB/config correctness.
 
 ## Recheck 2026-05-18
 
@@ -203,18 +247,19 @@ Historical local evidence before the SSRF batch:
 
 | Commit | Source | Status in local | Recommendation |
 | --- | --- | --- | --- |
-| `a7c38ec85` | QuantumNous | Partially applied as committed manual backport in `28f19a546` for ordinary EPay and Stripe top-up only. Subscription, Creem, and Waffo behavior remain unchanged. | Continue manual security backport for subscription callback provider guards only after separate scope confirmation. |
-| `b2e62a44e` | QuantumNous | Not applied. Local top-up filtering has payment method filters, but no hard query window / DoS cap equivalent. | Backport after provider guard. |
+| `a7c38ec85` | QuantumNous | Covered by committed manual backports: `28f19a546` for ordinary EPay/Stripe top-up, and `payment-guard continuation commit` for subscription EPay/Stripe/Creem plus ordinary Creem/Waffo provider guards. WaffoPancake has no active local controller/callback path. | Already covered for active local payment paths. |
+| `b2e62a44e` | QuantumNous | Applied as committed manual backport in `payment-guard continuation commit`, adapted to local filtered top-up queries. | Already covered. |
 | `e70eaec4d` / `6f26145bf` | QuantumNous/Zeabur | Partially applied locally via payment method checks. | Audit before merging; keep local Stripe/Waffo/Creem behavior intact. |
 
 Current payment evidence:
 
 - `model/topup.go` now contains an internal `PaymentProvider` field and provider checks for ordinary EPay/Stripe top-up completion/expiry.
-- `model/subscription.go` has `CompleteSubscriptionOrderWithResult(tradeNo, providerPayload)` without provider argument.
-- Callback controllers call completion by `tradeNo` only.
-- QuantumNous adds `PaymentProvider` to both `TopUp` and `SubscriptionOrder`; local top-up EPay/Stripe subset is covered, but local subscription model is heavily extended and still needs a separate manual backport rather than cherry-pick.
+- `model/subscription.go` now contains an internal `SubscriptionOrder.PaymentProvider` field and guarded completion/expiry parameters for subscription payment callbacks.
+- Subscription EPay callbacks pass provider `epay` and preserve the actual EPay callback method, allowing wxpay-to-alipay style switches while rejecting cross-gateway callbacks.
+- Stripe and Creem subscription callbacks pass provider guards before completing subscription orders.
+- QuantumNous adds `PaymentProvider` to both `TopUp` and `SubscriptionOrder`; local top-up EPay/Stripe/Creem/Waffo plus subscription EPay/Stripe/Creem active paths are covered by `28f19a546` and `payment-guard continuation commit`. WaffoPancake has only constants locally and no active callback/controller path found by `rg`.
 - Local `model/subscription.go` already has `ProviderPayload`, so keep that field and add provider guard parameters around the existing completion/expiry APIs.
-- `b2e62a44e` should be adapted to local filtered top-up search: local has admin/user filters, but lacks upstream's `sanitizeLikePattern`, count hard limit, and user-side time cutoff.
+- `b2e62a44e` is adapted to local filtered top-up search: user-facing top-up queries now cap to the last 30 days; top-up keyword search uses `sanitizeLikePattern` and `ESCAPE '!'`; admin count queries use a 10000-row hard limit.
 
 ### Relay / Provider Protocol Compatibility
 
@@ -515,7 +560,7 @@ Scope narrowed by user during implementation: do not change Creem, Waffo, or sub
 
 | Upstream commit | Local status | Files touched | Verification | Notes |
 | --- | --- | --- | --- | --- |
-| `a7c38ec85` QuantumNous, `fix: add PaymentProvider field to prevent cross-gateway callback attacks` | Partially applied as an uncommitted manual backport for ordinary top-up EPay and Stripe only. | `model/topup.go`, `controller/topup.go`, `controller/topup_stripe.go`, tests in `model/topup_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestRechargeEpayRejectsCrossGatewayOrder|TestRechargeEpayAcceptsLegacyEpayOrderAndUpdatesActualPaymentMethod|TestRechargeStripeRejectsEpayProviderEvenIfMethodWasTampered|TestStripeExpireRejectsEpayProviderEvenIfMethodWasTampered|TestValidateTopUpPaidMoney' -count=1` failed because `PaymentProvider`, provider constants, EPay actual-method update, and Stripe expiry guard were missing. Green after patch: same command passed. Controller Stripe regression tests passed separately. | Adds an internal `TopUp.PaymentProvider` DB column with `json:"-"`, so the field is not exposed in API responses. New EPay top-up orders store provider `epay`; new Stripe top-up orders store provider `stripe`. Legacy pending orders with empty provider are mapped by existing `payment_method` so old EPay/Stripe pending orders can still complete. EPay callbacks may update `payment_method` to the actual gateway type returned by EPay, preserving wxpay-to-alipay style checkout switches. |
+| `a7c38ec85` QuantumNous, `fix: add PaymentProvider field to prevent cross-gateway callback attacks` | Partially applied as committed manual backport `28f19a546` for ordinary top-up EPay and Stripe only. | `model/topup.go`, `controller/topup.go`, `controller/topup_stripe.go`, tests in `model/topup_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestRechargeEpayRejectsCrossGatewayOrder|TestRechargeEpayAcceptsLegacyEpayOrderAndUpdatesActualPaymentMethod|TestRechargeStripeRejectsEpayProviderEvenIfMethodWasTampered|TestStripeExpireRejectsEpayProviderEvenIfMethodWasTampered|TestValidateTopUpPaidMoney' -count=1` failed because `PaymentProvider`, provider constants, EPay actual-method update, and Stripe expiry guard were missing. Green after patch: same command passed. Controller Stripe regression tests passed separately. | Adds an internal `TopUp.PaymentProvider` DB column with `json:"-"`, so the field is not exposed in API responses. New EPay top-up orders store provider `epay`; new Stripe top-up orders store provider `stripe`. Legacy pending orders with empty provider are mapped by existing `payment_method` so old EPay/Stripe pending orders can still complete. EPay callbacks may update `payment_method` to the actual gateway type returned by EPay, preserving wxpay-to-alipay style checkout switches. |
 | `b2e62a44e` QuantumNous, `fix(topup): harden top-up search against DoS and cap user queries to 30 days` | Not applied in this batch after scope reduction. | None. | Not run. | Deferred. This changes user top-up history query semantics and should be handled only after confirming the frontend/user-history impact. |
 
 Payment batch API compatibility gate:
@@ -547,6 +592,61 @@ Payment batch verification:
 - Focused `web-worker` tests passed:
   - `pnpm exec tsx --test src/server/api-proxy.test.ts src/lib/log-search.test.ts src/lib/subscription-purchase.test.ts`
 - Attempted wider command `GOCACHE=/tmp/go-build-cache go test ./model ./controller -count=1`; it produced no output for several minutes and was stopped. `ps` showed it stuck in the existing `model.test` process; the stuck verification processes were killed. Use the focused commands above as the evidence for this scoped batch.
+
+### 2026-05-19 Payment Safety Continuation: Subscription Provider Guards And Top-Up Query Hardening
+
+Scope from user: continue with the recommended manual backport/update sequence. Direct upstream branch merge remains excluded.
+
+| Upstream commit | Local status | Files touched | Verification | Notes |
+| --- | --- | --- | --- | --- |
+| `a7c38ec85` QuantumNous, `fix: add PaymentProvider field to prevent cross-gateway callback attacks` | Further applied as committed manual backport `payment-guard continuation commit` for subscription EPay/Stripe/Creem and ordinary Creem/Waffo top-up guards. | `model/subscription.go`, `controller/subscription_payment_epay.go`, `controller/subscription_payment_stripe.go`, `controller/subscription_payment_creem.go`, `controller/topup_stripe.go`, `controller/topup_creem.go`, `controller/topup_waffo.go`, tests in `model/subscription_query_test.go` and `model/topup_test.go`. | Red first: target model tests failed because `SubscriptionOrder.PaymentProvider` and guarded completion/expiry arguments were missing. Green after patch: focused model commands passed, including new Creem/Waffo cross-gateway tests. | Adds internal `SubscriptionOrder.PaymentProvider` with `json:"-"`. New subscription EPay/Stripe/Creem orders store their creating provider. Payment callbacks now pass expected provider; EPay callbacks also update `payment_method` to the actual method returned by EPay. New ordinary Creem and Waffo top-up orders now store their provider, and their completion paths reject orders whose provider was created by another gateway. Legacy pending orders with empty provider are inferred from existing `payment_method`. |
+| `b2e62a44e` QuantumNous, `fix(topup): harden top-up search against DoS and cap user queries to 30 days` | Applied as committed manual backport `payment-guard continuation commit`, adapted to local `TopUpAdminFilters` and `TopUpUserFilters`. | `model/topup.go`, tests in `model/topup_test.go`. | Red/green coverage added for user 30-day window, wildcard-flood rejection, and `_` escaping. Focused model command passed. | User-facing top-up list/search now only returns records from the last 30 days. Keyword search uses existing `sanitizeLikePattern` with `ESCAPE '!'`. Admin top-up count queries are capped with `searchTopUpCountHardLimit = 10000`. |
+
+Payment continuation API compatibility gate:
+
+- Changed backend API surface:
+  - `SubscriptionOrder.payment_provider` is persisted only in the database and intentionally hidden from JSON responses with `json:"-"`.
+  - Ordinary `TopUp.payment_provider` remains persisted only in the database and hidden from JSON responses with `json:"-"`.
+  - `/api/subscription/epay/pay`, `/api/subscription/stripe/pay`, and `/api/subscription/creem/pay` request and success/error response shapes are unchanged.
+  - Subscription EPay notify/return now reject orders created by another provider, but still allow EPay's actual callback method to differ from the originally requested EPay method.
+  - Stripe and Creem subscription callbacks now reject subscription orders created by another provider.
+  - Ordinary Creem and Waffo top-up request/response shapes are unchanged; their order creation paths now write provider metadata, and their completion paths reject orders created by another provider.
+  - `/api/user/topup/self` now caps payment-history results to a 30-day create-time window and rejects unsafe LIKE patterns if `keyword` is provided.
+- Explicitly not changed in this continuation:
+  - WaffoPancake top-up creation/callback behavior. Local repo currently has only WaffoPancake constants in `model/topup.go`; `rg` found no controller or active callback path to backport.
+  - Top-up and subscription request/response DTO shapes consumed by `web-worker`.
+  - Creem JSON request/response parsing was moved from direct `encoding/json` calls to the project `common.Marshal` / `common.Unmarshal` wrappers while touching the file.
+- `web-worker` inspection:
+  - `web-worker/src/api-client/subscription.ts` still sends `{plan_id}` for Stripe and `{plan_id,payment_method}` for EPay and reads existing `pay_link` / EPay form-data responses.
+  - `web-worker/src/api-client/topup.ts` supports optional top-up `keyword`, but `web-worker/src/components/topup/topup-history.tsx` currently calls user top-up history without keyword filters.
+  - `web-worker/src/api-client/types.ts` remains compatible because `payment_provider` is hidden from backend JSON.
+
+Payment continuation verification:
+
+- `git diff --check`: passed.
+- Initial target RED command failed as expected before implementation:
+  - `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestCompleteSubscriptionOrderRejectsCrossGatewayProvider|TestCompleteSubscriptionOrderAcceptsLegacyEpayAndUpdatesActualPaymentMethod|TestExpireSubscriptionOrderRejectsCrossGatewayProvider|TestGetUserTopUpsLimitsDefaultWindow|TestTopUpSearchRejectsWildcardFlood|TestTopUpSearchEscapesUnderscore' -count=1`
+- Target model command passed after implementation:
+  - `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestCompleteSubscriptionOrderRejectsCrossGatewayProvider|TestCompleteSubscriptionOrderAcceptsLegacyEpayAndUpdatesActualPaymentMethod|TestExpireSubscriptionOrderRejectsCrossGatewayProvider|TestGetUserTopUpsLimitsDefaultWindow|TestTopUpSearchRejectsWildcardFlood|TestTopUpSearchEscapesUnderscore' -count=1`
+- Broader focused model command passed:
+  - `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestGetAllTopUpsByFilter|TestValidateTopUpPaidMoney|TestRechargeEpayRejectsCrossGatewayOrder|TestRechargeEpayAcceptsLegacyEpayOrderAndUpdatesActualPaymentMethod|TestRechargeStripeRejectsEpayProviderEvenIfMethodWasTampered|TestStripeExpireRejectsEpayProviderEvenIfMethodWasTampered|TestCompleteSubscriptionOrder' -count=1`
+- Creem/Waffo focused model command passed:
+  - `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestRecharge(Creem|Waffo|Epay|Stripe)|TestStripeExpire|TestGetUserTopUpsLimitsDefaultWindow|TestTopUpSearch' -count=1`
+- Expanded payment focused model command passed:
+  - `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestGetAllTopUpsByFilter|TestValidateTopUpPaidMoney|TestRechargeEpayRejectsCrossGatewayOrder|TestRechargeEpayAcceptsLegacyEpayOrderAndUpdatesActualPaymentMethod|TestRechargeStripeRejectsEpayProviderEvenIfMethodWasTampered|TestStripeExpireRejectsEpayProviderEvenIfMethodWasTampered|TestRechargeCreemRejectsStripeProviderEvenIfMethodWasTampered|TestRechargeCreemAcceptsLegacyCreemOrderAndBackfillsProvider|TestRechargeWaffoRejectsStripeProviderEvenIfMethodWasTampered|TestRechargeWaffoAcceptsLegacyWaffoOrderAndBackfillsProvider|TestCompleteSubscriptionOrder' -count=1`
+- Stripe controller regression command passed:
+  - `GOCACHE=/tmp/go-build-cache go test ./controller -run 'TestStripeAmountCentsRoundsToMinorUnits|TestGenStripeLinkUsesConfiguredPriceWithRequestedQuantity|TestValidateStripeTopUpSessionAcceptsPaidConfiguredPriceEvenWhenRuntimePriceIdChanged|TestStripeWebhookReturnsServerErrorWhenCompletedSessionCannotBeProcessed|TestStripeWebhookCompletedSessionRechargesPendingTopUp' -count=1`
+- Focused `web-worker` tests passed:
+  - `pnpm exec tsx --test src/server/api-proxy.test.ts src/lib/subscription-purchase.test.ts`
+- Wider verification notes:
+  - `GOCACHE=/tmp/go-build-cache go test ./controller -count=1` failed due existing cross-test/global DB teardown issues around async site notifications and missing test tables; the focused payment controller command above passed.
+  - `GOCACHE=/tmp/go-build-cache go test ./model -count=1` timed out after 10 minutes in existing `TestApproveSubscriptionConversionRequest_BalanceSupportsTokenUsageAutoCalculation`; not in the new payment/top-up tests.
+
+Continuation marker for next run:
+
+- Payment continuation is committed locally as `HEAD`.
+- Covered upstream commits in this continuation: `a7c38ec85` for subscription EPay/Stripe/Creem plus ordinary Creem/Waffo provider guards, and `b2e62a44e` for top-up query hardening.
+- Remaining payment-safety note: ordinary WaffoPancake provider guard has no active local controller/callback path to update; only constants are present.
 
 ## Commands Used For This Snapshot
 

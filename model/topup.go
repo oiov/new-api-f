@@ -48,6 +48,14 @@ const (
 var ErrPaymentMethodMismatch = errors.New("payment method mismatch")
 var ErrPaymentAmountMismatch = errors.New("payment amount mismatch")
 
+const topUpQueryWindowSeconds int64 = 30 * 24 * 60 * 60
+
+const searchTopUpCountHardLimit = 10000
+
+func topUpQueryCutoff() int64 {
+	return common.GetTimestamp() - topUpQueryWindowSeconds
+}
+
 func ValidateTopUpPaidMoney(topUp *TopUp, paidMoney decimal.Decimal) error {
 	if topUp == nil {
 		return errors.New("充值订单不存在")
@@ -319,7 +327,7 @@ func GetUserTopUpsWithFilters(userId int, pageInfo *common.PageInfo, filters Top
 		}
 	}()
 
-	query := tx.Model(&TopUp{}).Where("user_id = ?", userId)
+	query := tx.Model(&TopUp{}).Where("user_id = ? AND create_time >= ?", userId, topUpQueryCutoff())
 	query = applyTopUpUserFilters(query, filters)
 
 	// Get total count within transaction
@@ -399,10 +407,15 @@ func GetAllTopUpsWithFilters(pageInfo *common.PageInfo, filters TopUpAdminFilter
 		countQuery = countQuery.Joins("LEFT JOIN users ON top_ups.user_id = users.id")
 	}
 	countQuery = applyTopUpFiltersWithPrefix(countQuery, filters, "top_ups.")
-
-	if err = countQuery.Count(&total).Error; err != nil {
+	if countQuery.Error != nil {
 		tx.Rollback()
-		return nil, 0, err
+		return nil, 0, countQuery.Error
+	}
+
+	if err = countQuery.Limit(searchTopUpCountHardLimit).Count(&total).Error; err != nil {
+		tx.Rollback()
+		common.SysError("failed to count topups: " + err.Error())
+		return nil, 0, errors.New("搜索充值记录失败")
 	}
 
 	// Build query for fetching records with username
@@ -411,6 +424,10 @@ func GetAllTopUpsWithFilters(pageInfo *common.PageInfo, filters TopUpAdminFilter
 		Joins("LEFT JOIN users ON top_ups.user_id = users.id")
 
 	dataQuery = applyTopUpFiltersWithPrefix(dataQuery, filters, "top_ups.")
+	if dataQuery.Error != nil {
+		tx.Rollback()
+		return nil, 0, dataQuery.Error
+	}
 
 	if err = dataQuery.Order("top_ups.id desc").
 		Limit(pageInfo.GetPageSize()).
@@ -437,8 +454,12 @@ func applyTopUpFiltersWithPrefix(query *gorm.DB, filters TopUpAdminFilters, pref
 		query = query.Where(prefix+"user_id = ?", filters.UserID)
 	}
 	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
-		like := "%%" + keyword + "%%"
-		query = query.Where(prefix+"trade_no LIKE ? OR users.username LIKE ?", like, like)
+		like, err := sanitizeLikePattern(keyword)
+		if err != nil {
+			_ = query.AddError(err)
+			return query
+		}
+		query = query.Where(prefix+"trade_no LIKE ? ESCAPE '!' OR users.username LIKE ? ESCAPE '!'", like, like)
 	}
 	if paymentMethod := strings.TrimSpace(filters.PaymentMethod); paymentMethod != "" {
 		query = query.Where(prefix+"payment_method = ?", paymentMethod)
@@ -457,8 +478,12 @@ func applyTopUpFiltersWithPrefix(query *gorm.DB, filters TopUpAdminFilters, pref
 
 func applyTopUpUserFilters(query *gorm.DB, filters TopUpUserFilters) *gorm.DB {
 	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
-		like := "%%" + keyword + "%%"
-		query = query.Where("trade_no LIKE ?", like)
+		like, err := sanitizeLikePattern(keyword)
+		if err != nil {
+			_ = query.AddError(err)
+			return query
+		}
+		query = query.Where("trade_no LIKE ? ESCAPE '!'", like)
 	}
 	if paymentMethod := strings.TrimSpace(filters.PaymentMethod); paymentMethod != "" {
 		query = query.Where("payment_method = ?", paymentMethod)
@@ -566,8 +591,8 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			return errors.New("充值订单不存在")
 		}
 
-		if topUp.PaymentMethod != "creem" {
-			return ErrPaymentMethodMismatch
+		if err := topUp.ensurePaymentProvider(PaymentProviderCreem); err != nil {
+			return err
 		}
 
 		if topUp.Status == common.TopUpStatusSuccess {
@@ -631,17 +656,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 }
 
 func RechargeWaffo(tradeNo string) (completed bool, err error) {
-	topUp := GetTopUpByTradeNo(tradeNo)
-	if topUp == nil {
-		common.SysError("waffo topup failed: 充值订单不存在")
-		return false, errors.New("充值失败，请稍后重试")
-	}
-	if topUp.PaymentMethod != "waffo" {
-		common.SysError("waffo topup failed: " + ErrPaymentMethodMismatch.Error())
-		return false, errors.New("充值失败，请稍后重试")
-	}
-
-	topUp, quotaToAdd, completed, err := rechargeAmountBasedTopUp(tradeNo, "", "")
+	topUp, quotaToAdd, completed, err := rechargeAmountBasedTopUp(tradeNo, PaymentProviderWaffo, "")
 
 	if err != nil {
 		common.SysError("waffo topup failed: " + err.Error())

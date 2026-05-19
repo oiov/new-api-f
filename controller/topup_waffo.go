@@ -180,13 +180,14 @@ func RequestWaffoPay(c *gin.Context) {
 
 	// 创建本地订单
 	topUp := &model.TopUp{
-		UserId:        id,
-		Amount:        amount,
-		Money:         payMoney,
-		TradeNo:       merchantOrderId,
-		PaymentMethod: "waffo",
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:          id,
+		Amount:          amount,
+		Money:           payMoney,
+		TradeNo:         merchantOrderId,
+		PaymentMethod:   model.PaymentMethodWaffo,
+		PaymentProvider: model.PaymentProviderWaffo,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	if err := topUp.Insert(); err != nil {
 		log.Printf("Waffo 创建本地订单失败: %v", err)
@@ -344,10 +345,8 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 		log.Printf("Waffo 订单状态非成功: %s, 订单: %s", result.OrderStatus, result.MerchantOrderID)
 		// 终态失败订单标记为 failed，避免永远停在 pending
 		if result.MerchantOrderID != "" {
-			if topUp := model.GetTopUpByTradeNo(result.MerchantOrderID); topUp != nil &&
-				topUp.Status == common.TopUpStatusPending {
-				topUp.Status = common.TopUpStatusFailed
-				_ = topUp.Update()
+			if err := model.UpdatePendingTopUpStatus(result.MerchantOrderID, model.PaymentProviderWaffo, common.TopUpStatusFailed); err != nil {
+				log.Printf("Waffo 标记失败订单状态失败: %v, 订单: %s", err, result.MerchantOrderID)
 			}
 		}
 		sendWaffoWebhookResponse(c, wh, true, "")

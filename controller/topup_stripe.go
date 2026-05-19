@@ -213,7 +213,7 @@ func sessionCompleted(event stripe.Event) error {
 		"currency":     strings.ToUpper(event.GetObjectValue("currency")),
 		"event_type":   string(event.Type),
 	}
-	if completedNow, err := model.CompleteSubscriptionOrderWithResult(referenceId, common.GetJsonString(payload)); err == nil {
+	if completedNow, err := model.CompleteSubscriptionOrderWithResult(referenceId, common.GetJsonString(payload), model.PaymentProviderStripe, ""); err == nil {
 		if completedNow {
 			notifySubscriptionPaymentSuccessAsync(referenceId)
 		}
@@ -346,7 +346,7 @@ func sessionExpired(event stripe.Event) error {
 	// Subscription order expiration
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
-	if err := model.ExpireSubscriptionOrder(referenceId); err == nil {
+	if err := model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderStripe); err == nil {
 		return nil
 	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
 		log.Println("过期订阅订单失败", referenceId, ", err:", err.Error())

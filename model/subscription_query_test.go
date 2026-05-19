@@ -481,6 +481,146 @@ func TestCompleteSubscriptionOrder_UsesOrderSnapshot(t *testing.T) {
 	})
 }
 
+func TestCompleteSubscriptionOrderRejectsCrossGatewayProvider(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       130,
+			Username: "subscription_provider_user",
+			AffCode:  "subscription_provider_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+		plan := &SubscriptionPlan{
+			Id:            1301,
+			Title:         "provider-guard-plan",
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   100,
+		}
+		require.NoError(t, DB.Create(plan).Error)
+		order := &SubscriptionOrder{
+			UserId:          130,
+			PlanId:          plan.Id,
+			Money:           5,
+			TradeNo:         "subscription-cross-gateway",
+			PaymentMethod:   PaymentMethodStripe,
+			PaymentProvider: PaymentProviderEpay,
+			CreateTime:      now,
+			Status:          common.TopUpStatusPending,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+
+		completed, err := CompleteSubscriptionOrderWithResult("subscription-cross-gateway", `{"ok":true}`, PaymentProviderStripe, "")
+		require.ErrorIs(t, err, ErrPaymentMethodMismatch)
+		require.False(t, completed)
+
+		var stored SubscriptionOrder
+		require.NoError(t, DB.Where("trade_no = ?", "subscription-cross-gateway").First(&stored).Error)
+		require.Equal(t, common.TopUpStatusPending, stored.Status)
+
+		var subCount int64
+		require.NoError(t, DB.Model(&UserSubscription{}).Where("user_id = ?", 130).Count(&subCount).Error)
+		require.Zero(t, subCount)
+	})
+}
+
+func TestCompleteSubscriptionOrderAcceptsLegacyEpayAndUpdatesActualPaymentMethod(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       131,
+			Username: "subscription_legacy_epay_user",
+			AffCode:  "subscription_legacy_epay_aff",
+			Group:    "default",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+		plan := &SubscriptionPlan{
+			Id:            1311,
+			Title:         "legacy-epay-plan",
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   200,
+		}
+		require.NoError(t, DB.Create(plan).Error)
+		order := &SubscriptionOrder{
+			UserId:        131,
+			PlanId:        plan.Id,
+			Money:         6,
+			TradeNo:       "subscription-legacy-epay",
+			PaymentMethod: "wxpay",
+			CreateTime:    now,
+			Status:        common.TopUpStatusPending,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+
+		completed, err := CompleteSubscriptionOrderWithResult("subscription-legacy-epay", `{"ok":true}`, PaymentProviderEpay, "alipay")
+		require.NoError(t, err)
+		require.True(t, completed)
+
+		var stored SubscriptionOrder
+		require.NoError(t, DB.Where("trade_no = ?", "subscription-legacy-epay").First(&stored).Error)
+		require.Equal(t, common.TopUpStatusSuccess, stored.Status)
+		require.Equal(t, "alipay", stored.PaymentMethod)
+		require.Equal(t, PaymentProviderEpay, stored.PaymentProvider)
+
+		var topup TopUp
+		require.NoError(t, DB.Where("trade_no = ?", "subscription-legacy-epay").First(&topup).Error)
+		require.Equal(t, "alipay", topup.PaymentMethod)
+		require.Equal(t, PaymentProviderEpay, topup.PaymentProvider)
+	})
+}
+
+func TestExpireSubscriptionOrderRejectsCrossGatewayProvider(t *testing.T) {
+	withSubscriptionQueryTestDB(t, func() {
+		now := common.GetTimestamp()
+
+		require.NoError(t, DB.Create(&User{
+			Id:       132,
+			Username: "subscription_expire_user",
+			AffCode:  "subscription_expire_aff",
+			Status:   common.UserStatusEnabled,
+		}).Error)
+		plan := &SubscriptionPlan{
+			Id:            1321,
+			Title:         "expire-provider-plan",
+			DurationUnit:  SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			ResourceType:  SubscriptionResourceQuota,
+			TotalAmount:   100,
+		}
+		require.NoError(t, DB.Create(plan).Error)
+		order := &SubscriptionOrder{
+			UserId:          132,
+			PlanId:          plan.Id,
+			Money:           7,
+			TradeNo:         "subscription-expire-cross-gateway",
+			PaymentMethod:   PaymentMethodStripe,
+			PaymentProvider: PaymentProviderEpay,
+			CreateTime:      now,
+			Status:          common.TopUpStatusPending,
+		}
+		order.ApplyPlanSnapshot(plan)
+		require.NoError(t, order.Insert())
+
+		err := ExpireSubscriptionOrder("subscription-expire-cross-gateway", PaymentProviderStripe)
+		require.ErrorIs(t, err, ErrPaymentMethodMismatch)
+
+		var stored SubscriptionOrder
+		require.NoError(t, DB.Where("trade_no = ?", "subscription-expire-cross-gateway").First(&stored).Error)
+		require.Equal(t, common.TopUpStatusPending, stored.Status)
+	})
+}
+
 func TestCountUserPlanPurchases_IgnoresRejectedManualDeliveryOrders(t *testing.T) {
 	withSubscriptionQueryTestDB(t, func() {
 		now := common.GetTimestamp()

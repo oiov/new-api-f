@@ -76,13 +76,14 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 
 	order := &model.SubscriptionOrder{
-		UserId:        userId,
-		PlanId:        plan.Id,
-		Money:         effectivePrice,
-		TradeNo:       tradeNo,
-		PaymentMethod: req.PaymentMethod,
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:          userId,
+		PlanId:          plan.Id,
+		Money:           effectivePrice,
+		TradeNo:         tradeNo,
+		PaymentMethod:   req.PaymentMethod,
+		PaymentProvider: model.PaymentProviderEpay,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	order.ApplyPlanSnapshot(plan)
 	if err := order.Insert(); err != nil {
@@ -99,7 +100,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		ReturnUrl:      returnUrl,
 	})
 	if err != nil {
-		_ = model.ExpireSubscriptionOrder(tradeNo)
+		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
 		common.ApiErrorMsg(c, "拉起支付失败")
 		return
 	}
@@ -153,7 +154,7 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
-	completedNow, err := model.CompleteSubscriptionOrderWithResult(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo))
+	completedNow, err := model.CompleteSubscriptionOrderWithResult(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("SubscriptionEpayNotify CompleteSubscriptionOrderWithResult failed: tradeNo=%s err=%v", verifyInfo.ServiceTradeNo, err))
 		_, _ = c.Writer.Write([]byte("fail"))
@@ -208,7 +209,7 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		completedNow, err := model.CompleteSubscriptionOrderWithResult(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo))
+		completedNow, err := model.CompleteSubscriptionOrderWithResult(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("SubscriptionEpayReturn CompleteSubscriptionOrderWithResult failed: tradeNo=%s err=%v", verifyInfo.ServiceTradeNo, err))
 			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
