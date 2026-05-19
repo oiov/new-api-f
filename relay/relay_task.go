@@ -398,7 +398,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
 
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
-	if realtimeResp := tryRealtimeFetch(originTask, isOpenAIVideoAPI); len(realtimeResp) > 0 {
+	if realtimeResp := tryRealtimeFetch(c, originTask, isOpenAIVideoAPI); len(realtimeResp) > 0 {
 		respBody = realtimeResp
 		return
 	}
@@ -434,66 +434,39 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	return
 }
 
-// tryRealtimeFetch 尝试从上游实时拉取 Gemini/Vertex 任务状态。
-// 仅当渠道类型为 Gemini 或 Vertex 时触发；其他渠道或出错时返回 nil。
+// tryRealtimeFetch 尝试从上游实时拉取异步视频任务状态。
+// 查询接口不能只依赖后台轮询，否则轮询关闭或异常时 API 会一直返回旧状态。
 // 当非 OpenAI Video API 时，还会构建自定义格式的响应体。
-func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
+func tryRealtimeFetch(c *gin.Context, task *model.Task, isOpenAIVideoAPI bool) []byte {
+	if task == nil {
+		return nil
+	}
+	if task.Status == model.TaskStatusSuccess && task.GetResultURL() != "" {
+		return nil
+	}
+	if task.Status == model.TaskStatusFailure && task.Progress == taskcommon.ProgressComplete {
+		return nil
+	}
+
 	channelModel, err := model.GetChannelById(task.ChannelId, true)
 	if err != nil {
 		return nil
 	}
-	if channelModel.Type != constant.ChannelTypeVertexAi && channelModel.Type != constant.ChannelTypeGemini {
-		return nil
-	}
-
-	baseURL := constant.ChannelBaseURLs[channelModel.Type]
-	if channelModel.GetBaseURL() != "" {
-		baseURL = channelModel.GetBaseURL()
-	}
-	proxy := channelModel.GetSetting().Proxy
 	adaptor := GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(channelModel.Type)))
 	if adaptor == nil {
 		return nil
 	}
 
-	resp, err := adaptor.FetchTask(baseURL, channelModel.Key, map[string]any{
-		"task_id": task.GetUpstreamTaskID(),
-		"action":  task.Action,
-	}, proxy)
-	if err != nil || resp == nil {
+	adaptor.Init(&relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    channelModel.Type,
+			ChannelBaseUrl: channelModel.GetBaseURL(),
+			ApiKey:         channelModel.Key,
+		},
+	})
+	body, _, err := service.RefreshVideoTaskFromUpstream(c.Request.Context(), adaptor, channelModel, task)
+	if err != nil || len(body) == 0 {
 		return nil
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil
-	}
-
-	ti, err := adaptor.ParseTaskResult(body)
-	if err != nil || ti == nil {
-		return nil
-	}
-
-	snap := task.Snapshot()
-
-	// 将上游最新状态更新到 task
-	if ti.Status != "" {
-		task.Status = model.TaskStatus(ti.Status)
-	}
-	if ti.Progress != "" {
-		task.Progress = ti.Progress
-	}
-	if strings.HasPrefix(ti.Url, "data:") {
-		// data: URI — kept in Data, not ResultURL
-	} else if ti.Url != "" {
-		task.PrivateData.ResultURL = ti.Url
-	} else if task.Status == model.TaskStatusSuccess {
-		// No URL from adaptor — construct proxy URL using public task ID
-		task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
-	}
-
-	if !snap.Equal(task.Snapshot()) {
-		_, _ = task.UpdateWithStatus(snap.Status)
 	}
 
 	// OpenAI Video API 由调用者的 ConvertToOpenAIVideo 分支处理

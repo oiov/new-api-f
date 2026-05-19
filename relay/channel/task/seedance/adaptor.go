@@ -392,7 +392,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	video.CreatedAt = originTask.CreatedAt
 	video.CompletedAt = originTask.UpdatedAt
 
-	if url := extractResultURL(payload); url != "" {
+	if url := firstNonEmpty(extractResultURL(payload), originTask.GetResultURL()); url != "" {
 		video.SetMetadata("url", url)
 	}
 

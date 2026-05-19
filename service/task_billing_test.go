@@ -3,13 +3,16 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting"
@@ -1381,19 +1384,76 @@ func TestNonTerminalUpdate_NoBilling(t *testing.T) {
 	assert.Equal(t, "50%", reloaded.Progress)
 }
 
+func TestRefreshVideoTaskFromUpstreamTerminalSnapshotDoesNotRebill(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 24, 24, 24
+	const initQuota, preConsumed = 10000, 5000
+	const tokenRemain = 8000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-refresh-terminal", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.TaskID = "task_refresh_terminal"
+	task.Status = model.TaskStatusSuccess
+	task.Progress = "100%"
+	task.PrivateData.ResultURL = ""
+	task.Data = json.RawMessage(`{"task_id":"task_upstream","status":"SUCCESS"}`)
+	task.PrivateData.UpstreamTaskID = "task_upstream"
+	require.NoError(t, model.DB.Create(task).Error)
+
+	adaptor := &mockAdaptor{
+		adjustReturn: 1000,
+		parseResult: &relaycommon.TaskInfo{
+			Status:   model.TaskStatusSuccess,
+			Progress: "100%",
+			Url:      "https://cdn.example.com/out.mp4",
+		},
+		responseBody: `{"task_id":"task_upstream","status":"SUCCESS","progress":"100%","result_url":"https://cdn.example.com/out.mp4"}`,
+	}
+	ch := &model.Channel{Id: channelID, Type: constant.ChannelTypeSeedance2, Key: "sk-test"}
+
+	body, taskInfo, err := RefreshVideoTaskFromUpstream(ctx, adaptor, ch, task)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "https://cdn.example.com/out.mp4")
+	require.Equal(t, "https://cdn.example.com/out.mp4", taskInfo.Url)
+
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, int64(0), countLogs(t))
+
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, "https://cdn.example.com/out.mp4", reloaded.GetResultURL())
+}
+
 // ===========================================================================
 // Mock adaptor for settleTaskBillingOnComplete tests
 // ===========================================================================
 
 type mockAdaptor struct {
 	adjustReturn int
+	parseResult  *relaycommon.TaskInfo
+	responseBody string
 }
 
 func (m *mockAdaptor) Init(_ *relaycommon.RelayInfo) {}
 func (m *mockAdaptor) FetchTask(string, string, map[string]any, string) (*http.Response, error) {
-	return nil, nil
+	body := m.responseBody
+	if body == "" {
+		body = `{}`
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}, nil
 }
-func (m *mockAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) { return nil, nil }
+func (m *mockAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
+	return m.parseResult, nil
+}
 func (m *mockAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
 	return m.adjustReturn
 }

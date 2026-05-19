@@ -332,7 +332,7 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 	info.ApiKey = cacheGetChannel.Key
 	adaptor.Init(info)
 	for _, taskId := range taskIds {
-		if err := updateVideoSingleTask(ctx, adaptor, cacheGetChannel, taskId, taskM); err != nil {
+		if _, _, err := updateVideoSingleTask(ctx, adaptor, cacheGetChannel, taskId, taskM); err != nil {
 			logger.LogError(ctx, fmt.Sprintf("Failed to update video task %s: %s", taskId, err.Error()))
 		}
 		// sleep 1 second between each task to avoid hitting rate limits of upstream platforms
@@ -341,7 +341,18 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 	return nil
 }
 
-func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
+func RefreshVideoTaskFromUpstream(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, task *model.Task) ([]byte, *relaycommon.TaskInfo, error) {
+	if task == nil {
+		return nil, nil, errors.New("task is nil")
+	}
+	upstreamID := task.GetUpstreamTaskID()
+	if strings.TrimSpace(upstreamID) == "" {
+		return nil, nil, fmt.Errorf("task %s upstream task id is empty", task.TaskID)
+	}
+	return updateVideoSingleTask(ctx, adaptor, ch, upstreamID, map[string]*model.Task{upstreamID: task})
+}
+
+func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) ([]byte, *relaycommon.TaskInfo, error) {
 	baseURL := constant.ChannelBaseURLs[ch.Type]
 	if ch.GetBaseURL() != "" {
 		baseURL = ch.GetBaseURL()
@@ -351,25 +362,20 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	task := taskM[taskId]
 	if task == nil {
 		logger.LogError(ctx, fmt.Sprintf("Task %s not found in taskM", taskId))
-		return fmt.Errorf("task %s not found", taskId)
+		return nil, nil, fmt.Errorf("task %s not found", taskId)
 	}
-	key := ch.Key
-
-	privateData := task.PrivateData
-	if privateData.Key != "" {
-		key = privateData.Key
-	}
+	key := taskPollingKey(ch, task)
 	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
 		"task_id": task.GetUpstreamTaskID(),
 		"action":  task.Action,
 	}, proxy)
 	if err != nil {
-		return fmt.Errorf("fetchTask failed for task %s: %w", taskId, err)
+		return nil, nil, fmt.Errorf("fetchTask failed for task %s: %w", taskId, err)
 	}
 	defer resp.Body.Close()
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
+		return nil, nil, fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
 
 	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask response: %s", string(responseBody)))
@@ -377,6 +383,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	snap := task.Snapshot()
 
 	taskResult := &relaycommon.TaskInfo{}
+	parsedTaskResult, parseErr := adaptor.ParseTaskResult(responseBody)
 	// try parse as New API response format
 	var responseItems dto.TaskResponse[model.Task]
 	if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
@@ -388,8 +395,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		taskResult.Progress = t.Progress
 		taskResult.Reason = t.FailReason
 		task.Data = t.Data
-	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
-		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+		if parseErr == nil && parsedTaskResult != nil {
+			mergeTaskInfo(taskResult, parsedTaskResult)
+		}
+	} else if parseErr != nil {
+		return responseBody, nil, fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, parseErr)
+	} else {
+		taskResult = parsedTaskResult
 	}
 
 	task.Data = redactVideoResponseBody(responseBody)
@@ -406,7 +418,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 				// 返回规范的 OpenAI 错误格式，提取错误信息，判断错误是否为任务失败
 				if openaiError.Code == "429" {
 					// 429 错误通常表示请求过多或速率限制，暂时不认为是任务失败，保持原状态等待下一轮轮询
-					return nil
+					return responseBody, taskResult, nil
 				}
 
 				// 其他错误认为是任务失败，记录错误信息并更新任务状态
@@ -464,7 +476,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			shouldRefund = true
 		}
 	default:
-		return fmt.Errorf("unknown task status %s for task %s", taskResult.Status, task.TaskID)
+		return responseBody, taskResult, fmt.Errorf("unknown task status %s for task %s", taskResult.Status, task.TaskID)
 	}
 	if taskResult.Progress != "" {
 		task.Progress = taskResult.Progress
@@ -482,6 +494,14 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			shouldRefund = false
 			shouldSettle = false
 		}
+	} else if isDone {
+		shouldRefund = false
+		shouldSettle = false
+		if !snap.Equal(task.Snapshot()) {
+			if _, err := task.UpdateWithStatus(snap.Status); err != nil {
+				logger.LogError(ctx, fmt.Sprintf("Failed to update task %s: %s", task.TaskID, err.Error()))
+			}
+		}
 	} else if !snap.Equal(task.Snapshot()) {
 		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
 			logger.LogError(ctx, fmt.Sprintf("Failed to update task %s: %s", task.TaskID, err.Error()))
@@ -498,7 +518,61 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		RefundTaskQuota(ctx, task, task.FailReason)
 	}
 
-	return nil
+	return responseBody, taskResult, nil
+}
+
+func taskPollingKey(ch *model.Channel, task *model.Task) string {
+	if ch == nil {
+		return ""
+	}
+	if task != nil {
+		if key := strings.TrimSpace(task.PrivateData.Key); key != "" {
+			return key
+		}
+		if task.PrivateData.ChannelMultiKeyIndex != nil {
+			keys := ch.GetKeys()
+			index := *task.PrivateData.ChannelMultiKeyIndex
+			if index >= 0 && index < len(keys) {
+				if key := strings.TrimSpace(keys[index]); key != "" {
+					return key
+				}
+			}
+		}
+	}
+	return strings.TrimSpace(ch.Key)
+}
+
+func mergeTaskInfo(dst *relaycommon.TaskInfo, src *relaycommon.TaskInfo) {
+	if dst == nil || src == nil {
+		return
+	}
+	if src.Code != 0 {
+		dst.Code = src.Code
+	}
+	if src.TaskID != "" {
+		dst.TaskID = src.TaskID
+	}
+	if src.Status != "" {
+		dst.Status = src.Status
+	}
+	if src.Reason != "" {
+		dst.Reason = src.Reason
+	}
+	if src.Url != "" {
+		dst.Url = src.Url
+	}
+	if src.RemoteUrl != "" {
+		dst.RemoteUrl = src.RemoteUrl
+	}
+	if src.Progress != "" {
+		dst.Progress = src.Progress
+	}
+	if src.CompletionTokens != 0 {
+		dst.CompletionTokens = src.CompletionTokens
+	}
+	if src.TotalTokens != 0 {
+		dst.TotalTokens = src.TotalTokens
+	}
 }
 
 func redactVideoResponseBody(body []byte) []byte {

@@ -233,6 +233,35 @@ func TestTaskAdaptor_ConvertToOpenAIVideo_WrappedPollingPayloadWithNumericID(t *
 	}
 }
 
+func TestTaskAdaptor_ConvertToOpenAIVideo_UsesStoredResultURLFallback(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	task := &model.Task{
+		TaskID:    "task_public_456",
+		Status:    model.TaskStatusSuccess,
+		Progress:  "100%",
+		CreatedAt: 1776960828,
+		UpdatedAt: 1776960838,
+		Properties: model.Properties{
+			OriginModelName: "seedance-2-cheap",
+		},
+		PrivateData: model.TaskPrivateData{
+			ResultURL: "https://cdn.example.com/stored.mp4",
+		},
+		Data: []byte(`{"task_id":"task_upstream_456","status":"SUCCESS","progress":"100%"}`),
+	}
+
+	got, err := adaptor.ConvertToOpenAIVideo(task)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(got), `"status":"completed"`) {
+		t.Fatalf("unexpected converted payload: %s", string(got))
+	}
+	if !strings.Contains(string(got), `"url":"https://cdn.example.com/stored.mp4"`) {
+		t.Fatalf("unexpected converted payload: %s", string(got))
+	}
+}
+
 func assertTaskInfo(t *testing.T, got *relaycommon.TaskInfo, wantTaskID, wantStatus, wantProgress, wantURL string) {
 	t.Helper()
 	if got == nil {
