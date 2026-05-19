@@ -310,6 +310,9 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if err := migratePaymentProviderColumns(); err != nil {
+		return err
+	}
 	if err := migrateUserCreatedAtCompatibility(); err != nil {
 		return err
 	}
@@ -463,6 +466,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := migratePaymentProviderColumns(); err != nil {
+		return err
+	}
 	if err := migrateLegacyPeriodicRequestCountPlans(); err != nil {
 		return err
 	}
@@ -485,6 +491,32 @@ func migrateLOGDB() error {
 	}
 	if err = LOG_DB.AutoMigrate(&AntiDistributionLog{}); err != nil {
 		return err
+	}
+	return nil
+}
+
+func migratePaymentProviderColumns() error {
+	if DB == nil {
+		return nil
+	}
+	items := []struct {
+		model any
+		table string
+	}{
+		{model: &TopUp{}, table: "top_ups"},
+		{model: &SubscriptionOrder{}, table: "subscription_orders"},
+	}
+	for _, item := range items {
+		if !DB.Migrator().HasTable(item.model) {
+			continue
+		}
+		if DB.Migrator().HasColumn(item.model, "payment_provider") {
+			continue
+		}
+		if err := DB.Migrator().AddColumn(item.model, "PaymentProvider"); err != nil {
+			return fmt.Errorf("failed to add %s.payment_provider: %w", item.table, err)
+		}
+		common.SysLog(fmt.Sprintf("added missing %s.payment_provider column", item.table))
 	}
 	return nil
 }
