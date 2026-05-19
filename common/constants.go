@@ -143,6 +143,7 @@ var AffiliateCommissionMinOrderMoney = 0.0
 var AffiliateCommissionMaxQuotaPerOrder = 0
 var AffiliateCommissionIncludeTopup = true
 var AffiliateCommissionIncludeSubscription = true
+var AffiliateCommissionAutoGrant = true
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

@@ -22,7 +22,9 @@ const (
 	AffiliateCommissionScopeFirstPaidOrder = "first_paid_order"
 
 	AffiliateCommissionStatusGranted  = "granted"
+	AffiliateCommissionStatusPending  = "pending"
 	AffiliateCommissionStatusSkipped  = "skipped"
+	AffiliateCommissionStatusRejected = "rejected"
 	AffiliateCommissionStatusReversed = "reversed"
 
 	AffiliateCommissionWithdrawalNotAvailable = "not_available"
@@ -44,6 +46,7 @@ type AffiliateCommission struct {
 	Id               int     `json:"id"`
 	InviterId        int     `json:"inviter_id" gorm:"index"`
 	InviteeId        int     `json:"invitee_id" gorm:"index"`
+	InviterUsername  string  `json:"inviter_username,omitempty" gorm:"-"`
 	InviteeUsername  string  `json:"invitee_username,omitempty" gorm:"-"`
 	SourceType       string  `json:"source_type" gorm:"type:varchar(32);not null;uniqueIndex:idx_affiliate_commission_source;index"`
 	SourceId         int     `json:"source_id" gorm:"not null;uniqueIndex:idx_affiliate_commission_source"`
@@ -87,6 +90,7 @@ func (c *AffiliateCommission) BeforeUpdate(tx *gorm.DB) error {
 type AffiliateCommissionFilters struct {
 	Status     string
 	SourceType string
+	Keyword    string
 }
 
 type AffiliateCommissionConfigSummary struct {
@@ -96,6 +100,7 @@ type AffiliateCommissionConfigSummary struct {
 	IncludeTopup        bool    `json:"include_topup"`
 	IncludeSubscription bool    `json:"include_subscription"`
 	MinOrderMoney       float64 `json:"min_order_money"`
+	AutoGrant           bool    `json:"auto_grant"`
 	SettlementType      string  `json:"settlement_type"`
 }
 
@@ -236,8 +241,13 @@ func grantAffiliateCommissionTx(tx *gorm.DB, source affiliateCommissionSource) e
 		return tx.Create(&commission).Error
 	}
 
-	commission.Status = AffiliateCommissionStatusGranted
 	commission.CommissionQuota = quota
+	if !common.AffiliateCommissionAutoGrant {
+		commission.Status = AffiliateCommissionStatusPending
+		return tx.Create(&commission).Error
+	}
+
+	commission.Status = AffiliateCommissionStatusGranted
 	if err := tx.Create(&commission).Error; err != nil {
 		return err
 	}
@@ -272,7 +282,11 @@ func resolveAffiliateCommissionSkipReason(tx *gorm.DB, source affiliateCommissio
 	if common.AffiliateCommissionScope == AffiliateCommissionScopeFirstPaidOrder && inviteeId > 0 {
 		var count int64
 		err := tx.Model(&AffiliateCommission{}).
-			Where("invitee_id = ? AND status = ?", inviteeId, AffiliateCommissionStatusGranted).
+			Where("invitee_id = ? AND status IN ?", inviteeId, []string{
+				AffiliateCommissionStatusGranted,
+				AffiliateCommissionStatusPending,
+				AffiliateCommissionStatusRejected,
+			}).
 			Count(&count).Error
 		if err != nil {
 			return ""
@@ -332,6 +346,133 @@ func ListAffiliateCommissionsByUser(userId int, pageInfo *common.PageInfo, filte
 	return items, total, err
 }
 
+func ListAffiliateCommissionsForAdmin(pageInfo *common.PageInfo, filters AffiliateCommissionFilters) ([]AffiliateCommission, int64, error) {
+	if pageInfo == nil {
+		pageInfo = &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
+	}
+
+	query := DB.Model(&AffiliateCommission{}).Scopes(applyAffiliateCommissionFilters(filters))
+	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.
+			Joins("LEFT JOIN users invitees ON invitees.id = affiliate_commissions.invitee_id").
+			Joins("LEFT JOIN users inviters ON inviters.id = affiliate_commissions.inviter_id").
+			Where("affiliate_commissions.source_trade_no LIKE ? OR invitees.username LIKE ? OR inviters.username LIKE ?", like, like, like)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]AffiliateCommission, 0)
+	if total == 0 {
+		return items, 0, nil
+	}
+
+	listQuery := DB.Model(&AffiliateCommission{}).
+		Select("affiliate_commissions.*, invitees.username AS invitee_username, inviters.username AS inviter_username").
+		Joins("LEFT JOIN users invitees ON invitees.id = affiliate_commissions.invitee_id").
+		Joins("LEFT JOIN users inviters ON inviters.id = affiliate_commissions.inviter_id").
+		Scopes(applyAffiliateCommissionFilters(filters))
+	if keyword := strings.TrimSpace(filters.Keyword); keyword != "" {
+		like := "%" + keyword + "%"
+		listQuery = listQuery.Where("affiliate_commissions.source_trade_no LIKE ? OR invitees.username LIKE ? OR inviters.username LIKE ?", like, like, like)
+	}
+	err := listQuery.
+		Order("affiliate_commissions.created_at desc, affiliate_commissions.id desc").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Find(&items).Error
+	return items, total, err
+}
+
+func ApproveAffiliateCommission(id int) (*AffiliateCommission, error) {
+	if id <= 0 {
+		return nil, errors.New("invalid affiliate commission id")
+	}
+	var commission AffiliateCommission
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&commission, id).Error; err != nil {
+			return err
+		}
+		if commission.Status != AffiliateCommissionStatusPending {
+			return fmt.Errorf("affiliate commission is not pending")
+		}
+		if commission.InviterId <= 0 || commission.CommissionQuota <= 0 {
+			return fmt.Errorf("affiliate commission cannot be approved")
+		}
+		var inviter User
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Select("id").First(&inviter, commission.InviterId).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&AffiliateCommission{}).
+			Where("id = ? AND status = ?", commission.Id, AffiliateCommissionStatusPending).
+			Updates(map[string]any{
+				"status": AffiliateCommissionStatusGranted,
+				"reason": "",
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return fmt.Errorf("affiliate commission is not pending")
+		}
+		result = tx.Model(&User{}).
+			Where("id = ?", inviter.Id).
+			Updates(map[string]any{
+				"aff_quota":   gorm.Expr("aff_quota + ?", commission.CommissionQuota),
+				"aff_history": gorm.Expr("aff_history + ?", commission.CommissionQuota),
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return fmt.Errorf("affiliate commission inviter not found")
+		}
+		return tx.First(&commission, commission.Id).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &commission, nil
+}
+
+func RejectAffiliateCommission(id int, reason string) (*AffiliateCommission, error) {
+	if id <= 0 {
+		return nil, errors.New("invalid affiliate commission id")
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "admin_rejected"
+	}
+	var commission AffiliateCommission
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&commission, id).Error; err != nil {
+			return err
+		}
+		if commission.Status != AffiliateCommissionStatusPending {
+			return fmt.Errorf("affiliate commission is not pending")
+		}
+		result := tx.Model(&AffiliateCommission{}).
+			Where("id = ? AND status = ?", commission.Id, AffiliateCommissionStatusPending).
+			Updates(map[string]any{
+				"status": AffiliateCommissionStatusRejected,
+				"reason": reason,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return fmt.Errorf("affiliate commission is not pending")
+		}
+		return tx.First(&commission, commission.Id).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &commission, nil
+}
+
 func applyAffiliateCommissionFilters(filters AffiliateCommissionFilters) func(*gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		if status := strings.TrimSpace(filters.Status); status != "" {
@@ -387,6 +528,7 @@ func GetAffiliateCommissionSummary(userId int) (*AffiliateCommissionSummary, err
 			IncludeTopup:        common.AffiliateCommissionIncludeTopup,
 			IncludeSubscription: common.AffiliateCommissionIncludeSubscription,
 			MinOrderMoney:       common.AffiliateCommissionMinOrderMoney,
+			AutoGrant:           common.AffiliateCommissionAutoGrant,
 			SettlementType:      common.AffiliateCommissionSettlementMode,
 		},
 	}, nil

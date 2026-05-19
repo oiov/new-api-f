@@ -52,6 +52,7 @@ export default function SettingsCreditLimit(props) {
     AffiliateCommissionMaxQuotaPerOrder: '0',
     AffiliateCommissionIncludeTopup: true,
     AffiliateCommissionIncludeSubscription: true,
+    AffiliateCommissionAutoGrant: true,
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
@@ -61,6 +62,7 @@ export default function SettingsCreditLimit(props) {
     'AffiliateCommissionEnabled',
     'AffiliateCommissionIncludeTopup',
     'AffiliateCommissionIncludeSubscription',
+    'AffiliateCommissionAutoGrant',
     'quota_setting.enable_free_model_pre_consume',
   ]);
 
@@ -131,6 +133,7 @@ export default function SettingsCreditLimit(props) {
       AffiliateCommissionMaxQuotaPerOrder: '0',
       AffiliateCommissionIncludeTopup: true,
       AffiliateCommissionIncludeSubscription: true,
+      AffiliateCommissionAutoGrant: true,
       'quota_setting.enable_free_model_pre_consume': true,
     };
     for (let key in props.options) {
@@ -442,6 +445,19 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       AffiliateCommissionIncludeSubscription: value,
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.Switch
+                  label={t('自动发放返佣')}
+                  field={'AffiliateCommissionAutoGrant'}
+                  extraText={t('关闭后，符合条件的分佣需要管理员确认后才到账')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateCommissionAutoGrant: value,
                     })
                   }
                 />

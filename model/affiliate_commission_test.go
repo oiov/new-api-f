@@ -26,6 +26,7 @@ func withAffiliateCommissionTestDB(t *testing.T, run func()) {
 	oldMaxQuotaPerOrder := common.AffiliateCommissionMaxQuotaPerOrder
 	oldIncludeTopup := common.AffiliateCommissionIncludeTopup
 	oldIncludeSubscription := common.AffiliateCommissionIncludeSubscription
+	oldAutoGrant := common.AffiliateCommissionAutoGrant
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -48,6 +49,7 @@ func withAffiliateCommissionTestDB(t *testing.T, run func()) {
 	common.AffiliateCommissionMaxQuotaPerOrder = 0
 	common.AffiliateCommissionIncludeTopup = true
 	common.AffiliateCommissionIncludeSubscription = true
+	common.AffiliateCommissionAutoGrant = true
 
 	require.NoError(t, db.AutoMigrate(&User{}, &TopUp{}, &SubscriptionPlan{}, &SubscriptionOrder{}, &UserSubscription{}, &AffiliateCommission{}))
 
@@ -66,6 +68,7 @@ func withAffiliateCommissionTestDB(t *testing.T, run func()) {
 		common.AffiliateCommissionMaxQuotaPerOrder = oldMaxQuotaPerOrder
 		common.AffiliateCommissionIncludeTopup = oldIncludeTopup
 		common.AffiliateCommissionIncludeSubscription = oldIncludeSubscription
+		common.AffiliateCommissionAutoGrant = oldAutoGrant
 	})
 
 	run()
@@ -284,6 +287,98 @@ func TestAffiliateCommissionSummaryIncludesMinOrderMoney(t *testing.T) {
 		var config map[string]any
 		require.NoError(t, common.Unmarshal(configBytes, &config))
 		require.Equal(t, 25.5, config["min_order_money"])
+	})
+}
+
+func TestAffiliateCommissionManualModeCreatesPendingRow(t *testing.T) {
+	withAffiliateCommissionTestDB(t, func() {
+		common.AffiliateCommissionAutoGrant = false
+		inviter, invitee := seedAffiliateUsers(t, -1)
+		topUp := &TopUp{Id: 108, UserId: invitee.Id, Money: 10, TradeNo: "topup-pending", PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay}
+
+		grantTopUpForAffiliateTest(t, topUp)
+
+		commission := getAffiliateCommissionBySource(t, AffiliateCommissionSourceTopUp, topUp.Id)
+		require.Equal(t, AffiliateCommissionStatusPending, commission.Status)
+		require.Equal(t, "", commission.Reason)
+		require.Equal(t, 500000, commission.CommissionQuota)
+
+		updatedInviter := getAffiliateUser(t, inviter.Id)
+		require.Equal(t, 0, updatedInviter.AffQuota)
+		require.Equal(t, 0, updatedInviter.AffHistoryQuota)
+	})
+}
+
+func TestAffiliateCommissionFirstPaidOrderTreatsPendingAsConsumed(t *testing.T) {
+	withAffiliateCommissionTestDB(t, func() {
+		common.AffiliateCommissionAutoGrant = false
+		common.AffiliateCommissionScope = AffiliateCommissionScopeFirstPaidOrder
+		inviter, invitee := seedAffiliateUsers(t, -1)
+		firstTopUp := &TopUp{Id: 111, UserId: invitee.Id, Money: 10, TradeNo: "topup-first-pending", PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay}
+		secondTopUp := &TopUp{Id: 112, UserId: invitee.Id, Money: 10, TradeNo: "topup-second-skipped", PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay}
+
+		grantTopUpForAffiliateTest(t, firstTopUp)
+		grantTopUpForAffiliateTest(t, secondTopUp)
+
+		firstCommission := getAffiliateCommissionBySource(t, AffiliateCommissionSourceTopUp, firstTopUp.Id)
+		require.Equal(t, AffiliateCommissionStatusPending, firstCommission.Status)
+		require.Equal(t, 500000, firstCommission.CommissionQuota)
+
+		secondCommission := getAffiliateCommissionBySource(t, AffiliateCommissionSourceTopUp, secondTopUp.Id)
+		require.Equal(t, AffiliateCommissionStatusSkipped, secondCommission.Status)
+		require.Equal(t, AffiliateCommissionReasonFirstPaidOrderOnly, secondCommission.Reason)
+
+		updatedInviter := getAffiliateUser(t, inviter.Id)
+		require.Equal(t, 0, updatedInviter.AffQuota)
+		require.Equal(t, 0, updatedInviter.AffHistoryQuota)
+	})
+}
+
+func TestApproveAffiliateCommissionGrantsPendingQuotaOnce(t *testing.T) {
+	withAffiliateCommissionTestDB(t, func() {
+		common.AffiliateCommissionAutoGrant = false
+		inviter, invitee := seedAffiliateUsers(t, -1)
+		topUp := &TopUp{Id: 109, UserId: invitee.Id, Money: 10, TradeNo: "topup-approve", PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay}
+		grantTopUpForAffiliateTest(t, topUp)
+		commission := getAffiliateCommissionBySource(t, AffiliateCommissionSourceTopUp, topUp.Id)
+
+		approved, err := ApproveAffiliateCommission(commission.Id)
+		require.NoError(t, err)
+		require.Equal(t, AffiliateCommissionStatusGranted, approved.Status)
+		require.Equal(t, "", approved.Reason)
+
+		updatedInviter := getAffiliateUser(t, inviter.Id)
+		require.Equal(t, 500000, updatedInviter.AffQuota)
+		require.Equal(t, 500000, updatedInviter.AffHistoryQuota)
+
+		_, err = ApproveAffiliateCommission(commission.Id)
+		require.Error(t, err)
+
+		updatedInviter = getAffiliateUser(t, inviter.Id)
+		require.Equal(t, 500000, updatedInviter.AffQuota)
+		require.Equal(t, 500000, updatedInviter.AffHistoryQuota)
+	})
+}
+
+func TestRejectAffiliateCommissionKeepsQuotaUnchanged(t *testing.T) {
+	withAffiliateCommissionTestDB(t, func() {
+		common.AffiliateCommissionAutoGrant = false
+		inviter, invitee := seedAffiliateUsers(t, -1)
+		topUp := &TopUp{Id: 110, UserId: invitee.Id, Money: 10, TradeNo: "topup-reject", PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay}
+		grantTopUpForAffiliateTest(t, topUp)
+		commission := getAffiliateCommissionBySource(t, AffiliateCommissionSourceTopUp, topUp.Id)
+
+		rejected, err := RejectAffiliateCommission(commission.Id, "manual audit failed")
+		require.NoError(t, err)
+		require.Equal(t, AffiliateCommissionStatusRejected, rejected.Status)
+		require.Equal(t, "manual audit failed", rejected.Reason)
+
+		updatedInviter := getAffiliateUser(t, inviter.Id)
+		require.Equal(t, 0, updatedInviter.AffQuota)
+		require.Equal(t, 0, updatedInviter.AffHistoryQuota)
+
+		_, err = ApproveAffiliateCommission(commission.Id)
+		require.Error(t, err)
 	})
 }
 

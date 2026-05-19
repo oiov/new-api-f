@@ -151,6 +151,7 @@ func InitOptionMap() {
 	common.OptionMap["AffiliateCommissionMaxQuotaPerOrder"] = strconv.Itoa(common.AffiliateCommissionMaxQuotaPerOrder)
 	common.OptionMap["AffiliateCommissionIncludeTopup"] = strconv.FormatBool(common.AffiliateCommissionIncludeTopup)
 	common.OptionMap["AffiliateCommissionIncludeSubscription"] = strconv.FormatBool(common.AffiliateCommissionIncludeSubscription)
+	common.OptionMap["AffiliateCommissionAutoGrant"] = strconv.FormatBool(common.AffiliateCommissionAutoGrant)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -349,6 +350,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.AffiliateCommissionIncludeTopup = boolValue
 		case "AffiliateCommissionIncludeSubscription":
 			common.AffiliateCommissionIncludeSubscription = boolValue
+		case "AffiliateCommissionAutoGrant":
+			common.AffiliateCommissionAutoGrant = boolValue
 		case "EmailDomainRestrictionEnabled":
 			common.EmailDomainRestrictionEnabled = boolValue
 		case "EmailAliasRestrictionEnabled":
