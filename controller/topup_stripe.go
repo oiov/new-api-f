@@ -26,9 +26,7 @@ import (
 	"github.com/thanhpk/randstr"
 )
 
-const (
-	PaymentMethodStripe = "stripe"
-)
+const PaymentMethodStripe = model.PaymentMethodStripe
 
 var stripeAdaptor = &StripeAdaptor{}
 
@@ -74,7 +72,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		return
 	}
 
-	if req.PaymentMethod != PaymentMethodStripe {
+	if req.PaymentMethod != model.PaymentMethodStripe {
 		c.JSON(200, gin.H{"message": "error", "data": "不支持的支付渠道"})
 		return
 	}
@@ -117,13 +115,14 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	}
 
 	topUp := &model.TopUp{
-		UserId:        id,
-		Amount:        req.Amount,
-		Money:         chargedMoney,
-		TradeNo:       referenceId,
-		PaymentMethod: PaymentMethodStripe,
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:          id,
+		Amount:          req.Amount,
+		Money:           chargedMoney,
+		TradeNo:         referenceId,
+		PaymentMethod:   model.PaymentMethodStripe,
+		PaymentProvider: model.PaymentProviderStripe,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -360,13 +359,7 @@ func sessionExpired(event stripe.Event) error {
 		return fmt.Errorf("充值订单不存在: %s", referenceId)
 	}
 
-	if topUp.Status != common.TopUpStatusPending {
-		log.Println("充值订单状态错误", referenceId)
-	}
-
-	topUp.Status = common.TopUpStatusExpired
-	err := topUp.Update()
-	if err != nil {
+	if err := model.UpdatePendingTopUpStatus(referenceId, model.PaymentProviderStripe, common.TopUpStatusExpired); err != nil {
 		log.Println("过期充值订单失败", referenceId, ", err:", err.Error())
 		return err
 	}

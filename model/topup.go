@@ -21,11 +21,29 @@ type TopUp struct {
 	Money         float64 `json:"money"`
 	TradeNo       string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string  `json:"payment_method" gorm:"type:varchar(50)"`
-	CreateTime    int64   `json:"create_time"`
-	CompleteTime  int64   `json:"complete_time"`
-	Status        string  `json:"status"`
-	Invoiced      bool    `json:"invoiced" gorm:"default:false"` // 是否已开发票
+	// PaymentProvider records the payment gateway that created the order.
+	// PaymentMethod can be the provider's real method, such as alipay/wxpay for EPay.
+	PaymentProvider string `json:"-" gorm:"type:varchar(50);default:''"`
+	CreateTime      int64  `json:"create_time"`
+	CompleteTime    int64  `json:"complete_time"`
+	Status          string `json:"status"`
+	Invoiced        bool   `json:"invoiced" gorm:"default:false"` // 是否已开发票
 }
+
+const (
+	PaymentMethodStripe       = "stripe"
+	PaymentMethodCreem        = "creem"
+	PaymentMethodWaffo        = "waffo"
+	PaymentMethodWaffoPancake = "waffo_pancake"
+)
+
+const (
+	PaymentProviderEpay         = "epay"
+	PaymentProviderStripe       = "stripe"
+	PaymentProviderCreem        = "creem"
+	PaymentProviderWaffo        = "waffo"
+	PaymentProviderWaffoPancake = "waffo_pancake"
+)
 
 var ErrPaymentMethodMismatch = errors.New("payment method mismatch")
 var ErrPaymentAmountMismatch = errors.New("payment amount mismatch")
@@ -91,7 +109,80 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	return topUp
 }
 
-func rechargeAmountBasedTopUp(tradeNo string) (topUp *TopUp, quotaToAdd int, completed bool, err error) {
+func (topUp *TopUp) PaymentGateway() string {
+	if topUp == nil {
+		return ""
+	}
+	if provider := strings.TrimSpace(topUp.PaymentProvider); provider != "" {
+		return provider
+	}
+	return inferPaymentProviderFromMethod(topUp.PaymentMethod)
+}
+
+func inferPaymentProviderFromMethod(method string) string {
+	switch strings.TrimSpace(method) {
+	case PaymentMethodStripe:
+		return PaymentProviderStripe
+	case PaymentMethodCreem:
+		return PaymentProviderCreem
+	case PaymentMethodWaffo:
+		return PaymentProviderWaffo
+	case PaymentMethodWaffoPancake:
+		return PaymentProviderWaffoPancake
+	case "redemption", "admin", "":
+		return ""
+	default:
+		return PaymentProviderEpay
+	}
+}
+
+func (topUp *TopUp) ensurePaymentProvider(expectedProvider string) error {
+	if topUp == nil {
+		return errors.New("充值订单不存在")
+	}
+	if expectedProvider == "" {
+		return nil
+	}
+	if topUp.PaymentGateway() != expectedProvider {
+		return ErrPaymentMethodMismatch
+	}
+	if topUp.PaymentProvider == "" {
+		topUp.PaymentProvider = expectedProvider
+	}
+	return nil
+}
+
+func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {
+	if tradeNo == "" {
+		return errors.New("未提供支付单号")
+	}
+	if targetStatus == "" {
+		return errors.New("未提供目标状态")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingPostgreSQL {
+		refCol = `"trade_no"`
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		topUp := &TopUp{}
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			return errors.New("充值订单不存在")
+		}
+		if err := topUp.ensurePaymentProvider(expectedPaymentProvider); err != nil {
+			return err
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return errors.New("充值订单状态错误")
+		}
+		topUp.Status = targetStatus
+		topUp.CompleteTime = common.GetTimestamp()
+		return tx.Save(topUp).Error
+	})
+}
+
+func rechargeAmountBasedTopUp(tradeNo string, expectedPaymentProvider string, actualPaymentMethod string) (topUp *TopUp, quotaToAdd int, completed bool, err error) {
 	if tradeNo == "" {
 		return nil, 0, false, errors.New("未提供支付单号")
 	}
@@ -105,6 +196,10 @@ func rechargeAmountBasedTopUp(tradeNo string) (topUp *TopUp, quotaToAdd int, com
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return errors.New("充值订单不存在")
+		}
+
+		if err := topUp.ensurePaymentProvider(expectedPaymentProvider); err != nil {
+			return err
 		}
 
 		if topUp.Status == common.TopUpStatusSuccess {
@@ -124,6 +219,9 @@ func rechargeAmountBasedTopUp(tradeNo string) (topUp *TopUp, quotaToAdd int, com
 
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
+		if actualPaymentMethod != "" && topUp.PaymentMethod != actualPaymentMethod {
+			topUp.PaymentMethod = actualPaymentMethod
+		}
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
@@ -163,7 +261,7 @@ func Recharge(referenceId string, customerId string) (completed bool, err error)
 			return errors.New("充值订单不存在")
 		}
 
-		if topUp.PaymentMethod != "stripe" {
+		if err := topUp.ensurePaymentProvider(PaymentProviderStripe); err != nil {
 			return ErrPaymentMethodMismatch
 		}
 
@@ -411,7 +509,7 @@ func ManualCompleteTopUp(tradeNo string) error {
 		// 计算应充值额度：
 		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
 		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
-		if topUp.PaymentMethod == "stripe" {
+		if topUp.PaymentGateway() == PaymentProviderStripe {
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
 		} else {
@@ -543,7 +641,7 @@ func RechargeWaffo(tradeNo string) (completed bool, err error) {
 		return false, errors.New("充值失败，请稍后重试")
 	}
 
-	topUp, quotaToAdd, completed, err := rechargeAmountBasedTopUp(tradeNo)
+	topUp, quotaToAdd, completed, err := rechargeAmountBasedTopUp(tradeNo, "", "")
 
 	if err != nil {
 		common.SysError("waffo topup failed: " + err.Error())
@@ -557,8 +655,12 @@ func RechargeWaffo(tradeNo string) (completed bool, err error) {
 	return completed, nil
 }
 
-func RechargeEpay(tradeNo string) (completed bool, err error) {
-	topUp, quotaToAdd, completed, err := rechargeAmountBasedTopUp(tradeNo)
+func RechargeEpay(tradeNo string, actualPaymentMethod ...string) (completed bool, err error) {
+	method := ""
+	if len(actualPaymentMethod) > 0 {
+		method = actualPaymentMethod[0]
+	}
+	topUp, quotaToAdd, completed, err := rechargeAmountBasedTopUp(tradeNo, PaymentProviderEpay, method)
 	if err != nil {
 		common.SysError("epay topup failed: " + err.Error())
 		return false, errors.New("充值失败，请稍后重试")

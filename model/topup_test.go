@@ -2,6 +2,7 @@ package model
 
 import (
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
@@ -68,4 +69,108 @@ func TestValidateTopUpPaidMoney(t *testing.T) {
 	require.NoError(t, ValidateTopUpPaidMoney(topUp, decimal.RequireFromString("12.35")))
 	require.ErrorIs(t, ValidateTopUpPaidMoney(topUp, decimal.RequireFromString("12.36")), ErrPaymentAmountMismatch)
 	require.EqualError(t, ValidateTopUpPaidMoney(nil, decimal.RequireFromString("1.00")), "充值订单不存在")
+}
+
+func TestRechargeEpayRejectsCrossGatewayOrder(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 11, Username: "u11", AffCode: "aff_u11", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{
+			UserId:          11,
+			Amount:          10,
+			Money:           1,
+			TradeNo:         "stripe-order-from-epay-callback",
+			PaymentMethod:   PaymentMethodStripe,
+			PaymentProvider: PaymentProviderStripe,
+			CreateTime:      time.Now().Unix(),
+			Status:          common.TopUpStatusPending,
+		}).Error)
+
+		completed, err := RechargeEpay("stripe-order-from-epay-callback", "alipay")
+		require.Error(t, err)
+		require.False(t, completed)
+
+		var topUp TopUp
+		require.NoError(t, DB.Where("trade_no = ?", "stripe-order-from-epay-callback").First(&topUp).Error)
+		require.Equal(t, common.TopUpStatusPending, topUp.Status)
+
+		var user User
+		require.NoError(t, DB.First(&user, 11).Error)
+		require.Zero(t, user.Quota)
+	})
+}
+
+func TestRechargeEpayAcceptsLegacyEpayOrderAndUpdatesActualPaymentMethod(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 12, Username: "u12", AffCode: "aff_u12", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{
+			UserId:        12,
+			Amount:        10,
+			Money:         1,
+			TradeNo:       "legacy-epay-order",
+			PaymentMethod: "wxpay",
+			CreateTime:    time.Now().Unix(),
+			Status:        common.TopUpStatusPending,
+		}).Error)
+
+		completed, err := RechargeEpay("legacy-epay-order", "alipay")
+		require.NoError(t, err)
+		require.True(t, completed)
+
+		var topUp TopUp
+		require.NoError(t, DB.Where("trade_no = ?", "legacy-epay-order").First(&topUp).Error)
+		require.Equal(t, common.TopUpStatusSuccess, topUp.Status)
+		require.Equal(t, "alipay", topUp.PaymentMethod)
+		require.Equal(t, PaymentProviderEpay, topUp.PaymentProvider)
+
+		var user User
+		require.NoError(t, DB.First(&user, 12).Error)
+		require.Equal(t, int(10*common.QuotaPerUnit), user.Quota)
+	})
+}
+
+func TestRechargeStripeRejectsEpayProviderEvenIfMethodWasTampered(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 13, Username: "u13", AffCode: "aff_u13", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{
+			UserId:          13,
+			Amount:          10,
+			Money:           1,
+			TradeNo:         "epay-order-with-stripe-method",
+			PaymentMethod:   PaymentMethodStripe,
+			PaymentProvider: PaymentProviderEpay,
+			CreateTime:      time.Now().Unix(),
+			Status:          common.TopUpStatusPending,
+		}).Error)
+
+		completed, err := Recharge("epay-order-with-stripe-method", "cus_test")
+		require.Error(t, err)
+		require.False(t, completed)
+
+		var topUp TopUp
+		require.NoError(t, DB.Where("trade_no = ?", "epay-order-with-stripe-method").First(&topUp).Error)
+		require.Equal(t, common.TopUpStatusPending, topUp.Status)
+	})
+}
+
+func TestStripeExpireRejectsEpayProviderEvenIfMethodWasTampered(t *testing.T) {
+	withTopUpTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 14, Username: "u14", AffCode: "aff_u14", Status: common.UserStatusEnabled}).Error)
+		require.NoError(t, DB.Create(&TopUp{
+			UserId:          14,
+			Amount:          10,
+			Money:           1,
+			TradeNo:         "epay-order-from-stripe-expire",
+			PaymentMethod:   PaymentMethodStripe,
+			PaymentProvider: PaymentProviderEpay,
+			CreateTime:      time.Now().Unix(),
+			Status:          common.TopUpStatusPending,
+		}).Error)
+
+		err := UpdatePendingTopUpStatus("epay-order-from-stripe-expire", PaymentProviderStripe, common.TopUpStatusExpired)
+		require.ErrorIs(t, err, ErrPaymentMethodMismatch)
+
+		var topUp TopUp
+		require.NoError(t, DB.Where("trade_no = ?", "epay-order-from-stripe-expire").First(&topUp).Error)
+		require.Equal(t, common.TopUpStatusPending, topUp.Status)
+	})
 }

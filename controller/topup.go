@@ -223,13 +223,14 @@ func RequestEpay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 	topUp := &model.TopUp{
-		UserId:        id,
-		Amount:        amount,
-		Money:         payMoney,
-		TradeNo:       tradeNo,
-		PaymentMethod: req.PaymentMethod,
-		CreateTime:    time.Now().Unix(),
-		Status:        "pending",
+		UserId:          id,
+		Amount:          amount,
+		Money:           payMoney,
+		TradeNo:         tradeNo,
+		PaymentMethod:   req.PaymentMethod,
+		PaymentProvider: model.PaymentProviderEpay,
+		CreateTime:      time.Now().Unix(),
+		Status:          "pending",
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -337,8 +338,8 @@ func EpayNotify(c *gin.Context) {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		if topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo); topUp != nil {
-			if topUp.PaymentMethod == PaymentMethodStripe || topUp.PaymentMethod == PaymentMethodCreem || topUp.PaymentMethod == "waffo" {
-				log.Printf("易支付回调订单支付方式不匹配: %s, order=%s", topUp.PaymentMethod, verifyInfo.ServiceTradeNo)
+			if topUp.PaymentGateway() != model.PaymentProviderEpay {
+				log.Printf("易支付回调订单支付网关不匹配: %s, order=%s", topUp.PaymentGateway(), verifyInfo.ServiceTradeNo)
 				return
 			}
 			paidMoney, err := decimal.NewFromString(verifyInfo.Money)
@@ -351,7 +352,7 @@ func EpayNotify(c *gin.Context) {
 				return
 			}
 		}
-		completed, err := model.RechargeEpay(verifyInfo.ServiceTradeNo)
+		completed, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, verifyInfo.Type)
 		if err != nil {
 			log.Printf("易支付回调处理失败: %v, order=%s", err, verifyInfo.ServiceTradeNo)
 			return

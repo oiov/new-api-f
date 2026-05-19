@@ -473,6 +473,45 @@ Continuation marker for next run:
 - Selective upstream commits applied in SSRF batch: `20399d3c8`, `e2807c5f9`.
 - Next priority batch remains payment safety: `a7c38ec85`, `b2e62a44e`, with local Stripe/Waffo/Creem/subscription behavior requiring careful manual adaptation.
 
+### 2026-05-19 Payment Safety Batch: EPay And Stripe Top-Up Only
+
+Scope narrowed by user during implementation: do not change Creem, Waffo, or subscription payment behavior in this batch. Preserve online EPay and Stripe payment compatibility as the highest constraint.
+
+| Upstream commit | Local status | Files touched | Verification | Notes |
+| --- | --- | --- | --- | --- |
+| `a7c38ec85` QuantumNous, `fix: add PaymentProvider field to prevent cross-gateway callback attacks` | Partially applied as an uncommitted manual backport for ordinary top-up EPay and Stripe only. | `model/topup.go`, `controller/topup.go`, `controller/topup_stripe.go`, tests in `model/topup_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestRechargeEpayRejectsCrossGatewayOrder|TestRechargeEpayAcceptsLegacyEpayOrderAndUpdatesActualPaymentMethod|TestRechargeStripeRejectsEpayProviderEvenIfMethodWasTampered|TestStripeExpireRejectsEpayProviderEvenIfMethodWasTampered|TestValidateTopUpPaidMoney' -count=1` failed because `PaymentProvider`, provider constants, EPay actual-method update, and Stripe expiry guard were missing. Green after patch: same command passed. Controller Stripe regression tests passed separately. | Adds an internal `TopUp.PaymentProvider` DB column with `json:"-"`, so the field is not exposed in API responses. New EPay top-up orders store provider `epay`; new Stripe top-up orders store provider `stripe`. Legacy pending orders with empty provider are mapped by existing `payment_method` so old EPay/Stripe pending orders can still complete. EPay callbacks may update `payment_method` to the actual gateway type returned by EPay, preserving wxpay-to-alipay style checkout switches. |
+| `b2e62a44e` QuantumNous, `fix(topup): harden top-up search against DoS and cap user queries to 30 days` | Not applied in this batch after scope reduction. | None. | Not run. | Deferred. This changes user top-up history query semantics and should be handled only after confirming the frontend/user-history impact. |
+
+Payment batch API compatibility gate:
+
+- Changed backend API surface:
+  - `/api/user/pay` request and success/error response shape are unchanged: still accepts `amount` and `payment_method`, still returns `{message,data,url}`.
+  - `/api/user/stripe/pay` request and success/error response shape are unchanged: still accepts `amount`, `payment_method:"stripe"`, optional redirect URLs, and returns `{message,data:{pay_link}}`.
+  - EPay notify behavior now accepts an EPay-created order even if the actual callback `type` differs from the originally requested EPay method, while still rejecting Stripe-created orders.
+  - Stripe completion and expiry now reject EPay-created orders even if `payment_method` was tampered to `stripe`.
+  - `TopUp.payment_provider` is persisted only in the database and intentionally hidden from JSON responses with `json:"-"`.
+- Explicitly not changed in this batch:
+  - Creem top-up creation/callback behavior.
+  - Waffo top-up creation/callback behavior.
+  - Subscription EPay/Stripe/Creem order creation, completion, and expiry behavior.
+  - Top-up history query filtering/window behavior from `b2e62a44e`.
+- `web-worker` inspection:
+  - `web-worker/src/api-client/topup-pay.ts` still sends EPay `{amount,payment_method}` to `/api/user/pay` and Stripe `{amount,payment_method:"stripe"}` to `/api/user/stripe/pay`.
+  - `web-worker/src/api-client/types.ts` `RequestEpayResponse`, `RequestStripePayResponse`, and `TopUpItem` remain compatible because no required response fields changed and `payment_provider` is not exposed.
+  - `web-worker/src/components/topup/online-pay-card.tsx` only depends on existing EPay `url/data` and Stripe `data.pay_link`.
+  - `web-worker/src/components/topup/topup-history.tsx` only reads `payment_method`, `status`, `trade_no`, and `money`; unchanged.
+
+Payment batch verification:
+
+- `git diff --check`: passed.
+- Target model tests passed:
+  - `GOCACHE=/tmp/go-build-cache go test ./model -run 'TestRechargeEpayRejectsCrossGatewayOrder|TestRechargeEpayAcceptsLegacyEpayOrderAndUpdatesActualPaymentMethod|TestRechargeStripeRejectsEpayProviderEvenIfMethodWasTampered|TestStripeExpireRejectsEpayProviderEvenIfMethodWasTampered|TestValidateTopUpPaidMoney' -count=1`
+- Stripe controller regression tests passed:
+  - `GOCACHE=/tmp/go-build-cache go test ./controller -run 'TestStripeAmountCentsRoundsToMinorUnits|TestGenStripeLinkUsesConfiguredPriceWithRequestedQuantity|TestValidateStripeTopUpSessionAcceptsPaidConfiguredPriceEvenWhenRuntimePriceIdChanged|TestStripeWebhookReturnsServerErrorWhenCompletedSessionCannotBeProcessed|TestStripeWebhookCompletedSessionRechargesPendingTopUp' -count=1`
+- Focused `web-worker` tests passed:
+  - `pnpm exec tsx --test src/server/api-proxy.test.ts src/lib/log-search.test.ts src/lib/subscription-purchase.test.ts`
+- Attempted wider command `GOCACHE=/tmp/go-build-cache go test ./model ./controller -count=1`; it produced no output for several minutes and was stopped. `ps` showed it stuck in the existing `model.test` process; the stuck verification processes were killed. Use the focused commands above as the evidence for this scoped batch.
+
 ## Commands Used For This Snapshot
 
 - `git fetch upstream --prune`
