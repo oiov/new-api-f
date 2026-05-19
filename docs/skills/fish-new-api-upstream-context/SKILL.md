@@ -22,6 +22,12 @@ This skill is the project memory for `/Users/songjunxi/Desktop/repos/fish-new-ap
 
 If the user does not specify otherwise, use these refs without asking again.
 
+## Real Smoke Test Credentials
+
+- For local real-provider smoke tests, read the API key from `.env` variable `patchToken`.
+- Do not write the key value into docs, commits, shell command arguments, logs, or final answers. Refer only to `.env` and `patchToken`.
+- Prefer a small temporary probe program that loads `.env` and sends the `Authorization` header in-process, so the key is not exposed through process arguments.
+
 ## Product Scope
 
 - Primary user-facing work is the new `web-worker` frontend.

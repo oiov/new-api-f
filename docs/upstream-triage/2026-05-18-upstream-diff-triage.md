@@ -375,6 +375,18 @@ Continuation marker for next run:
 - Direct upstream ref compared: `upstream/fishxcode` at `7af2f0e4a33069650b5cb8c9869c21ffc55d6067`.
 - Original upstream ref compared: `quantumnous/main` at `5dd0d3bcbd7b1d523bd046a5f9cf9fc8ce28d579`.
 
+### 2026-05-19 Real Smoke Test Pass
+
+Local server: started temporarily on `http://127.0.0.1:3001` with `.env`, `NODE_TYPE=slave`, `UPDATE_TASK=false`, and `ERROR_LOG_ENABLED=true`; stopped after tests. Test API key was loaded from `.env` variable `patchToken`; the key value is intentionally not written here.
+
+Results:
+
+- `/v1/models` with `patchToken`: PASS, HTTP 200, returned 105 models.
+- `/v1/models` with a deliberately invalid token: PASS, HTTP 401, generic `无效的令牌` OpenAI-style error; response did not expose token status, quota details, or key fragments.
+- `/v1/chat/completions` streaming to `claude-haiku-4-5-20251001` with `stream_options.include_usage:true`: PASS, received content chunk, final usage chunk, and `[DONE]`.
+- `/v1/messages` Anthropic-native streaming to `claude-haiku-4-5-20251001`: PASS, received `message_start`, `content_block_delta`, `message_delta` with usage, and `message_stop`.
+- `/v1beta/models/{model}:streamGenerateContent` Gemini-native streaming path: PASS using the discovered `gemini-3.1-flash-image-preview`; received 2 streamed chunks with candidates. Note: this model is image-priced in the current environment, so avoid frequent real smoke reruns unless the Gemini stream path needs verification.
+
 ## Commands Used For This Snapshot
 
 - `git fetch upstream --prune`
