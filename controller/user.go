@@ -600,7 +600,16 @@ func GetUserModels(c *gin.Context) {
 
 func UpdateUser(c *gin.Context) {
 	var updatedUser model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&updatedUser)
+	var requestData map[string]any
+	err := common.DecodeJson(c.Request.Body, &requestData)
+	if err == nil {
+		requestDataBytes, marshalErr := common.Marshal(requestData)
+		if marshalErr != nil {
+			err = marshalErr
+		} else {
+			err = common.Unmarshal(requestDataBytes, &updatedUser)
+		}
+	}
 	if err != nil || updatedUser.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -622,6 +631,12 @@ func UpdateUser(c *gin.Context) {
 	}
 	if !common.IsValidUserStatus(updatedUser.Status) {
 		updatedUser.Status = originUser.Status
+	}
+	if _, ok := requestData["affiliate_commission_rate"]; !ok {
+		updatedUser.AffiliateCommissionRate = originUser.AffiliateCommissionRate
+	} else if updatedUser.AffiliateCommissionRate < -1 || updatedUser.AffiliateCommissionRate > 100 {
+		common.ApiError(c, errors.New("分佣比例覆盖必须为 -1 到 100 之间的数字"))
+		return
 	}
 	myRole := c.GetInt("role")
 	if myRole != common.RoleRootUser {

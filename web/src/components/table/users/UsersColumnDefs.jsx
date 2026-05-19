@@ -255,6 +255,11 @@ const renderInviteInfo = (text, record, t) => {
         <Tag color='white' shape='circle' className='!text-xs'>
           {t('收益')}: {renderQuota(record.aff_history_quota)}
         </Tag>
+        {Number(record.affiliate_commission_rate) >= 0 && (
+          <Tag color='violet' shape='circle' className='!text-xs'>
+            {t('分佣')}: {Number(record.affiliate_commission_rate).toFixed(2).replace(/\.?0+$/, '')}%
+          </Tag>
+        )}
         <Tag color='white' shape='circle' className='!text-xs'>
           {inviterLabel}
         </Tag>

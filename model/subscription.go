@@ -2638,6 +2638,9 @@ func CompleteSubscriptionOrderWithResult(tradeNo string, providerPayload string,
 		if err := tx.Save(&order).Error; err != nil {
 			return err
 		}
+		if err := GrantAffiliateCommissionForSubscriptionOrderTx(tx, &order); err != nil {
+			return err
+		}
 		logUserId = order.UserId
 		logPlanTitle = plan.Title
 		logMoney = order.Money
@@ -2656,6 +2659,12 @@ func CompleteSubscriptionOrderWithResult(tradeNo string, providerPayload string,
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
 	}
 	if logUserId > 0 {
+		if createdSub != nil {
+			var orderId int
+			if err := DB.Model(&SubscriptionOrder{}).Select("id").Where(refCol+" = ?", tradeNo).Scan(&orderId).Error; err == nil && orderId > 0 {
+				RecordAffiliateCommissionGrantedLogBySource(AffiliateCommissionSourceSubscriptionOrder, orderId)
+			}
+		}
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeSubscription, msg)
 		NotifySubscriptionPurchaseSuccessToUserAsync(logUserId, logPlanTitle, logMoney, logPaymentMethod)

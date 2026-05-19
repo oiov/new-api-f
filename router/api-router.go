@@ -91,6 +91,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.DELETE("/passkey", controller.PasskeyDelete)
 				selfRoute.GET("/aff", controller.GetAffCode)
 				selfRoute.GET("/aff/details", controller.GetAffDetails)
+				selfRoute.GET("/affiliate/summary", controller.GetAffiliateSummary)
+				selfRoute.GET("/affiliate/commissions", controller.GetAffiliateCommissions)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
 				selfRoute.GET("/redemption/history/self", controller.GetUserRedemptionHistory)

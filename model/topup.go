@@ -237,12 +237,16 @@ func rechargeAmountBasedTopUp(tradeNo string, expectedPaymentProvider string, ac
 		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
 			return err
 		}
+		if err := GrantAffiliateCommissionForTopUpTx(tx, topUp); err != nil {
+			return err
+		}
 
 		completed = true
 		return nil
 	})
 
 	if err == nil && completed {
+		RecordAffiliateCommissionGrantedLogBySource(AffiliateCommissionSourceTopUp, topUp.Id)
 		// 不影响主流程：充值达标可自动参与活动抽奖
 		go tryJoinActivityLotteryByTopup(topUp, time.Now())
 	}
@@ -293,6 +297,9 @@ func Recharge(referenceId string, customerId string) (completed bool, err error)
 		if err != nil {
 			return err
 		}
+		if err := GrantAffiliateCommissionForTopUpTx(tx, topUp); err != nil {
+			return err
+		}
 
 		completed = true
 		return nil
@@ -304,6 +311,7 @@ func Recharge(referenceId string, customerId string) (completed bool, err error)
 	}
 
 	if completed {
+		RecordAffiliateCommissionGrantedLogBySource(AffiliateCommissionSourceTopUp, topUp.Id)
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount))
 		go tryJoinActivityLotteryByTopup(topUp, time.Now())
 	}
@@ -637,6 +645,9 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		if err != nil {
 			return err
 		}
+		if err := GrantAffiliateCommissionForTopUpTx(tx, topUp); err != nil {
+			return err
+		}
 
 		completed = true
 		return nil
@@ -648,6 +659,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 	}
 
 	if completed {
+		RecordAffiliateCommissionGrantedLogBySource(AffiliateCommissionSourceTopUp, topUp.Id)
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
 		go tryJoinActivityLotteryByTopup(topUp, time.Now())
 	}

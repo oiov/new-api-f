@@ -309,6 +309,31 @@ func validateOptionUpdate(key string, value string) error {
 		if parseErr != nil || count < 0 {
 			return fmt.Errorf("邀请奖励防刷配置必须是大于等于 0 的整数")
 		}
+	case "AffiliateCommissionDefaultRate":
+		rate, parseErr := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if parseErr != nil || rate < 0 || rate > 100 {
+			return fmt.Errorf("分佣默认比例必须是 0 到 100 之间的数字")
+		}
+	case "AffiliateCommissionSettlementMode":
+		if strings.TrimSpace(value) != model.AffiliateCommissionSettlementQuota {
+			return fmt.Errorf("当前仅支持站内额度分佣")
+		}
+	case "AffiliateCommissionScope":
+		switch strings.TrimSpace(value) {
+		case model.AffiliateCommissionScopeAllPaidOrders, model.AffiliateCommissionScopeFirstPaidOrder:
+		default:
+			return fmt.Errorf("分佣范围配置无效")
+		}
+	case "AffiliateCommissionMinOrderMoney":
+		money, parseErr := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if parseErr != nil || money < 0 {
+			return fmt.Errorf("分佣最低订单金额必须是大于等于 0 的数字")
+		}
+	case "AffiliateCommissionMaxQuotaPerOrder":
+		quota, parseErr := strconv.Atoi(strings.TrimSpace(value))
+		if parseErr != nil || quota < 0 {
+			return fmt.Errorf("单笔分佣上限必须是大于等于 0 的整数")
+		}
 	case "checkin_setting.leaderboard_limit":
 		count, parseErr := strconv.Atoi(strings.TrimSpace(value))
 		if parseErr != nil || count < 1 || count > 1000 {

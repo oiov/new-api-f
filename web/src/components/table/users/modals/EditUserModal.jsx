@@ -147,6 +147,7 @@ const EditUserModal = (props) => {
     permissions_json: '',
     permission_template: 'custom',
     permission_points: [],
+    affiliate_commission_rate: '',
   });
 
   const roleOptions = [
@@ -187,9 +188,12 @@ const EditUserModal = (props) => {
     if (success) {
       data.password = '';
       const permissionPoints = parsePermissionPoints(data.permissions_json);
+      const affiliateCommissionRate = Number(data.affiliate_commission_rate);
       formApiRef.current?.setValues({
         ...getInitValues(),
         ...data,
+        affiliate_commission_rate:
+          affiliateCommissionRate >= 0 ? affiliateCommissionRate : '',
         permission_points: permissionPoints,
         permission_template: detectPermissionTemplate(permissionPoints),
       });
@@ -227,6 +231,15 @@ const EditUserModal = (props) => {
       status: values.status,
       permissions_json: values.permissions_json,
     };
+    if (userId) {
+      const affiliateCommissionRate = values.affiliate_commission_rate;
+      payload.affiliate_commission_rate =
+        affiliateCommissionRate === '' ||
+        affiliateCommissionRate === undefined ||
+        affiliateCommissionRate === null
+          ? -1
+          : Number(affiliateCommissionRate);
+    }
     if (typeof payload.quota === 'string')
       payload.quota = parseInt(payload.quota) || 0;
     if (canManageRole && Number(payload.role) === 10) {
@@ -537,6 +550,19 @@ const EditUserModal = (props) => {
                             onClick={() => setIsModalOpen(true)}
                           />
                         </Form.Slot>
+                      </Col>
+                      <Col span={24}>
+                        <Form.InputNumber
+                          field='affiliate_commission_rate'
+                          label={t('分佣比例覆盖')}
+                          placeholder={t('留空则使用全局默认比例')}
+                          step={0.1}
+                          min={0}
+                          max={100}
+                          suffix='%'
+                          extraText={t('0 表示该用户作为邀请人不获得订单分佣')}
+                          style={{ width: '100%' }}
+                        />
                       </Col>
                     </Row>
                   </Card>

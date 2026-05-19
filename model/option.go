@@ -143,6 +143,14 @@ func InitOptionMap() {
 	common.OptionMap["InviteRewardMaxCountPerInviter"] = strconv.Itoa(common.InviteRewardMaxCountPerInviter)
 	common.OptionMap["InviteRewardMaxCountPerIP"] = strconv.Itoa(common.InviteRewardMaxCountPerIP)
 	common.OptionMap["InviteRewardMaxCountPerInviterIP"] = strconv.Itoa(common.InviteRewardMaxCountPerInviterIP)
+	common.OptionMap["AffiliateCommissionEnabled"] = strconv.FormatBool(common.AffiliateCommissionEnabled)
+	common.OptionMap["AffiliateCommissionDefaultRate"] = strconv.FormatFloat(common.AffiliateCommissionDefaultRate, 'f', -1, 64)
+	common.OptionMap["AffiliateCommissionSettlementMode"] = common.AffiliateCommissionSettlementMode
+	common.OptionMap["AffiliateCommissionScope"] = common.AffiliateCommissionScope
+	common.OptionMap["AffiliateCommissionMinOrderMoney"] = strconv.FormatFloat(common.AffiliateCommissionMinOrderMoney, 'f', -1, 64)
+	common.OptionMap["AffiliateCommissionMaxQuotaPerOrder"] = strconv.Itoa(common.AffiliateCommissionMaxQuotaPerOrder)
+	common.OptionMap["AffiliateCommissionIncludeTopup"] = strconv.FormatBool(common.AffiliateCommissionIncludeTopup)
+	common.OptionMap["AffiliateCommissionIncludeSubscription"] = strconv.FormatBool(common.AffiliateCommissionIncludeSubscription)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -335,6 +343,12 @@ func updateOptionMap(key string, value string) (err error) {
 			common.RegisterEnabled = boolValue
 		case "InviteRegisterEnabled":
 			common.InviteRegisterEnabled = boolValue
+		case "AffiliateCommissionEnabled":
+			common.AffiliateCommissionEnabled = boolValue
+		case "AffiliateCommissionIncludeTopup":
+			common.AffiliateCommissionIncludeTopup = boolValue
+		case "AffiliateCommissionIncludeSubscription":
+			common.AffiliateCommissionIncludeSubscription = boolValue
 		case "EmailDomainRestrictionEnabled":
 			common.EmailDomainRestrictionEnabled = boolValue
 		case "EmailAliasRestrictionEnabled":
@@ -559,6 +573,22 @@ func updateOptionMap(key string, value string) (err error) {
 		common.TurnstileSiteKey = value
 	case "TurnstileSecretKey":
 		common.TurnstileSecretKey = value
+	case "AffiliateCommissionDefaultRate":
+		common.AffiliateCommissionDefaultRate, _ = strconv.ParseFloat(value, 64)
+	case "AffiliateCommissionSettlementMode":
+		if value == "" {
+			value = AffiliateCommissionSettlementQuota
+		}
+		common.AffiliateCommissionSettlementMode = value
+	case "AffiliateCommissionScope":
+		if value == "" {
+			value = AffiliateCommissionScopeAllPaidOrders
+		}
+		common.AffiliateCommissionScope = value
+	case "AffiliateCommissionMinOrderMoney":
+		common.AffiliateCommissionMinOrderMoney, _ = strconv.ParseFloat(value, 64)
+	case "AffiliateCommissionMaxQuotaPerOrder":
+		common.AffiliateCommissionMaxQuotaPerOrder, _ = strconv.Atoi(value)
 	case "QuotaForNewUser":
 		common.QuotaForNewUser, _ = strconv.Atoi(value)
 	case "SubscriptionPlanForNewUser":

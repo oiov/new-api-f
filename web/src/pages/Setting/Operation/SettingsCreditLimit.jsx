@@ -43,6 +43,14 @@ export default function SettingsCreditLimit(props) {
     InviteRewardMaxCountPerInviter: '10',
     InviteRewardMaxCountPerIP: '3',
     InviteRewardMaxCountPerInviterIP: '1',
+    AffiliateCommissionEnabled: false,
+    AffiliateCommissionDefaultRate: '10',
+    AffiliateCommissionSettlementMode: 'quota',
+    AffiliateCommissionScope: 'all_paid_orders',
+    AffiliateCommissionMinOrderMoney: '0',
+    AffiliateCommissionMaxQuotaPerOrder: '0',
+    AffiliateCommissionIncludeTopup: true,
+    AffiliateCommissionIncludeSubscription: true,
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
@@ -108,6 +116,15 @@ export default function SettingsCreditLimit(props) {
       InviteRewardMaxCountPerInviter: '10',
       InviteRewardMaxCountPerIP: '3',
       InviteRewardMaxCountPerInviterIP: '1',
+      AffiliateCommissionEnabled: false,
+      AffiliateCommissionDefaultRate: '10',
+      AffiliateCommissionSettlementMode: 'quota',
+      AffiliateCommissionScope: 'all_paid_orders',
+      AffiliateCommissionMinOrderMoney: '0',
+      AffiliateCommissionMaxQuotaPerOrder: '0',
+      AffiliateCommissionIncludeTopup: true,
+      AffiliateCommissionIncludeSubscription: true,
+      'quota_setting.enable_free_model_pre_consume': true,
     };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
@@ -332,6 +349,121 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       'quota_setting.enable_free_model_pre_consume': value,
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+          </Form.Section>
+          <Form.Section text={t('分佣设置')}>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.Switch
+                  label={t('启用订单分佣')}
+                  field={'AffiliateCommissionEnabled'}
+                  extraText={t('邀请用户完成符合条件的在线订单后，邀请人获得推广额度')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateCommissionEnabled: value,
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('默认分佣比例')}
+                  field={'AffiliateCommissionDefaultRate'}
+                  step={0.1}
+                  min={0}
+                  max={100}
+                  suffix={'%'}
+                  placeholder={t('例如：10')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateCommissionDefaultRate: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.Select
+                  label={t('分佣范围')}
+                  field={'AffiliateCommissionScope'}
+                  optionList={[
+                    { label: t('所有符合条件订单'), value: 'all_paid_orders' },
+                    { label: t('仅被邀请人首笔订单'), value: 'first_paid_order' },
+                  ]}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateCommissionScope: value || 'all_paid_orders',
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.Input
+                  label={t('结算方式')}
+                  field={'AffiliateCommissionSettlementMode'}
+                  disabled
+                  extraText={t('当前仅支持站内推广额度，提现能力预留')}
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.Switch
+                  label={t('余额充值参与分佣')}
+                  field={'AffiliateCommissionIncludeTopup'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateCommissionIncludeTopup: value,
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.Switch
+                  label={t('自动发货套餐参与分佣')}
+                  field={'AffiliateCommissionIncludeSubscription'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateCommissionIncludeSubscription: value,
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('最低订单金额')}
+                  field={'AffiliateCommissionMinOrderMoney'}
+                  step={0.01}
+                  min={0}
+                  extraText={t('低于该金额的订单不发放分佣')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateCommissionMinOrderMoney: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('单笔分佣额度上限')}
+                  field={'AffiliateCommissionMaxQuotaPerOrder'}
+                  step={1}
+                  min={0}
+                  suffix={'Token'}
+                  extraText={t('0 表示不限制')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateCommissionMaxQuotaPerOrder: String(value),
                     })
                   }
                 />
