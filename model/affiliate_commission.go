@@ -95,6 +95,7 @@ type AffiliateCommissionConfigSummary struct {
 	Scope               string  `json:"scope"`
 	IncludeTopup        bool    `json:"include_topup"`
 	IncludeSubscription bool    `json:"include_subscription"`
+	MinOrderMoney       float64 `json:"min_order_money"`
 	SettlementType      string  `json:"settlement_type"`
 }
 
@@ -385,6 +386,7 @@ func GetAffiliateCommissionSummary(userId int) (*AffiliateCommissionSummary, err
 			Scope:               common.AffiliateCommissionScope,
 			IncludeTopup:        common.AffiliateCommissionIncludeTopup,
 			IncludeSubscription: common.AffiliateCommissionIncludeSubscription,
+			MinOrderMoney:       common.AffiliateCommissionMinOrderMoney,
 			SettlementType:      common.AffiliateCommissionSettlementMode,
 		},
 	}, nil

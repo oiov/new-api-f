@@ -271,6 +271,22 @@ func TestAffiliateCommissionMinOrderAndMaxQuotaCap(t *testing.T) {
 	})
 }
 
+func TestAffiliateCommissionSummaryIncludesMinOrderMoney(t *testing.T) {
+	withAffiliateCommissionTestDB(t, func() {
+		common.AffiliateCommissionMinOrderMoney = 25.5
+		inviter, _ := seedAffiliateUsers(t, -1)
+
+		summary, err := GetAffiliateCommissionSummary(inviter.Id)
+		require.NoError(t, err)
+
+		configBytes, err := common.Marshal(summary.Config)
+		require.NoError(t, err)
+		var config map[string]any
+		require.NoError(t, common.Unmarshal(configBytes, &config))
+		require.Equal(t, 25.5, config["min_order_money"])
+	})
+}
+
 func TestAffiliateCommissionNoInviterCreatesSkippedRow(t *testing.T) {
 	withAffiliateCommissionTestDB(t, func() {
 		invitee := User{Id: 2, Username: "invitee", Password: "password", DisplayName: "Invitee", Status: common.UserStatusEnabled, Role: common.RoleCommonUser, AffCode: "aff-invitee"}

@@ -26,6 +26,7 @@ import {
   showError,
   showSuccess,
   showWarning,
+  toBoolean,
 } from '../../../helpers';
 
 export default function SettingsCreditLimit(props) {
@@ -56,6 +57,12 @@ export default function SettingsCreditLimit(props) {
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
+  const booleanFields = new Set([
+    'AffiliateCommissionEnabled',
+    'AffiliateCommissionIncludeTopup',
+    'AffiliateCommissionIncludeSubscription',
+    'quota_setting.enable_free_model_pre_consume',
+  ]);
 
   const loadSubscriptionPlans = async () => {
     try {
@@ -128,7 +135,9 @@ export default function SettingsCreditLimit(props) {
     };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
+        currentInputs[key] = booleanFields.has(key)
+          ? toBoolean(props.options[key])
+          : props.options[key];
       }
     }
     setInputs(currentInputs);
