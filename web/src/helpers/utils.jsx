@@ -29,6 +29,38 @@ import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
 import { getUserData } from './data';
 
+const OFFICIAL_SEEDANCE2_PER_SECOND_MODELS = new Set([
+  'seedance-2',
+  'seedance-2-480p',
+  'seedance-2-720p',
+  'seedance-2-1080p',
+  'seedance-2-2k',
+  'seedance-2-4k',
+]);
+
+export const isOfficialSeedance2PerSecondModel = (modelName) =>
+  Boolean(modelName && OFFICIAL_SEEDANCE2_PER_SECOND_MODELS.has(modelName));
+
+export const getPricingBillingUnit = (record) => {
+  const quotaType = Number(record?.quota_type);
+
+  if (quotaType === 0) {
+    return 'token';
+  }
+
+  if (
+    quotaType === 1 &&
+    isOfficialSeedance2PerSecondModel(record?.model_name)
+  ) {
+    return 'second';
+  }
+
+  return record?.billing_unit || 'call';
+};
+
+export const isPerSecondPricingModel = (record) =>
+  getPricingBillingUnit(record) === 'second';
+
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
 };
@@ -655,7 +687,7 @@ export const calculateModelPrice = ({
     }
   }
 
-  const billingUnit = record.billing_unit || 'call';
+  const billingUnit = getPricingBillingUnit(record);
 
   // 2. 根据计费类型计算价格
   if (record.quota_type === 0) {

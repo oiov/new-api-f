@@ -37,6 +37,7 @@ import {
   stringToColor,
   calculateModelPrice,
   getModelPriceItems,
+  isPerSecondPricingModel,
 } from '../../../../../helpers';
 import { getLobeHubIcon } from '../../../../../helpers/providerIcons';
 import PricingCardSkeleton from './PricingCardSkeleton';
@@ -122,14 +123,16 @@ const ModelIconBox = ({ model }) => {
 const ModelTags = ({ record, t }) => {
   let billingTag = null;
   if (record.quota_type === 1) {
+    const isPerSecond = isPerSecondPricingModel(record);
+
     billingTag = (
       <Tag
         key='billing'
         shape='circle'
-        color={record.billing_unit === 'second' ? 'orange' : 'teal'}
+        color={isPerSecond ? 'orange' : 'teal'}
         size='small'
       >
-        {record.billing_unit === 'second' ? t('按秒计费') : t('按次计费')}
+        {isPerSecond ? t('按秒计费') : t('按次计费')}
       </Tag>
     );
   } else if (record.quota_type === 0) {
@@ -446,7 +449,7 @@ const PricingCardView = ({
                       }}
                     >
                       {model?.quota_type === 1
-                        ? model?.billing_unit === 'second'
+                        ? isPerSecondPricingModel(model)
                           ? t('按秒计费')
                           : t('按次计费')
                         : t('按量计费')}

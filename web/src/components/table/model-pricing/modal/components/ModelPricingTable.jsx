@@ -20,7 +20,11 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Card, Avatar, Typography, Table, Tag } from '@douyinfe/semi-ui';
 import { IconCoinMoneyStroked } from '@douyinfe/semi-icons';
-import { calculateModelPrice, getModelPriceItems } from '../../../../../helpers';
+import {
+  calculateModelPrice,
+  getModelPriceItems,
+  getPricingBillingUnit,
+} from '../../../../../helpers';
 
 const { Text } = Typography;
 
@@ -39,7 +43,7 @@ const ModelPricingTable = ({
   const modelEnableGroups = Array.isArray(modelData?.enable_groups)
     ? modelData.enable_groups
     : [];
-  const billingUnit = modelData?.billing_unit || 'call';
+  const billingUnit = getPricingBillingUnit(modelData);
   const autoChain = autoGroups.filter((g) => modelEnableGroups.includes(g));
   const renderGroupPriceTable = () => {
     // 仅展示模型可用的分组：模型 enable_groups 与用户可用分组的交集

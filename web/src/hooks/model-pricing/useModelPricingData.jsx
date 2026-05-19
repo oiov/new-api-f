@@ -19,7 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useState, useEffect, useContext, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { API, copy, showError, showInfo, showSuccess } from '../../helpers';
+import {
+  API,
+  copy,
+  isPerSecondPricingModel,
+  showError,
+  showInfo,
+  showSuccess,
+} from '../../helpers';
 import { Modal } from '@douyinfe/semi-ui';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
@@ -110,12 +117,12 @@ export const useModelPricingData = (initialValues = {}) => {
     // 计费类型筛选
     if (filterQuotaType !== 'all') {
       if (filterQuotaType === 'second') {
-        result = result.filter((model) => model.billing_unit === 'second');
+        result = result.filter((model) => isPerSecondPricingModel(model));
       } else {
         result = result.filter(
           (model) =>
             model.quota_type === filterQuotaType &&
-            model.billing_unit !== 'second',
+            !isPerSecondPricingModel(model),
         );
       }
     }

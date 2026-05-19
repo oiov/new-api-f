@@ -25,6 +25,7 @@ import {
   stringToColor,
   calculateModelPrice,
   getModelPriceItems,
+  getPricingBillingUnit,
 } from '../../../../../helpers';
 import { getLobeHubIcon } from '../../../../../helpers/providerIcons';
 import {
@@ -159,7 +160,7 @@ export const getPricingTableColumns = ({
     title: t('计费类型'),
     dataIndex: 'quota_type',
     render: (text, record, index) => {
-      return renderQuotaType(parseInt(text), t, record.billing_unit);
+      return renderQuotaType(parseInt(text), t, getPricingBillingUnit(record));
     },
     sorter: (a, b) => a.quota_type - b.quota_type,
   };

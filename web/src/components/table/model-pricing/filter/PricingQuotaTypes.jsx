@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import SelectableButtonGroup from '../../../common/ui/SelectableButtonGroup';
+import { isPerSecondPricingModel } from '../../../../helpers';
 
 /**
  * 计费类型筛选组件
@@ -38,8 +39,8 @@ const PricingQuotaTypes = ({
   const qtyCount = (type) =>
     models.filter((m) => {
       if (type === 'all') return true;
-      if (type === 'second') return m.billing_unit === 'second';
-      return m.quota_type === type && m.billing_unit !== 'second';
+      if (type === 'second') return isPerSecondPricingModel(m);
+      return m.quota_type === type && !isPerSecondPricingModel(m);
     }).length;
 
   const items = [
