@@ -655,6 +655,8 @@ export const calculateModelPrice = ({
     }
   }
 
+  const billingUnit = record.billing_unit || 'call';
+
   // 2. 根据计费类型计算价格
   if (record.quota_type === 0) {
     // 按量计费
@@ -750,13 +752,14 @@ export const calculateModelPrice = ({
   }
 
   if (record.quota_type === 1) {
-    // 按次计费
+    // 固定单价计费，单位由后端标记区分（次 / 秒等）
     const priceUSD = parseFloat(record.model_price) * usedGroupRatio;
     const displayVal = displayPrice(priceUSD);
 
     return {
       price: displayVal,
       isPerToken: false,
+      billingUnit,
       isTokensDisplay: false,
       usedGroup,
       usedGroupRatio,
@@ -875,12 +878,13 @@ export const getModelPriceItems = (priceData, t, quotaDisplayType = 'USD') => {
     );
   }
 
+  const fixedUnit = priceData.billingUnit === 'second' ? t('秒') : t('次');
   return [
     {
       key: 'fixed',
-      label: t('模型价格'),
+      label: priceData.billingUnit === 'second' ? t('每秒价格') : t('模型价格'),
       value: priceData.price,
-      suffix: ` / ${t('次')}`,
+      suffix: ` / ${fixedUnit}`,
     },
   ].filter(
     (item) =>

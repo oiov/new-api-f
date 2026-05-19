@@ -123,8 +123,13 @@ const ModelTags = ({ record, t }) => {
   let billingTag = null;
   if (record.quota_type === 1) {
     billingTag = (
-      <Tag key='billing' shape='circle' color='teal' size='small'>
-        {t('按次计费')}
+      <Tag
+        key='billing'
+        shape='circle'
+        color={record.billing_unit === 'second' ? 'orange' : 'teal'}
+        size='small'
+      >
+        {record.billing_unit === 'second' ? t('按秒计费') : t('按次计费')}
       </Tag>
     );
   } else if (record.quota_type === 0) {
@@ -440,7 +445,11 @@ const PricingCardView = ({
                         color: 'var(--semi-color-text-0)',
                       }}
                     >
-                      {model?.quota_type === 1 ? t('按次计费') : t('按量计费')}
+                      {model?.quota_type === 1
+                        ? model?.billing_unit === 'second'
+                          ? t('按秒计费')
+                          : t('按次计费')
+                        : t('按量计费')}
                     </div>
                   </div>
                   <div

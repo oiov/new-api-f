@@ -109,7 +109,15 @@ export const useModelPricingData = (initialValues = {}) => {
 
     // 计费类型筛选
     if (filterQuotaType !== 'all') {
-      result = result.filter((model) => model.quota_type === filterQuotaType);
+      if (filterQuotaType === 'second') {
+        result = result.filter((model) => model.billing_unit === 'second');
+      } else {
+        result = result.filter(
+          (model) =>
+            model.quota_type === filterQuotaType &&
+            model.billing_unit !== 'second',
+        );
+      }
     }
 
     // 端点类型筛选

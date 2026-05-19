@@ -13,3 +13,10 @@ func TestSeedanceEndpointTypesPreferOpenAIVideo(t *testing.T) {
 	require.NotEmpty(t, endpointTypes)
 	require.Equal(t, constant.EndpointTypeOpenAIVideo, endpointTypes[0])
 }
+
+func TestSeedance2EndpointTypesPreferOpenAIVideo(t *testing.T) {
+	endpointTypes := GetEndpointTypesByChannelType(constant.ChannelTypeSeedance2, "seedance-2-720p")
+
+	require.NotEmpty(t, endpointTypes)
+	require.Equal(t, constant.EndpointTypeOpenAIVideo, endpointTypes[0])
+}

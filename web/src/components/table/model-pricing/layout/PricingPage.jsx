@@ -43,7 +43,8 @@ function readInitialValues(params) {
     searchValue: params.get('q') || '',
     filterGroup: params.get('group') || 'all',
     // quota type 可能是数字 0/1，需要显式转换
-    filterQuotaType: quota === '0' ? 0 : quota === '1' ? 1 : 'all',
+    filterQuotaType:
+      quota === '0' ? 0 : quota === '1' ? 1 : quota === 'second' ? 'second' : 'all',
     filterEndpointType: params.get('endpoint') || 'all',
     filterVendor: params.get('vendor') || 'all',
     filterTag: params.get('tag') || 'all',

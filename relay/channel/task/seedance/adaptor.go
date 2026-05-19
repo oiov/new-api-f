@@ -2,11 +2,17 @@ package seedance
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	channelseedance "github.com/QuantumNous/new-api/relay/channel/seedance"
+	channelseedance2 "github.com/QuantumNous/new-api/relay/channel/seedance2"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
@@ -48,11 +55,24 @@ func (v *seedanceStringValue) UnmarshalJSON(data []byte) error {
 
 type TaskAdaptor struct {
 	taskcommon.BaseBilling
-	apiKey  string
-	baseURL string
+	apiKey      string
+	baseURL     string
+	channelType int
+	channelName string
+	modelList   []string
 }
 
 const seedanceModel2Cheap = "seedance-2-cheap"
+
+const (
+	seedanceDurationDefault = 5
+	seedanceDurationMin     = 4
+	seedanceDurationMax     = 15
+)
+
+const seedanceBillableSecondsContextKey = "seedance_billable_seconds"
+
+var seedanceMediaDurationProbe = probeSeedanceMediaDuration
 
 var allowedFormFields = []string{
 	"model",
@@ -72,10 +92,10 @@ var allowedFormFiles = []string{
 type seedanceTaskPayload struct {
 	ID        seedanceStringValue `json:"id,omitempty"`
 	TaskID    seedanceStringValue `json:"task_id,omitempty"`
-	Status    string `json:"status,omitempty"`
+	Status    string              `json:"status,omitempty"`
 	Progress  seedanceStringValue `json:"progress,omitempty"`
-	ResultURL string `json:"result_url,omitempty"`
-	Message   string `json:"message,omitempty"`
+	ResultURL string              `json:"result_url,omitempty"`
+	Message   string              `json:"message,omitempty"`
 	Error     *struct {
 		Message string `json:"message,omitempty"`
 		Code    string `json:"code,omitempty"`
@@ -96,9 +116,23 @@ type seedanceTaskEnvelope struct {
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.baseURL = info.ChannelBaseUrl
 	a.apiKey = info.ApiKey
+	a.channelType = info.ChannelType
+	a.channelName = channelseedance.ChannelName
+	a.modelList = channelseedance.ModelList
+	if info.ChannelType == constant.ChannelTypeSeedance2 {
+		a.channelName = channelseedance2.ChannelName
+		a.modelList = channelseedance2.ModelList
+	}
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
+	if info == nil {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("relay info is required"), "invalid_request", http.StatusBadRequest)
+	}
+	if info.TaskRelayInfo == nil {
+		info.TaskRelayInfo = &relaycommon.TaskRelayInfo{}
+	}
+
 	contentType := c.GetHeader("Content-Type")
 	if !strings.HasPrefix(contentType, "multipart/form-data") {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("multipart/form-data is required"), "invalid_request", http.StatusBadRequest)
@@ -114,7 +148,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("model field is required"), "missing_model", http.StatusBadRequest)
 	}
 
-	if err := a.validateModelAndRatio(modelName, getFormValue(form, "ratio")); err != nil {
+	ratio := strings.TrimSpace(getFormValue(form, "ratio"))
+	if err := a.validateModelAndRatio(modelName, ratio); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
 
@@ -123,17 +158,51 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("prompt is required"), "invalid_request", http.StatusBadRequest)
 	}
 
+	duration := parseInt(getFormValue(form, "duration"))
+	metadata := map[string]any{
+		"ratio": ratio,
+	}
+	if a.isSeedance2() {
+		parsedDuration, err := parseSeedance2Duration(getFormValue(form, "duration"))
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
+		billableSeconds, err := calculateSeedance2BillableSeconds(c, form, parsedDuration)
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
+		duration = parsedDuration
+		c.Set(seedanceBillableSecondsContextKey, billableSeconds)
+		metadata["billable_seconds"] = billableSeconds
+		metadata["output_seconds"] = parsedDuration
+	}
+
 	info.Action = constant.TaskActionGenerate
 	info.OriginModelName = modelName
 	c.Set("task_request", relaycommon.TaskSubmitReq{
 		Model:    modelName,
 		Prompt:   prompt,
-		Duration: parseInt(getFormValue(form, "duration")),
-		Metadata: map[string]any{
-			"ratio": strings.TrimSpace(getFormValue(form, "ratio")),
-		},
+		Duration: duration,
+		Metadata: metadata,
 	})
 	return nil
+}
+
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
+	if !a.isSeedance2() {
+		return nil
+	}
+	value, exists := c.Get(seedanceBillableSecondsContextKey)
+	if !exists {
+		return nil
+	}
+	seconds, ok := value.(float64)
+	if !ok || seconds <= 0 {
+		return nil
+	}
+	return map[string]float64{
+		"seconds": seconds,
+	}
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -170,6 +239,13 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			continue
 		}
 		values := form.Value[field]
+		if field == "duration" && len(values) == 0 {
+			if taskReq, ok := c.Get("task_request"); ok {
+				if req, ok := taskReq.(relaycommon.TaskSubmitReq); ok && req.Duration > 0 {
+					values = []string{strconv.Itoa(req.Duration)}
+				}
+			}
+		}
 		for _, value := range values {
 			if err := writer.WriteField(field, value); err != nil {
 				_ = writer.Close()
@@ -230,10 +306,16 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 }
 
 func (a *TaskAdaptor) GetModelList() []string {
+	if len(a.modelList) > 0 {
+		return a.modelList
+	}
 	return channelseedance.ModelList
 }
 
 func (a *TaskAdaptor) GetChannelName() string {
+	if a.channelName != "" {
+		return a.channelName
+	}
 	return channelseedance.ChannelName
 }
 
@@ -326,13 +408,110 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 }
 
 func (a *TaskAdaptor) validateModelAndRatio(modelName, ratio string) error {
-	if strings.TrimSpace(modelName) != seedanceModel2Cheap {
+	modelName = strings.TrimSpace(modelName)
+	if a.isSeedance2() {
+		if !isAllowedSeedance2Model(modelName) {
+			return fmt.Errorf("unsupported model: %s", modelName)
+		}
+		return nil
+	}
+	if modelName != seedanceModel2Cheap {
 		return fmt.Errorf("unsupported model: %s", modelName)
 	}
 	if strings.EqualFold(strings.TrimSpace(ratio), "adaptive") {
 		return fmt.Errorf("ratio=adaptive is not supported for %s", seedanceModel2Cheap)
 	}
 	return nil
+}
+
+func (a *TaskAdaptor) isSeedance2() bool {
+	return a.channelType == constant.ChannelTypeSeedance2
+}
+
+func isAllowedSeedance2Model(modelName string) bool {
+	for _, candidate := range channelseedance2.ModelList {
+		if modelName == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func parseSeedance2Duration(value string) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return seedanceDurationDefault, nil
+	}
+	duration, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("duration must be an integer")
+	}
+	if duration < seedanceDurationMin || duration > seedanceDurationMax {
+		return 0, fmt.Errorf("duration must be between %d and %d seconds", seedanceDurationMin, seedanceDurationMax)
+	}
+	return duration, nil
+}
+
+func calculateSeedance2BillableSeconds(c *gin.Context, form *multipart.Form, outputDuration int) (float64, error) {
+	total := float64(outputDuration)
+	for _, field := range []string{"video", "audio"} {
+		for _, fh := range form.File[field] {
+			seconds, err := seedanceMediaDurationProbe(c.Request.Context(), fh)
+			if err != nil {
+				return 0, fmt.Errorf("failed to read %s duration for %s: %w", field, fh.Filename, err)
+			}
+			if seconds <= 0 {
+				return 0, fmt.Errorf("invalid %s duration for %s", field, fh.Filename)
+			}
+			total += seconds
+		}
+	}
+	return math.Ceil(total), nil
+}
+
+func probeSeedanceMediaDuration(ctx context.Context, fh *multipart.FileHeader) (float64, error) {
+	src, err := fh.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer src.Close()
+
+	tmp, err := os.CreateTemp("", "seedance-media-*"+filepath.Ext(fh.Filename))
+	if err != nil {
+		return 0, err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if _, err := io.Copy(tmp, src); err != nil {
+		_ = tmp.Close()
+		return 0, err
+	}
+	if err := tmp.Close(); err != nil {
+		return 0, err
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(
+		probeCtx,
+		"ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		tmpName,
+	).CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("ffprobe failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	duration, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse ffprobe duration failed: %w", err)
+	}
+	if duration <= 0 {
+		return 0, fmt.Errorf("ffprobe returned non-positive duration")
+	}
+	return duration, nil
 }
 
 func parseSeedanceTaskPayload(body []byte) (*seedanceTaskPayload, error) {

@@ -32,12 +32,12 @@ import {
   renderDescription,
 } from '../../../../common/ui/RenderUtils';
 
-function renderQuotaType(type, t) {
+function renderQuotaType(type, t, billingUnit = 'call') {
   switch (type) {
     case 1:
       return (
-        <Tag color='teal' shape='circle'>
-          {t('按次计费')}
+        <Tag color={billingUnit === 'second' ? 'orange' : 'teal'} shape='circle'>
+          {billingUnit === 'second' ? t('按秒计费') : t('按次计费')}
         </Tag>
       );
     case 0:
@@ -159,7 +159,7 @@ export const getPricingTableColumns = ({
     title: t('计费类型'),
     dataIndex: 'quota_type',
     render: (text, record, index) => {
-      return renderQuotaType(parseInt(text), t);
+      return renderQuotaType(parseInt(text), t, record.billing_unit);
     },
     sorter: (a, b) => a.quota_type - b.quota_type,
   };

@@ -39,6 +39,7 @@ const ModelPricingTable = ({
   const modelEnableGroups = Array.isArray(modelData?.enable_groups)
     ? modelData.enable_groups
     : [];
+  const billingUnit = modelData?.billing_unit || 'call';
   const autoChain = autoGroups.filter((g) => modelEnableGroups.includes(g));
   const renderGroupPriceTable = () => {
     // 仅展示模型可用的分组：模型 enable_groups 与用户可用分组的交集
@@ -74,7 +75,9 @@ const ModelPricingTable = ({
           modelData?.quota_type === 0
             ? t('按量计费')
             : modelData?.quota_type === 1
-              ? t('按次计费')
+              ? billingUnit === 'second'
+                ? t('按秒计费')
+                : t('按次计费')
               : '-',
         priceItems: getModelPriceItems(priceData, t, siteDisplayType),
       };
@@ -115,6 +118,7 @@ const ModelPricingTable = ({
         let color = 'white';
         if (text === t('按量计费')) color = 'violet';
         else if (text === t('按次计费')) color = 'teal';
+        else if (text === t('按秒计费')) color = 'orange';
         return (
           <Tag color={color} size='small' shape='circle'>
             {text || '-'}

@@ -1,10 +1,8 @@
 package model
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
-
 	"sync"
 	"time"
 
@@ -21,6 +19,7 @@ type Pricing struct {
 	Tags                   string                  `json:"tags,omitempty"`
 	VendorID               int                     `json:"vendor_id,omitempty"`
 	QuotaType              int                     `json:"quota_type"`
+	BillingUnit            string                  `json:"billing_unit,omitempty"`
 	ModelRatio             float64                 `json:"model_ratio"`
 	ModelPrice             float64                 `json:"model_price"`
 	OwnerBy                string                  `json:"owner_by"`
@@ -54,6 +53,30 @@ var (
 	modelQuotaTypeMap     = make(map[string]int)
 	modelEnableGroupsLock = sync.RWMutex{}
 )
+
+func modelBillingUnit(modelName string, quotaType int) string {
+	if quotaType == 0 {
+		return "token"
+	}
+	if isSeedance2PerSecondModel(modelName) {
+		return "second"
+	}
+	return "call"
+}
+
+func isSeedance2PerSecondModel(modelName string) bool {
+	switch modelName {
+	case "seedance-2",
+		"seedance-2-480p",
+		"seedance-2-720p",
+		"seedance-2-1080p",
+		"seedance-2-2k",
+		"seedance-2-4k":
+		return true
+	default:
+		return false
+	}
+}
 
 var (
 	modelSupportEndpointTypes = make(map[string][]constant.EndpointType)
@@ -208,7 +231,7 @@ func updatePricing() {
 			continue
 		}
 		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
+		if err := common.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
 			endpoints := make([]string, 0, len(raw))
 			for k, v := range raw {
 				switch v.(type) {
@@ -252,7 +275,7 @@ func updatePricing() {
 			continue
 		}
 		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
+		if err := common.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
 			for k, v := range raw {
 				switch val := v.(type) {
 				case string:
@@ -302,6 +325,7 @@ func updatePricing() {
 			pricing.CompletionRatio = ratio_setting.GetCompletionRatio(model)
 			pricing.QuotaType = 0
 		}
+		pricing.BillingUnit = modelBillingUnit(model, pricing.QuotaType)
 		if cacheRatio, ok := ratio_setting.GetCacheRatio(model); ok {
 			pricing.CacheRatio = &cacheRatio
 		}

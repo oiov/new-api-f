@@ -46,12 +46,27 @@ import {
   PRICE_SUFFIX,
   buildSummaryText,
   hasValue,
+  isPerSecondModelName,
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const { Text } = Typography;
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
+
+const getBillingModeLabel = (billingMode, t) => {
+  if (billingMode === 'per-second') {
+    return t('按秒计费');
+  }
+  return billingMode === 'per-request' ? t('按次计费') : t('按量计费');
+};
+
+const getBillingModeTagColor = (billingMode) => {
+  if (billingMode === 'per-second') {
+    return 'orange';
+  }
+  return billingMode === 'per-request' ? 'teal' : 'violet';
+};
 
 const PriceInput = ({
   label,
@@ -175,10 +190,8 @@ export default function ModelPricingEditor({
         dataIndex: 'billingMode',
         key: 'billingMode',
         render: (_, record) => (
-          <Tag color={record.billingMode === 'per-request' ? 'teal' : 'violet'}>
-            {record.billingMode === 'per-request'
-              ? t('按次计费')
-              : t('按量计费')}
+          <Tag color={getBillingModeTagColor(record.billingMode)}>
+            {getBillingModeLabel(record.billingMode, t)}
           </Tag>
         ),
       },
@@ -353,10 +366,8 @@ export default function ModelPricingEditor({
             title={selectedModel ? selectedModel.name : t('模型计费编辑器')}
             headerExtraContent={
               selectedModel ? (
-                <Tag color='blue'>
-                  {selectedModel.billingMode === 'per-request'
-                    ? t('按次计费')
-                    : t('按量计费')}
+                <Tag color={getBillingModeTagColor(selectedModel.billingMode)}>
+                  {getBillingModeLabel(selectedModel.billingMode, t)}
                 </Tag>
               ) : null
             }
@@ -378,14 +389,23 @@ export default function ModelPricingEditor({
                     type='button'
                     value={selectedModel.billingMode}
                     onChange={(event) => handleBillingModeChange(event.target.value)}
+                    disabled={selectedModel.billingMode === 'per-second'}
                   >
                     <Radio value='per-token'>{t('按量计费')}</Radio>
                     <Radio value='per-request'>{t('按次计费')}</Radio>
+                    {selectedModel.billingMode === 'per-second' ||
+                    isPerSecondModelName(selectedModel.name) ? (
+                      <Radio value='per-second'>{t('按秒计费')}</Radio>
+                    ) : null}
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
-                    {t(
-                      '这个界面默认按价格填写，保存时会自动换算回后端需要的倍率 JSON。',
-                    )}
+                    {selectedModel.billingMode === 'per-second'
+                      ? t(
+                          '按秒计费模型会保存到 ModelPrice，后端任务计费会再乘以实际秒数。',
+                        )
+                      : t(
+                          '这个界面默认按价格填写，保存时会自动换算回后端需要的倍率 JSON。',
+                        )}
                   </div>
                 </div>
 
@@ -406,14 +426,33 @@ export default function ModelPricingEditor({
                   </Card>
                 ) : null}
 
-                {selectedModel.billingMode === 'per-request' ? (
+                {selectedModel.billingMode === 'per-request' ||
+                selectedModel.billingMode === 'per-second' ? (
                   <PriceInput
-                    label={t('固定价格')}
+                    label={
+                      selectedModel.billingMode === 'per-second'
+                        ? t('每秒价格')
+                        : t('固定价格')
+                    }
                     value={selectedModel.fixedPrice}
-                    placeholder={t('输入每次调用价格')}
-                    suffix={t('$/次')}
+                    placeholder={
+                      selectedModel.billingMode === 'per-second'
+                        ? t('输入每秒价格')
+                        : t('输入每次调用价格')
+                    }
+                    suffix={
+                      selectedModel.billingMode === 'per-second'
+                        ? t('$/秒')
+                        : t('$/次')
+                    }
                     onChange={(value) => handleNumericFieldChange('fixedPrice', value)}
-                    extraText={t('适合 MJ / 任务类等按次收费模型。')}
+                    extraText={
+                      selectedModel.billingMode === 'per-second'
+                        ? t(
+                            '适合 Seedance2 官方按秒模型；最终费用 = 每秒价格 × 生成和参考媒体秒数。',
+                          )
+                        : t('适合 MJ / 任务类等按次收费模型。')
+                    }
                   />
                 ) : (
                   <>

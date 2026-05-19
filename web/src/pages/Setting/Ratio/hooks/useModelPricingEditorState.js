@@ -23,6 +23,14 @@ import { API, showError, showSuccess } from '../../../../helpers';
 export const PAGE_SIZE = 10;
 export const PRICE_SUFFIX = '$/1M tokens';
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
+const PER_SECOND_MODEL_NAMES = new Set([
+  'seedance-2',
+  'seedance-2-480p',
+  'seedance-2-720p',
+  'seedance-2-1080p',
+  'seedance-2-2k',
+  'seedance-2-4k',
+]);
 
 const EMPTY_MODEL = {
   name: '',
@@ -116,6 +124,8 @@ const normalizeCompletionRatioMeta = (rawMeta) => {
   };
 };
 
+export const isPerSecondModelName = (name) => PER_SECOND_MODEL_NAMES.has(name);
+
 const buildModelState = (name, sourceMaps) => {
   const modelRatio = toNumericString(sourceMaps.ModelRatio[name]);
   const completionRatio = toNumericString(sourceMaps.CompletionRatio[name]);
@@ -140,7 +150,11 @@ const buildModelState = (name, sourceMaps) => {
   return {
     ...EMPTY_MODEL,
     name,
-    billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
+    billingMode: isPerSecondModelName(name)
+      ? 'per-second'
+      : hasValue(fixedPrice)
+        ? 'per-request'
+        : 'per-token',
     fixedPrice,
     inputPrice,
     completionRatioLocked: completionRatioMeta.locked,
@@ -263,8 +277,13 @@ export const getModelWarnings = (model, t) => {
 };
 
 export const buildSummaryText = (model, t) => {
-  if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
-    return `${t('按次')} $${model.fixedPrice} / ${t('次')}`;
+  if (
+    (model.billingMode === 'per-request' ||
+      model.billingMode === 'per-second') &&
+    hasValue(model.fixedPrice)
+  ) {
+    const unit = model.billingMode === 'per-second' ? t('秒') : t('次');
+    return `${model.billingMode === 'per-second' ? t('按秒') : t('按次')} $${model.fixedPrice} / ${unit}`;
   }
 
   if (hasValue(model.inputPrice)) {
@@ -306,7 +325,10 @@ const serializeModel = (model, t) => {
     AudioCompletionRatio: null,
   };
 
-  if (model.billingMode === 'per-request') {
+  if (
+    model.billingMode === 'per-request' ||
+    model.billingMode === 'per-second'
+  ) {
     if (hasValue(model.fixedPrice)) {
       result.ModelPrice = toNormalizedNumber(model.fixedPrice);
     }
@@ -415,7 +437,10 @@ const serializeModel = (model, t) => {
 export const buildPreviewRows = (model, t) => {
   if (!model) return [];
 
-  if (model.billingMode === 'per-request') {
+  if (
+    model.billingMode === 'per-request' ||
+    model.billingMode === 'per-second'
+  ) {
     return [
       {
         key: 'ModelPrice',
@@ -795,6 +820,7 @@ export function useModelPricingEditorState({
 
   const handleBillingModeChange = (value) => {
     if (!selectedModel) return;
+    if (isPerSecondModelName(selectedModel.name)) return;
     upsertModel(selectedModel.name, (model) => ({
       ...model,
       billingMode: value,
@@ -864,7 +890,12 @@ export function useModelPricingEditorState({
 
         const nextModel = {
           ...model,
-          billingMode: selectedModel.billingMode,
+          billingMode:
+            model.billingMode === 'per-second'
+              ? 'per-second'
+              : selectedModel.billingMode === 'per-second'
+                ? 'per-request'
+                : selectedModel.billingMode,
           fixedPrice: selectedModel.fixedPrice,
           inputPrice: selectedModel.inputPrice,
           completionPrice: selectedModel.completionPrice,

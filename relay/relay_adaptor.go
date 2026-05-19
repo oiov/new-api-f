@@ -29,6 +29,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/perplexity"
 	"github.com/QuantumNous/new-api/relay/channel/replicate"
 	"github.com/QuantumNous/new-api/relay/channel/seedance"
+	"github.com/QuantumNous/new-api/relay/channel/seedance2"
 	"github.com/QuantumNous/new-api/relay/channel/siliconflow"
 	"github.com/QuantumNous/new-api/relay/channel/submodel"
 	taskali "github.com/QuantumNous/new-api/relay/channel/task/ali"
@@ -124,6 +125,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &codex.Adaptor{}
 	case constant.APITypeSeedance:
 		return &seedance.Adaptor{}
+	case constant.APITypeSeedance2:
+		return &seedance2.Adaptor{}
 	}
 	return nil
 }
@@ -163,7 +166,7 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &taskGemini.TaskAdaptor{}
 		case constant.ChannelTypeMiniMax:
 			return &hailuo.TaskAdaptor{}
-		case constant.ChannelTypeSeedance:
+		case constant.ChannelTypeSeedance, constant.ChannelTypeSeedance2:
 			return &taskseedance.TaskAdaptor{}
 		}
 	}

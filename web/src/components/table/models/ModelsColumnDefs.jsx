@@ -140,7 +140,7 @@ const renderQuotaTypes = (arr, t) => {
       if (qt === 1) {
         return (
           <Tag key={`${qt}-${idx}`} color='teal' size='small' shape='circle'>
-            {t('按次计费')}
+            {t('固定单价计费')}
           </Tag>
         );
       }
