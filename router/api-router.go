@@ -347,7 +347,7 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.PUT("/batch/models", middleware.PermissionAuth(common.PermissionPointChannelBatchEdit), controller.BatchUpdateChannelModels)
 			channelRoute.POST("/fix", middleware.PermissionAuth(common.PermissionPointChannelEdit), controller.FixChannelsAbilities)
 			channelRoute.GET("/fetch_models/:id", middleware.PermissionAuth(common.PermissionPointChannelUpstreamSync), controller.FetchUpstreamModels)
-			channelRoute.POST("/fetch_models", middleware.PermissionAuth(common.PermissionPointChannelUpstreamSync), controller.FetchModels)
+			channelRoute.POST("/fetch_models", middleware.RootAuth(), middleware.PermissionAuth(common.PermissionPointChannelUpstreamSync), controller.FetchModels)
 			channelRoute.POST("/codex/oauth/start", controller.StartCodexOAuth)
 			channelRoute.POST("/codex/oauth/complete", controller.CompleteCodexOAuth)
 			channelRoute.POST("/:id/codex/oauth/start", controller.StartCodexOAuthForChannel)

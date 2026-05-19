@@ -21,54 +21,82 @@ type SSRFProtection struct {
 
 // DefaultSSRFProtection 默认SSRF防护配置
 var DefaultSSRFProtection = &SSRFProtection{
-	AllowPrivateIp:   false,
-	DomainFilterMode: true,
-	DomainList:       []string{},
-	IpFilterMode:     true,
-	IpList:           []string{},
-	AllowedPorts:     []int{},
+	AllowPrivateIp:         false,
+	DomainFilterMode:       true,
+	DomainList:             []string{},
+	IpFilterMode:           true,
+	IpList:                 []string{},
+	AllowedPorts:           []int{},
+	ApplyIPFilterForDomain: true,
 }
 
-// isPrivateIP 检查IP是否为私有地址
+// privateIPv4Nets contains private, reserved, and special-purpose IPv4 ranges.
+var privateIPv4Nets = []net.IPNet{
+	{IP: net.IPv4(0, 0, 0, 0), Mask: net.CIDRMask(8, 32)},
+	{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)},
+	{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)},
+	{IP: net.IPv4(127, 0, 0, 0), Mask: net.CIDRMask(8, 32)},
+	{IP: net.IPv4(169, 254, 0, 0), Mask: net.CIDRMask(16, 32)},
+	{IP: net.IPv4(172, 16, 0, 0), Mask: net.CIDRMask(12, 32)},
+	{IP: net.IPv4(192, 0, 0, 0), Mask: net.CIDRMask(24, 32)},
+	{IP: net.IPv4(192, 0, 2, 0), Mask: net.CIDRMask(24, 32)},
+	{IP: net.IPv4(192, 168, 0, 0), Mask: net.CIDRMask(16, 32)},
+	{IP: net.IPv4(198, 18, 0, 0), Mask: net.CIDRMask(15, 32)},
+	{IP: net.IPv4(198, 51, 100, 0), Mask: net.CIDRMask(24, 32)},
+	{IP: net.IPv4(203, 0, 113, 0), Mask: net.CIDRMask(24, 32)},
+	{IP: net.IPv4(224, 0, 0, 0), Mask: net.CIDRMask(4, 32)},
+	{IP: net.IPv4(240, 0, 0, 0), Mask: net.CIDRMask(4, 32)},
+	{IP: net.IPv4(255, 255, 255, 255), Mask: net.CIDRMask(32, 32)},
+}
+
+// privateIPv6Nets contains private, reserved, and special-purpose IPv6 ranges.
+var privateIPv6Nets = func() []net.IPNet {
+	cidrs := []string{
+		"::/128",
+		"::1/128",
+		"::ffff:0:0/96",
+		"64:ff9b::/96",
+		"100::/64",
+		"2001::/23",
+		"2001:db8::/32",
+		"fc00::/7",
+		"fe80::/10",
+		"ff00::/8",
+	}
+	nets := make([]net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		if _, ipNet, err := net.ParseCIDR(cidr); err == nil && ipNet != nil {
+			nets = append(nets, *ipNet)
+		}
+	}
+	return nets
+}()
+
+// isPrivateIP 检查IP是否为私有/保留/特殊用途地址
 func isPrivateIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+	if ip == nil {
+		return true
+	}
+	if ip.IsUnspecified() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() {
 		return true
 	}
 
-	// 检查私有网段
-	private := []net.IPNet{
-		{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)},     // 10.0.0.0/8
-		{IP: net.IPv4(172, 16, 0, 0), Mask: net.CIDRMask(12, 32)},  // 172.16.0.0/12
-		{IP: net.IPv4(192, 168, 0, 0), Mask: net.CIDRMask(16, 32)}, // 192.168.0.0/16
-		{IP: net.IPv4(127, 0, 0, 0), Mask: net.CIDRMask(8, 32)},    // 127.0.0.0/8
-		{IP: net.IPv4(169, 254, 0, 0), Mask: net.CIDRMask(16, 32)}, // 169.254.0.0/16 (链路本地)
-		{IP: net.IPv4(224, 0, 0, 0), Mask: net.CIDRMask(4, 32)},    // 224.0.0.0/4 (组播)
-		{IP: net.IPv4(240, 0, 0, 0), Mask: net.CIDRMask(4, 32)},    // 240.0.0.0/4 (保留)
+	if v4 := ip.To4(); v4 != nil {
+		for _, privateNet := range privateIPv4Nets {
+			if privateNet.Contains(v4) {
+				return true
+			}
+		}
+		return false
 	}
 
-	for _, privateNet := range private {
+	for _, privateNet := range privateIPv6Nets {
 		if privateNet.Contains(ip) {
 			return true
 		}
 	}
 
-	// 检查IPv6私有地址
-	if ip.To4() == nil {
-		// IPv6 loopback
-		if ip.Equal(net.IPv6loopback) {
-			return true
-		}
-		// IPv6 link-local
-		if strings.HasPrefix(ip.String(), "fe80:") {
-			return true
-		}
-		// IPv6 unique local
-		if strings.HasPrefix(ip.String(), "fc") || strings.HasPrefix(ip.String(), "fd") {
-			return true
-		}
-	}
-
-	return false
+	return ip.IsPrivate()
 }
 
 // parsePortRanges 解析端口范围配置

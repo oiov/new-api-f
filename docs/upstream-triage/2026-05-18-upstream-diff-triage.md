@@ -39,6 +39,50 @@ This file was reopened after context compression and is the active source of tru
 
 Current worktree note remains unchanged: `web-worker/` is untracked and should not be touched during upstream triage unless explicitly requested.
 
+## Recheck 2026-05-19
+
+Fresh fetch results:
+
+- `origin/fishxcode`: unchanged at `61fe82952614414f881fd6f4e8db634e34c0f879` (`docs: record auth backport checkpoint`).
+- Local `HEAD`: `656743e5e7f6f93ad591a11de83db4d70590ff82` (`feat: 添加真实烟雾测试凭证和结果记录`), one commit ahead of `origin/fishxcode`.
+- Direct upstream `upstream/fishxcode`: advanced from `7af2f0e4a33069650b5cb8c9869c21ffc55d6067` to `404d54bd976942bd1b25ba5cff309a5c830f5368` (`优化活动抽奖历史报名展示`).
+- Zeabur mirror sync marker `upstream/new-api`: unchanged at `5d93351d04269d9504e5fd0a5fd32ded674ddef2`.
+- Original upstream `quantumnous/main`: unchanged at `5dd0d3bcbd7b1d523bd046a5f9cf9fc8ce28d579`.
+- Worktree note remains: `web-worker/` is untracked and should not be touched during upstream triage unless explicitly requested.
+
+Merge bases remain unchanged:
+
+- Local vs Zeabur: `8aa8b81e03522f306d24134725378228e64b03ab`
+- Local vs QuantumNous main: `9ae9040b3c9dab88660fb9724d182393d0137861`
+- Zeabur fishxcode vs QuantumNous main: `8aa8b81e03522f306d24134725378228e64b03ab`
+
+Current ancestry counts:
+
+- `upstream/fishxcode ^HEAD --no-merges`: 473 upstream non-merge commits not in local by ancestry.
+- `quantumnous/main ^HEAD --no-merges`: 231 original-upstream non-merge commits not in local by ancestry.
+- `HEAD ^upstream/fishxcode --no-merges`: 410 local non-merge commits not in Zeabur by ancestry.
+- `HEAD ^quantumnous/main --no-merges`: 372 local non-merge commits not in QuantumNous by ancestry.
+
+Progress checkpoint:
+
+- Relay/provider protocol batch is committed locally as `69a31879c2ceee9c5ea62109042359ea34bada1c`.
+- Auth/token/user-cache security batch is committed locally as `ddd501c95`.
+- Auth/relay real smoke-test results are recorded in local `HEAD` `656743e5e7f6f93ad591a11de83db4d70590ff82`.
+- Because these were manual backports, their upstream commit hashes can still appear in ancestry-only `git log upstream ^HEAD` output. Treat the local batch commits above as the source of truth for progress.
+
+New Zeabur commits since the last direct-upstream head:
+
+| Commit | Area | Status | Recommendation |
+| --- | --- | --- | --- |
+| `58a2cadad` | Activity lottery config, `model/activity_lottery.go`, old `web/` admin UI/i18n | Not applied. | Conditional. Backend lottery fixes may be reviewed only if this fork uses activity lottery flows; broad old `web/` changes should remain out of current priority batches. |
+| `315319267` | Activity lottery frontend experience and helper tests | Not applied. | Skip/defer for current scope; old `web/` UI work. |
+| `139cbb38f` | Activity lottery old `web/` component split | Not applied. | Skip/defer for current scope; old `web/` UI refactor. |
+| `fe74ba17a` | Activity lottery period/privacy backend tests plus old `web/` admin UI | Not applied. | Conditional. Backend correctness may be inspected with `58a2cadad` if lottery is in scope. |
+| `07ab7ad22` | Lottery admin form builder and old `web/` i18n | Not applied. | Skip/defer for current scope. |
+| `404d54bd9` | Activity lottery history display in old `web/` | Not applied. | Skip/defer for current scope. |
+
+Recommendation remains unchanged: do not direct-merge `upstream/fishxcode` or `quantumnous/main`. Continue manual backport batches. The next high-value backend batches are SSRF/URL fetch safety, payment callback provider guards, admin/query correctness, and cross-DB/config correctness.
+
 ## Last Known Sync/Merge Baselines
 
 This section must be updated every time future upstream work is merged or selectively backported.
@@ -284,6 +328,7 @@ Execution rule added before implementation:
 - After each module is implemented and tested, update this file with the applied commits/files/tests and the new local HEAD if committed.
 - Before starting each new module, ask for user confirmation. This is especially required for payment, subscription, public frontend/API behavior, and broad product-policy changes.
 - For backend API shape changes, check `web-worker/src/api-client/types.ts`, relevant `web-worker/src/api-client/*.ts`, hooks, and pages/components to avoid runtime crashes.
+- API compatibility gate: every batch must explicitly check whether it changes routes, auth/permission requirements, request fields, response fields, status codes, error bodies, pagination shape, or task/log DTOs. If any of these change, inspect matching `web-worker/src/api-client/types.ts`, `web-worker/src/api-client/*.ts`, hooks, routes, and components, run focused `web-worker` tests when present, and record the compatibility result in this file.
 
 1. Security batch: auth/token error handling, user/token cache invalidation, SSRF hardening.
 2. Payment safety batch: `PaymentProvider`, callback provider guards, top-up query DoS limits, optional top-up audit info.
@@ -386,6 +431,47 @@ Results:
 - `/v1/chat/completions` streaming to `claude-haiku-4-5-20251001` with `stream_options.include_usage:true`: PASS, received content chunk, final usage chunk, and `[DONE]`.
 - `/v1/messages` Anthropic-native streaming to `claude-haiku-4-5-20251001`: PASS, received `message_start`, `content_block_delta`, `message_delta` with usage, and `message_stop`.
 - `/v1beta/models/{model}:streamGenerateContent` Gemini-native streaming path: PASS using the discovered `gemini-3.1-flash-image-preview`; received 2 streamed chunks with candidates. Note: this model is image-priced in the current environment, so avoid frequent real smoke reruns unless the Gemini stream path needs verification.
+
+### 2026-05-19 SSRF / URL Fetch Safety Batch
+
+Scope approved by user: continue by recommended priority and manually backport or merge where appropriate. Direct branch merge remains excluded; this batch manually backports SSRF/URL-fetch safety only.
+
+| Upstream commit | Local status | Files touched | Verification | Notes |
+| --- | --- | --- | --- | --- |
+| `e2807c5f9` QuantumNous, `feat: enhance SSRF protection` | Applied as committed manual backport in this SSRF batch. | `common/ssrf_protection.go`, tests in `common/ssrf_protection_test.go`. | Red first: `GOCACHE=/tmp/go-build-cache go test ./common ./setting/system_setting ./controller ./relay -run 'TestValidateURLWithFetchSettingAppliesDomainIPFilterByDefault|TestValidateURLWithFetchSettingRejectsSpecialPurposeIPv4Ranges|TestDefaultFetchSettingAppliesIPFilterForDomain|TestVideoProxyBlocksUnsafeResultURLBeforeFetch|TestRelayMidjourneyImageBlocksUnsafeImageURLBeforeFetch' -count=1` failed because special IPv4 ranges were allowed. Green after patch: target command passed. | Expands private/special-purpose IP detection to include unspecified, CGNAT, TEST-NET, benchmarking, limited broadcast, IPv4-mapped/translation IPv6, documentation, discard-only, ULA/link-local/multicast IPv6 ranges. |
+| `20399d3c8` QuantumNous, `fix: harden SSRF protection for unauthenticated and user-level endpoints` | Applied as committed manual backport in this SSRF batch. | `controller/video_proxy.go`, `relay/mjproxy_handler.go`, `setting/system_setting/fetch_setting.go`, `router/api-router.go`, tests in `controller/video_proxy_test.go`, `relay/mjproxy_handler_test.go`, `setting/system_setting/fetch_setting_test.go`, `router/channel_security_test.go`. | Red first: target tests failed because `VideoProxy` returned 502 after attempting `127.0.0.1`, `RelayMidjourneyImage` returned 500 after attempting `127.0.0.1`, default fetch setting did not apply domain IP filtering, and `/api/channel/fetch_models` allowed an admin with `channel.upstream.sync` to reach controller JSON parsing. Green after patch: target tests passed. | Video content proxy and Midjourney image proxy now call `common.ValidateURLWithFetchSetting` before outbound fetches. `ApplyIPFilterForDomain` now defaults true. Manual model fetch route now requires `RootAuth` plus the existing upstream-sync permission check, preserving local permission model while matching upstream's root-only security intent. |
+
+SSRF batch verification:
+
+- `git diff --check`: passed.
+- Target command passed in sandbox:
+  - `GOCACHE=/tmp/go-build-cache go test ./common ./setting/system_setting ./controller ./relay ./router -run 'TestValidateURLWithFetchSettingAppliesDomainIPFilterByDefault|TestValidateURLWithFetchSettingRejectsSpecialPurposeIPv4Ranges|TestDefaultFetchSettingAppliesIPFilterForDomain|TestVideoProxyBlocksUnsafeResultURLBeforeFetch|TestRelayMidjourneyImageBlocksUnsafeImageURLBeforeFetch|TestFetchModelsRouteRequiresRootRole' -count=1`
+- Relevant package command passed outside sandbox:
+  - `GOCACHE=/tmp/go-build-cache go test ./common ./setting/system_setting ./controller ./relay ./router -count=1`
+- The same package command initially failed inside sandbox because existing `common` tests use `httptest.NewServer`, which cannot bind localhost in the sandbox; rerunning outside sandbox passed.
+
+SSRF batch `web-worker` API compatibility:
+
+- Changed backend API surface:
+  - `/v1/videos/:task_id/content` can now return HTTP 403 with OpenAI-style error body when the resolved result URL is blocked by SSRF policy. Success response headers/body are unchanged.
+  - `/mj/image/:id` can now return HTTP 403 with `{"error":"request blocked: ..."}` when the image URL is blocked. `web-worker` has no direct caller for this endpoint.
+  - `/api/channel/fetch_models` now requires root auth in addition to the existing upstream-sync permission check. This route is old/admin UI oriented; `web-worker/src` has no caller.
+  - Default fetch setting now enables domain IP filtering; this changes backend safety behavior, not request/response DTO shape.
+- `web-worker` inspection:
+  - `rg` found no `web-worker/src` caller for `/api/channel/fetch_models` or `/mj/image`.
+  - `web-worker/src/lib/task-result.ts` still accepts `/v1/videos/:task_id/content` result URLs and does not depend on proxy response body shape until the browser opens the link.
+  - `web-worker/src/hooks/use-playground-video.ts` calls `/v1/videos/:task_id` for task status, not `/v1/videos/:task_id/content`.
+  - `web-worker/src/api-client/types.ts` `TaskItem.result_url` remains compatible; no type update required.
+- Focused `web-worker` verification passed:
+  - `pnpm exec tsx --test src/lib/task-result.test.ts src/lib/playground-video.test.ts src/hooks/use-playground-video.ts`
+
+Continuation marker for next run:
+
+- Branch updated locally: `fishxcode`.
+- Direct upstream ref compared: `upstream/fishxcode` at `404d54bd976942bd1b25ba5cff309a5c830f5368`.
+- Original upstream ref compared: `quantumnous/main` at `5dd0d3bcbd7b1d523bd046a5f9cf9fc8ce28d579`.
+- Selective upstream commits applied in SSRF batch: `20399d3c8`, `e2807c5f9`.
+- Next priority batch remains payment safety: `a7c38ec85`, `b2e62a44e`, with local Stripe/Waffo/Creem/subscription behavior requiring careful manual adaptation.
 
 ## Commands Used For This Snapshot
 
