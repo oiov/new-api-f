@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -38,16 +37,78 @@ func TestStatus(c *gin.Context) {
 	return
 }
 
+type statusOAuthFlags struct {
+	GoogleRegister   bool
+	GitHubRegister   bool
+	LinuxDORegister  bool
+	WeChatRegister   bool
+	TelegramRegister bool
+	DiscordRegister  bool
+	OIDCRegister     bool
+}
+
+func statusRegisterEnabledLocked(optionKey string, loginEnabled bool, registerEnabled bool) bool {
+	if _, ok := common.OptionMap[optionKey]; ok {
+		return registerEnabled
+	}
+	return loginEnabled
+}
+
+func buildStatusOAuthFlagsLocked() statusOAuthFlags {
+	discordSetting := system_setting.GetDiscordSettings()
+	oidcSetting := system_setting.GetOIDCSettings()
+	return statusOAuthFlags{
+		GoogleRegister: statusRegisterEnabledLocked(
+			"GoogleOAuthRegisterEnabled",
+			common.GoogleOAuthEnabled,
+			common.GoogleOAuthRegisterEnabled,
+		),
+		GitHubRegister: statusRegisterEnabledLocked(
+			"GitHubOAuthRegisterEnabled",
+			common.GitHubOAuthEnabled,
+			common.GitHubOAuthRegisterEnabled,
+		),
+		LinuxDORegister: statusRegisterEnabledLocked(
+			"LinuxDOOAuthRegisterEnabled",
+			common.LinuxDOOAuthEnabled,
+			common.LinuxDOOAuthRegisterEnabled,
+		),
+		WeChatRegister: statusRegisterEnabledLocked(
+			"WeChatRegisterEnabled",
+			common.WeChatAuthEnabled,
+			common.WeChatRegisterEnabled,
+		),
+		TelegramRegister: statusRegisterEnabledLocked(
+			"TelegramOAuthRegisterEnabled",
+			common.TelegramOAuthEnabled,
+			common.TelegramOAuthRegisterEnabled,
+		),
+		DiscordRegister: statusRegisterEnabledLocked(
+			"discord.register_enabled",
+			discordSetting.Enabled,
+			discordSetting.RegisterEnabled,
+		),
+		OIDCRegister: statusRegisterEnabledLocked(
+			"oidc.register_enabled",
+			oidcSetting.Enabled,
+			oidcSetting.RegisterEnabled,
+		),
+	}
+}
+
 func GetStatus(c *gin.Context) {
 
 	cs := console_setting.GetConsoleSetting()
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
+	oauthFlags := buildStatusOAuthFlagsLocked()
 	passkeySetting := system_setting.GetPasskeySettings()
 	legalSetting := system_setting.GetLegalSettings()
 	checkinSetting := operation_setting.GetCheckinSetting()
 	activityLotterySetting := operation_setting.GetActivityLotterySetting()
+	discordSetting := system_setting.GetDiscordSettings()
+	oidcSetting := system_setting.GetOIDCSettings()
 
 	data := gin.H{
 		"version":                     common.Version,
@@ -57,27 +118,27 @@ func GetStatus(c *gin.Context) {
 		"register_enabled":            common.RegisterEnabled,
 		"email_verification":          common.EmailVerificationEnabled,
 		"google_oauth":                common.GoogleOAuthEnabled,
-		"google_oauth_register":       common.IsGoogleOAuthRegisterEnabled(),
+		"google_oauth_register":       oauthFlags.GoogleRegister,
 		"google_client_id":            common.GoogleClientId,
 		"github_oauth":                common.GitHubOAuthEnabled,
-		"github_oauth_register":       common.IsGitHubOAuthRegisterEnabled(),
+		"github_oauth_register":       oauthFlags.GitHubRegister,
 		"github_client_id":            common.GitHubClientId,
 		"discord_oauth":               system_setting.IsDiscordLoginEnabled(),
-		"discord_oauth_register":      system_setting.IsDiscordRegisterEnabled(),
-		"discord_client_id":           system_setting.GetDiscordSettings().ClientId,
+		"discord_oauth_register":      oauthFlags.DiscordRegister,
+		"discord_client_id":           discordSetting.ClientId,
 		"linuxdo_oauth":               common.LinuxDOOAuthEnabled,
-		"linuxdo_oauth_register":      common.IsLinuxDOOAuthRegisterEnabled(),
+		"linuxdo_oauth_register":      oauthFlags.LinuxDORegister,
 		"linuxdo_client_id":           common.LinuxDOClientId,
 		"linuxdo_minimum_trust_level": common.LinuxDOMinimumTrustLevel,
 		"telegram_oauth":              common.TelegramOAuthEnabled,
-		"telegram_oauth_register":     common.IsTelegramOAuthRegisterEnabled(),
+		"telegram_oauth_register":     oauthFlags.TelegramRegister,
 		"telegram_bot_name":           common.TelegramBotName,
 		"system_name":                 common.SystemName,
 		"logo":                        common.Logo,
 		"footer_html":                 common.Footer,
 		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"wechat_login":                common.WeChatAuthEnabled,
-		"wechat_register":             common.IsWeChatOAuthRegisterEnabled(),
+		"wechat_register":             oauthFlags.WeChatRegister,
 		"server_address":              system_setting.ServerAddress,
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
@@ -130,9 +191,9 @@ func GetStatus(c *gin.Context) {
 		"SelfServiceSubscriptionConversionCampaign": common.OptionMap["SelfServiceSubscriptionConversionCampaign"],
 
 		"oidc_enabled":                                  system_setting.IsOIDCLoginEnabled(),
-		"oidc_register_enabled":                         system_setting.IsOIDCRegisterEnabled(),
-		"oidc_client_id":                                system_setting.GetOIDCSettings().ClientId,
-		"oidc_authorization_endpoint":                   system_setting.GetOIDCSettings().AuthorizationEndpoint,
+		"oidc_register_enabled":                         oauthFlags.OIDCRegister,
+		"oidc_client_id":                                oidcSetting.ClientId,
+		"oidc_authorization_endpoint":                   oidcSetting.AuthorizationEndpoint,
 		"passkey_login":                                 passkeySetting.Enabled,
 		"passkey_display_name":                          passkeySetting.RPDisplayName,
 		"passkey_rp_id":                                 passkeySetting.RPID,
@@ -430,7 +491,7 @@ type PasswordResetRequest struct {
 
 func ResetPassword(c *gin.Context) {
 	var req PasswordResetRequest
-	err := json.NewDecoder(c.Request.Body).Decode(&req)
+	err := common.DecodeJson(c.Request.Body, &req)
 	if req.Email == "" || req.Token == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
