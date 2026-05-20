@@ -155,6 +155,7 @@ var RetryTimes = 0
 //var RootUserEmail = ""
 
 var IsMasterNode bool
+var SkipAutoMigrate bool
 
 var requestInterval int
 var RequestInterval time.Duration
