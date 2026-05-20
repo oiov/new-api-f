@@ -2,7 +2,7 @@
 
 > Status: Approved for implementation planning
 > Date: 2026-05-19
-> Scope: 新增一级邀请分佣能力，包含后端分佣流水、支付成功结算、旧 `web` 后台配置、旧 `web` 用户级比例覆盖、`web-worker` 分佣中心页面
+> Scope: 新增一级邀请分佣能力，包含后端分佣流水、支付成功结算、旧 `web` 后台配置、旧 `web` 用户级比例覆盖、`web-worker` 邀请分佣页面
 > Out of scope: 现金提现、二级/多级分佣、余额支付分佣、兑换码分佣、管理员补单分佣、手工发货套餐分佣
 
 ---
@@ -19,7 +19,7 @@
 4. 新增独立分佣流水表，记录订单来源、实付金额、比例快照、奖励额度、状态和原因。
 5. 余额充值和自动发货订阅套餐购买参与分佣。
 6. 管理员补单、兑换码、余额支付、后台绑定套餐和手工发货套餐不参与分佣。
-7. `web-worker` 新增 `/console/affiliate` 分佣中心，统一展示邀请链接、普通邀请奖励、分佣统计、分佣流水和奖励转余额。
+7. `web-worker` 新增 `/console/affiliate` 邀请分佣，统一展示邀请链接、普通邀请奖励、分佣统计、分佣流水和奖励转余额。
 8. `/console/rewards` 只保留签到、抽奖等福利能力，移除邀请奖励展示，避免重复。
 9. 数据结构预留未来现金提现字段，但第一版不实现提现流程。
 
@@ -375,7 +375,7 @@ Add route:
 Add sidebar entry under account:
 
 ```text
-分佣中心
+邀请分佣
 ```
 
 Update `/console/rewards`:
