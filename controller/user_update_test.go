@@ -47,3 +47,42 @@ func TestUpdateUserReturnsUpdatedUserData(t *testing.T) {
 	assert.Equal(t, 7, updated.AffCount)
 	assert.Empty(t, updated.Password)
 }
+
+func TestUpdateSelfDisplayNameDoesNotRequireOriginalPassword(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	user := seedUser(t, db, 1, "alice", common.RoleCommonUser)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/user/self", map[string]any{
+		"display_name": "Alice New",
+	}, user.Id)
+
+	UpdateSelf(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	var updated model.User
+	require.NoError(t, db.First(&updated, user.Id).Error)
+	assert.Equal(t, "Alice New", updated.DisplayName)
+	assert.Equal(t, user.Username, updated.Username)
+	assert.Equal(t, user.Password, updated.Password)
+}
+
+func TestUpdateSelfPasswordStillRequiresOriginalPassword(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	user := seedUser(t, db, 1, "alice", common.RoleCommonUser)
+	hashedPassword, err := common.Password2Hash("old-password")
+	require.NoError(t, err)
+	require.NoError(t, db.Model(user).Update("password", hashedPassword).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/user/self", map[string]any{
+		"original_password": "wrong-password",
+		"password":          "new-password",
+	}, user.Id)
+
+	UpdateSelf(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	assert.Contains(t, response.Message, "原密码错误")
+}
