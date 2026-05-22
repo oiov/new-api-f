@@ -1,7 +1,12 @@
 package controller
 
 import (
+	"bytes"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -176,6 +181,71 @@ func TestSupportTicketAdminUpdateStatusCreatesUserNotification(t *testing.T) {
 	require.Contains(t, notification.Content, "已解决")
 }
 
+func TestSupportTicketAttachmentUploadStoresImageUnderSupportTicketPrefix(t *testing.T) {
+	setupSupportTicketControllerTestDB(t)
+	oldStorageBackend := common.StorageBackend
+	common.StorageBackend = ""
+	t.Cleanup(func() {
+		common.StorageBackend = oldStorageBackend
+	})
+
+	tmpDir := t.TempDir()
+	oldWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmpDir))
+	t.Cleanup(func() {
+		require.NoError(t, os.Chdir(oldWd))
+	})
+
+	ctx, recorder := newMultipartUploadContext(t, "/api/support/tickets/attachments", "screenshot.png", []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+	ctx.Set("id", 7)
+	ctx.Set("role", common.RoleCommonUser)
+
+	UploadSupportTicketAttachment(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var data struct {
+		URL string `json:"url"`
+	}
+	require.NoError(t, common.Unmarshal(response.Data, &data))
+	require.Contains(t, data.URL, "/uploads/support_tickets/")
+	require.Equal(t, ".png", filepath.Ext(data.URL))
+	require.FileExists(t, filepath.Join(tmpDir, "data", data.URL))
+}
+
+func TestSupportTicketAttachmentUploadRejectsNonImage(t *testing.T) {
+	setupSupportTicketControllerTestDB(t)
+
+	ctx, recorder := newMultipartUploadContext(t, "/api/support/tickets/attachments", "payload.txt", []byte("plain text"))
+	ctx.Set("id", 7)
+	ctx.Set("role", common.RoleCommonUser)
+
+	UploadSupportTicketAttachment(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Contains(t, response.Message, "仅允许")
+}
+
 func ginParam(key string, value string) gin.Param {
 	return gin.Param{Key: key, Value: value}
+}
+
+func newMultipartUploadContext(t *testing.T, target string, filename string, content []byte) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", filename)
+	require.NoError(t, err)
+	_, err = part.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, target, &body)
+	ctx.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	return ctx, recorder
 }

@@ -14,13 +14,15 @@ import (
 )
 
 type SupportTicketCreateRequest struct {
-	Type    string `json:"type"`
-	Subject string `json:"subject"`
-	Content string `json:"content"`
+	Type     string `json:"type"`
+	Subject  string `json:"subject"`
+	Content  string `json:"content"`
+	ImageURL string `json:"image_url"`
 }
 
 type SupportTicketMessageRequest struct {
-	Content string `json:"content"`
+	Content  string `json:"content"`
+	ImageURL string `json:"image_url"`
 }
 
 type SupportTicketUpdateRequest struct {
@@ -91,7 +93,7 @@ func CreateSupportTicket(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的请求参数")
 		return
 	}
-	ticket, err := model.CreateSupportTicket(c.GetInt("id"), req.Type, req.Subject, req.Content)
+	ticket, err := model.CreateSupportTicketWithImage(c.GetInt("id"), req.Type, req.Subject, req.Content, req.ImageURL)
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
@@ -136,7 +138,7 @@ func AddSupportTicketMessage(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的请求参数")
 		return
 	}
-	message, updated, err := model.AddSupportTicketMessage(ticket.Id, c.GetInt("id"), isSupportTicketAdmin(c), req.Content)
+	message, updated, err := model.AddSupportTicketMessageWithImage(ticket.Id, c.GetInt("id"), isSupportTicketAdmin(c), req.Content, req.ImageURL)
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
@@ -144,10 +146,27 @@ func AddSupportTicketMessage(c *gin.Context) {
 	if previousStatus != updated.Status {
 		service.NotifySupportTicketStatusUpdatedAsync(updated, c.GetInt("id"), previousStatus)
 	}
+	service.NotifySupportTicketMessageAddedAsync(c.GetInt("id"), updated, message)
 	common.ApiSuccess(c, SupportTicketReplyResponse{
 		Ticket:  updated,
 		Message: message,
 	})
+}
+
+func UploadSupportTicketAttachment(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		common.ApiErrorMsg(c, "获取上传文件失败："+err.Error())
+		return
+	}
+
+	url, err := service.UploadSupportTicketImage(file)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{"url": url})
 }
 
 func UpdateSupportTicket(c *gin.Context) {

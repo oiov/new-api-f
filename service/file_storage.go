@@ -26,9 +26,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const invoiceMaxFileSize = 20 << 20        // 20MB
-const storageObjectMaxFileSize = 100 << 20 // 100MB
-const imageResultCacheMaxBytes = 50 << 20  // 50MB
+const invoiceMaxFileSize = 20 << 20            // 20MB
+const supportTicketImageMaxFileSize = 10 << 20 // 10MB
+const storageObjectMaxFileSize = 100 << 20     // 100MB
+const imageResultCacheMaxBytes = 50 << 20      // 50MB
 
 var invoiceAllowedExts = map[string]string{
 	".pdf":  "application/pdf",
@@ -36,6 +37,14 @@ var invoiceAllowedExts = map[string]string{
 	".jpg":  "image/jpeg",
 	".jpeg": "image/jpeg",
 	".webp": "image/webp",
+}
+
+var supportTicketImageAllowedExts = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+	".gif":  "image/gif",
 }
 
 type StorageObjectInfo struct {
@@ -123,6 +132,32 @@ func UploadInvoiceFile(file *multipart.FileHeader) (string, error) {
 	}
 
 	key := fmt.Sprintf("invoices/%s%s", uuid.New().String(), ext)
+
+	common.OptionMapRWMutex.RLock()
+	backend := common.StorageBackend
+	common.OptionMapRWMutex.RUnlock()
+
+	if backend == "r2" {
+		return uploadR2(file, key, contentType)
+	}
+	return uploadLocal(file, key)
+}
+
+func UploadSupportTicketImage(file *multipart.FileHeader) (string, error) {
+	if file == nil {
+		return "", fmt.Errorf("未提供上传文件")
+	}
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	contentType, ok := supportTicketImageAllowedExts[ext]
+	if !ok {
+		return "", fmt.Errorf("不支持的文件格式：%s，仅允许 png/jpg/jpeg/webp/gif", ext)
+	}
+	if file.Size > supportTicketImageMaxFileSize {
+		return "", fmt.Errorf("文件大小超过 10MB 限制")
+	}
+
+	key := fmt.Sprintf("support_tickets/%s%s", uuid.New().String(), ext)
 
 	common.OptionMapRWMutex.RLock()
 	backend := common.StorageBackend

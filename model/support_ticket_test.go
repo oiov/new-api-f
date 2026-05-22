@@ -57,6 +57,37 @@ func TestSupportTicketCreateSetsDefaultPriorityAndFirstMessage(t *testing.T) {
 	})
 }
 
+func TestSupportTicketCreateStoresOptionalMessageImageURL(t *testing.T) {
+	withSupportTicketTestDB(t, func() {
+		ticket, err := CreateSupportTicketWithImage(7, SupportTicketTypeNormal, "图片问题", "请看截图", " /uploads/support_tickets/test.png ")
+		require.NoError(t, err)
+
+		messages, err := GetSupportTicketMessages(ticket.Id)
+		require.NoError(t, err)
+		require.Len(t, messages, 1)
+		require.Equal(t, "请看截图", messages[0].Content)
+		require.Equal(t, "/uploads/support_tickets/test.png", messages[0].ImageURL)
+	})
+}
+
+func TestSupportTicketReplyStoresOptionalMessageImageURLAndStillRequiresText(t *testing.T) {
+	withSupportTicketTestDB(t, func() {
+		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "问题", "初始消息")
+		require.NoError(t, err)
+
+		_, _, err = AddSupportTicketMessageWithImage(ticket.Id, 7, false, "   ", "/uploads/support_tickets/empty.png")
+		require.EqualError(t, err, "工单内容不能为空")
+
+		_, _, err = AddSupportTicketMessageWithImage(ticket.Id, 7, false, "补充截图", "https://cdn.example.com/support.png")
+		require.EqualError(t, err, "无效的工单图片链接")
+
+		message, _, err := AddSupportTicketMessageWithImage(ticket.Id, 7, false, "补充截图", "/uploads/support_tickets/reply.png")
+		require.NoError(t, err)
+		require.Equal(t, "补充截图", message.Content)
+		require.Equal(t, "/uploads/support_tickets/reply.png", message.ImageURL)
+	})
+}
+
 func TestSupportTicketCreateSetsHighPriorityForRefundAndInvoice(t *testing.T) {
 	withSupportTicketTestDB(t, func() {
 		refundTicket, err := CreateSupportTicket(7, SupportTicketTypeRefund, "退款", "申请退款")

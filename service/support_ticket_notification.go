@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"html"
+	"os"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,6 +12,18 @@ import (
 )
 
 const supportTicketAdminEmail = "support@nbility.dev"
+
+var runSupportTicketNotification = func(fn func()) {
+	if isGoTestProcess() {
+		fn()
+		return
+	}
+	gopool.Go(fn)
+}
+
+func isGoTestProcess() bool {
+	return strings.HasSuffix(os.Args[0], ".test")
+}
 
 func SupportTicketStatusText(status string) string {
 	switch strings.TrimSpace(status) {
@@ -55,7 +68,7 @@ func NotifySupportTicketCreatedAsync(ticket *model.SupportTicket) {
 	if ticket == nil || ticket.UserId <= 0 {
 		return
 	}
-	gopool.Go(func() {
+	runSupportTicketNotification(func() {
 		user, err := model.GetUserById(ticket.UserId, false)
 		if err != nil || user == nil {
 			common.SysLog(fmt.Sprintf("failed to query support ticket user %d for created notification: %v", ticket.UserId, err))
@@ -72,7 +85,7 @@ func NotifySupportTicketStatusUpdatedAsync(ticket *model.SupportTicket, senderUs
 	if strings.TrimSpace(previousStatus) == strings.TrimSpace(ticket.Status) {
 		return
 	}
-	gopool.Go(func() {
+	runSupportTicketNotification(func() {
 		user, err := model.GetUserById(ticket.UserId, false)
 		if err != nil || user == nil {
 			common.SysLog(fmt.Sprintf("failed to query support ticket user %d for status notification: %v", ticket.UserId, err))
@@ -82,25 +95,36 @@ func NotifySupportTicketStatusUpdatedAsync(ticket *model.SupportTicket, senderUs
 	})
 }
 
+func NotifySupportTicketMessageAddedAsync(senderUserId int, ticket *model.SupportTicket, message *model.SupportTicketMessage) {
+	if ticket == nil || message == nil || ticket.UserId <= 0 {
+		return
+	}
+	runSupportTicketNotification(func() {
+		notifySupportTicketMessageAdded(senderUserId, ticket, message)
+	})
+}
+
 func notifySupportTicketCreated(user *model.User, ticket *model.SupportTicket) {
 	if user == nil || ticket == nil {
 		return
 	}
 	escapedSubject := html.EscapeString(strings.TrimSpace(ticket.Subject))
-	if strings.TrimSpace(user.Email) != "" {
-		subject := fmt.Sprintf("工单已提交：#%d %s", ticket.Id, strings.TrimSpace(ticket.Subject))
-		content := fmt.Sprintf(
+	if _, err := SendSiteNotificationToUser(
+		user,
+		user.Id,
+		fmt.Sprintf("工单已提交：#%d", ticket.Id),
+		fmt.Sprintf(
 			"你的工单已提交，我们会尽快处理。<br/>工单 ID：<strong>#%d</strong><br/>主题：<strong>%s</strong><br/>当前状态：<strong>%s</strong>",
 			ticket.Id,
 			escapedSubject,
 			SupportTicketStatusText(ticket.Status),
-		)
-		if err := common.SendEmail(subject, user.Email, content); err != nil {
-			common.SysLog(fmt.Sprintf("failed to send support ticket created email to user %d: %s", user.Id, err.Error()))
-		}
+		),
+		"info",
+		true,
+	); err != nil {
+		common.SysLog(fmt.Sprintf("failed to create support ticket created site notification for user %d: %s", user.Id, err.Error()))
 	}
 
-	adminSubject := fmt.Sprintf("新工单：#%d %s", ticket.Id, strings.TrimSpace(ticket.Subject))
 	adminContent := fmt.Sprintf(
 		"用户提交了新工单。<br/>工单 ID：<strong>#%d</strong><br/>用户：<strong>%s</strong><br/>类型：<strong>%s</strong><br/>优先级：<strong>%s</strong><br/>主题：<strong>%s</strong><br/>当前状态：<strong>%s</strong>",
 		ticket.Id,
@@ -110,9 +134,102 @@ func notifySupportTicketCreated(user *model.User, ticket *model.SupportTicket) {
 		escapedSubject,
 		SupportTicketStatusText(ticket.Status),
 	)
-	if err := common.SendEmail(adminSubject, supportTicketAdminEmail, adminContent); err != nil {
-		common.SysLog(fmt.Sprintf("failed to send support ticket created email to admin: %s", err.Error()))
+	notifySupportTicketAdmins(user.Id, fmt.Sprintf("新工单：#%d", ticket.Id), adminContent)
+}
+
+func notifySupportTicketMessageAdded(senderUserId int, ticket *model.SupportTicket, message *model.SupportTicketMessage) {
+	if ticket == nil || message == nil {
+		return
 	}
+
+	adminTitle := fmt.Sprintf("工单有新回复：#%d", ticket.Id)
+	adminContent := buildSupportTicketMessageNotificationContent("工单有新回复。", ticket, message)
+	notifySupportTicketAdmins(senderUserId, adminTitle, adminContent)
+
+	if senderUserId == ticket.UserId {
+		return
+	}
+
+	user, err := model.GetUserById(ticket.UserId, false)
+	if err != nil || user == nil {
+		common.SysLog(fmt.Sprintf("failed to query support ticket user %d for message notification: %v", ticket.UserId, err))
+		return
+	}
+	userTitle := fmt.Sprintf("工单收到回复：#%d", ticket.Id)
+	userContent := buildSupportTicketMessageNotificationContent("你的工单收到新回复。", ticket, message)
+	notification, err := SendSiteNotificationToUser(user, senderUserId, userTitle, userContent, "info", true)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to send support ticket message notification to user %d: %s", user.Id, err.Error()))
+		return
+	}
+	if notification != nil && strings.TrimSpace(user.Email) != "" && !notification.EmailSent {
+		common.SysLog(fmt.Sprintf("support ticket message notification email not sent to user %d", user.Id))
+	}
+}
+
+func notifySupportTicketAdmins(senderUserId int, title string, content string) {
+	admins, err := listSupportTicketNotificationAdmins()
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to query support ticket admins for notification: %s", err.Error()))
+		return
+	}
+
+	fallbackEmailSent := false
+	for _, admin := range admins {
+		if admin == nil || admin.Id == senderUserId {
+			continue
+		}
+		notification, err := SendSiteNotificationToUser(admin, senderUserId, title, content, "info", true)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("failed to send support ticket notification to admin %d: %s", admin.Id, err.Error()))
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(admin.Email), supportTicketAdminEmail) && notification != nil && notification.EmailSent {
+			fallbackEmailSent = true
+		}
+	}
+
+	if !fallbackEmailSent {
+		if err := common.SendEmail(title, supportTicketAdminEmail, content); err != nil {
+			common.SysLog(fmt.Sprintf("failed to send support ticket fallback email to admin: %s", err.Error()))
+		}
+	}
+}
+
+func listSupportTicketNotificationAdmins() ([]*model.User, error) {
+	var users []*model.User
+	err := model.DB.
+		Select("id", "username", "email", "role", "status").
+		Where("status = ? AND role >= ?", common.UserStatusEnabled, common.RoleAdminUser).
+		Order("id asc").
+		Find(&users).Error
+	return users, err
+}
+
+func buildSupportTicketMessageNotificationContent(prefix string, ticket *model.SupportTicket, message *model.SupportTicketMessage) string {
+	contentPreview := truncateSupportTicketNotificationText(message.Content, 600)
+	imageLine := ""
+	if strings.TrimSpace(message.ImageURL) != "" {
+		imageLine = fmt.Sprintf("<br/>图片：<a href=\"%s\">查看附件</a>", html.EscapeString(strings.TrimSpace(message.ImageURL)))
+	}
+	return fmt.Sprintf(
+		"%s<br/>工单 ID：<strong>#%d</strong><br/>主题：<strong>%s</strong><br/>当前状态：<strong>%s</strong><br/>回复内容：<br/><blockquote>%s</blockquote>%s",
+		html.EscapeString(strings.TrimSpace(prefix)),
+		ticket.Id,
+		html.EscapeString(strings.TrimSpace(ticket.Subject)),
+		SupportTicketStatusText(ticket.Status),
+		html.EscapeString(contentPreview),
+		imageLine,
+	)
+}
+
+func truncateSupportTicketNotificationText(content string, maxRunes int) string {
+	content = strings.TrimSpace(content)
+	runes := []rune(content)
+	if len(runes) <= maxRunes {
+		return content
+	}
+	return string(runes[:maxRunes]) + "..."
 }
 
 func notifySupportTicketStatusUpdated(user *model.User, senderUserId int, ticket *model.SupportTicket, previousStatus string) {

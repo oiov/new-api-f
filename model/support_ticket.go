@@ -23,8 +23,9 @@ const (
 	SupportTicketPriorityHigh   = "high"
 	SupportTicketPriorityUrgent = "urgent"
 
-	SupportTicketMaxSubjectRunes = 200
-	SupportTicketMaxContentRunes = 8000
+	SupportTicketMaxSubjectRunes  = 200
+	SupportTicketMaxContentRunes  = 8000
+	SupportTicketMaxImageURLRunes = 2048
 )
 
 type SupportTicket struct {
@@ -47,6 +48,7 @@ type SupportTicketMessage struct {
 	SenderUsername string `json:"sender_username,omitempty" gorm:"column:sender_username;->;-:migration"`
 	IsAdmin        bool   `json:"is_admin" gorm:"not null;default:false"`
 	Content        string `json:"content" gorm:"type:text;not null"`
+	ImageURL       string `json:"image_url,omitempty" gorm:"type:text;column:image_url"`
 	CreatedAt      int64  `json:"created_at" gorm:"bigint;index;autoCreateTime"`
 }
 
@@ -132,7 +134,36 @@ func normalizeSupportTicketContent(content string) (string, error) {
 	return content, nil
 }
 
+func normalizeSupportTicketImageURL(imageURL string) (string, error) {
+	imageURL = strings.TrimSpace(imageURL)
+	if imageURL == "" {
+		return "", nil
+	}
+	if len([]rune(imageURL)) > SupportTicketMaxImageURLRunes {
+		return "", errors.New("工单图片链接过长")
+	}
+	if strings.HasPrefix(imageURL, "/uploads/support_tickets/") {
+		return imageURL, nil
+	}
+	common.OptionMapRWMutex.RLock()
+	r2PublicURL := strings.TrimSuffix(strings.TrimSpace(common.StorageR2PublicURL), "/")
+	r2Endpoint := strings.TrimSuffix(strings.TrimSpace(common.StorageR2Endpoint), "/")
+	r2Bucket := strings.Trim(strings.TrimSpace(common.StorageR2Bucket), "/")
+	common.OptionMapRWMutex.RUnlock()
+	if r2PublicURL != "" && strings.HasPrefix(imageURL, r2PublicURL+"/support_tickets/") {
+		return imageURL, nil
+	}
+	if r2Endpoint != "" && r2Bucket != "" && strings.HasPrefix(imageURL, r2Endpoint+"/"+r2Bucket+"/support_tickets/") {
+		return imageURL, nil
+	}
+	return "", errors.New("无效的工单图片链接")
+}
+
 func CreateSupportTicket(userId int, ticketType string, subject string, content string) (*SupportTicket, error) {
+	return CreateSupportTicketWithImage(userId, ticketType, subject, content, "")
+}
+
+func CreateSupportTicketWithImage(userId int, ticketType string, subject string, content string, imageURL string) (*SupportTicket, error) {
 	normalizedType, err := normalizeSupportTicketType(ticketType)
 	if err != nil {
 		return nil, err
@@ -142,6 +173,10 @@ func CreateSupportTicket(userId int, ticketType string, subject string, content 
 		return nil, err
 	}
 	normalizedContent, err := normalizeSupportTicketContent(content)
+	if err != nil {
+		return nil, err
+	}
+	normalizedImageURL, err := normalizeSupportTicketImageURL(imageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +201,7 @@ func CreateSupportTicket(userId int, ticketType string, subject string, content 
 			SenderUserId: userId,
 			IsAdmin:      false,
 			Content:      normalizedContent,
+			ImageURL:     normalizedImageURL,
 		}
 		return tx.Create(message).Error
 	})
@@ -221,7 +257,15 @@ func GetSupportTicketMessages(ticketId int) ([]*SupportTicketMessage, error) {
 }
 
 func AddSupportTicketMessage(ticketId int, senderUserId int, isAdmin bool, content string) (*SupportTicketMessage, *SupportTicket, error) {
+	return AddSupportTicketMessageWithImage(ticketId, senderUserId, isAdmin, content, "")
+}
+
+func AddSupportTicketMessageWithImage(ticketId int, senderUserId int, isAdmin bool, content string, imageURL string) (*SupportTicketMessage, *SupportTicket, error) {
 	normalizedContent, err := normalizeSupportTicketContent(content)
+	if err != nil {
+		return nil, nil, err
+	}
+	normalizedImageURL, err := normalizeSupportTicketImageURL(imageURL)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -244,6 +288,7 @@ func AddSupportTicketMessage(ticketId int, senderUserId int, isAdmin bool, conte
 			SenderUserId: senderUserId,
 			IsAdmin:      isAdmin,
 			Content:      normalizedContent,
+			ImageURL:     normalizedImageURL,
 		}
 		if err := tx.Create(message).Error; err != nil {
 			return err

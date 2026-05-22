@@ -152,3 +152,66 @@ func TestSupportTicketStatusNotificationSkipsEmailWithoutBoundAddress(t *testing
 		require.True(t, strings.Contains(notification.Content, "已关闭"))
 	})
 }
+
+func TestSupportTicketUserReplyNotifiesAdminsBySiteAndEmail(t *testing.T) {
+	withSupportTicketNotificationTestDB(t, func() {
+		emails := withSupportTicketEmailCapture(t)
+		user := &model.User{Id: 7, Username: "alice", Email: "alice@example.com", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "alice"}
+		admin := &model.User{Id: 1, Username: "admin", Email: "admin@example.com", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AffCode: "admin"}
+		require.NoError(t, model.DB.Create(user).Error)
+		require.NoError(t, model.DB.Create(admin).Error)
+		ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "模型异常", "返回 500")
+		require.NoError(t, err)
+		message, _, err := model.AddSupportTicketMessage(ticket.Id, user.Id, false, "补充截图")
+		require.NoError(t, err)
+
+		notifySupportTicketMessageAdded(user.Id, ticket, message)
+
+		var notifications []model.SiteNotification
+		require.NoError(t, model.DB.Order("id asc").Find(&notifications).Error)
+		require.Len(t, notifications, 1)
+		require.Equal(t, admin.Id, notifications[0].UserId)
+		require.Equal(t, user.Id, notifications[0].SenderUserId)
+		require.Contains(t, notifications[0].Title, "工单有新回复")
+		require.Contains(t, notifications[0].Content, "模型异常")
+		require.True(t, notifications[0].EmailSent)
+
+		require.Len(t, *emails, 2)
+		require.Equal(t, "admin@example.com", (*emails)[0].To.Address)
+		require.Equal(t, "support@nbility.dev", (*emails)[1].To.Address)
+		require.Contains(t, (*emails)[0].HTML, "补充截图")
+	})
+}
+
+func TestSupportTicketAdminReplyNotifiesTicketOwnerAndOtherAdmins(t *testing.T) {
+	withSupportTicketNotificationTestDB(t, func() {
+		emails := withSupportTicketEmailCapture(t)
+		user := &model.User{Id: 7, Username: "alice", Email: "alice@example.com", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "alice"}
+		admin := &model.User{Id: 1, Username: "admin", Email: "admin@example.com", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AffCode: "admin"}
+		otherAdmin := &model.User{Id: 2, Username: "root", Email: "root@example.com", Role: common.RoleRootUser, Status: common.UserStatusEnabled, AffCode: "root"}
+		require.NoError(t, model.DB.Create(user).Error)
+		require.NoError(t, model.DB.Create(admin).Error)
+		require.NoError(t, model.DB.Create(otherAdmin).Error)
+		ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "模型异常", "返回 500")
+		require.NoError(t, err)
+		message, _, err := model.AddSupportTicketMessage(ticket.Id, admin.Id, true, "已处理，请重试")
+		require.NoError(t, err)
+
+		notifySupportTicketMessageAdded(admin.Id, ticket, message)
+
+		var notifications []model.SiteNotification
+		require.NoError(t, model.DB.Order("user_id asc").Find(&notifications).Error)
+		require.Len(t, notifications, 2)
+		require.Equal(t, admin.Id, notifications[0].SenderUserId)
+		require.Equal(t, otherAdmin.Id, notifications[0].UserId)
+		require.Equal(t, user.Id, notifications[1].UserId)
+		require.True(t, notifications[0].EmailSent)
+		require.True(t, notifications[1].EmailSent)
+
+		require.Len(t, *emails, 3)
+		require.Equal(t, "root@example.com", (*emails)[0].To.Address)
+		require.Equal(t, "support@nbility.dev", (*emails)[1].To.Address)
+		require.Equal(t, "alice@example.com", (*emails)[2].To.Address)
+		require.Contains(t, (*emails)[2].HTML, "已处理")
+	})
+}

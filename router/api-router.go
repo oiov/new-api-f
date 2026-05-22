@@ -479,6 +479,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			supportTicketRoute.GET("", controller.ListSupportTickets)
 			supportTicketRoute.POST("", controller.CreateSupportTicket)
+			supportTicketRoute.POST("/attachments", controller.UploadSupportTicketAttachment)
 			supportTicketRoute.GET("/:id", controller.GetSupportTicketDetail)
 			supportTicketRoute.POST("/:id/messages", controller.AddSupportTicketMessage)
 			supportTicketRoute.PUT("/:id", controller.UpdateSupportTicket)
