@@ -35,7 +35,12 @@ oauth/         — OAuth provider implementations
 pkg/           — Internal packages (cachex, ionet)
 web/           — React frontend
   web/src/i18n/  — Frontend internationalization (i18next, zh/en/fr/ru/ja/vi)
+web-worker/    — New frontend MVP; this directory is a separate nested git repository
 ```
+
+## Repository Layout Note
+
+`web-worker/` is intentionally maintained as its own git repository inside this workspace. When inspecting or changing files under `web-worker/`, use `git -C web-worker status`, `git -C web-worker diff`, and related commands. Do not infer its state from the root repository showing `?? web-worker/`.
 
 ## Internationalization (i18n)
 
