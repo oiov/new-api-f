@@ -29,6 +29,10 @@ type ActivityLotteryRoundUpsertRequest struct {
 	Published                     *bool   `json:"published"`
 }
 
+type ActivityLotteryDrawRequest struct {
+	Force bool `json:"force"`
+}
+
 func GetActivityLotteryCurrent(c *gin.Context) {
 	now := model.GetCheckinNow()
 	userId := c.GetInt("id") // TryUserAuth may set it, otherwise 0
@@ -210,8 +214,15 @@ func AdminDrawActivityLotteryRound(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的期数ID")
 		return
 	}
+	req := ActivityLotteryDrawRequest{}
+	if c.Request != nil && c.Request.Body != nil && c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 	now := model.GetCheckinNow()
-	winners, round, isNewDraw, err := model.DrawActivityLotteryRound(id, now)
+	winners, round, isNewDraw, err := model.DrawActivityLotteryRoundWithOptions(id, now, model.ActivityLotteryDrawOptions{Force: req.Force})
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -745,6 +745,10 @@ type ActivityLotteryRoundUpsertRequest struct {
 	Published                     *bool   `json:"published"`
 }
 
+type ActivityLotteryDrawOptions struct {
+	Force bool
+}
+
 func CreateActivityLotteryRound(req *ActivityLotteryRoundUpsertRequest, now time.Time) (*ActivityLotteryRound, error) {
 	if req == nil {
 		return nil, fmt.Errorf("请求不能为空")
@@ -1128,6 +1132,10 @@ func pickRandomUserIDs(ids []int, count int) []int {
 }
 
 func DrawActivityLotteryRound(roundId int, now time.Time) ([]*ActivityLotteryWinner, *ActivityLotteryRound, bool, error) {
+	return DrawActivityLotteryRoundWithOptions(roundId, now, ActivityLotteryDrawOptions{})
+}
+
+func DrawActivityLotteryRoundWithOptions(roundId int, now time.Time, options ActivityLotteryDrawOptions) ([]*ActivityLotteryWinner, *ActivityLotteryRound, bool, error) {
 	if roundId <= 0 {
 		return nil, nil, false, gorm.ErrRecordNotFound
 	}
@@ -1173,10 +1181,10 @@ func DrawActivityLotteryRound(roundId int, now time.Time) ([]*ActivityLotteryWin
 		}
 
 		need := getActivityLotteryRoundMinParticipants(round)
-		if need > 0 && int64(len(userIDs)) < int64(need) {
+		if !options.Force && need > 0 && int64(len(userIDs)) < int64(need) {
 			return fmt.Errorf("参与人数不足：%d/%d", len(userIDs), need)
 		}
-		if round.EndAt > 0 && nowUnix < round.EndAt {
+		if !options.Force && round.EndAt > 0 && nowUnix < round.EndAt {
 			return fmt.Errorf("未到结束时间")
 		}
 

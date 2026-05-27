@@ -835,6 +835,34 @@ const CheckinAdminPage = () => {
     });
   };
 
+  const handleForceDrawLotteryRound = (record) => {
+    if (!record?.id) return;
+    Modal.confirm({
+      title: t('强制开奖'),
+      content: t(
+        '强制开奖将忽略参与人数门槛和活动结束时间，按当前合格参与名单立即抽取中奖用户（信息会打码公示）。',
+      ),
+      okText: t('确认强制开奖'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        try {
+          const res = await API.post(
+            `/api/activity/lottery/admin/rounds/${record.id}/draw`,
+            { force: true },
+          );
+          if (res.data?.success) {
+            showSuccess(t('开奖完成'));
+            await loadLotteryRounds();
+          } else {
+            showError(res.data?.message || t('开奖失败'));
+          }
+        } catch (error) {
+          showError(error?.response?.data?.message || t('开奖失败'));
+        }
+      },
+    });
+  };
+
   const mergeSelectedUserIds = useCallback((formState) => {
     const remoteUserIds = Array.isArray(formState?.userIds)
       ? formState.userIds
@@ -1468,6 +1496,14 @@ const CheckinAdminPage = () => {
               onClick={() => handleDrawLotteryRound(record)}
             >
               {t('开奖')}
+            </Button>
+            <Button
+              theme='solid'
+              type='danger'
+              size='small'
+              onClick={() => handleForceDrawLotteryRound(record)}
+            >
+              {t('强制开奖')}
             </Button>
           </Space>
         ),
