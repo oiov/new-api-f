@@ -145,6 +145,35 @@ func TestBuildChatImageResponsePayloadFallsBackToImageCountUsage(t *testing.T) {
 	}
 }
 
+func TestBuildChatImageResponsePayloadNormalizesInputOutputTokens(t *testing.T) {
+	body := []byte(`{
+		"created": 1710000000,
+		"data": [
+			{"url": "https://cdn.example.com/a.png"}
+		],
+		"usage": {
+			"input_tokens": 419,
+			"output_tokens": 3922,
+			"total_tokens": 4341
+		}
+	}`)
+
+	payload, err := buildChatImageResponsePayload(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if payload.Usage.PromptTokens != 419 {
+		t.Fatalf("expected prompt_tokens=419 (from input_tokens), got %d", payload.Usage.PromptTokens)
+	}
+	if payload.Usage.CompletionTokens != 3922 {
+		t.Fatalf("expected completion_tokens=3922 (from output_tokens), got %d", payload.Usage.CompletionTokens)
+	}
+	if payload.Usage.TotalTokens != 4341 {
+		t.Fatalf("expected total_tokens=4341, got %d", payload.Usage.TotalTokens)
+	}
+}
+
 func TestChatImageGenerationHandlerStreamsChatCompletionChunks(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

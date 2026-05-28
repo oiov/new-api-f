@@ -104,6 +104,15 @@ func buildChatImageResponsePayload(responseBody []byte) (*chatImageResponsePaylo
 	var usageResp dto.SimpleResponse
 	_ = common.Unmarshal(responseBody, &usageResp)
 	usage := usageResp.Usage
+	if usage.InputTokens > 0 {
+		usage.PromptTokens += usage.InputTokens
+	}
+	if usage.OutputTokens > 0 {
+		usage.CompletionTokens += usage.OutputTokens
+	}
+	if usage.TotalTokens == 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
 	if usage.TotalTokens == 0 {
 		imageCount := len(imageResp.Data)
 		if imageCount == 0 {
