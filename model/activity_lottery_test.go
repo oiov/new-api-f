@@ -34,6 +34,7 @@ func withActivityLotteryTestDB(t *testing.T, run func()) {
 		&ActivityLotteryRound{},
 		&ActivityLotteryEntry{},
 		&ActivityLotteryWinner{},
+		&Redemption{},
 		&SiteNotification{},
 	))
 
@@ -130,5 +131,18 @@ func TestActivityLotteryForceDrawSkipsTimeAndParticipantTarget(t *testing.T) {
 		require.NoError(t, DB.Where("user_id = ?", 1001).First(&notification).Error)
 		require.Equal(t, "活动抽奖中奖通知", notification.Title)
 		require.True(t, strings.Contains(notification.Content, "Private Prize"))
+	})
+}
+
+func TestCreateActivityLotteryRoundDefaultsPrizeModeShared(t *testing.T) {
+	withActivityLotteryTestDB(t, func() {
+		now := time.Unix(1_700_000_000, 0)
+		round, err := CreateActivityLotteryRound(&ActivityLotteryRoundUpsertRequest{
+			Title: "手动期", EndAt: now.Unix() + 3600,
+		}, now)
+		require.NoError(t, err)
+		require.Equal(t, ActivityLotteryPrizeModeShared, round.PrizeMode)
+		require.Equal(t, 0, round.AutoJobId)
+		require.Equal(t, 0, round.PrizeQuota)
 	})
 }

@@ -25,6 +25,13 @@ const (
 	ActivityLotteryRoundStatusClosed  = "closed"
 )
 
+const (
+	// ActivityLotteryPrizeModeShared 共享奖品（手动期默认）：所有中奖者共享 round.PrizeContent。
+	ActivityLotteryPrizeModeShared = "shared"
+	// ActivityLotteryPrizeModePerWinnerCode 每人一码（自动期）：开奖时为每个中奖者即时生成各自的额度兑换码。
+	ActivityLotteryPrizeModePerWinnerCode = "per_winner_code"
+)
+
 type ActivityLotteryRound struct {
 	Id                            int     `json:"id" gorm:"primaryKey;autoIncrement"`
 	Title                         string  `json:"title" gorm:"type:varchar(128);not null;default:''"`
@@ -46,6 +53,10 @@ type ActivityLotteryRound struct {
 	ParticipantCount              int64   `json:"participant_count" gorm:"not null;default:0"`
 	DrawnAt                       int64   `json:"drawn_at" gorm:"bigint;not null;default:0;index"`
 	LastError                     string  `json:"last_error" gorm:"type:text;not null;default:''"`
+	PrizeMode                     string  `json:"prize_mode" gorm:"type:varchar(32);not null;default:'shared';index"`
+	AutoJobId                     int     `json:"auto_job_id" gorm:"not null;default:0;index"`
+	PrizeQuota                    int     `json:"prize_quota" gorm:"not null;default:0"`
+	PrizeName                     string  `json:"prize_name" gorm:"type:varchar(64);not null;default:''"`
 	CreatedAt                     int64   `json:"created_at" gorm:"bigint;index"`
 	UpdatedAt                     int64   `json:"updated_at" gorm:"bigint;index"`
 }
@@ -67,6 +78,7 @@ type ActivityLotteryWinner struct {
 	UserId      int    `json:"user_id" gorm:"not null;index"`
 	MaskedName  string `json:"masked_name" gorm:"type:varchar(128);not null;default:''"`
 	MaskedEmail string `json:"masked_email" gorm:"type:varchar(128);not null;default:''"`
+	Prize       string `json:"prize" gorm:"type:text;not null;default:''"` // 该中奖者分到的兑换码 key（仅本人可见）
 	CreatedAt   int64  `json:"created_at" gorm:"bigint;index"`
 }
 
@@ -743,6 +755,10 @@ type ActivityLotteryRoundUpsertRequest struct {
 	MinParticipants               int     `json:"min_participants"`
 	WinnerCount                   int     `json:"winner_count"`
 	Published                     *bool   `json:"published"`
+	PrizeMode                     string  `json:"prize_mode"`
+	AutoJobId                     int     `json:"auto_job_id"`
+	PrizeQuota                    int     `json:"prize_quota"`
+	PrizeName                     string  `json:"prize_name"`
 }
 
 type ActivityLotteryDrawOptions struct {
@@ -789,6 +805,19 @@ func CreateActivityLotteryRound(req *ActivityLotteryRoundUpsertRequest, now time
 		published = *req.Published
 	}
 
+	prizeMode := strings.TrimSpace(req.PrizeMode)
+	if prizeMode != ActivityLotteryPrizeModePerWinnerCode {
+		prizeMode = ActivityLotteryPrizeModeShared
+	}
+	prizeQuota := req.PrizeQuota
+	if prizeQuota < 0 {
+		prizeQuota = 0
+	}
+	autoJobId := req.AutoJobId
+	if autoJobId < 0 {
+		autoJobId = 0
+	}
+
 	nowUnix := now.Unix()
 	round := &ActivityLotteryRound{
 		Title:                         normalizeLotteryText(req.Title, 128),
@@ -810,6 +839,10 @@ func CreateActivityLotteryRound(req *ActivityLotteryRoundUpsertRequest, now time
 		ParticipantCount:              0,
 		DrawnAt:                       0,
 		LastError:                     "",
+		PrizeMode:                     prizeMode,
+		AutoJobId:                     autoJobId,
+		PrizeQuota:                    prizeQuota,
+		PrizeName:                     normalizeLotteryText(req.PrizeName, 64),
 		CreatedAt:                     nowUnix,
 		UpdatedAt:                     nowUnix,
 	}
