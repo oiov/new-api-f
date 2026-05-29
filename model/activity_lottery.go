@@ -705,15 +705,18 @@ func GetActivityLotterySummary(now time.Time, userId int) (*ActivityLotteryRound
 		joined = entryErr == nil && entry != nil && entry.Id > 0
 		qualified = joined && entry.Qualified
 
-		var winCnt int64
-		_ = DB.Model(&ActivityLotteryWinner{}).
-			Where("round_id = ? AND user_id = ?", round.Id, userId).
-			Count(&winCnt).Error
-		isWinner = winCnt > 0
+		var winner ActivityLotteryWinner
+		winErr := DB.Where("round_id = ? AND user_id = ?", round.Id, userId).First(&winner).Error
+		isWinner = winErr == nil && winner.Id > 0
 		if isWinner {
-			prize = strings.TrimSpace(round.PrizeContent)
+			if round.PrizeMode == ActivityLotteryPrizeModePerWinnerCode {
+				prize = strings.TrimSpace(winner.Prize)
+			}
 			if prize == "" {
-				prize = strings.TrimSpace(round.Prize)
+				prize = strings.TrimSpace(round.PrizeContent)
+				if prize == "" {
+					prize = strings.TrimSpace(round.Prize)
+				}
 			}
 		}
 	}
@@ -1255,11 +1258,34 @@ func DrawActivityLotteryRoundWithOptions(roundId int, now time.Time, options Act
 				}
 				maskedEmail = maskEmail(u.Email)
 			}
+			// per-winner 模式：为该中奖者即时生成各自的额度兑换码（恒不过期）
+			prizeKey := ""
+			if round.PrizeMode == ActivityLotteryPrizeModePerWinnerCode {
+				key, kerr := BuildRedemptionKey(RedemptionTypeQuota)
+				if kerr != nil {
+					return kerr
+				}
+				redemption := &Redemption{
+					UserId:         0, // 系统生成
+					Name:           normalizeLotteryText(round.PrizeName, 20),
+					Key:            key,
+					Quota:          round.PrizeQuota,
+					RedemptionType: RedemptionTypeQuota,
+					Status:         common.RedemptionCodeStatusEnabled,
+					CreatedTime:    nowUnix,
+					ExpiredTime:    0, // 中奖奖励码恒不过期，兑换时机由用户决定
+				}
+				if cerr := tx.Create(redemption).Error; cerr != nil {
+					return cerr
+				}
+				prizeKey = key
+			}
 			winners = append(winners, &ActivityLotteryWinner{
 				RoundId:     roundId,
 				UserId:      userID,
 				MaskedName:  maskedName,
 				MaskedEmail: maskedEmail,
+				Prize:       prizeKey,
 				CreatedAt:   nowUnix,
 			})
 		}
@@ -1280,16 +1306,18 @@ func DrawActivityLotteryRoundWithOptions(roundId int, now time.Time, options Act
 			if round.EndAt > 0 {
 				endAtText = time.Unix(round.EndAt, 0).Format("2006-01-02 15:04:05")
 			}
+			// per-winner 优先用本人的码，否则回退到共享奖品（手动期行为不变）
+			prizeText := strings.TrimSpace(w.Prize)
+			if prizeText == "" {
+				prizeText = strings.TrimSpace(round.PrizeContent)
+				if prizeText == "" {
+					prizeText = strings.TrimSpace(round.Prize)
+				}
+			}
 			content := fmt.Sprintf(
 				"恭喜中奖！\n\n活动：%s\n奖品：%s\n活动时间：%s ~ %s\n\n请妥善保管奖品信息。",
 				round.Title,
-				func() string {
-					value := strings.TrimSpace(round.PrizeContent)
-					if value == "" {
-						return strings.TrimSpace(round.Prize)
-					}
-					return value
-				}(),
+				prizeText,
 				startAtText,
 				endAtText,
 			)
