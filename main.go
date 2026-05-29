@@ -121,6 +121,9 @@ func main() {
 	// Activity lottery task (auto finalize)
 	service.StartActivityLotteryTask()
 
+	// Activity lottery auto-create task (auto create new rounds)
+	service.StartActivityLotteryAutoCreateTask()
+
 	// Mail assistant auto receive session restore
 	service.StartMailAssistantAutoReceiveTask()
 
