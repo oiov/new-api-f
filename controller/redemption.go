@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -36,28 +35,6 @@ func buildDefaultRedemptionName(redemption *model.Redemption, plan *model.Subscr
 		name = string(nameRunes[:20])
 	}
 	return name
-}
-
-const (
-	redemptionKeyPrefixSubscription = "nbredemptionP"
-	redemptionKeyPrefixQuota        = "nbredemptionQ"
-	redemptionKeyTotalLength        = 32
-)
-
-func buildRedemptionKey(redemptionType string) (string, error) {
-	prefix := redemptionKeyPrefixQuota
-	if redemptionType == model.RedemptionTypeSubscription {
-		prefix = redemptionKeyPrefixSubscription
-	}
-	suffixLength := redemptionKeyTotalLength - len(prefix)
-	if suffixLength <= 0 {
-		return "", errors.New("invalid redemption key prefix length")
-	}
-	suffix, err := common.GenerateRandomCharsKey(suffixLength)
-	if err != nil {
-		return "", err
-	}
-	return prefix + suffix, nil
 }
 
 func normalizeAndValidateRedemption(c *gin.Context, redemption *model.Redemption, requireCount bool) (*model.SubscriptionPlan, bool) {
@@ -220,7 +197,7 @@ func AddRedemption(c *gin.Context) {
 	}
 	var keys []string
 	for i := 0; i < redemption.Count; i++ {
-		key, err := buildRedemptionKey(redemption.RedemptionType)
+		key, err := model.BuildRedemptionKey(redemption.RedemptionType)
 		if err != nil {
 			common.SysError("failed to generate redemption key: " + err.Error())
 			c.JSON(http.StatusOK, gin.H{
