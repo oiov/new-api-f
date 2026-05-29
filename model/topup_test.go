@@ -29,7 +29,7 @@ func withTopUpTestDB(t *testing.T, run func()) {
 	LOG_DB = db
 	common.UsingSQLite = true
 
-	require.NoError(t, db.AutoMigrate(&User{}, &TopUp{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &TopUp{}, &AffiliateCommission{}, &Log{}))
 
 	t.Cleanup(func() {
 		DB = oldDB
@@ -272,7 +272,8 @@ func TestRechargeCreemAcceptsLegacyCreemOrderAndBackfillsProvider(t *testing.T) 
 
 		var user User
 		require.NoError(t, DB.First(&user, 16).Error)
-		require.Equal(t, 100, user.Quota)
+		// Creem 充值额度 = Amount * QuotaPerUnit（与易支付/Waffo 口径一致）
+		require.Equal(t, 100*int(common.QuotaPerUnit), user.Quota)
 	})
 }
 

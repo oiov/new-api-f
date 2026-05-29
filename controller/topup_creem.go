@@ -348,7 +348,11 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 		return
 	}
 
-	paidMoney := decimal.NewFromInt(int64(event.Object.Order.AmountPaid)).Div(decimal.NewFromInt(100))
+	// 对 tax_mode=exclusive 的产品，Creem 会在定价之外加税：
+	// amount_paid 含税（例如 sub_total 100 + tax 18 = 118），
+	// 而本地订单 Money 记录的是税前定价，因此必须用 sub_total（税前金额）校验，
+	// 否则含税地区的真实付款会因金额不等而被拒，订单永远停留在 pending。
+	paidMoney := decimal.NewFromInt(int64(event.Object.Order.SubTotal)).Div(decimal.NewFromInt(100))
 	if err := model.ValidateTopUpPaidMoney(topUp, paidMoney); err != nil {
 		log.Printf("Creem充值金额校验失败: %v, 订单号: %s", err, referenceId)
 		c.Status(http.StatusOK)

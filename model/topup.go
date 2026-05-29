@@ -618,8 +618,9 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			return err
 		}
 
-		// Creem 直接使用 Amount 作为充值额度（整数）
-		quota = topUp.Amount
+		// Creem 的 Amount 为平台额度数量（按 1 美元=6 平台额度的汇率换算后的“平台美元”单位），
+		// 需乘以 QuotaPerUnit 转换为内部额度，与易支付/Waffo/ManualCompleteTopUp 口径一致。
+		quota = int64(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
 
 		// 构建更新字段，优先使用邮箱，如果邮箱为空则使用用户名
 		updateFields := map[string]interface{}{
@@ -660,7 +661,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 
 	if completed {
 		RecordAffiliateCommissionGrantedLogBySource(AffiliateCommissionSourceTopUp, topUp.Id)
-		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
+		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", logger.FormatQuota(int(quota)), topUp.Money))
 		go tryJoinActivityLotteryByTopup(topUp, time.Now())
 	}
 
