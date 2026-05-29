@@ -280,6 +280,7 @@ func migrateDB() error {
 		&ActivityLotteryRound{},
 		&ActivityLotteryEntry{},
 		&ActivityLotteryWinner{},
+		&ActivityLotteryAutoJob{},
 		&InviteRewardGrant{},
 		&AffiliateCommission{},
 		&SubscriptionOrder{},

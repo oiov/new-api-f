@@ -288,3 +288,15 @@ func TestRedeemSubscriptionRedemption_ReservesPlaceholderForClaudeManualDelivery
 
 	})
 }
+
+func TestBuildRedemptionKey(t *testing.T) {
+	keyQuota, err := BuildRedemptionKey(RedemptionTypeQuota)
+	require.NoError(t, err)
+	require.Len(t, keyQuota, 32)
+	require.True(t, strings.HasPrefix(keyQuota, RedemptionKeyPrefixQuota))
+
+	keySub, err := BuildRedemptionKey(RedemptionTypeSubscription)
+	require.NoError(t, err)
+	require.Len(t, keySub, 32)
+	require.True(t, strings.HasPrefix(keySub, RedemptionKeyPrefixSubscription))
+}

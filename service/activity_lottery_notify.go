@@ -30,13 +30,13 @@ func NotifyActivityLotteryWinnersAsync(round *model.ActivityLotteryRound, winner
 	}
 
 	gopool.Go(func() {
-		title, content := buildActivityLotteryWinnerNotification(&roundCopy)
-		notify := dto.NewNotify(dto.NotifyTypeActivityLotteryWin, title, content, nil)
 		for _, winner := range winnerCopies {
 			user, err := model.GetUserById(winner.UserId, false)
 			if err != nil || user == nil {
 				continue
 			}
+			title, content := buildActivityLotteryWinnerNotificationWithPrize(&roundCopy, winner.Prize)
+			notify := dto.NewNotify(dto.NotifyTypeActivityLotteryWin, title, content, nil)
 			if err := NotifyUser(user.Id, user.Email, user.GetSetting(), notify); err != nil {
 				common.SysLog(fmt.Sprintf("failed to notify activity lottery winner: round_id=%d user_id=%d err=%v", roundCopy.Id, user.Id, err))
 			}
@@ -44,7 +44,7 @@ func NotifyActivityLotteryWinnersAsync(round *model.ActivityLotteryRound, winner
 	})
 }
 
-func buildActivityLotteryWinnerNotification(round *model.ActivityLotteryRound) (string, string) {
+func buildActivityLotteryWinnerNotificationWithPrize(round *model.ActivityLotteryRound, prizeText string) (string, string) {
 	if round == nil {
 		return "活动抽奖中奖通知", "恭喜中奖！"
 	}
@@ -56,9 +56,12 @@ func buildActivityLotteryWinnerNotification(round *model.ActivityLotteryRound) (
 	if round.EndAt > 0 {
 		endAtText = time.Unix(round.EndAt, 0).Format("2006-01-02 15:04:05")
 	}
-	prizeText := strings.TrimSpace(round.PrizeContent)
+	prizeText = strings.TrimSpace(prizeText)
 	if prizeText == "" {
-		prizeText = strings.TrimSpace(round.Prize)
+		prizeText = strings.TrimSpace(round.PrizeContent)
+		if prizeText == "" {
+			prizeText = strings.TrimSpace(round.Prize)
+		}
 	}
 	content := fmt.Sprintf(
 		"恭喜中奖！\n\n活动：%s\n奖品：%s\n活动时间：%s ~ %s\n\n请妥善保管奖品信息。",

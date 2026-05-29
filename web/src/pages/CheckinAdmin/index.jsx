@@ -58,6 +58,7 @@ import {
 import { renderNumber } from '../../helpers/render';
 import { createCardProPagination } from '../../helpers/utils';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
+import ActivityLotteryAutoJobPanel from './ActivityLotteryAutoJobPanel';
 
 const { Text } = Typography;
 const CHECKIN_QUOTA_PER_CNY = 500000;
@@ -2000,6 +2001,7 @@ const CheckinAdminPage = () => {
               }
             />
           </CardPro>
+          <ActivityLotteryAutoJobPanel />
         </TabPane>
       </Tabs>
 

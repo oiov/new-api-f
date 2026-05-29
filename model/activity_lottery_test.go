@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,8 @@ func withActivityLotteryTestDB(t *testing.T, run func()) {
 		&ActivityLotteryRound{},
 		&ActivityLotteryEntry{},
 		&ActivityLotteryWinner{},
+		&ActivityLotteryAutoJob{},
+		&Redemption{},
 		&SiteNotification{},
 	))
 
@@ -130,5 +133,84 @@ func TestActivityLotteryForceDrawSkipsTimeAndParticipantTarget(t *testing.T) {
 		require.NoError(t, DB.Where("user_id = ?", 1001).First(&notification).Error)
 		require.Equal(t, "活动抽奖中奖通知", notification.Title)
 		require.True(t, strings.Contains(notification.Content, "Private Prize"))
+	})
+}
+
+func TestCreateActivityLotteryRoundDefaultsPrizeModeShared(t *testing.T) {
+	withActivityLotteryTestDB(t, func() {
+		now := time.Unix(1_700_000_000, 0)
+		round, err := CreateActivityLotteryRound(&ActivityLotteryRoundUpsertRequest{
+			Title: "手动期", EndAt: now.Unix() + 3600,
+		}, now)
+		require.NoError(t, err)
+		require.Equal(t, ActivityLotteryPrizeModeShared, round.PrizeMode)
+		require.Equal(t, 0, round.AutoJobId)
+		require.Equal(t, 0, round.PrizeQuota)
+	})
+}
+
+func TestDrawActivityLotteryRoundPerWinnerCode(t *testing.T) {
+	withActivityLotteryTestDB(t, func() {
+		now := time.Unix(1_700_000_000, 0)
+		for _, id := range []int{2001, 2002} {
+			require.NoError(t, DB.Create(&User{Id: id, Username: fmt.Sprintf("u%d", id), AffCode: fmt.Sprintf("aff%d", id), Email: fmt.Sprintf("u%d@e.com", id), Status: common.UserStatusEnabled}).Error)
+		}
+		round := &ActivityLotteryRound{
+			Title: "自动期第1期", Published: true, Status: ActivityLotteryRoundStatusOpen,
+			StartAt: now.Unix() - 100, EndAt: now.Unix() - 10,
+			MinParticipants: 2, WinnerCount: 2,
+			PrizeMode: ActivityLotteryPrizeModePerWinnerCode, PrizeQuota: 500000, PrizeName: "活动抽奖第1期",
+		}
+		require.NoError(t, DB.Create(round).Error)
+		for _, id := range []int{2001, 2002} {
+			require.NoError(t, DB.Create(&ActivityLotteryEntry{RoundId: round.Id, UserId: id, Source: "manual", Qualified: true}).Error)
+		}
+
+		winners, drawn, isNew, err := DrawActivityLotteryRound(round.Id, now)
+		require.NoError(t, err)
+		require.True(t, isNew)
+		require.Equal(t, ActivityLotteryRoundStatusDrawn, drawn.Status)
+		require.Len(t, winners, 2)
+
+		seen := map[string]bool{}
+		for _, w := range winners {
+			require.NotEmpty(t, w.Prize, "每个中奖者应有自己的兑换码")
+			require.False(t, seen[w.Prize], "兑换码不可重复")
+			seen[w.Prize] = true
+			var r Redemption
+			require.NoError(t, DB.Where(&Redemption{Key: w.Prize}).First(&r).Error)
+			require.Equal(t, 500000, r.Quota)
+			require.Equal(t, RedemptionTypeQuota, r.RedemptionType)
+			require.Equal(t, common.RedemptionCodeStatusEnabled, r.Status)
+			require.EqualValues(t, 0, r.ExpiredTime)
+		}
+
+		// 中奖者本人通过 summary 可见自己的码
+		summary, err := GetActivityLotterySummary(now, 2001)
+		require.NoError(t, err)
+		require.True(t, summary.IsWinner)
+		require.True(t, seen[summary.Prize], "summary 应返回本人的兑换码")
+	})
+}
+
+func TestDrawActivityLotteryRoundSharedUnchanged(t *testing.T) {
+	withActivityLotteryTestDB(t, func() {
+		now := time.Unix(1_700_000_000, 0)
+		require.NoError(t, DB.Create(&User{Id: 3001, Username: "u3001", AffCode: "aff3001", Email: "u3001@e.com", Status: common.UserStatusEnabled}).Error)
+		round := &ActivityLotteryRound{
+			Title: "手动期", Published: true, Status: ActivityLotteryRoundStatusOpen,
+			StartAt: now.Unix() - 100, EndAt: now.Unix() - 10, MinParticipants: 1, WinnerCount: 1,
+			PrizeContent: "共享奖品文本",
+		}
+		require.NoError(t, DB.Create(round).Error)
+		require.NoError(t, DB.Create(&ActivityLotteryEntry{RoundId: round.Id, UserId: 3001, Source: "manual", Qualified: true}).Error)
+
+		winners, _, _, err := DrawActivityLotteryRound(round.Id, now)
+		require.NoError(t, err)
+		require.Len(t, winners, 1)
+		require.Empty(t, winners[0].Prize, "shared 期不生成 per-winner 码")
+		var cnt int64
+		require.NoError(t, DB.Model(&Redemption{}).Count(&cnt).Error)
+		require.EqualValues(t, 0, cnt, "shared 期不应生成任何兑换码")
 	})
 }
