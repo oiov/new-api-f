@@ -35,6 +35,7 @@ func withActivityLotteryTestDB(t *testing.T, run func()) {
 		&ActivityLotteryRound{},
 		&ActivityLotteryEntry{},
 		&ActivityLotteryWinner{},
+		&ActivityLotteryAutoJob{},
 		&Redemption{},
 		&SiteNotification{},
 	))
