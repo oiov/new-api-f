@@ -235,6 +235,33 @@ const ActivityLotteryAutoJobPanel = () => {
     });
   };
 
+  const handleRunNow = (record) => {
+    Modal.confirm({
+      title: t('立即执行一次抽奖期数创建？'),
+      content: t(
+        '将立即按本任务模板创建并开启新一期（期号自增，开期时间为现在，持续时长仍取任务配置）。若当前有正在进行的期，将被关闭。',
+      ),
+      onOk: async () => {
+        try {
+          const res = await API.post(
+            `/api/activity/lottery/admin/auto_jobs/${record.id}/run`,
+          );
+          const { success, message, data } = res.data;
+          if (success) {
+            showSuccess(
+              `${t('已创建并开启新一期')}${data?.title ? `：${data.title}` : ''}`,
+            );
+            await loadJobs();
+          } else {
+            showError(message);
+          }
+        } catch (error) {
+          showError(error.message);
+        }
+      },
+    });
+  };
+
   const columns = useMemo(
     () => [
       { title: t('任务名'), dataIndex: 'name' },
@@ -293,6 +320,13 @@ const ActivityLotteryAutoJobPanel = () => {
         dataIndex: 'op',
         render: (_, record) => (
           <Space>
+            <Button
+              theme='solid'
+              size='small'
+              onClick={() => handleRunNow(record)}
+            >
+              {t('立即执行')}
+            </Button>
             <Button
               theme='light'
               size='small'

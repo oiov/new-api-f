@@ -279,6 +279,7 @@ func SetApiRouter(router *gin.Engine) {
 			activityLotteryAdminRoute.POST("/auto_jobs", middleware.PermissionAuth(common.PermissionPointActivityAdminManage), controller.AdminCreateActivityLotteryAutoJob)
 			activityLotteryAdminRoute.PUT("/auto_jobs/:id", middleware.PermissionAuth(common.PermissionPointActivityAdminManage), controller.AdminUpdateActivityLotteryAutoJob)
 			activityLotteryAdminRoute.DELETE("/auto_jobs/:id", middleware.PermissionAuth(common.PermissionPointActivityAdminManage), controller.AdminDeleteActivityLotteryAutoJob)
+			activityLotteryAdminRoute.POST("/auto_jobs/:id/run", middleware.PermissionAuth(common.PermissionPointActivityAdminManage), controller.AdminRunActivityLotteryAutoJob)
 		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())

@@ -304,39 +304,43 @@ func RunActivityLotteryAutoJob(jobId int, now time.Time) (*ActivityLotteryRound,
 		return nil, nil
 	}
 
-	// 抢占成功后建期 + 开启
-	title := expandIssueTemplate(claimedJob.TitleTemplate, issueNo)
-	prizeName := expandIssueTemplate(claimedJob.PrizeName, issueNo)
 	startAt := getActivityLotteryDayStart(now) + int64(claimedJob.RunAtSeconds)
-	endAt := startAt + int64(claimedJob.DurationSeconds)
+	return buildAndOpenRoundForAutoJob(&claimedJob, issueNo, startAt, now)
+}
+
+// buildAndOpenRoundForAutoJob 按任务模板创建一期并开启，回写任务的 last_round_id/status。
+func buildAndOpenRoundForAutoJob(job *ActivityLotteryAutoJob, issueNo int, startAt int64, now time.Time) (*ActivityLotteryRound, error) {
+	title := expandIssueTemplate(job.TitleTemplate, issueNo)
+	prizeName := expandIssueTemplate(job.PrizeName, issueNo)
+	endAt := startAt + int64(job.DurationSeconds)
 	published := true
 
 	round, err := CreateActivityLotteryRound(&ActivityLotteryRoundUpsertRequest{
 		Title:                    title,
-		Prize:                    claimedJob.PrizeText,
-		JoinSources:              claimedJob.JoinSources,
-		JoinTopupMinMoney:        claimedJob.JoinTopupMinMoney,
-		JoinDailyConsumeMinMoney: claimedJob.JoinDailyConsumeMinMoney,
+		Prize:                    job.PrizeText,
+		JoinSources:              job.JoinSources,
+		JoinTopupMinMoney:        job.JoinTopupMinMoney,
+		JoinDailyConsumeMinMoney: job.JoinDailyConsumeMinMoney,
 		StartAt:                  startAt,
 		EndAt:                    endAt,
-		MinParticipants:          claimedJob.MinParticipants,
-		WinnerCount:              claimedJob.WinnerCount,
+		MinParticipants:          job.MinParticipants,
+		WinnerCount:              job.WinnerCount,
 		PrizeMode:                ActivityLotteryPrizeModePerWinnerCode,
-		AutoJobId:                claimedJob.Id,
-		PrizeQuota:               claimedJob.PrizeQuota,
+		AutoJobId:                job.Id,
+		PrizeQuota:               job.PrizeQuota,
 		PrizeName:                prizeName,
 		Published:                &published,
 	}, now)
 	if err != nil {
-		_ = updateActivityLotteryAutoJobError(jobId, err, now)
+		_ = updateActivityLotteryAutoJobError(job.Id, err, now)
 		return nil, err
 	}
 	if err := OpenActivityLotteryRound(round.Id, now); err != nil {
-		_ = updateActivityLotteryAutoJobError(jobId, err, now)
+		_ = updateActivityLotteryAutoJobError(job.Id, err, now)
 		return nil, err
 	}
 	if err := DB.Model(&ActivityLotteryAutoJob{}).
-		Where("id = ?", jobId).
+		Where("id = ?", job.Id).
 		Updates(map[string]any{
 			"last_round_id": round.Id,
 			"status":        "ok",
@@ -347,4 +351,38 @@ func RunActivityLotteryAutoJob(jobId int, now time.Time) (*ActivityLotteryRound,
 	}
 	round.Status = ActivityLotteryRoundStatusOpen
 	return round, nil
+}
+
+// ForceRunActivityLotteryAutoJob 手动“立即执行一次”：忽略 run_at 时刻与当天去重，
+// 以当前时刻为开期时间立即建一期并开启（持续时长仍取任务配置）。
+// 注意：开启新一期会关闭其他仍在进行中的期（OpenActivityLotteryRound 语义）。
+func ForceRunActivityLotteryAutoJob(jobId int, now time.Time) (*ActivityLotteryRound, error) {
+	if jobId <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	today := formatCheckinDate(now)
+	var issueNo int
+	var jobCopy ActivityLotteryAutoJob
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var job ActivityLotteryAutoJob
+		if e := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&job, jobId).Error; e != nil {
+			return e
+		}
+		issueNo = job.IssueNo + 1
+		if e := tx.Model(&ActivityLotteryAutoJob{}).
+			Where("id = ?", jobId).
+			Updates(map[string]any{
+				"issue_no":      issueNo,
+				"last_run_date": today,
+				"updated_at":    now.Unix(),
+			}).Error; e != nil {
+			return e
+		}
+		jobCopy = job
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return buildAndOpenRoundForAutoJob(&jobCopy, issueNo, now.Unix(), now)
 }

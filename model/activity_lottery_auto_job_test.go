@@ -114,3 +114,36 @@ func TestRunActivityLotteryAutoJobSkipsWhenLastRoundOpen(t *testing.T) {
 		require.Nil(t, created2, "上一期仍进行中不应建新期")
 	})
 }
+
+func TestForceRunActivityLotteryAutoJobIgnoresScheduleAndDedup(t *testing.T) {
+	withActivityLotteryTestDB(t, func() {
+		day := getActivityLotteryDayStart(time.Unix(1_700_000_000, 0))
+		now := time.Unix(day+8*3600, 0) // 08:00，早于 run_at 09:00
+		job, err := CreateActivityLotteryAutoJob(&ActivityLotteryAutoJobUpsertRequest{
+			Name: "daily", TitleTemplate: "第{n}期", RunAtSeconds: 9 * 3600,
+			DurationSeconds: 6 * 3600, WinnerCount: 1, PrizeQuota: 100,
+			PrizeName: "码{n}", JoinSources: "manual",
+		}, now)
+		require.NoError(t, err)
+
+		// 未到 run_at，但强制执行应立即建一期
+		round, err := ForceRunActivityLotteryAutoJob(job.Id, now)
+		require.NoError(t, err)
+		require.NotNil(t, round)
+		require.Equal(t, "第1期", round.Title)
+		require.Equal(t, ActivityLotteryRoundStatusOpen, round.Status)
+		require.Equal(t, now.Unix(), round.StartAt, "开期时间应为当前时刻")
+		require.Equal(t, now.Unix()+6*3600, round.EndAt)
+
+		// 当天已 run 过，强制执行仍能再建一期（忽略去重），期号自增
+		round2, err := ForceRunActivityLotteryAutoJob(job.Id, now.Add(time.Minute))
+		require.NoError(t, err)
+		require.NotNil(t, round2)
+		require.Equal(t, "第2期", round2.Title)
+
+		updated, err := GetActivityLotteryAutoJobById(job.Id)
+		require.NoError(t, err)
+		require.Equal(t, 2, updated.IssueNo)
+		require.Equal(t, round2.Id, updated.LastRoundId)
+	})
+}

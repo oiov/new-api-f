@@ -83,3 +83,18 @@ func AdminDeleteActivityLotteryAutoJob(c *gin.Context) {
 	}
 	common.ApiSuccess(c, gin.H{"id": id})
 }
+
+// AdminRunActivityLotteryAutoJob 手动“立即执行一次”，立即按模板建一期并开启。
+func AdminRunActivityLotteryAutoJob(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "无效的任务ID")
+		return
+	}
+	round, err := model.ForceRunActivityLotteryAutoJob(id, model.GetCheckinNow())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, round)
+}
