@@ -21,8 +21,9 @@ type SupportTicketCreateRequest struct {
 }
 
 type SupportTicketMessageRequest struct {
-	Content  string `json:"content"`
-	ImageURL string `json:"image_url"`
+	Content       string `json:"content"`
+	ImageURL      string `json:"image_url"`
+	EmailLanguage string `json:"email_language"`
 }
 
 type SupportTicketUpdateRequest struct {
@@ -31,13 +32,24 @@ type SupportTicketUpdateRequest struct {
 }
 
 type SupportTicketDetailResponse struct {
-	Ticket   *model.SupportTicket          `json:"ticket"`
-	Messages []*model.SupportTicketMessage `json:"messages"`
+	Ticket           *model.SupportTicket                 `json:"ticket"`
+	Messages         []*model.SupportTicketMessage        `json:"messages"`
+	TrialApplication *model.SupportTicketTrialApplication `json:"trial_application,omitempty"`
 }
 
 type SupportTicketReplyResponse struct {
 	Ticket  *model.SupportTicket        `json:"ticket"`
 	Message *model.SupportTicketMessage `json:"message"`
+}
+
+type SupportTicketTrialApplicationReviewRequest struct {
+	Approved bool `json:"approved"`
+}
+
+type SupportTicketTrialApplicationResponse struct {
+	TrialApplication *model.SupportTicketTrialApplication `json:"trial_application"`
+	Ticket           *model.SupportTicket                 `json:"ticket"`
+	Message          *model.SupportTicketMessage          `json:"message"`
 }
 
 func isSupportTicketAdmin(c *gin.Context) bool {
@@ -116,9 +128,15 @@ func GetSupportTicketDetail(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	trialApplication, err := model.GetSupportTicketTrialApplicationByTicketId(ticket.Id)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		common.ApiError(c, err)
+		return
+	}
 	common.ApiSuccess(c, SupportTicketDetailResponse{
-		Ticket:   ticket,
-		Messages: messages,
+		Ticket:           ticket,
+		Messages:         messages,
+		TrialApplication: trialApplication,
 	})
 }
 
@@ -143,13 +161,70 @@ func AddSupportTicketMessage(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
-	if previousStatus != updated.Status {
+	if previousStatus != updated.Status && !message.IsAdmin {
 		service.NotifySupportTicketStatusUpdatedAsync(updated, c.GetInt("id"), previousStatus)
 	}
-	service.NotifySupportTicketMessageAddedAsync(c.GetInt("id"), updated, message)
+	service.NotifySupportTicketMessageAddedAsync(c.GetInt("id"), updated, message, req.EmailLanguage)
 	common.ApiSuccess(c, SupportTicketReplyResponse{
 		Ticket:  updated,
 		Message: message,
+	})
+}
+
+func CreateSupportTicketTrialApplication(c *gin.Context) {
+	ticketId, ok := parseSupportTicketId(c)
+	if !ok {
+		return
+	}
+	ticket, ok := loadSupportTicketForRequest(c, ticketId)
+	if !ok {
+		return
+	}
+	if isSupportTicketAdmin(c) || ticket.UserId != c.GetInt("id") {
+		common.ApiErrorMsg(c, "只能为自己的工单提交试用额度申请")
+		return
+	}
+	application, message, updated, err := model.CreateSupportTicketTrialApplication(ticket.Id, c.GetInt("id"), c.ClientIP())
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	service.NotifySupportTicketMessageAddedAsync(c.GetInt("id"), updated, message, service.SupportTicketEmailLanguageEn)
+	common.ApiSuccess(c, SupportTicketTrialApplicationResponse{
+		TrialApplication: application,
+		Ticket:           updated,
+		Message:          message,
+	})
+}
+
+func ReviewSupportTicketTrialApplication(c *gin.Context) {
+	if !isSupportTicketAdmin(c) {
+		common.ApiErrorMsg(c, "无权审核试用额度申请")
+		return
+	}
+	ticketId, ok := parseSupportTicketId(c)
+	if !ok {
+		return
+	}
+	ticket, ok := loadSupportTicketForRequest(c, ticketId)
+	if !ok {
+		return
+	}
+	var req SupportTicketTrialApplicationReviewRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorMsg(c, "无效的请求参数")
+		return
+	}
+	application, message, updated, err := model.ReviewSupportTicketTrialApplication(ticket.Id, c.GetInt("id"), req.Approved)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	service.NotifySupportTicketMessageAddedAsync(c.GetInt("id"), updated, message, service.SupportTicketEmailLanguageEn)
+	common.ApiSuccess(c, SupportTicketTrialApplicationResponse{
+		TrialApplication: application,
+		Ticket:           updated,
+		Message:          message,
 	})
 }
 

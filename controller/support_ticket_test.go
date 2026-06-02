@@ -32,7 +32,7 @@ func setupSupportTicketControllerTestDB(t *testing.T) *gorm.DB {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.SupportTicket{}, &model.SupportTicketMessage{}, &model.SiteNotification{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.SupportTicket{}, &model.SupportTicketMessage{}, &model.SupportTicketTrialApplication{}, &model.Redemption{}, &model.SiteNotification{}))
 
 	model.DB = db
 	model.LOG_DB = db
@@ -179,6 +179,105 @@ func TestSupportTicketAdminUpdateStatusCreatesUserNotification(t *testing.T) {
 	require.Equal(t, admin.Id, notification.SenderUserId)
 	require.Contains(t, notification.Title, "工单状态已更新")
 	require.Contains(t, notification.Content, "已解决")
+}
+
+func TestSupportTicketAdminReplyDoesNotCreateDuplicateStatusNotification(t *testing.T) {
+	db := setupSupportTicketControllerTestDB(t)
+	admin := seedUser(t, db, 1, "admin", common.RoleAdminUser)
+	user := seedUser(t, db, 7, "alice", common.RoleCommonUser)
+	ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "问题", "初始")
+	require.NoError(t, err)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/support/tickets/1/messages", map[string]any{
+		"content":        "请提供 request id",
+		"email_language": "zh",
+	}, admin.Id)
+	ctx.Params = append(ctx.Params, ginParam("id", strconv.Itoa(ticket.Id)))
+	ctx.Set("role", admin.Role)
+
+	AddSupportTicketMessage(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	var notifications []model.SiteNotification
+	require.Eventually(t, func() bool {
+		return model.DB.Order("id asc").Find(&notifications).Error == nil && len(notifications) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, user.Id, notifications[0].UserId)
+	require.Equal(t, admin.Id, notifications[0].SenderUserId)
+	require.Contains(t, notifications[0].Title, "工单收到回复")
+	require.NotContains(t, notifications[0].Title, "工单状态已更新")
+}
+
+func TestSupportTicketDetailIncludesTrialApplication(t *testing.T) {
+	db := setupSupportTicketControllerTestDB(t)
+	user := seedUser(t, db, 7, "alice", common.RoleCommonUser)
+	ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "试用", "想申请")
+	require.NoError(t, err)
+	_, _, _, err = model.CreateSupportTicketTrialApplication(ticket.Id, user.Id, "203.0.113.10")
+	require.NoError(t, err)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/support/tickets/1", nil, user.Id)
+	ctx.Params = append(ctx.Params, ginParam("id", strconv.Itoa(ticket.Id)))
+	ctx.Set("role", user.Role)
+
+	GetSupportTicketDetail(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var detail SupportTicketDetailResponse
+	require.NoError(t, common.Unmarshal(response.Data, &detail))
+	require.NotNil(t, detail.TrialApplication)
+	require.Equal(t, "203.0.113.10", detail.TrialApplication.RequestIP)
+}
+
+func TestSupportTicketCreateTrialApplicationUsesClientIP(t *testing.T) {
+	db := setupSupportTicketControllerTestDB(t)
+	user := seedUser(t, db, 7, "alice", common.RoleCommonUser)
+	ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "试用", "想申请")
+	require.NoError(t, err)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/support/tickets/1/trial_application", nil, user.Id)
+	ctx.Params = append(ctx.Params, ginParam("id", strconv.Itoa(ticket.Id)))
+	ctx.Request.RemoteAddr = "203.0.113.10:12345"
+	ctx.Set("role", user.Role)
+
+	CreateSupportTicketTrialApplication(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var data SupportTicketTrialApplicationResponse
+	require.NoError(t, common.Unmarshal(response.Data, &data))
+	require.Equal(t, model.SupportTicketTrialApplicationStatusPending, data.TrialApplication.Status)
+	require.Equal(t, "203.0.113.10", data.TrialApplication.RequestIP)
+	require.Contains(t, data.Message.Content, "$5")
+}
+
+func TestSupportTicketAdminReviewsTrialApplication(t *testing.T) {
+	db := setupSupportTicketControllerTestDB(t)
+	admin := seedUser(t, db, 1, "admin", common.RoleAdminUser)
+	user := seedUser(t, db, 7, "alice", common.RoleCommonUser)
+	ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "试用", "想申请")
+	require.NoError(t, err)
+	_, _, _, err = model.CreateSupportTicketTrialApplication(ticket.Id, user.Id, "203.0.113.10")
+	require.NoError(t, err)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/support/tickets/1/trial_application/review", map[string]any{
+		"approved": true,
+	}, admin.Id)
+	ctx.Params = append(ctx.Params, ginParam("id", strconv.Itoa(ticket.Id)))
+	ctx.Set("role", admin.Role)
+
+	ReviewSupportTicketTrialApplication(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var data SupportTicketTrialApplicationResponse
+	require.NoError(t, common.Unmarshal(response.Data, &data))
+	require.Equal(t, model.SupportTicketTrialApplicationStatusApproved, data.TrialApplication.Status)
+	require.NotEmpty(t, data.TrialApplication.RedemptionKey)
+	require.Contains(t, data.Message.Content, "https://nbility.dev/console/topup")
 }
 
 func TestSupportTicketAttachmentUploadStoresImageUnderSupportTicketPrefix(t *testing.T) {
