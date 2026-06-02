@@ -27,7 +27,7 @@ func withSupportTicketTestDB(t *testing.T, run func()) {
 	LOG_DB = db
 	common.UsingSQLite = true
 
-	require.NoError(t, db.AutoMigrate(&User{}, &SupportTicket{}, &SupportTicketMessage{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &SupportTicket{}, &SupportTicketMessage{}, &Redemption{}, &SupportTicketTrialApplication{}))
 
 	t.Cleanup(func() {
 		DB = oldDB
@@ -248,5 +248,84 @@ func TestSupportTicketUserCanOnlyCloseOwnTicket(t *testing.T) {
 		closed, err := CloseSupportTicketByUser(ticket.Id, 7)
 		require.NoError(t, err)
 		require.Equal(t, SupportTicketStatusClosed, closed.Status)
+	})
+}
+
+func TestCreateSupportTicketTrialApplicationEnforcesUserAndIP(t *testing.T) {
+	withSupportTicketTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
+		require.NoError(t, DB.Create(&User{Id: 8, Username: "bob", AffCode: "bob"}).Error)
+		first, err := CreateSupportTicket(7, SupportTicketTypeNormal, "试用", "想申请试用")
+		require.NoError(t, err)
+		second, err := CreateSupportTicket(8, SupportTicketTypeNormal, "试用", "也想申请")
+		require.NoError(t, err)
+
+		application, message, updated, err := CreateSupportTicketTrialApplication(first.Id, 7, "203.0.113.10")
+		require.NoError(t, err)
+		require.Equal(t, SupportTicketTrialApplicationStatusPending, application.Status)
+		require.Equal(t, "203.0.113.10", application.RequestIP)
+		require.Contains(t, message.Content, "$5")
+		require.Equal(t, first.Id, updated.Id)
+
+		_, _, _, err = CreateSupportTicketTrialApplication(first.Id, 7, "203.0.113.11")
+		require.EqualError(t, err, "你已经提交过试用额度申请")
+
+		_, _, _, err = CreateSupportTicketTrialApplication(second.Id, 8, "203.0.113.10")
+		require.EqualError(t, err, "当前网络环境已提交过试用额度申请")
+
+		_, _, _, err = CreateSupportTicketTrialApplication(second.Id, 8, "")
+		require.EqualError(t, err, "无法获取申请 IP")
+	})
+}
+
+func TestReviewSupportTicketTrialApplicationApprovesWithRedemption(t *testing.T) {
+	withSupportTicketTestDB(t, func() {
+		oldQuotaPerUnit := common.QuotaPerUnit
+		common.QuotaPerUnit = 100
+		t.Cleanup(func() {
+			common.QuotaPerUnit = oldQuotaPerUnit
+		})
+		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
+		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "试用", "想申请试用")
+		require.NoError(t, err)
+		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7, "203.0.113.10")
+		require.NoError(t, err)
+
+		application, message, updated, err := ReviewSupportTicketTrialApplication(ticket.Id, 1, true)
+		require.NoError(t, err)
+		require.Equal(t, SupportTicketTrialApplicationStatusApproved, application.Status)
+		require.Equal(t, 1, application.ReviewerUserId)
+		require.NotZero(t, application.RedemptionId)
+		require.NotEmpty(t, application.RedemptionKey)
+		require.Contains(t, message.Content, application.RedemptionKey)
+		require.Contains(t, message.Content, "https://nbility.dev/console/topup")
+		require.Equal(t, SupportTicketStatusInProgress, updated.Status)
+
+		var redemption Redemption
+		require.NoError(t, DB.First(&redemption, "id = ?", application.RedemptionId).Error)
+		require.Equal(t, 500, redemption.Quota)
+		require.Equal(t, RedemptionTypeQuota, redemption.RedemptionType)
+		require.Equal(t, common.RedemptionCodeStatusEnabled, redemption.Status)
+	})
+}
+
+func TestReviewSupportTicketTrialApplicationRejectsWithoutRedemption(t *testing.T) {
+	withSupportTicketTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
+		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "试用", "想申请试用")
+		require.NoError(t, err)
+		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7, "203.0.113.10")
+		require.NoError(t, err)
+
+		application, message, _, err := ReviewSupportTicketTrialApplication(ticket.Id, 1, false)
+		require.NoError(t, err)
+		require.Equal(t, SupportTicketTrialApplicationStatusRejected, application.Status)
+		require.Zero(t, application.RedemptionId)
+		require.Empty(t, application.RedemptionKey)
+		require.Contains(t, message.Content, "未通过")
+
+		var count int64
+		require.NoError(t, DB.Model(&Redemption{}).Count(&count).Error)
+		require.EqualValues(t, 0, count)
 	})
 }

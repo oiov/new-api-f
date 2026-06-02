@@ -1,0 +1,207 @@
+package model
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
+)
+
+const (
+	SupportTicketTrialApplicationStatusPending  = "pending"
+	SupportTicketTrialApplicationStatusApproved = "approved"
+	SupportTicketTrialApplicationStatusRejected = "rejected"
+)
+
+type SupportTicketTrialApplication struct {
+	Id             int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	TicketId       int    `json:"ticket_id" gorm:"index;not null"`
+	UserId         int    `json:"user_id" gorm:"uniqueIndex;not null"`
+	RequestIP      string `json:"request_ip" gorm:"type:varchar(64);uniqueIndex;not null"`
+	Status         string `json:"status" gorm:"type:varchar(20);not null;default:pending;index"`
+	ReviewerUserId int    `json:"reviewer_user_id" gorm:"not null;default:0"`
+	RedemptionId   int    `json:"redemption_id" gorm:"not null;default:0"`
+	RedemptionKey  string `json:"redemption_key" gorm:"type:varchar(64);not null;default:''"`
+	CreatedAt      int64  `json:"created_at" gorm:"bigint;index;autoCreateTime"`
+	ReviewedAt     int64  `json:"reviewed_at" gorm:"bigint;not null;default:0"`
+	UpdatedAt      int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
+}
+
+func normalizeSupportTicketTrialApplicationIP(requestIP string) (string, error) {
+	requestIP = strings.TrimSpace(requestIP)
+	if requestIP == "" {
+		return "", errors.New("无法获取申请 IP")
+	}
+	if len([]rune(requestIP)) > 64 {
+		return "", errors.New("申请 IP 过长")
+	}
+	return requestIP, nil
+}
+
+func supportTicketTrialApplicationQuota() int {
+	return int(5 * common.QuotaPerUnit)
+}
+
+func GetSupportTicketTrialApplicationByTicketId(ticketId int) (*SupportTicketTrialApplication, error) {
+	var application SupportTicketTrialApplication
+	err := DB.Where("ticket_id = ?", ticketId).First(&application).Error
+	if err != nil {
+		return nil, err
+	}
+	return &application, nil
+}
+
+func CreateSupportTicketTrialApplication(ticketId int, userId int, requestIP string) (*SupportTicketTrialApplication, *SupportTicketMessage, *SupportTicket, error) {
+	normalizedIP, err := normalizeSupportTicketTrialApplicationIP(requestIP)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	var application *SupportTicketTrialApplication
+	var message *SupportTicketMessage
+	var ticket SupportTicket
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id = ? AND user_id = ?", ticketId, userId).First(&ticket).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("工单不存在")
+			}
+			return err
+		}
+		if ticket.Status == SupportTicketStatusClosed {
+			return errors.New("已关闭的工单不能提交试用额度申请")
+		}
+
+		var existing SupportTicketTrialApplication
+		err := tx.Where("user_id = ?", userId).First(&existing).Error
+		if err == nil {
+			return errors.New("你已经提交过试用额度申请")
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		err = tx.Where("request_ip = ?", normalizedIP).First(&existing).Error
+		if err == nil {
+			return errors.New("当前网络环境已提交过试用额度申请")
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		application = &SupportTicketTrialApplication{
+			TicketId:  ticket.Id,
+			UserId:    userId,
+			RequestIP: normalizedIP,
+			Status:    SupportTicketTrialApplicationStatusPending,
+		}
+		if err := tx.Create(application).Error; err != nil {
+			return err
+		}
+
+		message = &SupportTicketMessage{
+			TicketId:     ticket.Id,
+			SenderUserId: userId,
+			IsAdmin:      false,
+			Content:      "已提交 $5 试用额度申请，等待管理员审核。",
+		}
+		if err := tx.Create(message).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&SupportTicket{}).Where("id = ?", ticket.Id).Updates(map[string]any{
+			"last_message_at": common.GetTimestamp(),
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", ticket.Id).First(&ticket).Error
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return application, message, &ticket, nil
+}
+
+func ReviewSupportTicketTrialApplication(ticketId int, reviewerUserId int, approve bool) (*SupportTicketTrialApplication, *SupportTicketMessage, *SupportTicket, error) {
+	var application SupportTicketTrialApplication
+	var message *SupportTicketMessage
+	var ticket SupportTicket
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("ticket_id = ?", ticketId).First(&application).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("没有待审核的试用额度申请")
+			}
+			return err
+		}
+		if application.Status != SupportTicketTrialApplicationStatusPending {
+			return errors.New("该试用额度申请已审核")
+		}
+		if err := tx.Where("id = ?", ticketId).First(&ticket).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("工单不存在")
+			}
+			return err
+		}
+
+		now := common.GetTimestamp()
+		updates := map[string]any{
+			"reviewer_user_id": reviewerUserId,
+			"reviewed_at":      now,
+		}
+		content := "你的 $5 试用额度申请未通过。"
+		if approve {
+			key, err := BuildRedemptionKey(RedemptionTypeQuota)
+			if err != nil {
+				return err
+			}
+			redemption := &Redemption{
+				UserId:         reviewerUserId,
+				Name:           "Trial $5",
+				Key:            key,
+				Quota:          supportTicketTrialApplicationQuota(),
+				RedemptionType: RedemptionTypeQuota,
+				Status:         common.RedemptionCodeStatusEnabled,
+				CreatedTime:    now,
+				ExpiredTime:    0,
+			}
+			if err := tx.Create(redemption).Error; err != nil {
+				return err
+			}
+			updates["status"] = SupportTicketTrialApplicationStatusApproved
+			updates["redemption_id"] = redemption.Id
+			updates["redemption_key"] = key
+			content = fmt.Sprintf("你的 $5 试用额度申请已通过。兑换码：%s\n\n请前往 https://nbility.dev/console/topup 使用此兑换码。", key)
+		} else {
+			updates["status"] = SupportTicketTrialApplicationStatusRejected
+		}
+
+		message = &SupportTicketMessage{
+			TicketId:     ticket.Id,
+			SenderUserId: reviewerUserId,
+			IsAdmin:      true,
+			Content:      content,
+		}
+		if err := tx.Create(message).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&SupportTicketTrialApplication{}).Where("id = ?", application.Id).Updates(updates).Error; err != nil {
+			return err
+		}
+
+		ticketUpdates := map[string]any{"last_message_at": now}
+		if ticket.Status == SupportTicketStatusPending {
+			ticketUpdates["status"] = SupportTicketStatusInProgress
+		}
+		if err := tx.Model(&SupportTicket{}).Where("id = ?", ticket.Id).Updates(ticketUpdates).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", application.Id).First(&application).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", ticket.Id).First(&ticket).Error
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return &application, message, &ticket, nil
+}

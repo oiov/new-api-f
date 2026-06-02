@@ -296,6 +296,7 @@ func migrateDB() error {
 		&SiteNotification{},
 		&SupportTicket{},
 		&SupportTicketMessage{},
+		&SupportTicketTrialApplication{},
 		&MailAssistantAccount{},
 		&MailAssistantStoredMessage{},
 	)
