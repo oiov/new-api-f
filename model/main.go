@@ -433,7 +433,11 @@ func migrateDBFast() error {
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&Invoice{}, "Invoice"},
+		{&EcomAgentAccount{}, "EcomAgentAccount"},
 		{&SiteNotification{}, "SiteNotification"},
+		{&SupportTicket{}, "SupportTicket"},
+		{&SupportTicketMessage{}, "SupportTicketMessage"},
+		{&SupportTicketTrialApplication{}, "SupportTicketTrialApplication"},
 		{&MailAssistantAccount{}, "MailAssistantAccount"},
 		{&MailAssistantStoredMessage{}, "MailAssistantStoredMessage"},
 	}
