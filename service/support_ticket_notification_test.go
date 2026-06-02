@@ -183,7 +183,7 @@ func TestSupportTicketUserReplyNotifiesAdminsBySiteAndEmail(t *testing.T) {
 	})
 }
 
-func TestSupportTicketAdminReplyNotifiesTicketOwnerAndOtherAdmins(t *testing.T) {
+func TestSupportTicketAdminReplyNotifiesOnlyTicketOwner(t *testing.T) {
 	withSupportTicketNotificationTestDB(t, func() {
 		emails := withSupportTicketEmailCapture(t)
 		user := &model.User{Id: 7, Username: "alice", Email: "alice@example.com", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "alice"}
@@ -201,17 +201,71 @@ func TestSupportTicketAdminReplyNotifiesTicketOwnerAndOtherAdmins(t *testing.T) 
 
 		var notifications []model.SiteNotification
 		require.NoError(t, model.DB.Order("user_id asc").Find(&notifications).Error)
-		require.Len(t, notifications, 2)
+		require.Len(t, notifications, 1)
 		require.Equal(t, admin.Id, notifications[0].SenderUserId)
-		require.Equal(t, otherAdmin.Id, notifications[0].UserId)
-		require.Equal(t, user.Id, notifications[1].UserId)
+		require.Equal(t, user.Id, notifications[0].UserId)
+		require.Contains(t, notifications[0].Title, "工单收到回复")
 		require.True(t, notifications[0].EmailSent)
-		require.True(t, notifications[1].EmailSent)
 
-		require.Len(t, *emails, 3)
-		require.Equal(t, "root@example.com", (*emails)[0].To.Address)
-		require.Equal(t, "support@nbility.dev", (*emails)[1].To.Address)
-		require.Equal(t, "alice@example.com", (*emails)[2].To.Address)
-		require.Contains(t, (*emails)[2].HTML, "已处理")
+		require.Len(t, *emails, 1)
+		require.Equal(t, "alice@example.com", (*emails)[0].To.Address)
+		require.NotEqual(t, admin.Email, (*emails)[0].To.Address)
+		require.NotEqual(t, otherAdmin.Email, (*emails)[0].To.Address)
+		require.NotEqual(t, supportTicketAdminEmail, (*emails)[0].To.Address)
+		require.Contains(t, (*emails)[0].HTML, "已处理")
 	})
+}
+
+func TestSupportTicketEmailTemplateEscapesUserContent(t *testing.T) {
+	ticket := &model.SupportTicket{
+		Id:       42,
+		Type:     model.SupportTicketTypeNormal,
+		Subject:  `<script>alert("ticket")</script>`,
+		Status:   model.SupportTicketStatusInProgress,
+		Priority: model.SupportTicketPriorityUrgent,
+	}
+	message := &model.SupportTicketMessage{
+		Content:  `<img src=x onerror="alert(1)"> please check`,
+		ImageURL: `https://example.com/a.png?name=<bad>&q="1"`,
+	}
+
+	content := buildSupportTicketMessageEmailContent("New support ticket reply", ticket, message, SupportTicketEmailLanguageEn)
+
+	require.Contains(t, content, "&lt;script&gt;alert(&#34;ticket&#34;)&lt;/script&gt;")
+	require.Contains(t, content, "&lt;img src=x onerror=&#34;alert(1)&#34;&gt; please check")
+	require.NotContains(t, content, "<script>alert")
+	require.NotContains(t, content, "<img src=x")
+	require.Contains(t, content, `href="https://example.com/a.png?name=&lt;bad&gt;&amp;q=&#34;1&#34;"`)
+	require.Contains(t, content, "In progress")
+	require.Contains(t, content, "Urgent")
+	require.Contains(t, content, "View ticket")
+	require.Contains(t, content, "/console/support-tickets/42")
+	require.Contains(t, content, "background:")
+}
+
+func TestSupportTicketEmailTemplateDefaultsToEnglish(t *testing.T) {
+	ticket := &model.SupportTicket{
+		Id:       42,
+		Type:     model.SupportTicketTypeNormal,
+		Subject:  "Model issue",
+		Status:   model.SupportTicketStatusResolved,
+		Priority: model.SupportTicketPriorityHigh,
+	}
+	message := &model.SupportTicketMessage{Content: "Please retry"}
+
+	require.Equal(t, SupportTicketEmailLanguageEn, normalizeSupportTicketEmailLanguage(""))
+	require.Equal(t, SupportTicketEmailLanguageEn, normalizeSupportTicketEmailLanguage("fr"))
+	require.Equal(t, SupportTicketEmailLanguageZh, normalizeSupportTicketEmailLanguage(" zh "))
+	require.Equal(t, "Resolved", supportTicketEmailStatusText(ticket.Status, ""))
+	require.Equal(t, "High", supportTicketEmailPriorityText(ticket.Priority, ""))
+
+	content := buildSupportTicketMessageEmailContent("New support ticket reply", ticket, message, "")
+
+	require.Contains(t, content, "New support ticket reply")
+	require.Contains(t, content, "Status")
+	require.Contains(t, content, "Resolved")
+	require.Contains(t, content, "Priority")
+	require.Contains(t, content, "High")
+	require.Contains(t, content, "View ticket")
+	require.NotContains(t, content, "查看工单")
 }
