@@ -14,11 +14,12 @@
 1. 管理员回复用户工单时，只通知工单用户，不再通知管理员账号或 `support@nbility.dev` 兜底邮箱。
 2. 用户回复工单时，仍通知管理员账号和兜底邮箱。
 3. 工单邮件不再使用简陋的纯内容片段，改为与注册/重置邮件风格一致的 HTML 卡片模板。
-4. 用户可以在自己的工单里提交一次 $5 试用额度申请。
-5. 后端强制限制：同一用户只能提交一次试用申请，同一申请 IP 也只能提交一次试用申请；任一命中都拒绝。
-6. 管理员可以在工单详情中拒绝或通过申请。
-7. 通过申请后，系统自动创建一个 $5 额度兑换码，并通过工单消息告知用户去 `https://nbility.dev/console/topup` 使用。
-8. 完成模板优化后，尽力向 `3224266014@qq.com` 发送一封测试邮件验证效果；如果本地邮件配置或网络不允许，需要明确记录阻塞原因。
+4. 工单邮件默认使用英文；管理员回复工单时，可以手动选择本次回复通知邮件使用英文或中文。
+5. 用户可以在自己的工单里提交一次 $5 试用额度申请。
+6. 后端强制限制：同一用户只能提交一次试用申请，同一申请 IP 也只能提交一次试用申请；任一命中都拒绝。
+7. 管理员可以在工单详情中拒绝或通过申请。
+8. 通过申请后，系统自动创建一个 $5 额度兑换码，并通过工单消息告知用户去 `https://nbility.dev/console/topup` 使用。
+9. 完成模板优化后，尽力向 `3224266014@qq.com` 发送一封测试邮件验证效果；如果本地邮件配置或网络不允许，需要明确记录阻塞原因。
 
 ## 2. Current Context
 
@@ -70,6 +71,17 @@
 - 拒绝：追加管理员消息，告知申请未通过。
 
 这些系统追加的工单消息仍走正常工单消息通知逻辑：审核者是管理员，因此只通知工单用户。
+
+### 3.4 Email Language
+
+工单邮件模板支持两种语言：
+
+- `en`: English
+- `zh`: 简体中文
+
+默认语言为 `en`。所有没有显式指定语言的工单邮件，包括创建确认、用户回复后的管理员通知、状态更新通知、试用申请审核系统消息通知，都按英文发送。
+
+管理员手动回复工单时，`web-worker` 在回复框旁提供邮件语言选择，管理员可以根据用户发来的语言选择 `en` 或 `zh`。后端以该次回复请求中的 `email_language` 为准；空值、未知值都回退到 `en`。
 
 ## 4. Backend Design
 
@@ -188,12 +200,26 @@ POST /api/support/tickets/:id/trial_application/review
 
 普通用户也可以看到自己申请的状态；管理员可以看到申请 IP、审核人、兑换码等完整字段。
 
+管理员回复工单的请求体增加一个可选字段：
+
+```json
+{
+  "content": "Please try again.",
+  "image_url": "/uploads/support_tickets/reply.png",
+  "email_language": "en"
+}
+```
+
+`email_language` 仅用于本次邮件通知模板选择，不改变工单消息内容，不要求保存到消息表。普通用户回复时可以不传该字段；后端会按默认英文处理。
+
 ### 4.4 Notification Behavior
 
 修复 `notifySupportTicketMessageAdded`：
 
 - 当 `senderUserId == ticket.UserId`：通知管理员和兜底邮箱，不通知用户本人。
 - 当 `senderUserId != ticket.UserId`：只通知工单用户，不通知管理员和兜底邮箱。
+- 当管理员回复用户时，邮件模板语言取本次请求传入的 `email_language`；未传或非法时使用英文。
+- 其他工单邮件通知默认使用英文。
 
 管理员回复待处理工单导致状态自动变为 `in_progress` 时，不再额外发送状态更新邮件。否则用户会同时收到“收到回复”和“状态已更新”两封邮件。显式修改状态的 `PUT /api/support/tickets/:id` 仍发送状态更新通知。
 
@@ -201,10 +227,11 @@ POST /api/support/tickets/:id/trial_application/review
 
 新增工单邮件模板构建器，推荐放在 `service/support_ticket_notification.go`：
 
-- `buildSupportTicketEmailContent(title, intro string, ticket *model.SupportTicket, bodyHTML string) string`
-- `buildSupportTicketMessageEmailContent(...)`
-- `buildSupportTicketStatusEmailContent(...)`
-- `buildSupportTicketCreatedEmailContent(...)`
+- `normalizeSupportTicketEmailLanguage(language string) string`
+- `buildSupportTicketEmailContent(language, title, intro string, ticket *model.SupportTicket, bodyHTML string) string`
+- `buildSupportTicketMessageEmailContent(language, ...)`
+- `buildSupportTicketStatusEmailContent(language, ...)`
+- `buildSupportTicketCreatedEmailContent(language, ...)`
 
 模板风格参考 `buildAuthEmailContent`：
 
@@ -218,6 +245,24 @@ POST /api/support/tickets/:id/trial_application/review
 - 页脚提示“此邮件由系统自动发送”。
 
 内容必须使用 `html.EscapeString` 处理用户输入。兑换码和链接由系统生成，也应按 HTML 上下文转义。
+
+中英文模板应保持相同视觉结构，但文案不同。英文模板示例用语：
+
+- `Your ticket received a reply`
+- `Status`
+- `Priority`
+- `In progress`
+- `Normal`
+- `View ticket`
+
+中文模板示例用语：
+
+- `你的工单收到回复`
+- `状态`
+- `优先级`
+- `处理中`
+- `普通`
+- `查看工单`
 
 `service.SendSiteNotificationToUser` 当前会直接把站内信内容作为邮件内容发送。为避免影响其他站内信，本次工单通知不通过该函数发送邮件模板；工单通知需要先创建站内信，再单独调用 `common.SendEmail` 发送模板邮件并回写 `email_sent`。
 
@@ -264,6 +309,8 @@ POST /api/support/tickets/:id/trial_application/review
 - 显示申请状态、申请 IP、申请时间。
 - 待审核时显示“通过”和“拒绝”按钮。
 - 已通过时显示兑换码；已拒绝时显示拒绝状态。
+- 在回复框旁显示邮件语言选择，默认英文，选项为英文和中文。
+- 管理员发送回复时，将当前选择作为 `email_language` 传给后端。
 
 UI 使用现有 shadcn-style 组件和 `@tabler/icons-react`，避免新增组件库。
 
@@ -280,6 +327,7 @@ UI 使用现有 shadcn-style 组件和 `@tabler/icons-react`，避免新增组�
 后端测试：
 
 - 通知测试：管理员回复只给用户发邮件；用户回复仍给管理员和兜底邮箱发邮件。
+- 通知语言测试：未指定语言时工单邮件为英文；管理员回复指定 `zh` 时邮件为中文；非法语言回退英文。
 - 详情测试：返回 `trial_application`。
 - 创建申请测试：同用户重复申请失败；同 IP 不同用户申请失败；不同用户不同 IP 可以按规则走到待审核。
 - 审核通过测试：创建 `$5` 额度兑换码，更新申请，追加工单消息。
@@ -289,6 +337,7 @@ UI 使用现有 shadcn-style 组件和 `@tabler/icons-react`，避免新增组�
 前端测试：
 
 - API client 测试：申请和审核 endpoint、请求体、响应解析。
+- API client 测试：管理员回复可携带 `email_language`。
 - locale 测试：非中文 locale 不包含中文。
 - 可选组件测试或静态检查：申请按钮在已有申请时隐藏，管理员审核按钮只在 `pending` 时显示。
 
