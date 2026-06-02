@@ -34,13 +34,13 @@ func isGoTestProcess() bool {
 func SupportTicketStatusText(status string) string {
 	switch strings.TrimSpace(status) {
 	case model.SupportTicketStatusPending:
-		return "待处理"
+		return "Pending"
 	case model.SupportTicketStatusInProgress:
-		return "处理中"
+		return "In progress"
 	case model.SupportTicketStatusResolved:
-		return "已解决"
+		return "Resolved"
 	case model.SupportTicketStatusClosed:
-		return "已关闭"
+		return "Closed"
 	default:
 		return strings.TrimSpace(status)
 	}
@@ -49,24 +49,24 @@ func SupportTicketStatusText(status string) string {
 func SupportTicketTypeText(ticketType string) string {
 	switch strings.TrimSpace(ticketType) {
 	case model.SupportTicketTypeRefund:
-		return "退款工单"
+		return "Refund"
 	case model.SupportTicketTypeInvoice:
-		return "发票申请"
+		return "Invoice"
 	default:
-		return "普通工单"
+		return "General"
 	}
 }
 
 func SupportTicketPriorityText(priority string) string {
 	switch strings.TrimSpace(priority) {
 	case model.SupportTicketPriorityLow:
-		return "低"
+		return "Low"
 	case model.SupportTicketPriorityHigh:
-		return "高"
+		return "High"
 	case model.SupportTicketPriorityUrgent:
-		return "紧急"
+		return "Urgent"
 	default:
-		return "普通"
+		return "Normal"
 	}
 }
 
@@ -119,28 +119,30 @@ func notifySupportTicketCreated(user *model.User, ticket *model.SupportTicket) {
 		return
 	}
 	escapedSubject := html.EscapeString(strings.TrimSpace(ticket.Subject))
-	userTitle := fmt.Sprintf("工单已提交：#%d", ticket.Id)
+	userTitle := supportTicketSubmittedTitle(SupportTicketEmailLanguageEn, ticket.Id)
 	userContent := fmt.Sprintf(
-		"你的工单已提交，我们会尽快处理。<br/>工单 ID：<strong>#%d</strong><br/>主题：<strong>%s</strong><br/>当前状态：<strong>%s</strong>",
+		"Your support ticket has been submitted. We will review it as soon as possible.<br/>Ticket ID: <strong>#%d</strong><br/>Subject: <strong>%s</strong><br/>Current status: <strong>%s</strong>",
 		ticket.Id,
 		escapedSubject,
 		SupportTicketStatusText(ticket.Status),
 	)
-	userEmail := buildSupportTicketCreatedEmailContent(SupportTicketEmailLanguageEn, userTitle, "We have received your support ticket.", ticket)
+	userEmailTitle := supportTicketSubmittedTitle(SupportTicketEmailLanguageEn, ticket.Id)
+	userEmail := buildSupportTicketCreatedEmailContent(SupportTicketEmailLanguageEn, userEmailTitle, "We have received your support ticket.", ticket)
 	if _, err := createSupportTicketSiteNotificationWithEmail(
 		user,
 		user.Id,
 		userTitle,
 		userContent,
 		"info",
+		userEmailTitle,
 		userEmail,
 	); err != nil {
 		common.SysLog(fmt.Sprintf("failed to create support ticket created site notification for user %d: %s", user.Id, err.Error()))
 	}
 
-	adminTitle := fmt.Sprintf("新工单：#%d", ticket.Id)
+	adminTitle := supportTicketNewTitle(SupportTicketEmailLanguageEn, ticket.Id)
 	adminContent := fmt.Sprintf(
-		"用户提交了新工单。<br/>工单 ID：<strong>#%d</strong><br/>用户：<strong>%s</strong><br/>类型：<strong>%s</strong><br/>优先级：<strong>%s</strong><br/>主题：<strong>%s</strong><br/>当前状态：<strong>%s</strong>",
+		"A user submitted a new support ticket.<br/>Ticket ID: <strong>#%d</strong><br/>User: <strong>%s</strong><br/>Type: <strong>%s</strong><br/>Priority: <strong>%s</strong><br/>Subject: <strong>%s</strong><br/>Current status: <strong>%s</strong>",
 		ticket.Id,
 		html.EscapeString(strings.TrimSpace(user.Username)),
 		SupportTicketTypeText(ticket.Type),
@@ -148,9 +150,10 @@ func notifySupportTicketCreated(user *model.User, ticket *model.SupportTicket) {
 		escapedSubject,
 		SupportTicketStatusText(ticket.Status),
 	)
+	adminEmailTitle := supportTicketNewTitle(SupportTicketEmailLanguageEn, ticket.Id)
 	adminEmail := buildSupportTicketEmailContent(
 		SupportTicketEmailLanguageEn,
-		adminTitle,
+		adminEmailTitle,
 		"A user submitted a new support ticket.",
 		ticket,
 		fmt.Sprintf(
@@ -159,7 +162,7 @@ func notifySupportTicketCreated(user *model.User, ticket *model.SupportTicket) {
 			supportTicketEmailLabels(SupportTicketEmailLanguageEn).CreatedBody,
 		),
 	)
-	notifySupportTicketAdmins(user.Id, adminTitle, adminContent, adminEmail)
+	notifySupportTicketAdmins(user.Id, adminTitle, adminContent, adminEmailTitle, adminEmail)
 }
 
 func notifySupportTicketMessageAdded(senderUserId int, ticket *model.SupportTicket, message *model.SupportTicketMessage, language ...string) {
@@ -172,10 +175,11 @@ func notifySupportTicketMessageAdded(senderUserId int, ticket *model.SupportTick
 		return
 	}
 
-	adminTitle := fmt.Sprintf("工单有新回复：#%d", ticket.Id)
-	adminContent := buildSupportTicketMessageNotificationContent("工单有新回复。", ticket, message)
-	adminEmail := buildSupportTicketMessageEmailContent(SupportTicketEmailLanguageEn, adminTitle, "A user added a reply to a support ticket.", ticket, message)
-	notifySupportTicketAdmins(senderUserId, adminTitle, adminContent, adminEmail)
+	adminTitle := supportTicketUserReplyTitle(SupportTicketEmailLanguageEn, ticket.Id)
+	adminContent := buildSupportTicketMessageNotificationContent("A user added a reply to a support ticket.", ticket, message)
+	adminEmailTitle := supportTicketUserReplyTitle(SupportTicketEmailLanguageEn, ticket.Id)
+	adminEmail := buildSupportTicketMessageEmailContent(SupportTicketEmailLanguageEn, adminEmailTitle, "A user added a reply to a support ticket.", ticket, message)
+	notifySupportTicketAdmins(senderUserId, adminTitle, adminContent, adminEmailTitle, adminEmail)
 }
 
 func notifySupportTicketOwnerOfMessage(senderUserId int, ticket *model.SupportTicket, message *model.SupportTicketMessage, language string) {
@@ -184,14 +188,15 @@ func notifySupportTicketOwnerOfMessage(senderUserId int, ticket *model.SupportTi
 		common.SysLog(fmt.Sprintf("failed to query support ticket user %d for message notification: %v", ticket.UserId, err))
 		return
 	}
-	userTitle := fmt.Sprintf("工单收到回复：#%d", ticket.Id)
-	userContent := buildSupportTicketMessageNotificationContent("你的工单收到新回复。", ticket, message)
+	userTitle := supportTicketReplyTitle(SupportTicketEmailLanguageEn, ticket.Id)
+	userContent := buildSupportTicketMessageNotificationContent("Your support ticket received a new reply.", ticket, message)
 	userIntro := "Your ticket received a new reply."
 	if normalizeSupportTicketEmailLanguage(language) == SupportTicketEmailLanguageZh {
 		userIntro = "你的工单收到新回复。"
 	}
-	userEmail := buildSupportTicketMessageEmailContent(language, userTitle, userIntro, ticket, message)
-	notification, err := createSupportTicketSiteNotificationWithEmail(user, senderUserId, userTitle, userContent, "info", userEmail)
+	userEmailTitle := supportTicketReplyTitle(language, ticket.Id)
+	userEmail := buildSupportTicketMessageEmailContent(language, userEmailTitle, userIntro, ticket, message)
+	notification, err := createSupportTicketSiteNotificationWithEmail(user, senderUserId, userTitle, userContent, "info", userEmailTitle, userEmail)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to send support ticket message notification to user %d: %s", user.Id, err.Error()))
 		return
@@ -215,6 +220,41 @@ func normalizeSupportTicketEmailLanguage(language string) string {
 	default:
 		return SupportTicketEmailLanguageEn
 	}
+}
+
+func supportTicketSubmittedTitle(language string, ticketId int) string {
+	if normalizeSupportTicketEmailLanguage(language) == SupportTicketEmailLanguageZh {
+		return fmt.Sprintf("工单已提交：#%d", ticketId)
+	}
+	return fmt.Sprintf("Support ticket submitted: #%d", ticketId)
+}
+
+func supportTicketNewTitle(language string, ticketId int) string {
+	if normalizeSupportTicketEmailLanguage(language) == SupportTicketEmailLanguageZh {
+		return fmt.Sprintf("新工单：#%d", ticketId)
+	}
+	return fmt.Sprintf("New support ticket: #%d", ticketId)
+}
+
+func supportTicketUserReplyTitle(language string, ticketId int) string {
+	if normalizeSupportTicketEmailLanguage(language) == SupportTicketEmailLanguageZh {
+		return fmt.Sprintf("工单有新回复：#%d", ticketId)
+	}
+	return fmt.Sprintf("Support ticket has a new reply: #%d", ticketId)
+}
+
+func supportTicketReplyTitle(language string, ticketId int) string {
+	if normalizeSupportTicketEmailLanguage(language) == SupportTicketEmailLanguageZh {
+		return fmt.Sprintf("工单收到回复：#%d", ticketId)
+	}
+	return fmt.Sprintf("Support ticket reply received: #%d", ticketId)
+}
+
+func supportTicketStatusUpdatedTitle(language string, ticketId int) string {
+	if normalizeSupportTicketEmailLanguage(language) == SupportTicketEmailLanguageZh {
+		return fmt.Sprintf("工单状态已更新：#%d", ticketId)
+	}
+	return fmt.Sprintf("Support ticket status updated: #%d", ticketId)
 }
 
 func supportTicketEmailStatusText(language string, status string) string {
@@ -387,7 +427,7 @@ func supportTicketEmailLabels(language string) supportTicketEmailLabelSet {
 	}
 }
 
-func createSupportTicketSiteNotificationWithEmail(user *model.User, senderUserId int, title string, content string, level string, emailContent string) (*model.SiteNotification, error) {
+func createSupportTicketSiteNotificationWithEmail(user *model.User, senderUserId int, title string, content string, level string, emailSubject string, emailContent string) (*model.SiteNotification, error) {
 	notification, err := SendSiteNotificationToUser(user, senderUserId, title, content, level, false)
 	if err != nil || notification == nil {
 		return notification, err
@@ -395,7 +435,10 @@ func createSupportTicketSiteNotificationWithEmail(user *model.User, senderUserId
 	if strings.TrimSpace(user.Email) == "" || strings.TrimSpace(emailContent) == "" {
 		return notification, nil
 	}
-	if err := common.SendEmail(title, user.Email, emailContent); err != nil {
+	if strings.TrimSpace(emailSubject) == "" {
+		emailSubject = title
+	}
+	if err := common.SendEmail(emailSubject, user.Email, emailContent); err != nil {
 		return notification, nil
 	}
 	notification.EmailSent = true
@@ -409,7 +452,7 @@ func createSupportTicketSiteNotificationWithEmail(user *model.User, senderUserId
 	return notification, nil
 }
 
-func notifySupportTicketAdmins(senderUserId int, title string, content string, emailContent string) {
+func notifySupportTicketAdmins(senderUserId int, title string, content string, emailSubject string, emailContent string) {
 	admins, err := listSupportTicketNotificationAdmins()
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to query support ticket admins for notification: %s", err.Error()))
@@ -421,7 +464,7 @@ func notifySupportTicketAdmins(senderUserId int, title string, content string, e
 		if admin == nil || admin.Id == senderUserId {
 			continue
 		}
-		notification, err := createSupportTicketSiteNotificationWithEmail(admin, senderUserId, title, content, "info", emailContent)
+		notification, err := createSupportTicketSiteNotificationWithEmail(admin, senderUserId, title, content, "info", emailSubject, emailContent)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("failed to send support ticket notification to admin %d: %s", admin.Id, err.Error()))
 			continue
@@ -432,7 +475,10 @@ func notifySupportTicketAdmins(senderUserId int, title string, content string, e
 	}
 
 	if !fallbackEmailSent {
-		if err := common.SendEmail(title, supportTicketAdminEmail, emailContent); err != nil {
+		if strings.TrimSpace(emailSubject) == "" {
+			emailSubject = title
+		}
+		if err := common.SendEmail(emailSubject, supportTicketAdminEmail, emailContent); err != nil {
 			common.SysLog(fmt.Sprintf("failed to send support ticket fallback email to admin: %s", err.Error()))
 		}
 	}
@@ -452,10 +498,10 @@ func buildSupportTicketMessageNotificationContent(prefix string, ticket *model.S
 	contentPreview := truncateSupportTicketNotificationText(message.Content, 600)
 	imageLine := ""
 	if strings.TrimSpace(message.ImageURL) != "" {
-		imageLine = fmt.Sprintf("<br/>图片：<a href=\"%s\">查看附件</a>", html.EscapeString(strings.TrimSpace(message.ImageURL)))
+		imageLine = fmt.Sprintf("<br/>Attachment: <a href=\"%s\">View attachment</a>", html.EscapeString(strings.TrimSpace(message.ImageURL)))
 	}
 	return fmt.Sprintf(
-		"%s<br/>工单 ID：<strong>#%d</strong><br/>主题：<strong>%s</strong><br/>当前状态：<strong>%s</strong><br/>回复内容：<br/><blockquote>%s</blockquote>%s",
+		"%s<br/>Ticket ID: <strong>#%d</strong><br/>Subject: <strong>%s</strong><br/>Current status: <strong>%s</strong><br/>Reply content:<br/><blockquote>%s</blockquote>%s",
 		html.EscapeString(strings.TrimSpace(prefix)),
 		ticket.Id,
 		html.EscapeString(strings.TrimSpace(ticket.Subject)),
@@ -478,16 +524,17 @@ func notifySupportTicketStatusUpdated(user *model.User, senderUserId int, ticket
 	if user == nil || ticket == nil {
 		return
 	}
-	title := fmt.Sprintf("工单状态已更新：#%d", ticket.Id)
+	title := supportTicketStatusUpdatedTitle(SupportTicketEmailLanguageEn, ticket.Id)
 	content := fmt.Sprintf(
-		"你的工单状态已更新。<br/>工单 ID：<strong>#%d</strong><br/>主题：<strong>%s</strong><br/>原状态：<strong>%s</strong><br/>当前状态：<strong>%s</strong>",
+		"Your support ticket status was updated.<br/>Ticket ID: <strong>#%d</strong><br/>Subject: <strong>%s</strong><br/>Previous status: <strong>%s</strong><br/>Current status: <strong>%s</strong>",
 		ticket.Id,
 		html.EscapeString(strings.TrimSpace(ticket.Subject)),
 		SupportTicketStatusText(previousStatus),
 		SupportTicketStatusText(ticket.Status),
 	)
-	emailContent := buildSupportTicketStatusEmailContent(SupportTicketEmailLanguageEn, title, "Your support ticket status was updated.", ticket, previousStatus)
-	notification, err := createSupportTicketSiteNotificationWithEmail(user, senderUserId, title, content, "info", emailContent)
+	emailTitle := supportTicketStatusUpdatedTitle(SupportTicketEmailLanguageEn, ticket.Id)
+	emailContent := buildSupportTicketStatusEmailContent(SupportTicketEmailLanguageEn, emailTitle, "Your support ticket status was updated.", ticket, previousStatus)
+	notification, err := createSupportTicketSiteNotificationWithEmail(user, senderUserId, title, content, "info", emailTitle, emailContent)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to send support ticket status notification to user %d: %s", user.Id, err.Error()))
 		return

@@ -265,6 +265,8 @@ func TestCreateSupportTicketTrialApplicationEnforcesUserAndIP(t *testing.T) {
 		require.Equal(t, SupportTicketTrialApplicationStatusPending, application.Status)
 		require.Equal(t, "203.0.113.10", application.RequestIP)
 		require.Contains(t, message.Content, "$5")
+		require.Contains(t, message.Content, "trial quota application submitted")
+		require.NotContains(t, message.Content, "试用额度申请")
 		require.Equal(t, first.Id, updated.Id)
 
 		_, _, _, err = CreateSupportTicketTrialApplication(first.Id, 7, "203.0.113.11")
@@ -298,6 +300,8 @@ func TestReviewSupportTicketTrialApplicationApprovesWithRedemption(t *testing.T)
 		require.NotZero(t, application.RedemptionId)
 		require.NotEmpty(t, application.RedemptionKey)
 		require.Contains(t, message.Content, application.RedemptionKey)
+		require.Contains(t, message.Content, "was approved")
+		require.NotContains(t, message.Content, "兑换码")
 		require.Contains(t, message.Content, "https://nbility.dev/console/topup")
 		require.Equal(t, SupportTicketStatusInProgress, updated.Status)
 
@@ -322,7 +326,8 @@ func TestReviewSupportTicketTrialApplicationRejectsWithoutRedemption(t *testing.
 		require.Equal(t, SupportTicketTrialApplicationStatusRejected, application.Status)
 		require.Zero(t, application.RedemptionId)
 		require.Empty(t, application.RedemptionKey)
-		require.Contains(t, message.Content, "未通过")
+		require.Contains(t, message.Content, "not approved")
+		require.NotContains(t, message.Content, "未通过")
 
 		var count int64
 		require.NoError(t, DB.Model(&Redemption{}).Count(&count).Error)

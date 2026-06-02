@@ -103,7 +103,7 @@ func CreateSupportTicketTrialApplication(ticketId int, userId int, requestIP str
 			TicketId:     ticket.Id,
 			SenderUserId: userId,
 			IsAdmin:      false,
-			Content:      "已提交 $5 试用额度申请，等待管理员审核。",
+			Content:      "$5 trial quota application submitted. Pending admin review.",
 		}
 		if err := tx.Create(message).Error; err != nil {
 			return err
@@ -148,7 +148,7 @@ func ReviewSupportTicketTrialApplication(ticketId int, reviewerUserId int, appro
 			"reviewer_user_id": reviewerUserId,
 			"reviewed_at":      now,
 		}
-		content := "你的 $5 试用额度申请未通过。"
+		content := "Your $5 trial quota application was not approved."
 		if approve {
 			key, err := BuildRedemptionKey(RedemptionTypeQuota)
 			if err != nil {
@@ -170,7 +170,7 @@ func ReviewSupportTicketTrialApplication(ticketId int, reviewerUserId int, appro
 			updates["status"] = SupportTicketTrialApplicationStatusApproved
 			updates["redemption_id"] = redemption.Id
 			updates["redemption_key"] = key
-			content = fmt.Sprintf("你的 $5 试用额度申请已通过。兑换码：%s\n\n请前往 https://nbility.dev/console/topup 使用此兑换码。", key)
+			content = fmt.Sprintf("Your $5 trial quota application was approved. Redemption code: %s\n\nPlease redeem this code at https://nbility.dev/console/topup.", key)
 		} else {
 			updates["status"] = SupportTicketTrialApplicationStatusRejected
 		}

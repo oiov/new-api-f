@@ -100,14 +100,14 @@ func TestSupportTicketCreatedNotificationEmailsBoundUser(t *testing.T) {
 
 		require.Len(t, *emails, 2)
 		require.Equal(t, "alice@example.com", (*emails)[0].To.Address)
-		require.Contains(t, (*emails)[0].Subject, "工单已提交")
+		require.Contains(t, (*emails)[0].Subject, "Support ticket submitted")
 		require.Contains(t, (*emails)[0].HTML, "退款问题")
 		require.Contains(t, (*emails)[0].HTML, "We have received your support ticket.")
 		require.Contains(t, (*emails)[0].HTML, "View ticket")
 		require.Contains(t, (*emails)[0].HTML, "Status")
 		require.NotContains(t, (*emails)[0].HTML, "你的工单已提交")
 		require.Equal(t, "support@nbility.dev", (*emails)[1].To.Address)
-		require.Contains(t, (*emails)[1].Subject, "新工单")
+		require.Contains(t, (*emails)[1].Subject, "New support ticket")
 		require.Contains(t, (*emails)[1].HTML, "alice")
 		require.Contains(t, (*emails)[1].HTML, "退款问题")
 		require.Contains(t, (*emails)[1].HTML, "A user submitted a new support ticket.")
@@ -131,8 +131,10 @@ func TestSupportTicketStatusNotificationCreatesSiteNotificationAndEmail(t *testi
 		require.Len(t, notifications, 1)
 		require.Equal(t, user.Id, notifications[0].UserId)
 		require.Equal(t, 1, notifications[0].SenderUserId)
-		require.Contains(t, notifications[0].Title, "工单状态已更新")
-		require.Contains(t, notifications[0].Content, "已解决")
+		require.Contains(t, notifications[0].Title, "Support ticket status updated")
+		require.Contains(t, notifications[0].Content, "Resolved")
+		require.NotContains(t, notifications[0].Title, "工单状态已更新")
+		require.NotContains(t, notifications[0].Content, "你的工单状态已更新")
 		require.True(t, notifications[0].EmailSent)
 		require.Len(t, *emails, 1)
 		require.Equal(t, "alice@example.com", (*emails)[0].To.Address)
@@ -159,7 +161,8 @@ func TestSupportTicketStatusNotificationSkipsEmailWithoutBoundAddress(t *testing
 		require.NoError(t, model.DB.First(&notification).Error)
 		require.False(t, notification.EmailSent)
 		require.Len(t, *emails, 0)
-		require.True(t, strings.Contains(notification.Content, "已关闭"))
+		require.True(t, strings.Contains(notification.Content, "Closed"))
+		require.NotContains(t, notification.Content, "已关闭")
 	})
 }
 
@@ -182,8 +185,10 @@ func TestSupportTicketUserReplyNotifiesAdminsBySiteAndEmail(t *testing.T) {
 		require.Len(t, notifications, 1)
 		require.Equal(t, admin.Id, notifications[0].UserId)
 		require.Equal(t, user.Id, notifications[0].SenderUserId)
-		require.Contains(t, notifications[0].Title, "工单有新回复")
+		require.Contains(t, notifications[0].Title, "Support ticket has a new reply")
 		require.Contains(t, notifications[0].Content, "模型异常")
+		require.Contains(t, notifications[0].Content, "A user added a reply")
+		require.NotContains(t, notifications[0].Title, "工单有新回复")
 		require.True(t, notifications[0].EmailSent)
 
 		require.Len(t, *emails, 2)
@@ -217,7 +222,9 @@ func TestSupportTicketAdminReplyNotifiesOnlyTicketOwner(t *testing.T) {
 		require.Len(t, notifications, 1)
 		require.Equal(t, admin.Id, notifications[0].SenderUserId)
 		require.Equal(t, user.Id, notifications[0].UserId)
-		require.Contains(t, notifications[0].Title, "工单收到回复")
+		require.Contains(t, notifications[0].Title, "Support ticket reply received")
+		require.Contains(t, notifications[0].Content, "Your support ticket received a new reply")
+		require.NotContains(t, notifications[0].Title, "工单收到回复")
 		require.True(t, notifications[0].EmailSent)
 
 		require.Len(t, *emails, 1)
@@ -225,9 +232,34 @@ func TestSupportTicketAdminReplyNotifiesOnlyTicketOwner(t *testing.T) {
 		require.NotEqual(t, admin.Email, (*emails)[0].To.Address)
 		require.NotEqual(t, otherAdmin.Email, (*emails)[0].To.Address)
 		require.NotEqual(t, supportTicketAdminEmail, (*emails)[0].To.Address)
+		require.Contains(t, (*emails)[0].Subject, "工单收到回复")
 		require.Contains(t, (*emails)[0].HTML, "已处理")
 		require.Contains(t, (*emails)[0].HTML, "你的工单收到新回复")
 		require.Contains(t, (*emails)[0].HTML, "查看工单")
+	})
+}
+
+func TestSupportTicketAdminReplyEmailSubjectDefaultsToEnglish(t *testing.T) {
+	withSupportTicketNotificationTestDB(t, func() {
+		emails := withSupportTicketEmailCapture(t)
+		user := &model.User{Id: 7, Username: "alice", Email: "alice@example.com", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "alice"}
+		admin := &model.User{Id: 1, Username: "admin", Email: "admin@example.com", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AffCode: "admin"}
+		require.NoError(t, model.DB.Create(user).Error)
+		require.NoError(t, model.DB.Create(admin).Error)
+		ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "Model issue", "Returns 500")
+		require.NoError(t, err)
+		message, _, err := model.AddSupportTicketMessage(ticket.Id, admin.Id, true, "Please retry")
+		require.NoError(t, err)
+
+		notifySupportTicketMessageAdded(admin.Id, ticket, message)
+
+		var notification model.SiteNotification
+		require.NoError(t, model.DB.First(&notification).Error)
+		require.Contains(t, notification.Title, "Support ticket reply received")
+		require.NotContains(t, notification.Title, "工单收到回复")
+		require.Len(t, *emails, 1)
+		require.Contains(t, (*emails)[0].Subject, "Support ticket reply received")
+		require.NotContains(t, (*emails)[0].Subject, "工单收到回复")
 	})
 }
 

@@ -177,8 +177,9 @@ func TestSupportTicketAdminUpdateStatusCreatesUserNotification(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 	require.Equal(t, user.Id, notification.UserId)
 	require.Equal(t, admin.Id, notification.SenderUserId)
-	require.Contains(t, notification.Title, "工单状态已更新")
-	require.Contains(t, notification.Content, "已解决")
+	require.Contains(t, notification.Title, "Support ticket status updated")
+	require.Contains(t, notification.Content, "Resolved")
+	require.NotContains(t, notification.Title, "工单状态已更新")
 }
 
 func TestSupportTicketAdminReplyDoesNotCreateDuplicateStatusNotification(t *testing.T) {
@@ -206,7 +207,7 @@ func TestSupportTicketAdminReplyDoesNotCreateDuplicateStatusNotification(t *test
 	}, time.Second, 10*time.Millisecond)
 	require.Equal(t, user.Id, notifications[0].UserId)
 	require.Equal(t, admin.Id, notifications[0].SenderUserId)
-	require.Contains(t, notifications[0].Title, "工单收到回复")
+	require.Contains(t, notifications[0].Title, "Support ticket reply received")
 	require.NotContains(t, notifications[0].Title, "工单状态已更新")
 }
 
