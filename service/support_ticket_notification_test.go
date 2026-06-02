@@ -102,10 +102,16 @@ func TestSupportTicketCreatedNotificationEmailsBoundUser(t *testing.T) {
 		require.Equal(t, "alice@example.com", (*emails)[0].To.Address)
 		require.Contains(t, (*emails)[0].Subject, "工单已提交")
 		require.Contains(t, (*emails)[0].HTML, "退款问题")
+		require.Contains(t, (*emails)[0].HTML, "We have received your support ticket.")
+		require.Contains(t, (*emails)[0].HTML, "View ticket")
+		require.Contains(t, (*emails)[0].HTML, "Status")
+		require.NotContains(t, (*emails)[0].HTML, "你的工单已提交")
 		require.Equal(t, "support@nbility.dev", (*emails)[1].To.Address)
 		require.Contains(t, (*emails)[1].Subject, "新工单")
 		require.Contains(t, (*emails)[1].HTML, "alice")
 		require.Contains(t, (*emails)[1].HTML, "退款问题")
+		require.Contains(t, (*emails)[1].HTML, "A user submitted a new support ticket.")
+		require.Contains(t, (*emails)[1].HTML, "View ticket")
 	})
 }
 
@@ -131,6 +137,10 @@ func TestSupportTicketStatusNotificationCreatesSiteNotificationAndEmail(t *testi
 		require.Len(t, *emails, 1)
 		require.Equal(t, "alice@example.com", (*emails)[0].To.Address)
 		require.Contains(t, (*emails)[0].HTML, "模型异常")
+		require.Contains(t, (*emails)[0].HTML, "Your support ticket status was updated.")
+		require.Contains(t, (*emails)[0].HTML, "Previous status")
+		require.Contains(t, (*emails)[0].HTML, "Current status")
+		require.NotContains(t, (*emails)[0].HTML, "你的工单状态已更新")
 	})
 }
 
@@ -180,6 +190,9 @@ func TestSupportTicketUserReplyNotifiesAdminsBySiteAndEmail(t *testing.T) {
 		require.Equal(t, "admin@example.com", (*emails)[0].To.Address)
 		require.Equal(t, "support@nbility.dev", (*emails)[1].To.Address)
 		require.Contains(t, (*emails)[0].HTML, "补充截图")
+		require.Contains(t, (*emails)[0].HTML, "A user added a reply to a support ticket.")
+		require.Contains(t, (*emails)[0].HTML, "View ticket")
+		require.NotContains(t, (*emails)[0].HTML, "工单 ID：")
 	})
 }
 
@@ -197,7 +210,7 @@ func TestSupportTicketAdminReplyNotifiesOnlyTicketOwner(t *testing.T) {
 		message, _, err := model.AddSupportTicketMessage(ticket.Id, admin.Id, true, "已处理，请重试")
 		require.NoError(t, err)
 
-		notifySupportTicketMessageAdded(admin.Id, ticket, message)
+		notifySupportTicketMessageAdded(admin.Id, ticket, message, SupportTicketEmailLanguageZh)
 
 		var notifications []model.SiteNotification
 		require.NoError(t, model.DB.Order("user_id asc").Find(&notifications).Error)
@@ -213,6 +226,8 @@ func TestSupportTicketAdminReplyNotifiesOnlyTicketOwner(t *testing.T) {
 		require.NotEqual(t, otherAdmin.Email, (*emails)[0].To.Address)
 		require.NotEqual(t, supportTicketAdminEmail, (*emails)[0].To.Address)
 		require.Contains(t, (*emails)[0].HTML, "已处理")
+		require.Contains(t, (*emails)[0].HTML, "你的工单收到新回复")
+		require.Contains(t, (*emails)[0].HTML, "查看工单")
 	})
 }
 
@@ -229,7 +244,7 @@ func TestSupportTicketEmailTemplateEscapesUserContent(t *testing.T) {
 		ImageURL: `https://example.com/a.png?name=<bad>&q="1"`,
 	}
 
-	content := buildSupportTicketMessageEmailContent("New support ticket reply", ticket, message, SupportTicketEmailLanguageEn)
+	content := buildSupportTicketMessageEmailContent(SupportTicketEmailLanguageEn, "New support ticket reply", "Your support ticket has a new reply.", ticket, message)
 
 	require.Contains(t, content, "&lt;script&gt;alert(&#34;ticket&#34;)&lt;/script&gt;")
 	require.Contains(t, content, "&lt;img src=x onerror=&#34;alert(1)&#34;&gt; please check")
@@ -239,7 +254,7 @@ func TestSupportTicketEmailTemplateEscapesUserContent(t *testing.T) {
 	require.Contains(t, content, "In progress")
 	require.Contains(t, content, "Urgent")
 	require.Contains(t, content, "View ticket")
-	require.Contains(t, content, "/console/support-tickets/42")
+	require.Contains(t, content, "/console/tickets")
 	require.Contains(t, content, "background:")
 }
 
@@ -256,10 +271,10 @@ func TestSupportTicketEmailTemplateDefaultsToEnglish(t *testing.T) {
 	require.Equal(t, SupportTicketEmailLanguageEn, normalizeSupportTicketEmailLanguage(""))
 	require.Equal(t, SupportTicketEmailLanguageEn, normalizeSupportTicketEmailLanguage("fr"))
 	require.Equal(t, SupportTicketEmailLanguageZh, normalizeSupportTicketEmailLanguage(" zh "))
-	require.Equal(t, "Resolved", supportTicketEmailStatusText(ticket.Status, ""))
-	require.Equal(t, "High", supportTicketEmailPriorityText(ticket.Priority, ""))
+	require.Equal(t, "Resolved", supportTicketEmailStatusText("", ticket.Status))
+	require.Equal(t, "High", supportTicketEmailPriorityText("", ticket.Priority))
 
-	content := buildSupportTicketMessageEmailContent("New support ticket reply", ticket, message, "")
+	content := buildSupportTicketMessageEmailContent("", "New support ticket reply", "Your ticket received a new reply.", ticket, message)
 
 	require.Contains(t, content, "New support ticket reply")
 	require.Contains(t, content, "Status")
