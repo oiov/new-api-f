@@ -336,15 +336,26 @@ func GetLogsStat(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	balanceQuota, err := model.SumUserQuota("")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	stat.BalanceQuota = balanceQuota
 	//tokenNum := model.SumUsedToken(logType, startTimestamp, endTimestamp, modelName, username, "")
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
+			"balance_quota":             stat.BalanceQuota,
 			"quota":                     stat.Quota,
 			"request_count":             stat.RequestCount,
 			"rpm":                       stat.Rpm,
 			"tpm":                       stat.Tpm,
+			"prompt_tokens":             stat.PromptTokens,
+			"completion_tokens":         stat.CompletionTokens,
+			"total_tokens":              stat.TotalTokens,
+			"average_use_time":          stat.AverageUseTime,
 			"prompt_cache_hit_count":    stat.PromptCacheHitCount,
 			"prompt_cache_total_count":  stat.PromptCacheTotalCount,
 			"prompt_cache_hit_rate":     stat.PromptCacheHitRate,
@@ -366,15 +377,26 @@ func GetLogsSelfStat(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	balanceQuota, err := model.SumUserQuota(username)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	quotaNum.BalanceQuota = balanceQuota
 	//tokenNum := model.SumUsedToken(logType, startTimestamp, endTimestamp, modelName, username, tokenName)
 	c.JSON(200, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
+			"balance_quota":             quotaNum.BalanceQuota,
 			"quota":                     quotaNum.Quota,
 			"request_count":             quotaNum.RequestCount,
 			"rpm":                       quotaNum.Rpm,
 			"tpm":                       quotaNum.Tpm,
+			"prompt_tokens":             quotaNum.PromptTokens,
+			"completion_tokens":         quotaNum.CompletionTokens,
+			"total_tokens":              quotaNum.TotalTokens,
+			"average_use_time":          quotaNum.AverageUseTime,
 			"prompt_cache_hit_count":    quotaNum.PromptCacheHitCount,
 			"prompt_cache_total_count":  quotaNum.PromptCacheTotalCount,
 			"prompt_cache_hit_rate":     quotaNum.PromptCacheHitRate,

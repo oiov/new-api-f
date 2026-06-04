@@ -370,6 +370,18 @@ func GetAllUsers(pageInfo *common.PageInfo, status string, sortBy string, sortOr
 	return users, total, nil
 }
 
+func SumUserQuota(username string) (int64, error) {
+	var quota int64
+	query := DB.Model(&User{})
+	if strings.TrimSpace(username) != "" {
+		query = query.Where("username = ?", strings.TrimSpace(username))
+	}
+	if err := query.Select("COALESCE(sum(quota), 0)").Scan(&quota).Error; err != nil {
+		return 0, err
+	}
+	return quota, nil
+}
+
 func SearchUsers(keyword string, group string, status string, startIdx int, num int, sortBy string, sortOrder string) ([]*User, int64, error) {
 	var users []*User
 	var total int64

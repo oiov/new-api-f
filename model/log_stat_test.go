@@ -64,6 +64,7 @@ func TestSumUsedQuotaIncludesPromptCacheStatsForCurrentFilters(t *testing.T) {
 				Quota:            10,
 				PromptTokens:     100,
 				CompletionTokens: 20,
+				UseTime:          1,
 				IsStream:         true,
 				Other:            `{"cache_tokens":40}`,
 			},
@@ -169,6 +170,7 @@ func TestSumUsedQuotaCountsPeriodTotalsAndStreamingOnlyPromptCacheStats(t *testi
 				Quota:            10,
 				PromptTokens:     100,
 				CompletionTokens: 20,
+				UseTime:          1,
 				IsStream:         true,
 				Other:            `{"cache_tokens":40}`,
 			},
@@ -185,6 +187,7 @@ func TestSumUsedQuotaCountsPeriodTotalsAndStreamingOnlyPromptCacheStats(t *testi
 				Quota:            20,
 				PromptTokens:     50,
 				CompletionTokens: 10,
+				UseTime:          2,
 				IsStream:         false,
 				Other:            `{"cache_tokens":50}`,
 			},
@@ -201,6 +204,7 @@ func TestSumUsedQuotaCountsPeriodTotalsAndStreamingOnlyPromptCacheStats(t *testi
 				Quota:            30,
 				PromptTokens:     80,
 				CompletionTokens: 5,
+				UseTime:          3,
 				IsStream:         true,
 				Other:            `{}`,
 			},
@@ -212,6 +216,10 @@ func TestSumUsedQuotaCountsPeriodTotalsAndStreamingOnlyPromptCacheStats(t *testi
 
 		require.EqualValues(t, 60, stat.Quota)
 		require.EqualValues(t, 3, stat.RequestCount)
+		require.EqualValues(t, 230, stat.PromptTokens)
+		require.EqualValues(t, 35, stat.CompletionTokens)
+		require.EqualValues(t, 265, stat.TotalTokens)
+		require.InDelta(t, 2, stat.AverageUseTime, 0.0001)
 		require.EqualValues(t, 2, stat.PromptCacheTotalCount)
 		require.EqualValues(t, 1, stat.PromptCacheHitCount)
 		require.InDelta(t, 0.5, stat.PromptCacheHitRate, 0.0001)

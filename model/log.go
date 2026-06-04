@@ -1126,10 +1126,15 @@ func readInt64FromMap(values map[string]interface{}, key string) int64 {
 }
 
 type Stat struct {
+	BalanceQuota           int64           `json:"balance_quota"`
 	Quota                  int             `json:"quota"`
 	RequestCount           int64           `json:"request_count"`
 	Rpm                    int             `json:"rpm"`
 	Tpm                    int             `json:"tpm"`
+	PromptTokens           int64           `json:"prompt_tokens"`
+	CompletionTokens       int64           `json:"completion_tokens"`
+	TotalTokens            int64           `json:"total_tokens"`
+	AverageUseTime         float64         `json:"average_use_time"`
 	PromptCacheHitCount    int64           `json:"prompt_cache_hit_count"`
 	PromptCacheTotalCount  int64           `json:"prompt_cache_total_count"`
 	PromptCacheHitRate     float64         `json:"prompt_cache_hit_rate"`
@@ -1516,7 +1521,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId 
 	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
 
 	// 执行查询
-	if err := tx.Select("COALESCE(sum(quota), 0) quota, count(*) request_count").Scan(&stat).Error; err != nil {
+	if err := tx.Select("COALESCE(sum(quota), 0) quota, count(*) request_count, COALESCE(sum(prompt_tokens), 0) prompt_tokens, COALESCE(sum(completion_tokens), 0) completion_tokens, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) total_tokens, COALESCE(avg(use_time), 0) average_use_time").Scan(&stat).Error; err != nil {
 		common.SysError("failed to query log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}

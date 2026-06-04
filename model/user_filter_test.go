@@ -74,3 +74,20 @@ func TestApplyUserStatusFilterAcceptsKnownStatusesOnly(t *testing.T) {
 		require.EqualError(t, err, "无效的用户状态")
 	})
 }
+
+func TestSumUserQuotaScopesToActiveUsersOrUsername(t *testing.T) {
+	withUserFilterTestDB(t, func() {
+		require.NoError(t, DB.Create(&User{Id: 1, Username: "alice", AffCode: "aff_alice", Status: common.UserStatusEnabled, Quota: 100}).Error)
+		require.NoError(t, DB.Create(&User{Id: 2, Username: "bob", AffCode: "aff_bob", Status: common.UserStatusDisabled, Quota: 200}).Error)
+		require.NoError(t, DB.Create(&User{Id: 3, Username: "deleted", AffCode: "aff_deleted", Status: common.UserStatusEnabled, Quota: 300}).Error)
+		require.NoError(t, DB.Delete(&User{}, 3).Error)
+
+		totalQuota, err := SumUserQuota("")
+		require.NoError(t, err)
+		require.EqualValues(t, 300, totalQuota)
+
+		aliceQuota, err := SumUserQuota("alice")
+		require.NoError(t, err)
+		require.EqualValues(t, 100, aliceQuota)
+	})
+}
