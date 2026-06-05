@@ -1360,6 +1360,17 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 		response.Id = id
 		response.Created = createAt
 		response.Model = relaycommon.DisplayedResponseModelName(info, info.UpstreamModelName)
+		// 修复 #5041: gemini -> claude 工具调用。每个携带工具调用的 chunk 都需把
+		// finishReason 标记为 tool_calls；Claude 格式下还要清空本 chunk 上的
+		// FinishReason，避免转换器在工具块之前提前关闭消息导致工具调用丢失。
+		if response.IsToolCall() {
+			finishReason = constant.FinishReasonToolCalls
+			if info.RelayFormat == types.RelayFormatClaude {
+				for choiceIdx := range response.Choices {
+					response.Choices[choiceIdx].FinishReason = nil
+				}
+			}
+		}
 		for choiceIdx := range response.Choices {
 			choiceKey := response.Choices[choiceIdx].Index
 			for toolIdx := range response.Choices[choiceIdx].Delta.ToolCalls {
@@ -1420,7 +1431,11 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 			logger.LogError(c, err.Error())
 		}
 		if isStop {
-			_ = handleStream(c, info, helper.GenerateStopResponse(id, createAt, relaycommon.DisplayedResponseModelName(info, info.UpstreamModelName), finishReason))
+			// 修复 #5041: Claude 格式下不发送 OpenAI 风格的 stop chunk，
+			// 由最终 stop 响应统一生成 Claude message_delta/message_stop。
+			if info.RelayFormat != types.RelayFormatClaude {
+				_ = handleStream(c, info, helper.GenerateStopResponse(id, createAt, relaycommon.DisplayedResponseModelName(info, info.UpstreamModelName), finishReason))
+			}
 		}
 		return true
 	})
@@ -1430,6 +1445,12 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 	}
 
 	response := helper.GenerateFinalUsageResponse(id, createAt, relaycommon.DisplayedResponseModelName(info, info.UpstreamModelName), *usage)
+	// 修复 #5041: Claude 格式且转换尚未完成时，最终响应需携带 finishReason 与 usage，
+	// 以便转换器输出正确的 message_delta(stop_reason) 与 message_stop。
+	if info.RelayFormat == types.RelayFormatClaude && info.ClaudeConvertInfo != nil && !info.ClaudeConvertInfo.Done {
+		response = helper.GenerateStopResponse(id, createAt, relaycommon.DisplayedResponseModelName(info, info.UpstreamModelName), finishReason)
+		response.Usage = usage
+	}
 	handleErr := handleFinalStream(c, info, response)
 	if handleErr != nil {
 		common.SysLog("send final response failed: " + handleErr.Error())
