@@ -450,6 +450,9 @@ func ProcessTools(tools []any) ([]*Tool, []*ClaudeWebSearchTool) {
 type Thinking struct {
 	Type         string `json:"type,omitempty"`
 	BudgetTokens *int   `json:"budget_tokens,omitempty"`
+	// Display 控制 thinking 摘要可见性（如 "summarized"）。
+	// Opus 4.7/4.8 默认 display 为 "omitted"，需显式恢复可见摘要。
+	Display string `json:"display,omitempty"`
 }
 
 func (c *Thinking) GetBudgetTokens() int {
