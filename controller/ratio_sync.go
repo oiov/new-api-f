@@ -225,8 +225,9 @@ func FetchUpstreamRatios(c *gin.Context) {
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
-				logger.LogWarn(c.Request.Context(), "non-200 from "+chItem.Name+": "+resp.Status)
-				ch <- upstreamResult{Name: uniqueName, Err: resp.Status}
+				errorText := upstreamHTTPError(resp)
+				logger.LogWarn(c.Request.Context(), "non-200 from "+chItem.Name+": "+errorText)
+				ch <- upstreamResult{Name: uniqueName, Err: errorText}
 				return
 			}
 
@@ -402,6 +403,36 @@ func FetchUpstreamRatios(c *gin.Context) {
 			"test_results": testResults,
 		},
 	})
+}
+
+// upstreamHTTPError 解析上游 ratio 同步的非 200 响应体，提取 message/error 字段，
+// 使失败原因在 API test_results 中可见，而非仅 HTTP status。
+// 修复 3ec5f3555。响应体读取受 maxRatioConfigBytes 限制。
+func upstreamHTTPError(resp *http.Response) string {
+	if resp == nil {
+		return "upstream response is nil"
+	}
+	status := resp.Status
+	if resp.Body == nil {
+		return status
+	}
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxRatioConfigBytes))
+	if err != nil || len(bytes.TrimSpace(bodyBytes)) == 0 {
+		return status
+	}
+	var body struct {
+		Message string `json:"message"`
+		Error   string `json:"error"`
+	}
+	if err := common.Unmarshal(bodyBytes, &body); err == nil {
+		if message := strings.TrimSpace(body.Message); message != "" {
+			return status + ": " + message
+		}
+		if errorMessage := strings.TrimSpace(body.Error); errorMessage != "" {
+			return status + ": " + errorMessage
+		}
+	}
+	return status
 }
 
 func buildDifferences(localData map[string]any, successfulChannels []struct {
