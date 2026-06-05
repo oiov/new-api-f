@@ -409,10 +409,10 @@ func StreamResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse, info *relay
 	tools := make([]dto.ToolCallResponse, 0)
 	fcIdx := 0
 	if claudeResponse.Index != nil {
-		fcIdx = *claudeResponse.Index - 1
-		if fcIdx < 0 {
-			fcIdx = 0
-		}
+		// 修复 #5095: 直接使用 Claude 的 block index 作为 fcIdx，不做 -1 偏移。
+		// fcIdx 仅作为本地 map 的 key，只需保证唯一，无需从 0 开始；
+		// 旧的 -1 偏移会让 index=0 与 index=1 撞键，丢失并发工具调用。
+		fcIdx = *claudeResponse.Index
 	}
 	var choice dto.ChatCompletionsStreamResponseChoice
 	if claudeResponse.Type == "message_start" {
