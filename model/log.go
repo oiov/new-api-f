@@ -478,7 +478,9 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId in
 	if err != nil {
 		return nil, 0, err
 	}
-	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	// 性能 #5116: 按 created_at desc 排序以利用 (created_at, ...) 复合索引；
+	// id desc 作为同一时间戳内的稳定兜底。导出 keyset 分页仍保持 id desc，不在此列。
+	err = tx.Order("logs.created_at desc, logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
 		return nil, 0, err
 	}
@@ -682,7 +684,9 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		common.SysError("failed to count user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")
 	}
-	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	// 性能 #5116: 按 created_at desc 排序以利用 (created_at, ...) 复合索引；
+	// id desc 作为同一时间戳内的稳定兜底（也让分页更确定）。
+	err = tx.Order("logs.created_at desc, logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
 		common.SysError("failed to search user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")
