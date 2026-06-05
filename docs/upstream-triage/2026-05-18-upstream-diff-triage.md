@@ -18,6 +18,83 @@ Purpose: record the current comparison between this fork, `dext7r/Zeabur` branch
 
 Working tree note: `web-worker/` is untracked. Do not modify or delete it unless explicitly requested.
 
+## Current Check 2026-06-05
+
+Fresh fetch results on 2026-06-05:
+
+- Local `HEAD` / `origin/fishxcode`: `649b6659169e562a27070b91f120928d9447e0bf` (`feat: 增加用户配额统计功能，支持按用户名查询`), authored 2026-06-04 20:03:17 +0800.
+- Direct upstream `upstream/fishxcode`: `70bd759d80a64be8e53ecd58fe35de0c90c65a18` (`fix: fallback expired subscription-only billing`), authored 2026-06-01 23:14:45 +0800.
+- Original upstream `quantumnous/main`: `87cc22d7ec4923ad08df826866fb3e51c95ed1d8` (`fix(distributor): resolve model for GET /v1/video/generations/:task_id (#5133)`), authored 2026-06-04 18:48:30 +0800.
+- Zeabur mirror sync marker `upstream/new-api`: unchanged at `5d93351d04269d9504e5fd0a5fd32ded674ddef2` (`sync: QuantumNous/new-api@fbf235d2`).
+- Historical `upstream/main`: unchanged at `d2796837bac9af4f49a59330e703a260097322b4` (`chore: add MREGISTER sync target`).
+- Fetch note: `git fetch https://github.com/QuantumNous/new-api main:refs/remotes/quantumnous/main --prune` failed because this repository has no configured `quantumnous` remote and the pseudo remote ref was left invalid after prune. Verified `87cc22d7ec4923ad08df826866fb3e51c95ed1d8` with `git ls-remote`, then repaired `refs/remotes/quantumnous/main` using `git update-ref`.
+- Root worktree note: only `?? web-worker/` is shown. `web-worker` is a nested repository and `git -C web-worker status --short --branch` reports `## main...origin/main`.
+
+Merge bases remain unchanged:
+
+- Local vs Zeabur: `8aa8b81e03522f306d24134725378228e64b03ab` (`fix: original_model && upstream_model paramOverrideKeyAuditPaths`).
+- Local vs QuantumNous main: `9ae9040b3c9dab88660fb9724d182393d0137861` (`Merge pull request #3401 from seefs001/fix/convert-openai-detail-field`).
+- Zeabur fishxcode vs QuantumNous main: `8aa8b81e03522f306d24134725378228e64b03ab`.
+- `upstream/new-api` is not an ancestor of local `HEAD` or `upstream/fishxcode`; continue treating it as a historical sync marker only.
+
+Current ancestry counts:
+
+- `git rev-list --left-right --count HEAD...upstream/fishxcode`: `488 552` total commits by ancestry.
+- `git rev-list --count --no-merges upstream/fishxcode ^HEAD`: 529 Zeabur non-merge commits not in local by ancestry.
+- `git rev-list --count --no-merges HEAD ^upstream/fishxcode`: 452 local non-merge commits not in Zeabur by ancestry.
+- `git rev-list --left-right --count HEAD...quantumnous/main`: `431 375` total commits by ancestry.
+- `git rev-list --count --no-merges quantumnous/main ^HEAD`: 310 QuantumNous non-merge commits not in local by ancestry.
+- `git rev-list --count --no-merges HEAD ^quantumnous/main`: 414 local non-merge commits not in QuantumNous by ancestry.
+- `git rev-list --left-right --count upstream/fishxcode...quantumnous/main`: `552 432` total commits by ancestry, Zeabur side first.
+
+Current file diff scale:
+
+- `git diff --shortstat HEAD..upstream/fishxcode`: 573 files changed, 87574 insertions(+), 40942 deletions(-).
+- `git diff --shortstat HEAD..quantumnous/main`: 2037 files changed, 256755 insertions(+), 174297 deletions(-).
+
+New upstream commits since the previous late 2026-05-19 check:
+
+- Zeabur advanced from `d2e755b99c99b35cf51e92b707e1ea26faccdb1d` to `70bd759d80a64be8e53ecd58fe35de0c90c65a18`: 55 new non-merge commits.
+- QuantumNous advanced from `0936e2504655a5cbf7bc3c388f6d3e2bb24916d3` to `87cc22d7ec4923ad08df826866fb3e51c95ed1d8`: 78 new non-merge commits.
+
+High-value new Zeabur candidates:
+
+| Commit | Area | Local status | Recommendation |
+| --- | --- | --- | --- |
+| `70bd759d8` | Subscription-only billing fallback when no active subscription remains | Not covered. Local `service/billing_session.go` still switches on `subscription_only` without the upstream downgrade-and-wallet-fallback helper; local `model/subscription.go` has `HasActiveUserSubscription` but lacks `DowngradeSubscriptionOnlyBillingPreferenceIfNoActiveSubscription`. | Manual backport now if subscription-only billing is enabled locally. Add focused billing-session and subscription-expiry tests. No schema change in upstream patch. |
+| `66d8f7477`, `dfdd95323`, `c8f096977`, `61d6a10b3`, `63c9ca405`, `7aeaa15b0` family | Subscription token quota, request-count, wallet-overage, vendor resolution | Needs inspection. Local has extensive custom subscription/request-count work and tests, but these upstream commits touch the same functions and may contain edge-case fixes not present locally. | Manual comparison batch, not cherry-pick. Start with tests from `service/task_billing_test.go`, `controller/token_test.go`, and `model/subscription_query_test.go`. |
+| `3ec5f3555` | Ratio sync error reporting | Not covered from title-level check; local `controller/ratio_sync.go` has provider pricing import code, but needs exact diff inspection. | Inspect/manual backport. Low conflict risk. |
+| `56241ad9c` | Log billing-source filters | Partially overlapping. Local log query/export code has custom subscription filters and export limits; upstream exact billing-source filter behavior is not fully present. | Manual backport with query tests; avoid direct file replacement. |
+| `099b7f2a2` | Provider pricing API and CC Switch import helpers | Mostly not covered. `model/provider_pricing.go` is absent locally; only related ratio-sync comments and `ccswitch_defaults` plumbing exist. | Conditional. Backport only if CC Switch/provider-pricing import remains product scope. |
+| `aaa7510e5`, `1461e7e3`, `4ee454d56`, `603dc34a1` | Disabled frontend landing fallback and Docker frontend build toggle | Not backend-critical; touches router/static frontend behavior. | Defer/conditional. Verify against local `web-worker` direction before merging. |
+| `36c13aa1f`, `095f74ad6`, `2bb6be7c2`, `a01dcd90d` and related package UI commits | Old `web/` package console layout/mobile/loading UI | Not in current primary frontend scope. | Skip/defer unless backend API bug is separable. |
+
+High-value new QuantumNous candidates:
+
+| Commit | Area | Local status | Recommendation |
+| --- | --- | --- | --- |
+| `87cc22d7e` | Distributor model resolution for `GET /v1/video/generations/:task_id` under token model limits | Not covered. Local `middleware/distributor.go` still sets `RelayModeVideoFetchByID` and `shouldSelectChannel=false` without backfilling `modelRequest.Model` from the stored task. | Backport now. Small focused patch plus test around token model-limit task fetch. |
+| `3aa113b5a` | Dify remote image nil pointer panic | Not covered. Local `relay/channel/dify/relay-dify.go` still declares `var file *DifyFile` and assigns `file.Type` in the remote-image branch before initialization. | Backport now. Small safe bugfix plus unit/regression test if practical. |
+| `ff06067a1` | Claude stream concurrent `tool_use` index collision | Not covered. Local `relay/channel/claude/relay-claude.go` still uses `*Index - 1` with clamp to zero. | Backport now. High protocol correctness value. |
+| `465c5edab` | Gemini-to-Claude streaming `tool_use` finish handling | Not covered. Local `GeminiChatStreamHandler` still always emits the stop response and final usage response in the older flow. | Backport now/manual due local display-model wrappers. |
+| `2a528d46c` | Image quality parameter handling | Not covered. Local `relay/image_handler.go` collapses all non-`hd` qualities to `standard`. | Backport now. Small protocol compatibility fix. |
+| `230a3592f`, `afb470e40`, `74985fa87`, `1d3203736` | Log query exact filters and `(created_at, id)` index/order performance | Partially not covered. Local `model/log.go` still has `idx_created_at_id` priority `(id, created_at)`, admin/user lists order by `logs.id desc`, admin model filter uses raw `like`, and token-name filters are exact in some paths. | Manual backport. Flag manual index rebuild for existing DBs if applying `afb470e40`; AutoMigrate will not reorder an existing index. |
+| `ebbe31553` | Evict/restore auto-disabled multi-key channels from cache | Not covered. Local `handlerMultiKeyUpdate` initializes `keyIndex` to zero, does not handle missing key, and does not evict cache when all keys are disabled. | Manual backport with channel-cache tests. |
+| `128802818` | Truncate oversized upstream error logs | Needs inspection. Local has request-log preview/truncation utilities but this exact RelayErrorHandler behavior is not verified. | Inspect/manual backport to reduce log memory/noise. |
+| `fddf54ccc` | Reduce heap residency for large base64 relay requests | Needs inspection. Local has `common.GetRequestBody` and pass-through helpers, but not the upstream `outbound_body` package by name. | Manual performance backport only after reviewing interaction with local pass-through/body-storage behavior. |
+| `006e80165` | Resolve model `owned_by` from active channels and token group | Not covered. Local `ListModels` still returns static `openAIModelsMap` owner or `custom`; `model.GetPreferredModelOwnerChannelTypes` is absent. | Manual backport if accurate `/v1/models` metadata matters; cross-check with local multi-group token behavior. |
+| `0c7aceb83` | Claude Opus 4.8 support and ratios | Not covered from quick check. | Conditional model catalog/ratio update. Backport if provider support is desired. |
+| `0354c38be`, `49bc3a117`, `f2c7647ec`, `19f1821fc` | Waffo Pancake payment/webhook/subscription integration | Mostly not applicable to current local active Waffo paths. Local has Waffo, not the upstream Pancake controller/service set. | Conditional/skip unless enabling Waffo Pancake. Do not mix into existing payment safety batch without product decision. |
+| `b397c58ba`, `8ae095c3b` | Register status exposure and user create/delete handling | Needs inspection. Small backend correctness candidates, but less urgent than relay/log/cache fixes. | Inspect after relay/log/cache batch. |
+| Web/default/classic TypeScript, theme, channel editor, usage-log UI commits | Frontend UI migration and polish | Outside current primary `web-worker` direction. | Usually skip unless a backend/API contract fix is separable. |
+
+Current recommendation:
+
+- Do not direct-merge either `upstream/fishxcode` or `quantumnous/main`.
+- Continue manual backport batches. Highest immediate batch should be QuantumNous relay/provider correctness (`87cc22d7e`, `3aa113b5a`, `ff06067a1`, `465c5edab`, `2a528d46c`), then log/channel-cache correctness (`230a3592f`, `afb470e40`, `74985fa87`, `1d3203736`, `ebbe31553`), then Zeabur subscription billing edge cases (`70bd759d8` plus request-count/token quota family).
+- Schema/data-shape note: no schema change was applied during this check. If `afb470e40` is later backported, existing deployments need a manual rebuild of `logs.idx_created_at_id` to reorder it to `(created_at, id)` for SQLite/MySQL/PostgreSQL; record exact DDL at implementation time. If Waffo Pancake or provider-pricing work is later selected, re-check model fields and migrations before applying.
+- Detailed conflict/risk plan: `docs/upstream-triage/2026-06-05-upstream-backport-risk-plan.md`. Use that plan before any merge/backport so recommended fixes are tested against local subscription, log, relay, channel-cache, payment, and `web-worker` constraints.
+
 ## Current Check 2026-05-19 Late
 
 Fresh fetch results:
@@ -647,6 +724,47 @@ Continuation marker for next run:
 - Payment continuation is committed locally as `HEAD`.
 - Covered upstream commits in this continuation: `a7c38ec85` for subscription EPay/Stripe/Creem plus ordinary Creem/Waffo provider guards, and `b2e62a44e` for top-up query hardening.
 - Remaining payment-safety note: ordinary WaffoPancake provider guard has no active local controller/callback path to update; only constants are present.
+
+### 2026-06-05 Relay / Log / Channel / Model Correctness Batch
+
+Scope approved by user: execute `docs/upstream-triage/2026-06-05-upstream-backport-risk-plan.md` by priority, cautiously, with TDD and (where feasible) real DB + key smoke tests. Base local `HEAD` at batch start: `649b66591`. All work committed on `fishxcode`, not pushed. **No schema/index/migration changes in this entire batch.**
+
+| Local commit | Upstream | Area | Files | Verification |
+| --- | --- | --- | --- | --- |
+| `c0627d3da` | `87cc22d7e` QuantumNous | Distributor: backfill model for GET `/v1/video/generations/:task_id` & `/v1/videos/:task_id` under token model-limit | `middleware/distributor.go` (+`getTaskOriginModelName`), `middleware/distributor_task_fetch_model_test.go` | Red→green; routing-regression suite passed; real smoke: GET video fetch returns 400 `task_not_exist` (no 500/panic) |
+| `1add536f4` | `3aa113b5a` QuantumNous | Dify remote-image nil pointer panic | `relay/channel/dify/relay-dify.go`, `relay/channel/dify/relay_dify_test.go` | Red(panic)→green |
+| `86121f620` | `ff06067a1` QuantumNous | Claude concurrent tool_use index collision (removed `-1` offset) | `relay/channel/claude/relay-claude.go`, `relay/channel/claude/relay_claude_tooluse_index_test.go` | Red `[0,0]`→green `[0,1]`; real smoke: parallel 2-tool Claude stream returns 2 distinct indexes |
+| `dba939a7f` | `465c5edab` QuantumNous | Gemini→Claude tool stream finish handling (text-then-tool was dropping tool_use) | `relay/channel/gemini/relay-gemini.go`, `relay/channel/gemini/relay_gemini_claude_tool_test.go` | Empirically found real defect (tool dropped + `end_turn`); red→green + OpenAI-format guard test; real smoke: Anthropic `/v1/messages`→gemini emits tool_use + `stop_reason:tool_use` |
+| `8fe0dcaac` | `2a528d46c` QuantumNous | Image log quality preservation (non-hd no longer collapsed to standard) | `relay/image_handler.go` (+`resolveImageQuality`), `relay/image_handler_test.go` | Red→green |
+| `c39869adb` | `230a3592f` (1d3203736 family) QuantumNous | Admin log exact text filter (`_`/`%` no longer mis-wildcard); `applyExplicitLogTextFilter` for admin model/username/token_name only; **user query untouched** | `model/log.go`, `model/log_admin_filter_test.go` | Red→green; real PG read-only: `gpt_5.5` matched 125466 rows pre-fix → 0 post-fix |
+| `5ba206977` | `230a3592f` QuantumNous | Log list ordering `id desc`→`created_at desc, id desc` (GetAllLogs/GetUserLogs only; export keyset & subscription-consume kept `id desc`) | `model/log.go`, `model/log_order_test.go` | Red→green; real PG EXPLAIN ANALYZE: common "latest" case both sub-ms (0.124 vs 0.137ms) — benefit is mainly ordering stability + old-window/deep-page. **Index rebuild `afb470e40` SKIPPED** (existing `idx_created_at_type` covers; 857MB/572k-row table rebuild not worth it) |
+| `469f93b2c` | `ebbe31553` QuantumNous | Multi-key channel: `keyIndex=-1` (missing key no longer disables index 0), `hasEnabledMultiKey` availability check, re-enable restore, evict from `group2model2channels` when all keys disabled | `model/channel.go`, `model/channel_multikey_test.go` | Red→green; eviction integration test verified effective (temporarily disabled eviction → red) |
+| `46150cfba` | `128802818` QuantumNous | Truncate oversized upstream error body in debug log only (`common.LocalLogPreview`, 2048); caller-facing structured error keeps full body | `common/str.go`, `common/str_preview_test.go`, `service/error.go`, `service/error_preview_test.go` | Red→green + guard test (caller error full) |
+| `2bfd325a7` | `3ec5f3555` QuantumNous | Surface upstream ratio-sync non-200 body message/error in `test_results` | `controller/ratio_sync.go`, `controller/ratio_sync_error_test.go` | Red→green (nil/message/error/empty/non-JSON) |
+| `f236c85f7` | `0c7aceb83` QuantumNous | Claude Opus 4.8 support (7 variants + ratios model 2.5 / cache 0.1 / create 1.25; reasoning adaptive+strip; AWS/Vertex maps; `dto.Thinking.Display` added) | `dto/claude.go`, `relay/channel/claude/{constants,relay-claude}.go`, `relay/claude_handler.go`, `relay/channel/aws/constants.go`, `relay/channel/vertex/adaptor.go`, `setting/ratio_setting/{model_ratio,cache_ratio}.go`, `relay/channel/claude/relay_claude_opus48_test.go` | Red→green (2 upstream tests); real smoke: `claude-opus-4-8` base end-to-end 200; effort variants need channel declaration (same as 4-6-high, not a regression) |
+| `655fd3d06` | `006e80165` QuantumNous | `/v1/models` `owned_by` resolved from active channels (`GetPreferredModelOwnerChannelTypes` + controller helpers); local multi-group ListModels preserved | `model/model_meta.go`, `model/model_owner_test.go`, `controller/model.go` | Red→green; real smoke: owned_by all resolved to real providers (openai/claude/google gemini/...), no `custom`, 41-model list intact |
+
+API-compatibility / web-worker gate for this batch:
+
+- No route/auth/status-code/pagination/DTO-field changes. Relay fixes are provider-protocol correctness only.
+- `656fd3d06` (`006e80165`): `/v1/models` `owned_by` VALUES change (custom/static → real provider); field name/type unchanged (`string`). web-worker only references `owned_by` in doc markdown, no functional dependency — verified by `rg`.
+- `dto.Thinking.Display` added as `omitempty`; backward compatible.
+
+Skipped / deferred in this batch (with reason):
+
+- Task 6 subscription-only billing fallback (`70bd759d8`): high risk, user skipped.
+- Task 7b index rebuild (`afb470e40`): marginal benefit vs existing `idx_created_at_type`; manual rebuild of 857MB/572k-row `logs` table on live PG not worth it. Sort change (`230a3592f`) kept.
+- `fddf54ccc` (base64 memory): user skipped; only the disk-offload half was separable.
+- `56241ad9c` (log billing-source filter): cannot cherry-pick (local signatures diverged after `c39869adb`) + overlaps local subscription-consume logic. Needs manual re-implementation if wanted.
+- Zeabur subscription token/request-count family (`63c9ca405`/`7aeaa15b0`/`66d8f7477`/`dfdd95323`/`c8f096977`/`61d6a10b3`/`104216643`/`105bf6bb2`/`f95e00a81`): dependency-linked, money-governing, local files heavily customized. Needs a dedicated future batch with expanded tests first; `63c9ca405` (wallet-group ratio fallback + overage cap, wholly absent locally) is the linchpin to validate first.
+
+Schema/data-shape note: **no schema, column, index, or migration change was applied in this batch.** AutoMigrate is unaffected. No manual DDL required for any deployment.
+
+Continuation marker for next run:
+
+- Branch: `fishxcode`; local commit after this batch: `655fd3d06`.
+- Direct upstream compared: `upstream/fishxcode` at `70bd759d8`; original upstream: `quantumnous/main` at `87cc22d7e`.
+- Model package full/wide-`-run` tests still hit a pre-existing `database/sql` goroutine hang (unrelated to this batch); run exact test names for this batch's model tests.
 
 ## Commands Used For This Snapshot
 
