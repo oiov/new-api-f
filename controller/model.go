@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -116,6 +117,69 @@ func init() {
 	})
 }
 
+func channelOwnerName(channelType int) string {
+	apiType, success := common.ChannelType2APIType(channelType)
+	if !success {
+		return strings.ToLower(constant.GetChannelTypeName(channelType))
+	}
+	adaptor := relay.GetAdaptor(apiType)
+	if adaptor == nil {
+		return strings.ToLower(constant.GetChannelTypeName(channelType))
+	}
+	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelType: channelType,
+	}})
+	if name := strings.TrimSpace(adaptor.GetChannelName()); name != "" {
+		return name
+	}
+	return strings.ToLower(constant.GetChannelTypeName(channelType))
+}
+
+// getPreferredModelOwners 把模型名解析为实际服务它的渠道 owner 名（#4416）。
+// 查询失败时返回空 map，调用方退回静态/custom owner。
+func getPreferredModelOwners(modelNames []string, groups []string) map[string]string {
+	channelTypes, err := model.GetPreferredModelOwnerChannelTypes(modelNames, groups)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("GetPreferredModelOwnerChannelTypes error: %v", err))
+		return map[string]string{}
+	}
+
+	ownerByChannelType := make(map[int]string)
+	owners := make(map[string]string, len(channelTypes))
+	for modelName, channelType := range channelTypes {
+		owner, ok := ownerByChannelType[channelType]
+		if !ok {
+			owner = channelOwnerName(channelType)
+			ownerByChannelType[channelType] = owner
+		}
+		if owner != "" {
+			owners[modelName] = owner
+		}
+	}
+	return owners
+}
+
+// buildOpenAIModel 构造单个模型的 OpenAIModels，优先用活跃渠道解析的 owner 覆盖
+// 静态/custom owner。
+func buildOpenAIModel(modelName string, ownerByModel map[string]string) dto.OpenAIModels {
+	var oaiModel dto.OpenAIModels
+	if staticModel, ok := openAIModelsMap[modelName]; ok {
+		oaiModel = staticModel
+	} else {
+		oaiModel = dto.OpenAIModels{
+			Id:      modelName,
+			Object:  "model",
+			Created: 1626777600,
+			OwnedBy: "custom",
+		}
+	}
+	if owner, ok := ownerByModel[modelName]; ok && owner != "" {
+		oaiModel.OwnedBy = owner
+	}
+	oaiModel.SupportedEndpointTypes = model.GetModelSupportEndpointTypes(modelName)
+	return oaiModel
+}
+
 func ListModels(c *gin.Context, modelType int) {
 	userOpenAiModels := make([]dto.OpenAIModels, 0)
 
@@ -128,19 +192,14 @@ func ListModels(c *gin.Context, modelType int) {
 		} else {
 			tokenModelLimit = map[string]bool{}
 		}
-		for allowModel, _ := range tokenModelLimit {
-			if oaiModel, ok := openAIModelsMap[allowModel]; ok {
-				oaiModel.SupportedEndpointTypes = model.GetModelSupportEndpointTypes(allowModel)
-				userOpenAiModels = append(userOpenAiModels, oaiModel)
-			} else {
-				userOpenAiModels = append(userOpenAiModels, dto.OpenAIModels{
-					Id:                     allowModel,
-					Object:                 "model",
-					Created:                1626777600,
-					OwnedBy:                "custom",
-					SupportedEndpointTypes: model.GetModelSupportEndpointTypes(allowModel),
-				})
-			}
+		allowModels := make([]string, 0, len(tokenModelLimit))
+		for allowModel := range tokenModelLimit {
+			allowModels = append(allowModels, allowModel)
+		}
+		// #4416: owner 从活跃渠道解析；模型限制下不按 group 过滤。
+		ownerByModel := getPreferredModelOwners(allowModels, nil)
+		for _, allowModel := range allowModels {
+			userOpenAiModels = append(userOpenAiModels, buildOpenAIModel(allowModel, ownerByModel))
 		}
 	} else {
 		userId := c.GetInt("id")
@@ -159,31 +218,27 @@ func ListModels(c *gin.Context, modelType int) {
 			group = tokenGroup
 		}
 		var models []string
+		var ownerGroups []string
 		tokenGroups, _ := service.NormalizeTokenGroups(tokenGroup)
 		if tokenGroup == "auto" {
-			for _, autoGroup := range service.GetUserAutoGroupForUser(userId, userGroup, userCache.Quota > 0) {
+			autoGroups := service.GetUserAutoGroupForUser(userId, userGroup, userCache.Quota > 0)
+			ownerGroups = autoGroups
+			for _, autoGroup := range autoGroups {
 				models = appendUniqueModels(models, model.GetGroupEnabledModels(autoGroup))
 			}
 		} else if len(tokenGroups) > 1 {
-			for _, tokenGroup := range tokenGroups {
-				models = appendUniqueModels(models, model.GetGroupEnabledModels(tokenGroup))
+			ownerGroups = tokenGroups
+			for _, tg := range tokenGroups {
+				models = appendUniqueModels(models, model.GetGroupEnabledModels(tg))
 			}
 		} else {
+			ownerGroups = []string{group}
 			models = model.GetGroupEnabledModels(group)
 		}
+		// #4416: owner 从活跃渠道解析，限定在本次模型列表所用的同一组 group。
+		ownerByModel := getPreferredModelOwners(models, ownerGroups)
 		for _, modelName := range models {
-			if oaiModel, ok := openAIModelsMap[modelName]; ok {
-				oaiModel.SupportedEndpointTypes = model.GetModelSupportEndpointTypes(modelName)
-				userOpenAiModels = append(userOpenAiModels, oaiModel)
-			} else {
-				userOpenAiModels = append(userOpenAiModels, dto.OpenAIModels{
-					Id:                     modelName,
-					Object:                 "model",
-					Created:                1626777600,
-					OwnedBy:                "custom",
-					SupportedEndpointTypes: model.GetModelSupportEndpointTypes(modelName),
-				})
-			}
+			userOpenAiModels = append(userOpenAiModels, buildOpenAIModel(modelName, ownerByModel))
 		}
 	}
 
