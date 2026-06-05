@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -20,6 +21,18 @@ var (
 	maskApiKeyPattern = regexp.MustCompile(`(['"]?)api_key:([^\s'"]+)(['"]?)`)
 	inviteCodePattern = regexp.MustCompile(`^[A-Za-z0-9]+`)
 )
+
+const LocalLogContentLimit = 2048
+
+// LocalLogPreview 限制仅用于本地日志输出的内容长度（DebugEnabled 时不限制）。
+// 修复 #5083: 超大上游错误响应体打进日志会撑爆内存/日志，这里截断；
+// 返回给调用方的结构化错误不经此处理，仍保留完整内容。
+func LocalLogPreview(content string) string {
+	if DebugEnabled || len(content) <= LocalLogContentLimit {
+		return content
+	}
+	return fmt.Sprintf("%s... [truncated, original_length=%d, limit=%d]", content[:LocalLogContentLimit], len(content), LocalLogContentLimit)
+}
 
 func GetStringIfEmpty(str string, defaultValue string) string {
 	if str == "" {
