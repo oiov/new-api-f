@@ -470,7 +470,10 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 }
 
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, err error) {
-	tx := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	tx, err := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	if err != nil {
+		return nil, 0, err
+	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
 		return nil, 0, err
@@ -492,7 +495,7 @@ const logExportLimit = 10000
 
 var logExportBatchSize = 500
 
-func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) *gorm.DB {
+func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -501,17 +504,20 @@ func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, 
 	}
 	tx = applyErrorLogVisibilityFilter(tx, logType, !common.ErrorLogDisplayEnabled)
 
-	if modelName != "" {
-		tx = tx.Where("logs.model_name like ?", modelName)
+	var err error
+	// 修复 #5097: 文本过滤无显式 % 时精确匹配，有 % 时走转义模糊，
+	// 避免用户输入中的 `_`/`%` 被当作通配符（如 "gpt_4" 误匹配 "gpt-4"）。
+	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
+		return nil, err
 	}
 	if userId > 0 {
 		tx = tx.Where("logs.user_id = ?", userId)
 	}
-	if username != "" {
-		tx = tx.Where("logs.username = ?", username)
+	if tx, err = applyExplicitLogTextFilter(tx, "logs.username", username); err != nil {
+		return nil, err
 	}
-	if tokenName != "" {
-		tx = tx.Where("logs.token_name = ?", tokenName)
+	if tx, err = applyExplicitLogTextFilter(tx, "logs.token_name", tokenName); err != nil {
+		return nil, err
 	}
 	if requestId != "" {
 		tx = tx.Where("logs.request_id = ?", requestId)
@@ -542,7 +548,24 @@ func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, 
 	if subscriptionPlanId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_plan_id", subscriptionPlanId)
 	}
-	return tx
+	return tx, nil
+}
+
+// applyExplicitLogTextFilter 仅在用户显式提供 % 通配符时才走转义 LIKE 模糊匹配，
+// 否则做精确等值匹配。这样可避免用户输入中的 `_`/`%` 被无意当作通配符。
+// 修复 #5097。
+func applyExplicitLogTextFilter(tx *gorm.DB, column string, value string) (*gorm.DB, error) {
+	if value == "" {
+		return tx, nil
+	}
+	if strings.Contains(value, "%") {
+		pattern, err := sanitizeLikePattern(value)
+		if err != nil {
+			return nil, err
+		}
+		return tx.Where(column+" LIKE ? ESCAPE '!'", pattern), nil
+	}
+	return tx.Where(column+" = ?", value), nil
 }
 
 func buildUserLogsQuery(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
@@ -734,7 +757,10 @@ func findLogsForExport(tx *gorm.DB, limit int, compact bool) ([]*Log, error) {
 }
 
 func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool) (logs []*Log, total int64, truncated bool, err error) {
-	tx := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	tx, err := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	if err != nil {
+		return nil, 0, false, err
+	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
 		return nil, 0, false, err
