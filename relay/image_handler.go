@@ -124,10 +124,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		usage.(*dto.Usage).PromptTokens = int(imageN)
 	}
 
-	quality := "standard"
-	if request.Quality == "hd" {
-		quality = "hd"
-	}
+	quality := resolveImageQuality(request.Quality)
 
 	var logContent []string
 
@@ -143,4 +140,13 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
 	return nil
+}
+
+// resolveImageQuality 保留客户端传入的非空品质值（如 "high"），仅在为空时回退为 "standard"。
+// 修复 #5103: 旧逻辑把除 "hd" 外的所有品质都压成 "standard"，会丢失 provider 新增的品质值。
+func resolveImageQuality(quality string) string {
+	if quality == "" {
+		return "standard"
+	}
+	return quality
 }
