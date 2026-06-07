@@ -40,51 +40,66 @@
 
 ```
 若 满足全部条件:
-  - pathname 属于登录/注册入口（见 3.2）
-  - 当前 hostname 不属于主域 SITE_URL 的注册域（见 3.3）
-  - 非本地开发豁免（见 3.3）
+  - pathname 精确属于登录/注册入口集合（见 3.2）
+  - 当前 host 不属于主域 SITE_URL 的注册域（见 3.3）
+  - 当前 host 非本地开发豁免（见 3.3）
 则:
-  return Response.redirect(`${SITE_URL}${pathname}${search}`, 302)
+  const target = new URL(pathname + search, SITE_URL).toString()
+  return Response.redirect(target, 302)
 ```
 
 - 必须在 SSR 渲染前返回 302，避免用户先看到 ai 登录页再跳（走查点 §6）。
-- `search`（query string）原样透传，保证 `aff` 邀请码、`return_to` 等参数无损。
+- 用 `new URL(pathname + search, SITE_URL)` 规范化拼接，天然规避 `SITE_URL` 末尾斜杠导致 `//auth/login` 的问题；`search`（query string）随之原样透传，保证 `aff` 邀请码、`return_to` 等参数无损。
 - 「主域」取自 `env.SITE_URL`，「当前 host」取自 `new URL(request.url).hostname`，**无任何域名字面量**（§6）。
+- **env 健壮性**：跳转判定应使用经 `src/env/server.ts`（Zod）校验后的 env；若入口拿到的 `SITE_URL` 为空/非法导致 `new URL(...)` 抛异常，必须 try/catch 兜底为**不跳、放行 SSR**，绝不能让入口层 500。
 
 ### 3.2 受跳转的路径
 
-登录/注册入口路由（来自 `src/routes/auth/`）：
+登录/注册入口路由（来自 `src/routes/auth/`），用**精确匹配集合**（非前缀匹配，避免误伤未来的 `/auth/login-help`、`/auth/register-success` 等兄弟路由）：
 
-- `/auth/login`
-- `/auth/register`
+```
+const LOGIN_ENTRY_PATHS = new Set(['/auth/login', '/auth/register'])
+```
 
-判定建议用前缀/精确匹配集合，集中为一个常量便于维护。不跳 `/oauth/*` 回调页（那些是登录流程的回调承接页，仅在主域上出现，本就不会在 ai 域被触发）。
+- 不跳 `/oauth/github`、`/oauth/google` 回调页：它们走 SSR、且仅在主域上出现，本就不会在 ai 域被触发。
+- **LinuxDo 例外说明**：LinuxDo 回调路径是 `/api/oauth/linuxdo`（带 `/api` 前缀，见 `oauth/linuxdo.go:70` 怪癖），会命中入口 `shouldProxyRequestPath('/api/*')` 反代分支、**走反代而非 SSR**，本就不在本跳转判定的覆盖范围内，无需特殊处理。
 
 ### 3.3 主域判定与豁免
 
-复用 `api-proxy.ts:resolveCookieDomain` 同款"注册域后缀匹配"风格：
+复用 `api-proxy.ts:resolveCookieDomain`（L40-54）与本地豁免（L188-190）的既有风格，**先把 host 小写归一**：
 
-- 设 `siteHost = new URL(env.SITE_URL).hostname`（如 `nbility.dev`）。
-- 当前 `host` **属于主域** 当且仅当 `host === siteHost || host.endsWith('.' + siteHost)`。
-  - `nbility.dev`、`beta.nbility.dev` → 属于主域 → **不跳**。
-  - `nbility.ai` → 不属于 → **跳**。
-- **本地开发豁免**：`host === 'localhost'`（或以 `localhost`/`127.0.0.1` 开头）或 `env.VITE_ENV === 'dev'` → **不跳**，避免本地误跳线上。
+- `host = new URL(request.url).hostname.toLowerCase()`；`siteHost = new URL(env.SITE_URL).hostname.toLowerCase()`。
+- **本地开发豁免**（逐字对齐 `api-proxy.ts:188-190`，不要用"以 localhost 开头"这种模糊表述）：
+  `host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost')` → **不跳**。
+- **主域判定**：`host === siteHost || host.endsWith('.' + siteHost)` → 属于主域 → **不跳**。
+  - `nbility.dev`、`beta.nbility.dev`、`www.nbility.dev` → 属于主域 → **不跳**。
+  - `nbility.ai`、`www.nbility.ai` → 不属于 → **跳**。
+- 端口无影响：`new URL(...).hostname` 已剥离端口（`localhost:3000` → `localhost`）。
 
-### 3.4 不改的部分
+### 3.4 跨域 `return_to` 的处理
+
+`return_to` 指向 ai 域（如 `https://nbility.ai/console`）时，在主域登录成功后**不应**据此跳回 ai —— 因为会话 cookie 只在 `.nbility.dev`，跳回 ai 会立即回到未登录态。本设计的取舍是：登录成功后用户**停在主域**（默认落 `/console`），**忽略跨域 `return_to`**；同域 `return_to` 行为不变。实现登录成功后跳转的代码须对 `return_to` 做同域校验（拒绝/忽略外域目标），此点列入走查（§6）。
+
+### 3.5 不改的部分
 
 - 后端 Go：**零改动**。
 - OAuth 平台（GitHub / Google / LinuxDo）后台：**零重配**，沿用现有主域配置。
-- 前端登录/注册组件、`auth.ts:getSiteUrl()`、`api-client/*`：**零改动**。
+- 前端登录/注册组件、`auth.ts:getSiteUrl()`、`api-client/*`：**零改动**（`return_to` 同域校验若已存在则复用，见 §3.4）。
 
 ## 4. 测试
 
-- 单元测试（沿用 `src/server/*.test.ts` 风格）覆盖跳转判定函数：
-  - `nbility.ai` + `/auth/login` → 跳，目标 `https://nbility.dev/auth/login`，query 透传。
-  - `nbility.ai` + `/auth/register?aff=abc` → 跳，`aff` 保留。
-  - `nbility.dev` + `/auth/login` → 不跳。
-  - `beta.nbility.dev` + `/auth/login` → 不跳。
-  - `localhost` / `VITE_ENV=dev` + `/auth/login` → 不跳。
-  - `nbility.ai` + 非登录路径（如 `/console`、`/`）→ 不跳。
+单元测试（沿用 `src/server/*.test.ts` 风格）覆盖跳转判定函数：
+
+- `nbility.ai` + `/auth/login` → 跳，目标 `https://nbility.dev/auth/login`，query 透传。
+- `nbility.ai` + `/auth/register?aff=abc` → 跳，`aff` 保留。
+- `Nbility.AI`（大写）+ `/auth/login` → 跳（验证小写归一）。
+- `www.nbility.ai` + `/auth/login` → 跳。
+- `nbility.dev` / `beta.nbility.dev` / `www.nbility.dev` + `/auth/login` → 不跳。
+- `localhost` / `127.0.0.1` / `::1` / `x.localhost` + `/auth/login` → 不跳。
+- `localhost:3000` + `/auth/login` → 不跳（验证端口剥离）。
+- `nbility.ai` + 非登录路径（`/console`、`/`、`/auth/login-help`）→ 不跳（验证精确匹配）。
+- `SITE_URL` 缺失/非法 → 不跳、放行 SSR（验证兜底不 500）。
+- `SITE_URL` 带尾斜杠（`https://nbility.dev/`）→ 目标无双斜杠。
 
 ## 5. 范围边界
 
@@ -96,8 +111,10 @@
 
 1. 302 发生在 SSR 渲染前（worker 入口层，**非**路由 `beforeLoad`），否则用户会看到 ai 登录页闪一下再跳。
 2. query 参数（尤其 `aff`、`return_to`）无损透传。
-3. `beta.nbility.dev` 与 `localhost` 不被误伤（豁免生效）。
-4. 登录成功后用户停在主域属预期行为，需在产品/运营侧知会，避免被当作 bug。
+3. `beta.nbility.dev`、`www.*`、`localhost`/`127.0.0.1`/`::1` 不被误伤（豁免生效）。
+4. 登录成功后跳转代码对 `return_to` 做同域校验，忽略指向 ai 域的外域目标（§3.4），否则会跳回未登录态。
+5. `SITE_URL` 异常时入口层不 500（§3.1 兜底放行 SSR）。
+6. 登录成功后用户停在主域属预期行为，需在产品/运营侧知会，避免被当作 bug。
 
 ## 7. 未来切换主域 Migration Checklist
 
@@ -119,6 +136,7 @@
 
 ### 7.4 前端代码（**零改动**，前提是本设计落地）
 - 本设计的跳转逻辑面向 `env.SITE_URL` 动态判定，**不写死** dev/ai。改完 7.2 的 `SITE_URL` 后，跳转方向自动反转（变为旧主域登录入口跳新主域），前端代码无需改动。
+- **前提**：新主域绑定至同一个 worker（见 7.2 wrangler 自定义域），跳转逻辑才能在同一入口生效。
 - 若届时希望**两域名都能独立 OAuth 登录**（真并存，而非单主域），则需升级到本文档 §2 的方案 A 或方案 B —— 那才需要改后端。
 
 ### 7.5 验证
