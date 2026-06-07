@@ -72,6 +72,8 @@ type ChannelMeta struct {
 	HeadersOverride      map[string]interface{}
 	ChannelSetting       dto.ChannelSettings
 	ChannelOtherSettings dto.ChannelOtherSettings
+	ModelMapping         string
+	StatusCodeMapping    string
 	UpstreamModelName    string
 	IsModelMapped        bool
 	SupportStreamOptions bool // 是否支持流式选项
@@ -202,6 +204,8 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 		ChannelCreateTime:    c.GetInt64("channel_create_time"),
 		ParamOverride:        paramOverride,
 		HeadersOverride:      headerOverride,
+		ModelMapping:         common.GetContextKeyString(c, constant.ContextKeyChannelModelMapping),
+		StatusCodeMapping:    common.GetContextKeyString(c, constant.ContextKeyChannelStatusCodeMapping),
 		UpstreamModelName:    common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
 		IsModelMapped:        false,
 		SupportStreamOptions: false,

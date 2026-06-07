@@ -379,6 +379,8 @@ func copyRelayInfoToAsyncContext(ctx *gin.Context, relayInfo *relaycommon.RelayI
 	common.SetContextKey(ctx, constant.ContextKeyChannelCreateTime, relayInfo.ChannelCreateTime)
 	common.SetContextKey(ctx, constant.ContextKeyChannelParamOverride, relayInfo.ParamOverride)
 	common.SetContextKey(ctx, constant.ContextKeyChannelHeaderOverride, relayInfo.HeadersOverride)
+	common.SetContextKey(ctx, constant.ContextKeyChannelModelMapping, relayInfo.ModelMapping)
+	common.SetContextKey(ctx, constant.ContextKeyChannelStatusCodeMapping, relayInfo.StatusCodeMapping)
 	common.SetContextKey(ctx, constant.ContextKeyChannelSetting, relayInfo.ChannelSetting)
 	common.SetContextKey(ctx, constant.ContextKeyChannelOtherSetting, relayInfo.ChannelOtherSettings)
 	ctx.Set("api_version", relayInfo.ApiVersion)

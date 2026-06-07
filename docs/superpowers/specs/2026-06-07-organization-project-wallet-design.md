@@ -87,6 +87,7 @@ request_count
 group
 status                enabled | disabled
 billing_preference
+default_project_id
 created_at
 updated_at
 deleted_at
@@ -96,7 +97,8 @@ deleted_at
 
 - `personal` organization 自动随用户注册创建。
 - 存量个人用户迁移时，`users.quota`、`users.used_quota`、`users.request_count`、`users.group` 复制到个人 organization。
-- 过渡期可以保留 `users.quota` 作为兼容字段，但新计费逻辑应逐步以 `organizations.quota` 为准。
+- `default_project_id` 指向该组织的默认项目，用它保证“每组织恰好一个默认项目”约束跨 SQLite/MySQL/PostgreSQL 一致；不依赖 `projects` 上的 bool 标志 + 部分唯一索引（MySQL 不支持 partial index）。
+- **余额单一事实源**：自 Phase 4 起，`organizations.quota` 是计费唯一事实源；`users.quota` 仅作个人空间展示镜像，由同一扣费路径同步或冻结为快照，**禁止任何旁路单独写 `users.quota`**，否则个人余额会与组织钱包漂移。详见 §6.4。
 
 ### 5.2 新增 `organization_members`
 
@@ -116,8 +118,9 @@ updated_at
 
 约束：
 
-- 同一 `organization_id + user_id` 只允许一个当前成员关系。
-- `personal` organization 默认只有一个 `owner`。
+- 同一 `organization_id + user_id` 只允许一个成员行（唯一索引 `uk_org_user`）。重新邀请已 `removed` 的用户时，**复用并激活原行**（`status` 改回 `active`），不新建第二行，避免唯一索引冲突。
+- `personal` organization 默认只有一个 `owner`，且不可被移除或降级。
+- **最后一个 owner 保护**：组织必须始终至少有一个 `active` 的 `owner`；移除或降级最后一个 owner 必须被拒绝，需先转移 owner。
 - 平台管理员角色仍使用现有 `users.role`，不等于组织角色。
 
 角色含义：
@@ -156,10 +159,11 @@ deleted_at
 
 说明：
 
-- 每个 organization 必须有一个 default project。
+- 每个 organization 必须有一个 default project，由 `organizations.default_project_id` 唯一指向（见 §5.1）；`projects.default_project` 仅作冗余只读标记，不作唯一性约束依据。
 - 第一版可以只暴露默认项目，数据模型预留多项目。
 - 项目预算不是余额。真实余额仍在 organization 钱包。
 - `soft` 预算只提醒或标记；`hard` 预算请求前拦截。
+- **model_limits 优先级**：project 与 token 都可配 `model_limits`。最终允许模型集 = `project.model_limits ∩ token.model_limits`（任一侧为空表示该侧不限制）；二者都设则取交集，请求模型不在交集内即拒绝。该规则在 §6.5 与计费链路统一实现。
 
 ### 5.4 新增 `organization_invites`
 
@@ -181,6 +185,13 @@ updated_at
 ```
 
 邀请接受后创建或激活 `organization_members`。
+
+接受流程（第一版必须实现，否则成员无法加入）：
+
+- `token_hash` 存储邀请 token 的哈希，原始 token 只在邀请链接中下发，不入库明文。
+- `GET /api/organizations/invites/:token`：按 token 哈希查邀请，返回组织名、角色、是否过期，供前端展示。
+- `POST /api/organizations/invites/:token/accept`：校验 token 哈希、`status=pending`、未过期；第一版要求当前登录用户邮箱与 `email` 一致；通过后置 `status=accepted` 并 upsert `organization_members(status=active)`；写审计 `member.accepted`。
+- 邀请邮件通过后端既有邮件能力发送（前端不直接发信）；无邮件配置时降级为返回邀请链接，由 owner 手动转发。
 
 ### 5.5 新增 `organization_wallet_transactions`
 
@@ -204,9 +215,9 @@ created_at
 
 要求：
 
-- 所有余额变动必须写流水。
-- 平台管理员手动加减额度也必须写 `admin_adjust`。
-- 消费流水可以按请求同步写，也可以先由 logs 作为消费事实，再异步汇总；但充值、退款、调额必须同步写。
+- **充值、手工调额必须同步写流水**（`topup` / `admin_adjust` / `subscription_grant`）。平台管理员手动加减额度同时写 `organization_audit_logs`。
+- **消费不逐笔写流水**：API 调用量级极大，逐请求写一行会让本表爆炸。消费事实以 `logs` 为准（带 org/project/token，见 §5.8），`type=consume` 流水仅用于“周期性汇总”或对账补偿写入，不在每次扣费时写。因此 `balance_after` 只对同步写的 topup/admin_adjust 类型有严格意义。
+- 区分两种“退还”：relay 的 pre-consume 结算差额（settle delta）属于单次计费内部调整，**不写流水**，只体现在最终 `logs` 消费额；只有订单退款、管理员退款这类真实退款才写 `type=refund` 流水并回写组织钱包。
 
 ### 5.6 新增 `organization_audit_logs`
 
@@ -320,10 +331,22 @@ actor_user_id
 organization_id
 project_id
 billing_organization_id
+billing_group
 organization_role
 ```
 
 保留现有 `id` 作为兼容登录用户 id，但新组织接口应显式使用 `actor_user_id`。
+
+**group 解析优先级**（影响计价倍率与渠道选择，必须明确）：
+
+当前个人路径用 `ResolveEffectiveUserGroup`（见 `service/group.go`）按 user/token group 解析。组织化后统一为：
+
+1. token 显式 group（非空且非 `auto`）优先；
+2. 否则用 project group（若引入）；
+3. 否则用 organization group；
+4. 订阅覆盖组（`getUserSubscriptionGroups`）按现有语义并入可用组集合，归属对象从 user 改为 organization。
+
+`billing_group` 写入 context 并由 `GenRelayInfo` 传入 relayInfo；渠道选择与价格计算统一读它，不再直接读 `user.group`。
 
 ### 6.2 API token 调用
 
@@ -346,29 +369,54 @@ Authorization token
 
 ### 6.3 客户端会话请求
 
-前端客户控制台请求必须带当前 organization/project 上下文。可以采用：
-
-```
-X-Organization-Id
-X-Project-Id
-```
-
-或在 REST 路径中表达：
+前端客户控制台请求必须带当前 organization/project 上下文。**统一采用 REST 路径参数表达**，不引入 `X-Organization-Id` header（避免出现两种传上下文方式导致误操作）：
 
 ```
 /api/organizations/:org_id/projects/:project_id/tokens
 ```
 
-建议新接口优先采用路径参数，避免隐式 header 导致误操作；旧接口在过渡期继续走 personal organization fallback。
+旧个人接口在过渡期继续走 personal organization fallback。所有带 `:org_id` 的端点必须先经组织权限中间件校验调用者成员身份（见 §6.6），杜绝越权访问。
 
 ### 6.4 并发扣费
 
-组织钱包扣费必须保证并发安全：
+组织钱包扣费必须保证并发安全。现有个人扣费链路（`model/user.go` 的 `cacheDecrUserQuota`/`cacheIncrUserQuota` Redis 缓存 + `BatchUpdateEnabled` 批量落库，按 user id 聚合于 `model/utils.go` 的 `batchUpdateStores`）必须做出对应的 organization 版本：
 
-- 数据库更新使用条件扣减：`quota >= amount`。
-- Redis/批量扣费逻辑必须以 organization 为 key，不能继续只按 user 缓存。
-- 失败回滚要同时处理 token quota、organization quota、subscription pre-consume。
-- 日志与钱包流水的最终一致性要有补偿任务或对账能力。
+**缓存与批量落库（最易出并发 bug，必须实现）：**
+
+- 新增 `BatchUpdateTypeOrgQuota` / `BatchUpdateTypeOrgUsedQuota` / `BatchUpdateTypeOrgRequestCount` 枚举，并扩展 `batchUpdateStores`/`batchUpdateLocks` 与 flush 分支（`model/utils.go`、批量刷写 goroutine）。
+- 新增 `cacheDecrOrgQuota` / `cacheIncrOrgQuota` / `CacheGetOrganizationQuota`，语义与用户版一致，缓存 key 以 organization id 为准。
+- `GetOrganizationQuota(orgId, fromDB)` 走缓存优先、可强制读库。
+
+**条件扣减与结算失败：**
+
+- DB 落库扣减使用条件更新 `WHERE quota >= ?`（现有 `decreaseUserQuota` 是无条件 `quota - ?`，组织路径是更严格的新行为）。
+- 由此引入新失败模式：**pre-consume 通过、但 settle 阶段条件更新失败**（并发把余额扣到不足）。此时上游可能已返回，不能简单拒绝。约定：settle 失败时允许 org 余额透支为负并记录告警 + 写补偿任务追平，**绝不丢账**；只有 pre-consume 阶段失败才向客户端返回余额不足。
+
+**余额单一事实源（与 §5.1 呼应）：**
+
+- 自 Phase 4 起 `organizations.quota` 为唯一事实源，relay 扣费、用量统计、余额展示一律读组织钱包。
+- `users.quota` 仅作个人空间展示镜像：要么由同一扣费路径同步更新，要么冻结为快照，**任何充值/扣费/调额都不得绕过组织路径单独写 `users.quota`**。
+
+**回滚与一致性：**
+
+- 失败回滚要同时处理 token quota、organization quota、subscription pre-consume（沿用现有 `FundingSource.Refund` 的回滚边界）。
+- 日志与钱包流水的最终一致性要有补偿任务或对账能力（org used_quota/request_count 与 logs 汇总对账）。
+
+### 6.5 token 限额与组织钱包的关系
+
+- 团队 token 仍可保留 per-token `remain_quota` / `unlimited_quota` 作为“组织钱包之上的子额度上限”：先校验 token 子额度，再扣组织钱包，二者都过才放行。
+- `FundingSource.UseTokenQuota()` 现有为 true 的语义保留：token 子额度与组织钱包同时递减，token 额度耗尽即拒绝，即使组织钱包仍有余额。
+- 个人 token 行为不变（token 子额度 + personal org 钱包，等价于过去的 token 子额度 + user 钱包）。
+- model_limits 取交集规则见 §5.3。
+
+### 6.6 组织权限校验
+
+- 所有带 `:org_id` 的客户接口必须经统一中间件 `RequireOrgMember(minRole)`：
+  - 先校验调用者在该 org 有 `active` 成员关系（否则 404/403，杜绝 IDOR 越权探测）；
+  - 再校验角色 ≥ 端点要求的最小角色；
+  - 将 `organization_id` / `organization_role` 写入 context。
+- 角色到能力的映射集中定义，端点只声明最小角色，避免散落各 handler 的重复判断。
+- 平台管理员（`users.role`）走独立的管理端鉴权，不等于组织 owner（见 §10.2、§15）。
 
 ## 7. 充值设计
 
@@ -487,6 +535,16 @@ user_subscriptions.organization_id
 
 所有迁移必须兼容 SQLite、MySQL 5.7.8+、PostgreSQL 9.6+。
 
+**索引（不可遗漏，否则用量查询拖垮 DB）：**
+
+- `tokens(organization_id, project_id)`、`logs(organization_id, project_id)`、`logs(organization_id, created_at)`、`topups(organization_id)`、`organization_members(organization_id, user_id)` 唯一索引、`organization_wallet_transactions(organization_id, created_at)`。
+- `logs` 是最大表，新增可索引列 + 建索引本身是高风险迁移（MySQL 大表加索引会锁表）。大表加列/加索引需评估在线 DDL 或低峰执行，跨 DB 用 GORM tag 声明索引。
+
+**backfill 不阻塞启动：**
+
+- `migrateDB()` 只建表 / 加列 / 建索引，**不在启动流程内跑全量数据 backfill**。
+- 全量 backfill（personal org、tokens/topups/subscription 归属补齐）做成**幂等 + 可断点续跑**的独立命令或后台异步任务；正确性由注册时 `EnsurePersonalOrganizationForUser` 和首次调用的 lazy fallback 兜底，因此 backfill 慢不阻塞上线。
+
 ### 11.2 第二阶段：存量用户 backfill
 
 对每个现有 user：
@@ -585,7 +643,8 @@ subscription.cancelled
 - billing 角色可充值，developer/viewer 不可充值。
 - 项目 hard budget 超限时拦截请求。
 - 组织订阅优先/钱包优先策略与现有语义一致。
-- 并发扣费不会把 organization quota 扣成负数。
+- 并发扣费下 pre-consume 不会放行超额请求；settle 竞态导致的短暂负余额能被补偿任务追平，账不丢。
+- 新增组织相关错误信息有 en/zh i18n 词条（`i18n/`）。
 
 前端测试：
 

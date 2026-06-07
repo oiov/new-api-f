@@ -52,22 +52,24 @@
 
 **任务:**
 
-- [ ] 新增 `Organization` 模型，字段覆盖 `name/type/owner_user_id/quota/used_quota/request_count/group/status/billing_preference`。
-- [ ] 新增 `OrganizationMember` 模型，字段覆盖 `organization_id/user_id/role/status`。
-- [ ] 新增 `Project` 模型，字段覆盖 `organization_id/name/default_project/status/model_limits/monthly_budget_quota/budget_enforcement/metadata_json`。
+- [ ] 新增 `Organization` 模型，字段覆盖 `name/type/owner_user_id/quota/used_quota/request_count/group/status/billing_preference/default_project_id`。
+- [ ] 新增 `OrganizationMember` 模型，字段覆盖 `organization_id/user_id/role/status`，建唯一索引 `(organization_id,user_id)`；重新邀请 `removed` 用户时复用并激活原行。
+- [ ] 实现 last-owner 保护与 owner 转移 helper：拒绝移除/降级组织最后一个 active owner。
+- [ ] 新增 `Project` 模型，字段覆盖 `organization_id/name/default_project/status/model_limits/monthly_budget_quota/budget_enforcement/metadata_json`；默认项目唯一性以 `organizations.default_project_id` 为准。
 - [ ] 新增 `OrganizationInvite` 模型，字段覆盖 `organization_id/email/role/token_hash/inviter_user_id/status/expired_at`。
 - [ ] 新增 `OrganizationWalletTransaction` 模型，字段覆盖 `organization_id/actor_user_id/type/amount/balance_after/request_id/order_id/description/metadata_json`。
 - [ ] 新增 `OrganizationAuditLog` 模型，字段覆盖 `organization_id/project_id/actor_user_id/action/target_type/target_id/ip/metadata_json`。
 - [ ] 实现 `EnsurePersonalOrganizationForUser(userId int)`：创建 personal organization、owner member、default project；重复调用必须幂等。
 - [ ] 实现 `EnsureDefaultProjectForOrganization(organizationId int)`：缺省项目不存在时创建，存在时返回。
 - [ ] 实现 `BackfillPersonalOrganizations(batchSize int)`：为没有 personal organization 的用户分批补齐。
-- [ ] 在 `model/main.go:migrateDB()` 的 `AutoMigrate` 列表加入新增模型。
-- [ ] 在迁移流程中调用 `BackfillPersonalOrganizations(1000)`，失败时阻止迁移完成。
+- [ ] 在 `model/main.go:migrateDB()` 的 `AutoMigrate` 列表加入新增模型，并为新表/新列建必要索引（`organization_members` 唯一 `(organization_id,user_id)` 等），跨 DB 用 GORM tag 声明。
+- [ ] `migrateDB()` 只建表/加列/建索引，**不**在启动流程内跑全量 backfill。
+- [ ] `BackfillPersonalOrganizations` 实现为幂等 + 可断点续跑，提供独立命令/后台异步任务入口；启动不阻塞，正确性由注册期 ensure + 调用期 lazy fallback 兜底。
 - [ ] 在 `controller/user.go:Register` 成功创建用户后调用 `EnsurePersonalOrganizationForUser(user.Id)`，该错误只记录系统日志，不阻断注册响应。
 
 **测试:**
 
-- [ ] `go test ./model -run 'TestEnsurePersonalOrganization|TestBackfillPersonalOrganizations|TestOrganizationRole|TestRecordOrganizationWallet'`
+- [ ] `go test ./model -run 'TestEnsurePersonalOrganization|TestBackfillPersonalOrganizations|TestOrganizationRole|TestRecordOrganizationWallet|TestLastOwnerProtection|TestReinviteRemovedMember'`
 - [ ] `go test ./controller -run 'TestRegister|TestUser'`
 
 **验收:**
@@ -151,6 +153,9 @@ git commit -m "feat: add organization ownership columns"
 - [ ] 在 `TokenAuth` 成功验证 token 后写入 context keys。
 - [ ] `RelayInfo` 增加 `OrganizationId/ProjectId/BillingOrganizationId/ActorUserId`。
 - [ ] `GenRelayInfo` 从 context keys 填充上述字段。
+- [ ] context 增加 `billing_group`；`ResolveTokenOrganizationContext` 按 token > project > org 优先级解析 group，订阅覆盖组归属改为 organization。
+- [ ] `RelayInfo` 增加 `BillingGroup`，渠道选择与价格计算改读 `BillingGroup`（替代直接读 `user.group`）。
+- [ ] 解析并下发 model_limits 交集（project ∩ token）到 relayInfo，供模型校验使用。
 - [ ] 保留现有 `c.Set("id", token.UserId)` 和 `relayInfo.UserId`，避免旧逻辑断裂。
 
 **测试:**
@@ -182,25 +187,32 @@ git commit -m "feat: resolve organization context for token auth"
 - Create `service/organization_billing.go`
 - Create `service/organization_billing_test.go`
 - Modify `service/billing_session.go`
+- Modify `service/funding_source.go` (WalletFunding 计费主体)
 - Modify `service/quota.go`
 - Modify `service/text_quota.go`
 - Modify `service/violation_fee.go`
-- Modify batch update/cache paths if they still assume user quota only
+- Modify `model/utils.go` (batch update 枚举/store/lock)
+- Modify `model/main.go` (batch flush goroutine)
+- Modify `model/organization.go` (org quota DB ops)
+- Modify org quota Redis cache helpers
 
 **任务:**
 
 - [ ] 实现 `GetOrganizationQuota`、`IncreaseOrganizationQuota`、`DecreaseOrganizationQuota`。
-- [ ] `DecreaseOrganizationQuota` 使用条件更新，避免并发扣成负数。
+- [ ] `DecreaseOrganizationQuota` 使用条件更新 `WHERE quota >= ?`，避免并发扣成负数。
+- [ ] 新增 `BatchUpdateTypeOrgQuota/OrgUsedQuota/OrgRequestCount` 枚举 + store + lock + flush 分支（`model/utils.go`、`model/main.go`）。
+- [ ] 新增 `cacheDecrOrgQuota/cacheIncrOrgQuota/CacheGetOrganizationQuota`，缓存 key 按 organization id。
 - [ ] 实现 `UpdateOrganizationUsedQuotaAndRequestCount`。
-- [ ] 实现 `OrganizationWalletFunding`，接口语义与现有 `WalletFunding` 一致。
+- [ ] 将 `WalletFunding` 计费主体从 userId 重构为 billing organization id（优先重构而非平行新增 `OrganizationWalletFunding` 类型），个人路径委托到 personal org；接口语义与现有一致。
 - [ ] `NewBillingSession` 优先使用 `relayInfo.BillingOrganizationId` 创建组织钱包 funding。
+- [ ] settle 阶段条件更新失败处理：允许短暂负余额 + 告警 + 补偿任务追平，绝不丢账；仅 pre-consume 失败才返回余额不足。
 - [ ] personal organization 路径保持旧错误码和用户提示兼容。
 - [ ] 所有消费完成后的 used quota/request count 更新写入 organization。
-- [ ] 保留 `users.quota` 兼容展示策略，明确它不再作为新扣费事实来源。
+- [ ] 落实“余额单一事实源”：org.quota 为唯一事实，users.quota 仅镜像/快照，禁止旁路单写；加 org↔user 余额对账测试。
 
 **测试:**
 
-- [ ] `go test ./service -run 'TestDecreaseOrganizationQuota|TestOrganizationWalletFunding|TestBillingSession'`
+- [ ] `go test ./service -run 'TestDecreaseOrganizationQuota|TestOrganizationWalletFunding|TestBillingSession|TestOrgQuotaSettleFailureCompensation|TestOrgUserBalanceReconcile'`
 - [ ] `go test ./model ./service ./relay/...`
 
 **验收:**
@@ -291,6 +303,9 @@ git commit -m "feat: attach payments to organizations"
 - [ ] 新增 `RecordOrganizationAuditLog`。
 - [ ] 成员、项目、token、充值、订阅管理动作写 audit log。
 - [ ] 历史 log 查询 fallback：`organization_id = 0` 时映射用户 personal organization。
+- [ ] 明确消费不逐笔写 `organization_wallet_transactions`：消费事实以 logs 为准；`type=consume` 流水仅用于周期汇总/对账。
+- [ ] 真实退款（订单/管理员）写 `type=refund` 流水并回写组织钱包；relay settle 差额不写流水。
+- [ ] 为 logs 新增列建索引（`(org,project)`、`(org,created_at)`），评估大表加列/加索引的在线 DDL/低峰策略。
 
 **测试:**
 
@@ -320,6 +335,7 @@ git commit -m "feat: attribute usage to organizations"
 
 - Create `controller/organization.go`
 - Create `controller/organization_test.go`
+- Create `middleware/organization.go`
 - Modify `controller/token.go`
 - Modify `router/api-router.go`
 - Modify `model/organization.go`
@@ -339,6 +355,11 @@ git commit -m "feat: attribute usage to organizations"
 - [ ] `POST /api/organizations/:org_id/projects/:project_id/tokens` 创建项目 token，校验 owner/admin/developer。
 - [ ] 项目 token update/delete 均校验 token 属于 path 中的 org/project。
 - [ ] 旧 `/api/token` 继续映射到 personal organization/default project。
+- [ ] 新增统一中间件 `RequireOrgMember(minRole)`：校验 active 成员 + 角色 + 写 context；所有 `:org_id` 端点挂载，防 IDOR。
+- [ ] `GET /api/organizations/invites/:token` 查邀请详情。
+- [ ] `POST /api/organizations/invites/:token/accept` 接受邀请：校验 hash/状态/过期/邮箱匹配 → upsert active member → 审计 `member.accepted`。
+- [ ] 邀请邮件走后端既有邮件能力；无邮件配置降级返回邀请链接。
+- [ ] 移除/降级成员时强制 last-owner 保护。
 
 **测试:**
 
@@ -391,6 +412,9 @@ git commit -m "feat: add organization project api"
 - [ ] organization 页支持成员列表、邀请入口、项目列表。
 - [ ] 根据角色隐藏充值、成员管理、组织设置入口。
 - [ ] 补齐 zh/en/fr/ru/ja/vi 翻译。
+- [ ] 遵守 web-worker §Rule 7：org 写操作（创建组织/项目/邀请/项目 token/组织充值）在 `types.ts` 标注 `// source:` 契约 + `@quirk`，`schemas.ts` 过 Zod `parse` 守门。
+- [ ] 交付附“请求对比表”（旧版抓包 vs 新版发送，逐字段 diff=0）；新增 org 高危写操作登记进 `web-worker/CLAUDE.md §6` 高危双人走查清单。
+- [ ] 不破坏既有规约：域名零硬编码、cookie 父域、`X-Frontend` marker。
 
 **测试:**
 
@@ -506,3 +530,8 @@ git commit -m "test: harden organization migration"
 - [ ] 平台 admin 与组织 admin 权限分离。
 - [ ] `web-worker` 支持组织/项目切换。
 - [ ] 旧个人用户主流程无感兼容。
+- [ ] 组织 quota 缓存 + 批量落库链路（含 `BatchUpdateTypeOrg*`）就位，并发 pre-consume 不超额。
+- [ ] `organizations.quota` 为余额唯一事实源，`users.quota` 仅镜像，余额对账无漂移。
+- [ ] 邀请可被接受并激活成员；最后一个 owner 不可被移除/降级。
+- [ ] 所有 `:org_id` 端点经统一权限中间件，无越权。
+- [ ] tokens/logs/topups 等新增归属列建有索引；logs 大表迁移策略已评估。

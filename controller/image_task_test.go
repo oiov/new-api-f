@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -154,6 +155,54 @@ func TestCopyRelayInfoToAsyncContextPreservesLogIdentity(t *testing.T) {
 	require.Equal(t, "async-user", ctx.GetString("username"))
 	require.Equal(t, "async-token", ctx.GetString("token_name"))
 	require.Equal(t, "async-user", common.GetContextKeyString(ctx, constant.ContextKeyUserName))
+}
+
+func TestCopyRelayInfoToAsyncContextPreservesChannelMappings(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-image-2-official",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:         78,
+			ChannelType:       constant.ChannelTypeOpenAI,
+			ChannelBaseUrl:    "https://api.example.test",
+			ModelMapping:      `{"gpt-image-2-official":"gpt-image-2"}`,
+			StatusCodeMapping: `{"400":500}`,
+		},
+	}
+
+	copyRelayInfoToAsyncContext(ctx, info)
+
+	require.Equal(t, `{"gpt-image-2-official":"gpt-image-2"}`, ctx.GetString("model_mapping"))
+	require.Equal(t, `{"400":500}`, ctx.GetString("status_code_mapping"))
+	require.Equal(t, `{"gpt-image-2-official":"gpt-image-2"}`, common.GetContextKeyString(ctx, constant.ContextKeyChannelModelMapping))
+	require.Equal(t, `{"400":500}`, common.GetContextKeyString(ctx, constant.ContextKeyChannelStatusCodeMapping))
+}
+
+func TestAsyncImageContextModelMappingAppliesToRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	info := &relaycommon.RelayInfo{
+		RequestId:       "req_async_mapping",
+		RequestURLPath:  "/v1/images/generations",
+		RelayMode:       relayconstant.RelayModeImagesGenerations,
+		OriginModelName: "gpt-image-2-official",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:      78,
+			ChannelType:    constant.ChannelTypeOpenAI,
+			ChannelBaseUrl: "https://api.example.test",
+			ModelMapping:   `{"gpt-image-2-official":"gpt-image-2"}`,
+		},
+		Request: &dto.ImageRequest{Model: "gpt-image-2-official", Prompt: "banana"},
+	}
+	ctx, _ := newAsyncImageGinContext(info, []byte(`{"model":"gpt-image-2-official","prompt":"banana"}`))
+	info.InitChannelMeta(ctx)
+	req := &dto.ImageRequest{Model: "gpt-image-2-official", Prompt: "banana"}
+
+	require.NoError(t, helper.ModelMappedHelper(ctx, info, req))
+
+	require.Equal(t, "gpt-image-2", req.Model)
+	require.Equal(t, "gpt-image-2", info.UpstreamModelName)
+	require.True(t, info.IsModelMapped)
 }
 
 func TestNewAsyncImageGinContextPreservesContentType(t *testing.T) {
