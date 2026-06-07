@@ -401,7 +401,7 @@ func SendEmailVerification(c *gin.Context) {
 	}
 	code := common.GenerateVerificationCode(6)
 	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
-	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
+	subject := fmt.Sprintf("%s Email Verification", common.SystemName)
 	content := buildEmailVerificationContent(code)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
@@ -434,7 +434,7 @@ func SendPasswordResetEmail(c *gin.Context) {
 	code := common.GenerateVerificationCode(0)
 	common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
 	link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
-	subject := fmt.Sprintf("%s密码重置", common.SystemName)
+	subject := fmt.Sprintf("%s Password Reset", common.SystemName)
 	content := buildPasswordResetContent(link)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
@@ -450,19 +450,19 @@ func SendPasswordResetEmail(c *gin.Context) {
 
 func buildEmailVerificationContent(code string) string {
 	return buildAuthEmailContent(
-		"邮箱验证",
-		"你正在注册或绑定邮箱，请在页面中输入下面的验证码完成验证。",
+		"Email Verification",
+		"You are registering or binding your email address. Please enter the verification code below on the page to complete verification.",
 		fmt.Sprintf(`<div style="font-size:32px;font-weight:700;letter-spacing:6px;color:#111827;margin:14px 0 8px;">%s</div>`, code),
-		"验证码",
+		"Verification code",
 	)
 }
 
 func buildPasswordResetContent(link string) string {
 	return buildAuthEmailContent(
-		"重置密码",
-		"你正在重置账户密码。点击下面的按钮继续操作。",
-		fmt.Sprintf(`<p style="margin:18px 0;"><a href="%s" style="display:inline-block;padding:10px 18px;border-radius:6px;background:#111827;color:#ffffff;text-decoration:none;font-weight:600;">重置密码</a></p><p style="margin:14px 0 0;color:#4b5563;font-size:13px;line-height:1.7;">如果按钮无法打开，请复制以下链接到浏览器：<br><span style="word-break:break-all;color:#2563eb;">%s</span></p>`, link, link),
-		"重置链接",
+		"Reset Password",
+		"You are resetting your account password. Click the button below to continue.",
+		fmt.Sprintf(`<p style="margin:18px 0;"><a href="%s" style="display:inline-block;padding:10px 18px;border-radius:6px;background:#111827;color:#ffffff;text-decoration:none;font-weight:600;">Reset Password</a></p><p style="margin:14px 0 0;color:#4b5563;font-size:13px;line-height:1.7;">If the button does not work, copy the following link into your browser:<br><span style="word-break:break-all;color:#2563eb;">%s</span></p>`, link, link),
+		"Reset link",
 	)
 }
 
@@ -476,8 +476,8 @@ func buildAuthEmailContent(title string, intro string, actionHTML string, expiry
       <h1 style="margin:0 0 16px;font-size:22px;line-height:1.35;color:#111827;">%s</h1>
       <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.7;">%s</p>
       %s
-      <p style="margin:18px 0 0;color:#374151;font-size:14px;line-height:1.7;">%s %d 分钟内有效。为了账户安全，请不要将邮件内容转发给他人。</p>
-      <p style="margin:12px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">如果不是你本人操作，可以忽略这封邮件。</p>
+      <p style="margin:18px 0 0;color:#374151;font-size:14px;line-height:1.7;">%s is valid for %d minutes. For your account security, please do not forward this email to anyone.</p>
+      <p style="margin:12px 0 0;color:#6b7280;font-size:13px;line-height:1.7;">If you did not request this, you can safely ignore this email.</p>
     </div>
   </div>
 </body>
