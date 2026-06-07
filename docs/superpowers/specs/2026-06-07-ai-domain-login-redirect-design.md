@@ -70,7 +70,7 @@ const LOGIN_ENTRY_PATHS = new Set(['/auth/login', '/auth/register'])
 
 - `host = new URL(request.url).hostname.toLowerCase()`；`siteHost = new URL(env.SITE_URL).hostname.toLowerCase()`。
 - **本地开发豁免**（逐字对齐 `api-proxy.ts:188-190`，不要用"以 localhost 开头"这种模糊表述）：
-  `host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost')` → **不跳**。
+  `host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.localhost')` → **不跳**。
 - **主域判定**：`host === siteHost || host.endsWith('.' + siteHost)` → 属于主域 → **不跳**。
   - `nbility.dev`、`beta.nbility.dev`、`www.nbility.dev` → 属于主域 → **不跳**。
   - `nbility.ai`、`www.nbility.ai` → 不属于 → **跳**。
@@ -95,7 +95,7 @@ const LOGIN_ENTRY_PATHS = new Set(['/auth/login', '/auth/register'])
 - `Nbility.AI`（大写）+ `/auth/login` → 跳（验证小写归一）。
 - `www.nbility.ai` + `/auth/login` → 跳。
 - `nbility.dev` / `beta.nbility.dev` / `www.nbility.dev` + `/auth/login` → 不跳。
-- `localhost` / `127.0.0.1` / `::1` / `x.localhost` + `/auth/login` → 不跳。
+- `localhost` / `127.0.0.1` / `[::1]` / `x.localhost` + `/auth/login` → 不跳。
 - `localhost:3000` + `/auth/login` → 不跳（验证端口剥离）。
 - `nbility.ai` + 非登录路径（`/console`、`/`、`/auth/login-help`）→ 不跳（验证精确匹配）。
 - `SITE_URL` 缺失/非法 → 不跳、放行 SSR（验证兜底不 500）。

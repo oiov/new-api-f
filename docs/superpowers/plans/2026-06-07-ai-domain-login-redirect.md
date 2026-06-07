@@ -32,6 +32,7 @@
 1. `requestUrl` 解析失败 → `null`（不跳）。
 2. `pathname` 不在精确集合 `{'/auth/login','/auth/register'}` → `null`。
 3. host 小写归一后命中本地豁免（`localhost` / `127.0.0.1` / `[::1]` / `*.localhost`）→ `null`。
+   注：`URL.hostname` 对 IPv6 回环保留方括号，`new URL('http://[::1]/...').hostname === '[::1]'`，故用 `'[::1]'` 判定（spec §3.3 写的 `'::1'` 是笔误，以此处为准）。
 4. `siteUrl` 缺失或解析失败 → `null`（兜底放行 SSR，绝不抛异常）。
 5. host 属于主域注册域（`host === siteHost || host.endsWith('.'+siteHost)`）→ `null`。
 6. 其余 → 返回 `new URL(pathname + search, siteUrl).toString()`（规范化拼接，规避尾斜杠双斜杠）。
@@ -216,7 +217,7 @@ export function resolveLoginRedirect(
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `cd web-worker && npx tsx --test src/server/login-redirect.test.ts`
-Expected: PASS — `tests 13` 全绿（pass 全部，fail 0）。
+Expected: PASS — `ℹ tests 12 / pass 12 / fail 0`（共 12 个 `test()`，全绿）。
 
 - [ ] **Step 5: 提交**
 
@@ -273,11 +274,11 @@ Run:
 ```bash
 cd web-worker
 npx tsc --noEmit
-npx biome check src/server/server.ts src/server/login-redirect.ts 2>/dev/null; npx biome check src/server.ts
+npx biome check src/server.ts src/server/login-redirect.ts src/server/login-redirect.test.ts
 npx tsx --test src/server/proxy-routing.test.ts src/server/login-redirect.test.ts
 ```
 Expected: tsc 无错误；biome 无 error；测试全绿。
-（注：若 `npx tsc` 因项目配置不便直接跑，至少保证 `npx biome check src/server.ts` 通过且测试全绿。）
+（注：若 `npx tsc` 因项目配置不便直接跑，至少保证 biome 与测试全绿。）
 
 - [ ] **Step 3: 提交**
 
