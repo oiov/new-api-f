@@ -397,6 +397,12 @@ Authorization token
 - 自 Phase 4 起 `organizations.quota` 为唯一事实源，relay 扣费、用量统计、余额展示一律读组织钱包。
 - `users.quota` 仅作个人空间展示镜像：要么由同一扣费路径同步更新，要么冻结为快照，**任何充值/扣费/调额都不得绕过组织路径单独写 `users.quota`**。
 
+**资金来源（funding）实现路线（已拍板）：**
+
+- **重构现有 `service/funding_source.go` 的 `WalletFunding`**，把计费主体从 `userId` 改为 billing organization id；**不**平行新增 `OrganizationWalletFunding`，避免两套逻辑长期维护。
+- 个人路径委托到 personal organization；`SubscriptionFunding` 同步迁移到 organization 订阅。
+- `NewBillingSession` 改按 `relayInfo.BillingOrganizationId` 装配 funding（替代现有按 `relayInfo.UserId`）。
+
 **回滚与一致性：**
 
 - 失败回滚要同时处理 token quota、organization quota、subscription pre-consume（沿用现有 `FundingSource.Refund` 的回滚边界）。

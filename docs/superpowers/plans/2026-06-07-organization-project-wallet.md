@@ -203,7 +203,7 @@ git commit -m "feat: resolve organization context for token auth"
 - [ ] 新增 `BatchUpdateTypeOrgQuota/OrgUsedQuota/OrgRequestCount` 枚举 + store + lock + flush 分支（`model/utils.go`、`model/main.go`）。
 - [ ] 新增 `cacheDecrOrgQuota/cacheIncrOrgQuota/CacheGetOrganizationQuota`，缓存 key 按 organization id。
 - [ ] 实现 `UpdateOrganizationUsedQuotaAndRequestCount`。
-- [ ] 将 `WalletFunding` 计费主体从 userId 重构为 billing organization id（优先重构而非平行新增 `OrganizationWalletFunding` 类型），个人路径委托到 personal org；接口语义与现有一致。
+- [ ] 将 `WalletFunding` 计费主体从 userId **重构**为 billing organization id（已拍板：重构现有类型，**不**平行新增 `OrganizationWalletFunding`，避免两套逻辑长期维护），个人路径委托到 personal org；接口语义与现有一致。
 - [ ] `NewBillingSession` 优先使用 `relayInfo.BillingOrganizationId` 创建组织钱包 funding。
 - [ ] settle 阶段条件更新失败处理：允许短暂负余额 + 告警 + 补偿任务追平，绝不丢账；仅 pre-consume 失败才返回余额不足。
 - [ ] personal organization 路径保持旧错误码和用户提示兼容。
