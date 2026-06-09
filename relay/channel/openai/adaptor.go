@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -450,7 +451,6 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		var requestBody bytes.Buffer
 		writer := multipart.NewWriter(&requestBody)
 
-		writer.WriteField("model", request.Model)
 		// 使用已解析的 multipart 表单，避免重复解析
 		mf := c.Request.MultipartForm
 		if mf == nil {
@@ -460,14 +460,61 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 			mf = c.Request.MultipartForm
 		}
 
-		// 写入所有非文件字段
-		if mf != nil {
-			for key, values := range mf.Value {
-				if key == "model" {
-					continue
+		// 写入所有非文件标量字段。
+		// 当渠道配置了参数覆盖时，将表单标量字段收敛为 JSON 后复用与 JSON 图像请求
+		// 完全一致的覆盖逻辑（relaycommon.ApplyParamOverrideWithRelayInfo），从而支持
+		// 像 {"response_format": null} 这样删除/置空上游不支持的参数；被置空的字段不会
+		// 写入上游。未配置覆盖时保持原有逐字段透传行为，零回归。
+		if len(imageEditParamOverride(info)) > 0 {
+			formFields := map[string]interface{}{
+				"model": request.Model,
+			}
+			if mf != nil {
+				for key, values := range mf.Value {
+					if key == "model" {
+						continue
+					}
+					if len(values) == 1 {
+						formFields[key] = values[0]
+					} else {
+						items := make([]interface{}, 0, len(values))
+						for _, value := range values {
+							items = append(items, value)
+						}
+						formFields[key] = items
+					}
 				}
-				for _, value := range values {
-					writer.WriteField(key, value)
+			}
+
+			jsonData, err := common.Marshal(formFields)
+			if err != nil {
+				return nil, fmt.Errorf("marshal image edit form fields failed: %w", err)
+			}
+			jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
+			if err != nil {
+				return nil, err
+			}
+			formFields = make(map[string]interface{})
+			if err := common.Unmarshal(jsonData, &formFields); err != nil {
+				return nil, fmt.Errorf("unmarshal overridden image edit form fields failed: %w", err)
+			}
+
+			for key, value := range formFields {
+				if err := writeImageEditFormField(writer, key, value); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			writer.WriteField("model", request.Model)
+			// 写入所有非文件字段
+			if mf != nil {
+				for key, values := range mf.Value {
+					if key == "model" {
+						continue
+					}
+					for _, value := range values {
+						writer.WriteField(key, value)
+					}
 				}
 			}
 		}
@@ -568,6 +615,44 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 
 	default:
 		return request, nil
+	}
+}
+
+// imageEditParamOverride 安全读取渠道参数覆盖配置。
+// RelayInfo 内嵌 *ChannelMeta，info.ParamOverride 即 info.ChannelMeta.ParamOverride，
+// 这里显式判空，避免在未初始化 ChannelMeta（如部分单测）时空指针。
+func imageEditParamOverride(info *relaycommon.RelayInfo) map[string]interface{} {
+	if info == nil || info.ChannelMeta == nil {
+		return nil
+	}
+	return info.ParamOverride
+}
+
+// writeImageEditFormField 将参数覆盖后的标量字段写回 multipart 表单。
+// 被置为 null 的字段直接跳过（即从上游请求中删除）。
+func writeImageEditFormField(writer *multipart.Writer, key string, value interface{}) error {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case string:
+		return writer.WriteField(key, v)
+	case bool:
+		return writer.WriteField(key, strconv.FormatBool(v))
+	case float64:
+		return writer.WriteField(key, strconv.FormatFloat(v, 'f', -1, 64))
+	case []interface{}:
+		for _, item := range v {
+			if err := writeImageEditFormField(writer, key, item); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		jsonBytes, err := common.Marshal(v)
+		if err != nil {
+			return err
+		}
+		return writer.WriteField(key, string(jsonBytes))
 	}
 }
 

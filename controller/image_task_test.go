@@ -1,9 +1,12 @@
 package controller
 
 import (
+	"bytes"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,6 +48,42 @@ func TestIsAsyncImageTaskRequestSupportsImageEdits(t *testing.T) {
 	info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeImagesEdits}
 
 	require.True(t, isAsyncImageTaskRequest(ctx, info))
+}
+
+// TestAsyncImageEditContextPreservesMultipartAndParamOverride 验证异步图像编辑任务在重放
+// 时：(1) 保留原始 multipart/form-data 请求体与 Content-Type，从而仍走 multipart 转换路径；
+// (2) 把渠道参数覆盖透传到 InitChannelMeta 读取的上下文 key 上。结合 openai 适配器的
+// ConvertImageRequest 覆盖测试，即证明异步模式同样会应用参数覆盖。
+func TestAsyncImageEditContextPreservesMultipartAndParamOverride(t *testing.T) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	require.NoError(t, writer.WriteField("model", "gpt-image-1"))
+	require.NoError(t, writer.WriteField("response_format", "b64_json"))
+	part, err := writer.CreateFormFile("image", "image.png")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("\x89PNG\r\n\x1a\nfake-image-bytes"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	relayInfo := &relaycommon.RelayInfo{
+		RelayMode:      relayconstant.RelayModeImagesEdits,
+		RequestURLPath: "/v1/images/edits",
+		RequestHeaders: map[string]string{"Content-Type": writer.FormDataContentType()},
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:     78,
+			ChannelType:   1,
+			ParamOverride: map[string]interface{}{"response_format": nil},
+		},
+	}
+
+	ctx, _ := newAsyncImageGinContext(relayInfo, buf.Bytes())
+
+	require.True(t, strings.HasPrefix(ctx.Request.Header.Get("Content-Type"), "multipart/form-data"),
+		"async edit context must preserve multipart content-type so it hits the override-aware path")
+
+	override := common.GetContextKeyStringMap(ctx, constant.ContextKeyChannelParamOverride)
+	_, ok := override["response_format"]
+	require.True(t, ok, "param override must be reachable via the context key InitChannelMeta reads")
 }
 
 func TestInitImageTaskCopiesBillingAndMetadata(t *testing.T) {
