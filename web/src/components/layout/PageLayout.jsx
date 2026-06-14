@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { Layout } from '@douyinfe/semi-ui';
 import App from '../../App';
+import RegionBlock from '../RegionBlock';
+import { isRegionBlocked } from '../../helpers/regionBlock';
 import { ToastContainer } from 'react-toastify';
 import React, { Suspense, lazy, useContext, useEffect, useState } from 'react';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
@@ -91,6 +93,7 @@ const PageLayout = () => {
 
   const isConsoleRoute = location.pathname.startsWith('/console');
   const showSider = isConsoleRoute && (!isMobile || drawerOpen);
+  const regionBlocked = isRegionBlocked();
 
   const setHeadIcon = (rel, href) => {
     const linkElement = document.head.querySelector(`link[rel="${rel}"]`);
@@ -237,7 +240,7 @@ const PageLayout = () => {
           flexDirection: 'column',
         }}
       >
-        {showSider && (
+        {showSider && !regionBlocked && (
           <Sider
             className='app-sider'
             style={{
@@ -263,7 +266,7 @@ const PageLayout = () => {
           style={{
             marginLeft: isMobile
               ? '0'
-              : showSider
+              : showSider && !regionBlocked
                 ? 'var(--sidebar-current-width)'
                 : '0',
             flex: '1 1 auto',
@@ -289,9 +292,9 @@ const PageLayout = () => {
               position: 'relative',
             }}
           >
-            <App />
+            {regionBlocked ? <RegionBlock /> : <App />}
           </Content>
-          {!shouldHideFooter && (
+          {!shouldHideFooter && !regionBlocked && (
             <Layout.Footer
               style={{
                 flex: '0 0 auto',
