@@ -1,5 +1,8 @@
 {
   "translation": {
+    "暂不支持你所在的地区": "App unavailable",
+    "很遗憾，本服务目前仅在部分地区开放。如果你认为这是误判，请联系我们。": "Unfortunately, this service is only available in certain regions right now. Please contact support if you think you're getting this message in error.",
+    "联系支持": "Contact support",
     " → 选择按量分组": " → select Pay-as-you-go group",
     " → 选择订阅分组；": " → select Subscription group; ",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + Web search {{count}} time / 1K times * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
