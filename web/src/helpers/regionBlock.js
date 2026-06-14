@@ -3,7 +3,7 @@
 //
 // 开关与国家码（改这里后重新构建部署 old web 即生效；old 是独立部署，无 wrangler/worker）：
 const ENABLED = true;
-const COUNTRIES = ['CN', 'HK', 'MO', 'TW']; // 中国大陆，香港，澳门，台湾
+export const COUNTRIES = ['CN', 'HK', 'MO', 'TW']; // 中国大陆，香港，澳门，台湾
 
 export function parseTraceLoc(traceText) {
   const line = (traceText || '')
