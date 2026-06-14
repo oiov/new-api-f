@@ -1,22 +1,33 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button, Modal, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import { IconGlobe } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { COUNTRIES } from '../helpers/regionBlock';
+import { ALL_COUNTRY_CODES } from '../constants/countryCodes';
 
 const SUPPORT_EMAIL = 'support@nbility.dev';
 
-// 已知地区码 → 中文名（作为 i18n key，en.json 提供翻译）；未知码回退为大写码。
-const REGION_NAMES = {
-  CN: '中国大陆',
-  HK: '香港',
-  MO: '澳门',
-  TW: '台湾',
-};
-
 const RegionBlock = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [visible, setVisible] = useState(false);
+  const locale = i18n.resolvedLanguage || i18n.language || 'en';
+
+  // 支持的地区 = 全量国家码 − 被拦的；名称用 Intl.DisplayNames 本地化，按名称排序。
+  const supported = useMemo(() => {
+    const blocked = new Set(COUNTRIES.map((c) => c.toUpperCase()));
+    let display = null;
+    try {
+      display = new Intl.DisplayNames([locale], { type: 'region' });
+    } catch {
+      display = null;
+    }
+    return ALL_COUNTRY_CODES.filter((code) => !blocked.has(code))
+      .map((code) => ({
+        code,
+        name: (display && display.of(code)) || code,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, locale));
+  }, [locale]);
 
   return (
     <div
@@ -54,11 +65,9 @@ const RegionBlock = () => {
         {t('很遗憾，本服务目前仅在部分地区开放。如果你认为这是误判，请联系我们。')}
       </Typography.Paragraph>
       <Space style={{ marginTop: 24 }}>
-        {COUNTRIES.length > 0 && (
-          <Button theme='light' onClick={() => setVisible(true)}>
-            {t('查看支持的地区')}
-          </Button>
-        )}
+        <Button theme='light' onClick={() => setVisible(true)}>
+          {t('查看支持的地区')}
+        </Button>
         <Button
           theme='solid'
           onClick={() => {
@@ -70,19 +79,20 @@ const RegionBlock = () => {
       </Space>
 
       <Modal
-        title={t('暂不支持的地区')}
+        title={t('支持的地区')}
         visible={visible}
         onCancel={() => setVisible(false)}
         footer={null}
         closeOnEsc
+        bodyStyle={{ maxHeight: '55vh', overflowY: 'auto' }}
       >
         <Typography.Paragraph type='tertiary' style={{ marginBottom: 16 }}>
-          {t('本服务面向全球大部分国家与地区开放，但暂不支持以下地区访问：')}
+          {t('本服务在以下国家与地区可用：')}
         </Typography.Paragraph>
         <Space wrap>
-          {COUNTRIES.map((code) => (
-            <Tag key={code} size='large' color='red' type='light'>
-              {t(REGION_NAMES[code] || code)}
+          {supported.map(({ code, name }) => (
+            <Tag key={code} size='large' color='green' type='light'>
+              {name}
             </Tag>
           ))}
         </Space>
