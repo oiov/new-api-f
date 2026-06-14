@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Layout } from '@douyinfe/semi-ui';
 import App from '../../App';
 import RegionBlock from '../RegionBlock';
-import { isRegionBlocked } from '../../helpers/regionBlock';
+import { useRegionBlocked } from '../../hooks/common/useRegionBlocked';
 import { ToastContainer } from 'react-toastify';
 import React, { Suspense, lazy, useContext, useEffect, useState } from 'react';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
@@ -93,7 +93,7 @@ const PageLayout = () => {
 
   const isConsoleRoute = location.pathname.startsWith('/console');
   const showSider = isConsoleRoute && (!isMobile || drawerOpen);
-  const regionBlocked = isRegionBlocked();
+  const regionBlocked = useRegionBlocked();
 
   const setHeadIcon = (rel, href) => {
     const linkElement = document.head.querySelector(`link[rel="${rel}"]`);
