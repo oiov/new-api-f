@@ -13,7 +13,7 @@
 
 1. **纯前端展示层拦截**——只换页面内容，**不动任何后端接口**。被拦访客的 `/api/*` 调用照常转发；尤其公告 / 站内信拉取（走 `api.nbility.dev`）必须正常工作。
 2. **保留顶部导航栏 + 通知弹窗**——拦截后仍渲染顶部导航栏；有未读公告照常自动弹出 `NoticeDialog`/`NoticeModal`。其余所有页面（落地页、控制台、管理后台路由）一律替换为拦截页。
-3. **对 `api.nbility.dev` 零影响**——所有地区判定逻辑只挂在前端域名（`nbility.dev` 的 Worker、`old.nbility.dev` 的 CF Snippet），api 子域不挂任何规则。
+3. **对 API 域名零影响**——所有地区判定逻辑只挂在前端域名（`nbility.dev` 的 Worker、`old.nbility.dev` 的 CF Snippet），**任何 API host 都不挂任何规则**。已知 API host（非穷举）：`api.nbility.dev`、`apt.nbility.dev`、`api.uv.do`，部分开橙云部分灰云。本特性**不含任何 Cloudflare WAF / 防火墙 / 国家封禁规则**——边缘永不拒绝请求，只是让前端 React 渲染另一个页面。**红线：实现/运维全程不得在任何 API host 上添加国家级封禁规则**，确保大陆用户直连 API（不开 VPN）的能力不受本特性影响（直连可达性是各 host 橙云/灰云 + GFW 的既有状态，本特性不改善也不恶化）。
 4. **环境变量可配开关**——是否拦截、拦哪些国家码，通过配置切换。
 5. **管理员逃生口**——`old.nbility.dev` 是管理员后台且按用户决策"一视同仁拦截"，必须留一个绕过口，避免身处中国的管理员把自己锁死。web-worker 也留同款。
 6. 拦截页只放管理员邮箱 `support@nbility.dev`（`mailto:`），不放额外按钮。
