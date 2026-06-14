@@ -89,7 +89,7 @@ Browser ── old.nbility.dev ──(CF 橙云)──▶ CF Snippet ──▶ G
   - `GEO_BLOCK_BYPASS_TOKEN: string`（secret，逃生口密钥）
 
 **B. 客户端读取 `src/lib/geo-block.ts`（新）**
-- `useRegionBlocked(): boolean`：SSR 时从注入头读，客户端从 `nb_geo_block` cookie 读；含 `nb_geo_bypass` 时恒 `false`。
+- `useRegionBlocked(): boolean`：SSR 时从注入头读，客户端从 `nb_geo_block` cookie 读；含 `nb_geo_bypass` 时恒 `false`（客户端侧 bypass 检查是冗余安全网；**主判定在边缘**，边缘见到 `nb_geo_bypass` 即 `blocked=false`）。
 - SSR 首屏值经 TanStack 的 root context / dehydration 传到客户端，保证两端一致。
 
 **C. `src/routes/__root.tsx`（改）**
@@ -97,7 +97,7 @@ Browser ── old.nbility.dev ──(CF 橙云)──▶ CF Snippet ──▶ G
 - 与现有 `MaintenanceDialog` 同范式，不动 `RootDocument`（ThemeProvider / i18n / Toaster 仍在）。
 
 **D. `src/components/shared/region-block-screen.tsx`（新）**
-- 复用现有顶部导航栏：抽 `navbar.tsx` 为可在拦截态渲染的形态——保留 logo + 语言/主题 + 通知按钮（含 `NoticeDialog` 自动弹窗逻辑，见 `navbar.tsx:87` 的 `useEffect`），隐藏页面区块导航链接。
+- 复用现有顶部导航栏：抽 `src/components/layout/navbar.tsx` 为可在拦截态渲染的形态——保留 logo + 语言/主题 + 通知按钮（含 `NoticeDialog` 自动弹窗逻辑，见 `src/components/layout/navbar.tsx:87` 的 `useEffect`），隐藏页面区块导航链接。
 - 主体：居中图标（`@tabler/icons-react`）+ 大标题 + 副文案 + `support@nbility.dev` 的 `mailto:` 按钮。
 - 仅用 shadcn/ui + Tailwind + `@tabler/icons-react`（遵守 `web-worker/CLAUDE.md` §7）。
 - i18n：`landing`/`common` 命名空间下新增 zh/en 文案键。
@@ -106,6 +106,7 @@ Browser ── old.nbility.dev ──(CF 橙云)──▶ CF Snippet ──▶ G
 
 **A. CF Snippet（新，CF 面板内维护，不入仓库代码但 spec 记录其逻辑）**
 - 路由匹配 `old.nbility.dev/*`，仅对 HTML 响应注入 cookie（静态资源跳过）。
+  - 实现核实点：CF Snippet 运行时在**响应改写**路径上需能访问 `request.cf.country`；若 Snippet 运行时不暴露，则降级为在请求阶段读 `request.cf.country` 并通过响应 `Set-Cookie` 注入（逻辑等价）。
 - 常量：`ENABLED`、`COUNTRIES`（默认 `['CN']`）、`BYPASS_TOKEN`。开关 = 改 Snippet 常量。
 - 仓库内放一份参考实现：`docs/superpowers/specs/snippets/old-region-block.snippet.js`（仅文档/备份，CF 实际运行版在面板）。
 
