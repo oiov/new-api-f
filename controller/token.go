@@ -337,6 +337,15 @@ func AddToken(c *gin.Context) {
 		BusinessGroup:      strings.TrimSpace(token.BusinessGroup),
 		PeriodDuration:     token.PeriodDuration,
 		PeriodQuota:        token.PeriodQuota,
+		PeriodStartAt: func() int64 {
+			if token.PeriodStartAt > 0 {
+				return token.PeriodStartAt
+			}
+			if token.PeriodQuota > 0 {
+				return common.GetTimestamp()
+			}
+			return 0
+		}(),
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
 	err = cleanToken.Insert()
@@ -449,6 +458,9 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.BusinessGroup = strings.TrimSpace(token.BusinessGroup)
 		cleanToken.PeriodDuration = token.PeriodDuration
 		cleanToken.PeriodQuota = token.PeriodQuota
+		if token.PeriodStartAt > 0 {
+			cleanToken.PeriodStartAt = token.PeriodStartAt
+		}
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 	}
 	err = cleanToken.Update()
