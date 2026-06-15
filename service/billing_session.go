@@ -208,7 +208,21 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		s.preConsumedQuota = int(sub.preConsumed)
 	}
 
-	// ---- 2) 预扣令牌额度 ----
+	// ---- 2) 周期额度检查（无论是否信任旁路，都必须检查） ----
+	if s.funding.UseTokenQuota() {
+		token, err := model.GetTokenByKey(s.relayInfo.TokenKey, false)
+		if err == nil {
+			if periodErr := model.CheckTokenPeriodQuota(token); periodErr != nil {
+				if rollbackErr := s.funding.Refund(); rollbackErr != nil {
+					common.SysLog(fmt.Sprintf("error rolling back funding source after period quota check (userId=%d, tokenId=%d): %s",
+						s.relayInfo.UserId, s.relayInfo.TokenId, rollbackErr.Error()))
+				}
+				return types.NewErrorWithStatusCode(periodErr, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+			}
+		}
+	}
+
+	// ---- 3) 预扣令牌额度 ----
 	if s.funding.UseTokenQuota() && effectiveQuota > 0 {
 		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
 			if rollbackErr := s.funding.Refund(); rollbackErr != nil {

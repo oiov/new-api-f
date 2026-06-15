@@ -1207,9 +1207,6 @@ func adjustTokenQuota(id int, delta int) error {
 					periodUsedQuota = 0
 					periodStartAt = nowTimestamp
 				}
-				if periodUsedQuota+consumeQuota > token.PeriodQuota {
-					return fmt.Errorf("token period quota is not enough, token period remain quota: %s, need quota: %s", loggerFormatQuota(token.PeriodQuota-periodUsedQuota), loggerFormatQuota(consumeQuota))
-				}
 				periodUsedQuota += consumeQuota
 				updates["period_used_quota"] = periodUsedQuota
 				updates["period_start_at"] = periodStartAt
@@ -1229,6 +1226,24 @@ func adjustTokenQuota(id int, delta int) error {
 
 func loggerFormatQuota(quota int) string {
 	return fmt.Sprintf("%d", quota)
+}
+
+func CheckTokenPeriodQuota(token *Token) error {
+	if token == nil || token.PeriodQuota <= 0 {
+		return nil
+	}
+	now := time.Now()
+	if tokenPeriodExpired(now, token.PeriodStartAt, token.PeriodDuration) {
+		return nil
+	}
+	if token.PeriodUsedQuota >= token.PeriodQuota {
+		nextReset := time.Unix(token.PeriodStartAt+token.PeriodDuration, 0)
+		return fmt.Errorf("token period quota exceeded, used: %s, limit: %s, resets at: %s",
+			loggerFormatQuota(token.PeriodUsedQuota),
+			loggerFormatQuota(token.PeriodQuota),
+			nextReset.Format("2006-01-02 15:04:05"))
+	}
+	return nil
 }
 
 func UpdateUserBusinessGroupPeriodQuota(userId int, businessGroup string, periodQuota int, periodDuration int64) (int64, error) {

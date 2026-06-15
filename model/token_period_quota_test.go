@@ -1,7 +1,6 @@
 package model
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -51,7 +50,7 @@ func withTokenPeriodQuotaTestDB(t *testing.T, run func()) {
 	run()
 }
 
-func TestDecreaseTokenQuotaEnforcesDailyPeriodAndResetsWithoutClearingHistory(t *testing.T) {
+func TestDecreaseTokenQuotaRecordsUsageAndCheckBlocksWhenExceeded(t *testing.T) {
 	withTokenPeriodQuotaTestDB(t, func() {
 		now := time.Now()
 		currentWindow := time.Now().Unix()
@@ -73,30 +72,32 @@ func TestDecreaseTokenQuotaEnforcesDailyPeriodAndResetsWithoutClearingHistory(t 
 		}
 		require.NoError(t, DB.Create(token).Error)
 
-		err := DecreaseTokenQuota(token.Id, token.Key, 30)
-		require.Error(t, err)
-		require.Contains(t, strings.ToLower(err.Error()), "period quota")
-
+		// Consuming 30 pushes period_used to 110 (over 100 limit), but DecreaseTokenQuota
+		// should NOT block — it always records accurately.
+		require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 30))
 		require.NoError(t, DB.First(token, token.Id).Error)
-		require.Equal(t, 1000, token.RemainQuota)
-		require.Equal(t, 200, token.UsedQuota)
-		require.Equal(t, 80, token.PeriodUsedQuota)
+		require.Equal(t, 970, token.RemainQuota)
+		require.Equal(t, 230, token.UsedQuota)
+		require.Equal(t, 110, token.PeriodUsedQuota)
 
-		require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 20))
-		require.NoError(t, DB.First(token, token.Id).Error)
-		require.Equal(t, 980, token.RemainQuota)
-		require.Equal(t, 220, token.UsedQuota)
-		require.Equal(t, 100, token.PeriodUsedQuota)
+		// CheckTokenPeriodQuota should now block — period_used (110) >= period_quota (100)
+		require.Error(t, CheckTokenPeriodQuota(token))
 
+		// Simulate period expiry: set period_start_at to 1 day ago
 		require.NoError(t, DB.Model(&Token{}).Where("id = ?", token.Id).Updates(map[string]any{
-			"period_used_quota": 100,
+			"period_used_quota": 110,
 			"period_start_at":   currentWindow - 86400,
 		}).Error)
 
+		// After expiry, CheckTokenPeriodQuota should pass (period will reset on next consume)
+		require.NoError(t, DB.First(token, token.Id).Error)
+		require.NoError(t, CheckTokenPeriodQuota(token))
+
+		// Consuming after expiry: period resets, only new consumption counted
 		require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 40))
 		require.NoError(t, DB.First(token, token.Id).Error)
-		require.Equal(t, 940, token.RemainQuota)
-		require.Equal(t, 260, token.UsedQuota)
+		require.Equal(t, 930, token.RemainQuota)
+		require.Equal(t, 270, token.UsedQuota)
 		require.Equal(t, 40, token.PeriodUsedQuota)
 		require.True(t, token.PeriodStartAt >= currentWindow)
 	})
