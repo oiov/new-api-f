@@ -6223,5 +6223,8 @@
   "每周": "Hebdomadaire",
   "每月": "Mensuel",
   "周期额度": "Quota de période",
-  "周期可用额度，到期自动重置。设为 0 则不限制": "Quota par période, réinitialisé automatiquement à la fin. 0 = pas de limite"
+  "周期可用额度，到期自动重置。设为 0 则不限制": "Quota par période, réinitialisé automatiquement à la fin. 0 = pas de limite",
+  "重置周期": "Période de réinitialisation",
+  "小时": "heure(s)",
+  "天": "jour(s)"
 }

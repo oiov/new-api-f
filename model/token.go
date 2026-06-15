@@ -35,7 +35,7 @@ type Token struct {
 	UsedQuota               int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group                   string         `json:"group" gorm:"default:''"`
 	BusinessGroup           string         `json:"business_group" gorm:"type:varchar(128);not null;default:'';index"`
-	PeriodType              int            `json:"period_type" gorm:"default:1"`
+	PeriodDuration          int64          `json:"period_duration" gorm:"bigint;default:86400"`
 	PeriodQuota             int            `json:"period_quota" gorm:"default:0"`
 	PeriodUsedQuota         int            `json:"period_used_quota" gorm:"default:0"`
 	PeriodStartAt           int64          `json:"period_start_at" gorm:"bigint;default:0"`
@@ -924,7 +924,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "business_group", "period_type", "period_quota", "period_used_quota", "period_start_at", "cross_group_retry", "specific_channel_id", "specific_channel_key_index", "user_subscription_id", "source").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "business_group", "period_duration", "period_quota", "period_used_quota", "period_start_at", "cross_group_retry", "specific_channel_id", "specific_channel_key_index", "user_subscription_id", "source").Updates(token).Error
 	return err
 }
 
@@ -1149,26 +1149,19 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 }
 
 const (
-	PeriodTypeDaily   = 1
-	PeriodTypeWeekly  = 2
-	PeriodTypeMonthly = 3
+	PeriodDurationDaily  int64 = 86400
+	PeriodDurationWeekly int64 = 604800
+	PeriodDurationMonth  int64 = 2592000
 )
 
-func tokenPeriodWindowStart(now time.Time, periodType int) int64 {
-	local := now.In(time.Local)
-	switch periodType {
-	case PeriodTypeWeekly:
-		weekday := int(local.Weekday())
-		if weekday == 0 {
-			weekday = 7
-		}
-		monday := local.AddDate(0, 0, -(weekday - 1))
-		return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, local.Location()).Unix()
-	case PeriodTypeMonthly:
-		return time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, local.Location()).Unix()
-	default:
-		return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location()).Unix()
+func tokenPeriodExpired(now time.Time, periodStartAt int64, periodDuration int64) bool {
+	if periodDuration <= 0 {
+		periodDuration = PeriodDurationDaily
 	}
+	if periodStartAt <= 0 {
+		return true
+	}
+	return now.Unix()-periodStartAt >= periodDuration
 }
 
 func tokenRequiresImmediateQuotaUpdate(id int) bool {
@@ -1206,14 +1199,13 @@ func adjustTokenQuota(id int, delta int) error {
 		}
 
 		if token.PeriodQuota > 0 {
-			currentWindowStart := tokenPeriodWindowStart(now, token.PeriodType)
 			periodUsedQuota := token.PeriodUsedQuota
 			periodStartAt := token.PeriodStartAt
 			if delta < 0 {
 				consumeQuota := -delta
-				if periodStartAt != currentWindowStart {
+				if tokenPeriodExpired(now, periodStartAt, token.PeriodDuration) {
 					periodUsedQuota = 0
-					periodStartAt = currentWindowStart
+					periodStartAt = nowTimestamp
 				}
 				if periodUsedQuota+consumeQuota > token.PeriodQuota {
 					return fmt.Errorf("token period quota is not enough, token period remain quota: %s, need quota: %s", loggerFormatQuota(token.PeriodQuota-periodUsedQuota), loggerFormatQuota(consumeQuota))
@@ -1221,7 +1213,7 @@ func adjustTokenQuota(id int, delta int) error {
 				periodUsedQuota += consumeQuota
 				updates["period_used_quota"] = periodUsedQuota
 				updates["period_start_at"] = periodStartAt
-			} else if delta > 0 && periodStartAt == currentWindowStart {
+			} else if delta > 0 && !tokenPeriodExpired(now, periodStartAt, token.PeriodDuration) {
 				periodUsedQuota -= delta
 				if periodUsedQuota < 0 {
 					periodUsedQuota = 0
@@ -1239,7 +1231,7 @@ func loggerFormatQuota(quota int) string {
 	return fmt.Sprintf("%d", quota)
 }
 
-func UpdateUserBusinessGroupPeriodQuota(userId int, businessGroup string, periodQuota int, periodType int) (int64, error) {
+func UpdateUserBusinessGroupPeriodQuota(userId int, businessGroup string, periodQuota int, periodDuration int64) (int64, error) {
 	businessGroup = strings.TrimSpace(businessGroup)
 	if userId <= 0 {
 		return 0, errors.New("userId 为空！")
@@ -1250,17 +1242,17 @@ func UpdateUserBusinessGroupPeriodQuota(userId int, businessGroup string, period
 	if periodQuota < 0 {
 		return 0, errors.New("周期额度不能为负数")
 	}
-	if periodType < PeriodTypeDaily || periodType > PeriodTypeMonthly {
-		periodType = PeriodTypeDaily
+	if periodDuration <= 0 {
+		periodDuration = PeriodDurationDaily
 	}
 	now := time.Now()
 	result := DB.Model(&Token{}).
 		Where("user_id = ? AND business_group = ?", userId, businessGroup).
 		Updates(map[string]interface{}{
-			"period_type":       periodType,
+			"period_duration":   periodDuration,
 			"period_quota":      periodQuota,
 			"period_used_quota": 0,
-			"period_start_at":   tokenPeriodWindowStart(now, periodType),
+			"period_start_at":   now.Unix(),
 		})
 	return result.RowsAffected, result.Error
 }

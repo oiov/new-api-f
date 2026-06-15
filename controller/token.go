@@ -317,8 +317,8 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorMsg(c, "周期额度不能为负数")
 		return
 	}
-	if token.PeriodType < 1 || token.PeriodType > 3 {
-		token.PeriodType = model.PeriodTypeDaily
+	if token.PeriodDuration <= 0 {
+		token.PeriodDuration = model.PeriodDurationDaily
 	}
 	cleanToken := model.Token{
 		UserId:             c.GetInt("id"),
@@ -335,7 +335,7 @@ func AddToken(c *gin.Context) {
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
 		BusinessGroup:      strings.TrimSpace(token.BusinessGroup),
-		PeriodType:         token.PeriodType,
+		PeriodDuration:     token.PeriodDuration,
 		PeriodQuota:        token.PeriodQuota,
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
@@ -392,8 +392,8 @@ func UpdateToken(c *gin.Context) {
 		common.ApiErrorMsg(c, "周期额度不能为负数")
 		return
 	}
-	if token.PeriodType < 1 || token.PeriodType > 3 {
-		token.PeriodType = model.PeriodTypeDaily
+	if token.PeriodDuration <= 0 {
+		token.PeriodDuration = model.PeriodDurationDaily
 	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
@@ -447,7 +447,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.BusinessGroup = strings.TrimSpace(token.BusinessGroup)
-		cleanToken.PeriodType = token.PeriodType
+		cleanToken.PeriodDuration = token.PeriodDuration
 		cleanToken.PeriodQuota = token.PeriodQuota
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 	}
@@ -559,9 +559,9 @@ func GetBusinessGroupStat(c *gin.Context) {
 }
 
 type UpdateBusinessGroupPeriodQuotaRequest struct {
-	BusinessGroup string `json:"business_group"`
-	PeriodQuota   int    `json:"period_quota"`
-	PeriodType    int    `json:"period_type"`
+	BusinessGroup  string `json:"business_group"`
+	PeriodQuota    int    `json:"period_quota"`
+	PeriodDuration int64  `json:"period_duration"`
 }
 
 func UpdateBusinessGroupPeriodQuota(c *gin.Context) {
@@ -580,10 +580,10 @@ func UpdateBusinessGroupPeriodQuota(c *gin.Context) {
 		common.ApiErrorMsg(c, "周期额度不能为负数")
 		return
 	}
-	if req.PeriodType < 1 || req.PeriodType > 3 {
-		req.PeriodType = model.PeriodTypeDaily
+	if req.PeriodDuration <= 0 {
+		req.PeriodDuration = model.PeriodDurationDaily
 	}
-	count, err := model.UpdateUserBusinessGroupPeriodQuota(userId, req.BusinessGroup, req.PeriodQuota, req.PeriodType)
+	count, err := model.UpdateUserBusinessGroupPeriodQuota(userId, req.BusinessGroup, req.PeriodQuota, req.PeriodDuration)
 	if err != nil {
 		common.ApiError(c, err)
 		return

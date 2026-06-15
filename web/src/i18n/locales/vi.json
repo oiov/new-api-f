@@ -6632,5 +6632,8 @@
   "每周": "Hàng tuần",
   "每月": "Hàng tháng",
   "周期额度": "Hạn mức chu kỳ",
-  "周期可用额度，到期自动重置。设为 0 则不限制": "Hạn mức mỗi chu kỳ, tự động đặt lại khi hết hạn. Đặt 0 để không giới hạn"
+  "周期可用额度，到期自动重置。设为 0 则不限制": "Hạn mức mỗi chu kỳ, tự động đặt lại khi hết hạn. Đặt 0 để không giới hạn",
+  "重置周期": "Chu kỳ đặt lại",
+  "小时": "giờ",
+  "天": "ngày"
 }

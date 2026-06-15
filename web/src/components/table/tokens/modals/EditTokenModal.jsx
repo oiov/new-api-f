@@ -74,7 +74,7 @@ const EditTokenModal = (props) => {
     allow_ips: '',
     group: [],
     business_group: '',
-    period_type: 1,
+    period_duration: 86400,
     period_quota: 0,
     cross_group_retry: false,
     tokenCount: 1,
@@ -232,7 +232,7 @@ const EditTokenModal = (props) => {
       let { tokenCount: _tc, ...localInputs } = values;
       localInputs.remain_quota = parseInt(localInputs.remain_quota);
       localInputs.period_quota = parseInt(localInputs.period_quota) || 0;
-      localInputs.period_type = parseInt(localInputs.period_type) || 1;
+      localInputs.period_duration = parseInt(localInputs.period_duration) || 86400;
       if (localInputs.expired_time !== -1) {
         let time = Date.parse(localInputs.expired_time);
         if (isNaN(time)) {
@@ -583,12 +583,16 @@ const EditTokenModal = (props) => {
                   </Col>
                   <Col span={24}>
                     <Form.Select
-                      field='period_type'
-                      label={t('周期类型')}
+                      field='period_duration'
+                      label={t('重置周期')}
                       optionList={[
-                        { label: t('每天'), value: 1 },
-                        { label: t('每周'), value: 2 },
-                        { label: t('每月'), value: 3 },
+                        { label: `1 ${t('小时')}`, value: 3600 },
+                        { label: `6 ${t('小时')}`, value: 21600 },
+                        { label: `12 ${t('小时')}`, value: 43200 },
+                        { label: `1 ${t('天')}`, value: 86400 },
+                        { label: `3 ${t('天')}`, value: 259200 },
+                        { label: `7 ${t('天')}`, value: 604800 },
+                        { label: `30 ${t('天')}`, value: 2592000 },
                       ]}
                       style={{ width: '100%' }}
                     />

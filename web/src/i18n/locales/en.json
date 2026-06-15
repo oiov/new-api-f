@@ -6319,5 +6319,8 @@
   "每周": "Weekly",
   "每月": "Monthly",
   "周期额度": "Period Quota",
-  "周期可用额度，到期自动重置。设为 0 则不限制": "Quota limit per period, auto-resets when period ends. Set to 0 for no limit"
+  "周期可用额度，到期自动重置。设为 0 则不限制": "Quota limit per period, auto-resets when period ends. Set to 0 for no limit",
+  "重置周期": "Reset Period",
+  "小时": "hour(s)",
+  "天": "day(s)"
 }
