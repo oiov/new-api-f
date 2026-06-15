@@ -39,6 +39,7 @@ type Token struct {
 	PeriodQuota             int            `json:"period_quota" gorm:"default:0"`
 	PeriodUsedQuota         int            `json:"period_used_quota" gorm:"default:0"`
 	PeriodStartAt           int64          `json:"period_start_at" gorm:"bigint;default:0"`
+	PeriodResetAnchor       int64          `json:"period_reset_anchor" gorm:"bigint;default:0"`
 	CrossGroupRetry         bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
 	LastTestAt              int64          `json:"last_test_at" gorm:"bigint;default:0"`
 	LastTestOK              bool           `json:"last_test_ok" gorm:"default:false"`
@@ -924,7 +925,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "business_group", "period_duration", "period_quota", "period_used_quota", "period_start_at", "cross_group_retry", "specific_channel_id", "specific_channel_key_index", "user_subscription_id", "source").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "business_group", "period_duration", "period_quota", "period_used_quota", "period_start_at", "period_reset_anchor", "cross_group_retry", "specific_channel_id", "specific_channel_key_index", "user_subscription_id", "source").Updates(token).Error
 	return err
 }
 
@@ -1164,6 +1165,27 @@ func tokenPeriodExpired(now time.Time, periodStartAt int64, periodDuration int64
 	return now.Unix()-periodStartAt >= periodDuration
 }
 
+func AlignToAnchor(now time.Time, anchor int64, duration int64) int64 {
+	if anchor < 0 {
+		anchor = 0
+	}
+	if anchor >= 86400 {
+		anchor = 86399
+	}
+	localNow := subscriptionResetTime(now)
+	h := int(anchor / 3600)
+	m := int((anchor % 3600) / 60)
+	s := int(anchor % 60)
+	candidate := time.Date(
+		localNow.Year(), localNow.Month(), localNow.Day(),
+		h, m, s, 0, localNow.Location(),
+	)
+	if candidate.After(localNow) {
+		candidate = candidate.AddDate(0, 0, -1)
+	}
+	return candidate.Unix()
+}
+
 func tokenRequiresImmediateQuotaUpdate(id int) bool {
 	if id <= 0 {
 		return true
@@ -1205,7 +1227,11 @@ func adjustTokenQuota(id int, delta int) error {
 				consumeQuota := -delta
 				if tokenPeriodExpired(now, periodStartAt, token.PeriodDuration) {
 					periodUsedQuota = 0
-					periodStartAt = nowTimestamp
+					if token.PeriodResetAnchor > 0 && token.PeriodDuration >= PeriodDurationDaily {
+						periodStartAt = AlignToAnchor(now, token.PeriodResetAnchor, token.PeriodDuration)
+					} else {
+						periodStartAt = nowTimestamp
+					}
 				}
 				periodUsedQuota += consumeQuota
 				updates["period_used_quota"] = periodUsedQuota
@@ -1246,7 +1272,7 @@ func CheckTokenPeriodQuota(token *Token) error {
 	return nil
 }
 
-func UpdateUserBusinessGroupPeriodQuota(userId int, businessGroup string, periodQuota int, periodDuration int64) (int64, error) {
+func UpdateUserBusinessGroupPeriodQuota(userId int, businessGroup string, periodQuota int, periodDuration int64, periodResetAnchor int64) (int64, error) {
 	businessGroup = strings.TrimSpace(businessGroup)
 	if userId <= 0 {
 		return 0, errors.New("userId 为空！")
@@ -1260,14 +1286,22 @@ func UpdateUserBusinessGroupPeriodQuota(userId int, businessGroup string, period
 	if periodDuration <= 0 {
 		periodDuration = PeriodDurationDaily
 	}
+	if periodDuration < PeriodDurationDaily {
+		periodResetAnchor = 0
+	}
 	now := time.Now()
+	startAt := now.Unix()
+	if periodResetAnchor > 0 && periodDuration >= PeriodDurationDaily {
+		startAt = AlignToAnchor(now, periodResetAnchor, periodDuration)
+	}
 	result := DB.Model(&Token{}).
 		Where("user_id = ? AND business_group = ?", userId, businessGroup).
 		Updates(map[string]interface{}{
-			"period_duration":   periodDuration,
-			"period_quota":      periodQuota,
-			"period_used_quota": 0,
-			"period_start_at":   now.Unix(),
+			"period_duration":     periodDuration,
+			"period_quota":        periodQuota,
+			"period_used_quota":   0,
+			"period_start_at":     startAt,
+			"period_reset_anchor": periodResetAnchor,
 		})
 	return result.RowsAffected, result.Error
 }

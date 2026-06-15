@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -337,14 +338,20 @@ func AddToken(c *gin.Context) {
 		BusinessGroup:      strings.TrimSpace(token.BusinessGroup),
 		PeriodDuration:     token.PeriodDuration,
 		PeriodQuota:        token.PeriodQuota,
-		PeriodStartAt: func() int64 {
-			if token.PeriodStartAt > 0 {
-				return token.PeriodStartAt
-			}
-			if token.PeriodQuota > 0 {
-				return common.GetTimestamp()
+		PeriodResetAnchor: func() int64 {
+			if token.PeriodResetAnchor > 0 && token.PeriodDuration >= model.PeriodDurationDaily {
+				return token.PeriodResetAnchor
 			}
 			return 0
+		}(),
+		PeriodStartAt: func() int64 {
+			if token.PeriodQuota <= 0 {
+				return 0
+			}
+			if token.PeriodResetAnchor > 0 && token.PeriodDuration >= model.PeriodDurationDaily {
+				return model.AlignToAnchor(time.Now(), token.PeriodResetAnchor, token.PeriodDuration)
+			}
+			return common.GetTimestamp()
 		}(),
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
@@ -458,8 +465,14 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.BusinessGroup = strings.TrimSpace(token.BusinessGroup)
 		cleanToken.PeriodDuration = token.PeriodDuration
 		cleanToken.PeriodQuota = token.PeriodQuota
-		if token.PeriodStartAt > 0 {
-			cleanToken.PeriodStartAt = token.PeriodStartAt
+		newAnchor := int64(0)
+		if token.PeriodResetAnchor > 0 && token.PeriodDuration >= model.PeriodDurationDaily {
+			newAnchor = token.PeriodResetAnchor
+		}
+		anchorChanged := newAnchor != cleanToken.PeriodResetAnchor
+		cleanToken.PeriodResetAnchor = newAnchor
+		if anchorChanged && cleanToken.PeriodQuota > 0 && newAnchor > 0 && cleanToken.PeriodDuration >= model.PeriodDurationDaily {
+			cleanToken.PeriodStartAt = model.AlignToAnchor(time.Now(), newAnchor, cleanToken.PeriodDuration)
 		}
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 	}
@@ -571,9 +584,10 @@ func GetBusinessGroupStat(c *gin.Context) {
 }
 
 type UpdateBusinessGroupPeriodQuotaRequest struct {
-	BusinessGroup  string `json:"business_group"`
-	PeriodQuota    int    `json:"period_quota"`
-	PeriodDuration int64  `json:"period_duration"`
+	BusinessGroup     string `json:"business_group"`
+	PeriodQuota       int    `json:"period_quota"`
+	PeriodDuration    int64  `json:"period_duration"`
+	PeriodResetAnchor int64  `json:"period_reset_anchor"`
 }
 
 func UpdateBusinessGroupPeriodQuota(c *gin.Context) {
@@ -595,7 +609,7 @@ func UpdateBusinessGroupPeriodQuota(c *gin.Context) {
 	if req.PeriodDuration <= 0 {
 		req.PeriodDuration = model.PeriodDurationDaily
 	}
-	count, err := model.UpdateUserBusinessGroupPeriodQuota(userId, req.BusinessGroup, req.PeriodQuota, req.PeriodDuration)
+	count, err := model.UpdateUserBusinessGroupPeriodQuota(userId, req.BusinessGroup, req.PeriodQuota, req.PeriodDuration, req.PeriodResetAnchor)
 	if err != nil {
 		common.ApiError(c, err)
 		return
