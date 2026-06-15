@@ -54,7 +54,7 @@ func withTokenPeriodQuotaTestDB(t *testing.T, run func()) {
 func TestDecreaseTokenQuotaEnforcesDailyPeriodAndResetsWithoutClearingHistory(t *testing.T) {
 	withTokenPeriodQuotaTestDB(t, func() {
 		now := time.Now()
-		currentWindow := tokenPeriodWindowStart(now)
+		currentWindow := tokenPeriodWindowStart(now, PeriodTypeDaily)
 		token := &Token{
 			UserId:          10,
 			Name:            "research-key",
@@ -105,7 +105,7 @@ func TestDecreaseTokenQuotaEnforcesDailyPeriodAndResetsWithoutClearingHistory(t 
 func TestIncreaseTokenQuotaRestoresCurrentPeriodUsageForRefunds(t *testing.T) {
 	withTokenPeriodQuotaTestDB(t, func() {
 		now := time.Now()
-		currentWindow := tokenPeriodWindowStart(now)
+		currentWindow := tokenPeriodWindowStart(now, PeriodTypeDaily)
 		token := &Token{
 			UserId:          10,
 			Name:            "refund-key",
@@ -136,7 +136,7 @@ func TestIncreaseTokenQuotaRestoresCurrentPeriodUsageForRefunds(t *testing.T) {
 func TestUpdateUserBusinessGroupPeriodQuotaUpdatesAllTokensInBusinessGroup(t *testing.T) {
 	withTokenPeriodQuotaTestDB(t, func() {
 		now := time.Now()
-		currentWindow := tokenPeriodWindowStart(now)
+		currentWindow := tokenPeriodWindowStart(now, PeriodTypeDaily)
 		tokens := []*Token{
 			{
 				UserId:          20,
@@ -180,7 +180,7 @@ func TestUpdateUserBusinessGroupPeriodQuotaUpdatesAllTokensInBusinessGroup(t *te
 		}
 		require.NoError(t, DB.Create(&tokens).Error)
 
-		count, err := UpdateUserBusinessGroupPeriodQuota(20, "研发部", 500)
+		count, err := UpdateUserBusinessGroupPeriodQuota(20, "研发部", 500, PeriodTypeDaily)
 		require.NoError(t, err)
 		require.EqualValues(t, 2, count)
 

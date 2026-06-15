@@ -6626,5 +6626,11 @@
   "可选，如：研发部、客服部": "Tùy chọn, ví dụ: Phòng R&D, CSKH",
   "每日周期额度": "Hạn mức hàng ngày",
   "0 表示不限制": "0 nghĩa là không giới hạn",
-  "每日可用额度，次日自动重置。设为 0 则不限制": "Hạn mức hàng ngày, tự động đặt lại vào ngày hôm sau. Đặt 0 để không giới hạn"
+  "每日可用额度，次日自动重置。设为 0 则不限制": "Hạn mức hàng ngày, tự động đặt lại vào ngày hôm sau. Đặt 0 để không giới hạn",
+  "周期类型": "Loại chu kỳ",
+  "每天": "Hàng ngày",
+  "每周": "Hàng tuần",
+  "每月": "Hàng tháng",
+  "周期额度": "Hạn mức chu kỳ",
+  "周期可用额度，到期自动重置。设为 0 则不限制": "Hạn mức mỗi chu kỳ, tự động đặt lại khi hết hạn. Đặt 0 để không giới hạn"
 }

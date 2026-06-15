@@ -6313,5 +6313,11 @@
   "可选，如：研发部、客服部": "Optional, e.g. R&D, Customer Support",
   "每日周期额度": "Daily Period Quota",
   "0 表示不限制": "0 means no limit",
-  "每日可用额度，次日自动重置。设为 0 则不限制": "Daily quota limit, auto-resets next day. Set to 0 for no limit"
+  "每日可用额度，次日自动重置。设为 0 则不限制": "Daily quota limit, auto-resets next day. Set to 0 for no limit",
+  "周期类型": "Period Type",
+  "每天": "Daily",
+  "每周": "Weekly",
+  "每月": "Monthly",
+  "周期额度": "Period Quota",
+  "周期可用额度，到期自动重置。设为 0 则不限制": "Quota limit per period, auto-resets when period ends. Set to 0 for no limit"
 }

@@ -6217,5 +6217,11 @@
   "可选，如：研发部、客服部": "Facultatif, ex : R&D, Support client",
   "每日周期额度": "Quota journalier",
   "0 表示不限制": "0 signifie pas de limite",
-  "每日可用额度，次日自动重置。设为 0 则不限制": "Quota quotidien, réinitialisé automatiquement le lendemain. 0 = pas de limite"
+  "每日可用额度，次日自动重置。设为 0 则不限制": "Quota quotidien, réinitialisé automatiquement le lendemain. 0 = pas de limite",
+  "周期类型": "Type de période",
+  "每天": "Quotidien",
+  "每周": "Hebdomadaire",
+  "每月": "Mensuel",
+  "周期额度": "Quota de période",
+  "周期可用额度，到期自动重置。设为 0 则不限制": "Quota par période, réinitialisé automatiquement à la fin. 0 = pas de limite"
 }
