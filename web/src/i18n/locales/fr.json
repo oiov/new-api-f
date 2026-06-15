@@ -6212,5 +6212,10 @@
     "已删除 {{count}} 条日志": "{{count}} journaux supprimés",
     "请选择要删除的日志": "Veuillez sélectionner les journaux à supprimer",
     "状态监控": "Surveillance du statut"
-  }
+  },
+  "业务分组": "Groupe métier",
+  "可选，如：研发部、客服部": "Facultatif, ex : R&D, Support client",
+  "每日周期额度": "Quota journalier",
+  "0 表示不限制": "0 signifie pas de limite",
+  "每日可用额度，次日自动重置。设为 0 则不限制": "Quota quotidien, réinitialisé automatiquement le lendemain. 0 = pas de limite"
 }

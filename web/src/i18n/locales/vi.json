@@ -6621,5 +6621,10 @@
     "已删除 {{count}} 条日志": "Đã xóa {{count}} nhật ký",
     "请选择要删除的日志": "Vui lòng chọn nhật ký cần xóa",
     "状态监控": "Giám sát trạng thái"
-  }
+  },
+  "业务分组": "Nhóm nghiệp vụ",
+  "可选，如：研发部、客服部": "Tùy chọn, ví dụ: Phòng R&D, CSKH",
+  "每日周期额度": "Hạn mức hàng ngày",
+  "0 表示不限制": "0 nghĩa là không giới hạn",
+  "每日可用额度，次日自动重置。设为 0 则不限制": "Hạn mức hàng ngày, tự động đặt lại vào ngày hôm sau. Đặt 0 để không giới hạn"
 }

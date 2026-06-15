@@ -585,7 +585,13 @@ const EditTokenModal = (props) => {
                       label={t('每日周期额度')}
                       placeholder={t('0 表示不限制')}
                       type='number'
-                      extraText={renderQuotaWithPrompt(values.period_quota, t('每日可用额度，次日自动重置。设为 0 则不限制'))}
+                      extraText={
+                        <>
+                          {renderQuotaWithPrompt(values.period_quota)}
+                          {' '}
+                          {t('每日可用额度，次日自动重置。设为 0 则不限制')}
+                        </>
+                      }
                       data={[
                         { value: 0, label: t('不限制') },
                         { value: 500000, label: '1$' },

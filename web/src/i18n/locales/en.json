@@ -6308,5 +6308,10 @@
     "已删除 {{count}} 条日志": "Deleted {{count}} logs",
     "请选择要删除的日志": "Please select logs to delete",
     "状态监控": "Status monitor"
-  }
+  },
+  "业务分组": "Business Group",
+  "可选，如：研发部、客服部": "Optional, e.g. R&D, Customer Support",
+  "每日周期额度": "Daily Period Quota",
+  "0 表示不限制": "0 means no limit",
+  "每日可用额度，次日自动重置。设为 0 则不限制": "Daily quota limit, auto-resets next day. Set to 0 for no limit"
 }
