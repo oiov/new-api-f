@@ -1312,6 +1312,8 @@ type BusinessGroupStat struct {
 	TotalUsedQuota     int64  `json:"total_used_quota" gorm:"column:total_used_quota"`
 	TotalPeriodQuota   int64  `json:"total_period_quota" gorm:"column:total_period_quota"`
 	TotalPeriodUsed    int64  `json:"total_period_used" gorm:"column:total_period_used"`
+	PeriodDuration     int64  `json:"period_duration" gorm:"column:period_duration"`
+	PeriodResetAnchor  int64  `json:"period_reset_anchor" gorm:"column:period_reset_anchor"`
 }
 
 func GetUserBusinessGroups(userId int) ([]BusinessGroupStat, error) {
@@ -1322,7 +1324,9 @@ func GetUserBusinessGroups(userId int) ([]BusinessGroupStat, error) {
 			COUNT(*) as token_count,
 			SUM(used_quota) as total_used_quota,
 			SUM(CASE WHEN period_quota > 0 AND (? - period_start_at) < period_duration THEN period_quota ELSE 0 END) as total_period_quota,
-			SUM(CASE WHEN period_quota > 0 AND (? - period_start_at) < period_duration THEN period_used_quota ELSE 0 END) as total_period_used`, now, now).
+			SUM(CASE WHEN period_quota > 0 AND (? - period_start_at) < period_duration THEN period_used_quota ELSE 0 END) as total_period_used,
+			MAX(period_duration) as period_duration,
+			MAX(period_reset_anchor) as period_reset_anchor`, now, now).
 		Where("user_id = ? AND business_group != ''", userId).
 		Group("business_group").
 		Order("total_used_quota DESC").
