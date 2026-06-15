@@ -1266,9 +1266,14 @@ type BusinessGroupStat struct {
 }
 
 func GetUserBusinessGroups(userId int) ([]BusinessGroupStat, error) {
+	now := time.Now().Unix()
 	var stats []BusinessGroupStat
 	err := DB.Model(&Token{}).
-		Select("business_group, COUNT(*) as token_count, SUM(used_quota) as total_used_quota, SUM(period_quota) as total_period_quota, SUM(period_used_quota) as total_period_used").
+		Select(`business_group,
+			COUNT(*) as token_count,
+			SUM(used_quota) as total_used_quota,
+			SUM(CASE WHEN period_quota > 0 AND (? - period_start_at) < period_duration THEN period_quota ELSE 0 END) as total_period_quota,
+			SUM(CASE WHEN period_quota > 0 AND (? - period_start_at) < period_duration THEN period_used_quota ELSE 0 END) as total_period_used`, now, now).
 		Where("user_id = ? AND business_group != ''", userId).
 		Group("business_group").
 		Order("total_used_quota DESC").
