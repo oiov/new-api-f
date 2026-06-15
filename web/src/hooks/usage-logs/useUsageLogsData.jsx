@@ -134,6 +134,7 @@ export const useLogsData = () => {
     model_name: '',
     channel: '',
     group: '',
+    business_group: '',
     request_id: '',
     error_message: '',
     status_code: '',
@@ -297,6 +298,7 @@ export const useLogsData = () => {
       end_timestamp,
       channel: formValues.channel || '',
       group: formValues.group || '',
+      business_group: formValues.business_group || '',
       request_id: formValues.request_id || '',
       error_message: formValues.error_message || '',
       status_code: formValues.status_code || '',
@@ -317,6 +319,7 @@ export const useLogsData = () => {
       end_timestamp,
       channel,
       group,
+      business_group,
       request_id,
       error_message,
       status_code,
@@ -342,6 +345,7 @@ export const useLogsData = () => {
       start_timestamp: String(localStartTimestamp),
       end_timestamp: String(localEndTimestamp),
       group: group || '',
+      business_group: business_group || '',
       request_id: request_id || '',
       error_message: error_message || '',
       status_code: status_code || '',
@@ -501,6 +505,7 @@ export const useLogsData = () => {
       start_timestamp,
       end_timestamp,
       group,
+      business_group,
       error_message,
       status_code,
       subscription_id,
@@ -510,7 +515,7 @@ export const useLogsData = () => {
     const currentLogType = formLogType !== undefined ? formLogType : logType;
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
-    let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&error_message=${encodeURIComponent(error_message)}&status_code=${encodeURIComponent(status_code)}&subscription_id=${subscription_id}&subscription_plan_id=${subscription_plan_id}`;
+    let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&business_group=${encodeURIComponent(business_group)}&error_message=${encodeURIComponent(error_message)}&status_code=${encodeURIComponent(status_code)}&subscription_id=${subscription_id}&subscription_plan_id=${subscription_plan_id}`;
     url = encodeURI(url);
     let res = await API.get(url);
     const { success, message, data } = res.data;
@@ -531,6 +536,7 @@ export const useLogsData = () => {
       end_timestamp,
       channel,
       group,
+      business_group,
       error_message,
       status_code,
       subscription_id,
@@ -550,6 +556,7 @@ export const useLogsData = () => {
       end_timestamp: String(localEndTimestamp),
       channel: channel || '',
       group: group || '',
+      business_group: business_group || '',
       error_message: error_message || '',
       status_code: status_code || '',
       subscription_id: subscription_id || '',

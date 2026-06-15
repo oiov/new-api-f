@@ -69,6 +69,7 @@ func SearchTokens(c *gin.Context) {
 		Token:          c.Query("token"),
 		Status:         c.Query("status"),
 		Group:          c.Query("group"),
+		BusinessGroup:  c.Query("business_group"),
 		ExpiredState:   c.Query("expired_state"),
 		UnlimitedState: c.Query("unlimited_state"),
 	}
@@ -101,14 +102,15 @@ func SearchTokensByAdmin(c *gin.Context) {
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 
 	filters := model.AdminTokenSearchFilters{
-		Username:     c.Query("username"),
-		TokenName:    c.Query("token_name"),
-		Token:        c.Query("token"),
-		Status:       c.Query("status"),
-		Group:        c.Query("group"),
-		ExpiredState: c.Query("expired_state"),
-		StartTime:    startTimestamp,
-		EndTime:      endTimestamp,
+		Username:      c.Query("username"),
+		TokenName:     c.Query("token_name"),
+		Token:         c.Query("token"),
+		Status:        c.Query("status"),
+		Group:         c.Query("group"),
+		BusinessGroup: c.Query("business_group"),
+		ExpiredState:  c.Query("expired_state"),
+		StartTime:     startTimestamp,
+		EndTime:       endTimestamp,
 	}
 
 	tokens, total, err := model.SearchTokensByAdmin(filters, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
@@ -311,6 +313,10 @@ func AddToken(c *gin.Context) {
 		common.SysLog("failed to generate token key: " + err.Error())
 		return
 	}
+	if token.PeriodQuota < 0 {
+		common.ApiErrorMsg(c, "周期额度不能为负数")
+		return
+	}
 	cleanToken := model.Token{
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
@@ -325,6 +331,8 @@ func AddToken(c *gin.Context) {
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
+		BusinessGroup:      strings.TrimSpace(token.BusinessGroup),
+		PeriodQuota:        token.PeriodQuota,
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
 	err = cleanToken.Insert()
@@ -375,6 +383,10 @@ func UpdateToken(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
 			return
 		}
+	}
+	if token.PeriodQuota < 0 {
+		common.ApiErrorMsg(c, "周期额度不能为负数")
+		return
 	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
@@ -427,6 +439,8 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
+		cleanToken.BusinessGroup = strings.TrimSpace(token.BusinessGroup)
+		cleanToken.PeriodQuota = token.PeriodQuota
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 	}
 	err = cleanToken.Update()
@@ -489,6 +503,75 @@ func DeleteInvalidTokenBatch(c *gin.Context) {
 		UnlimitedState: req.UnlimitedState,
 	}
 	count, err := model.BatchDeleteInvalidTokensByFilter(userId, filters)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    count,
+	})
+}
+
+func GetBusinessGroups(c *gin.Context) {
+	userId := c.GetInt("id")
+	stats, err := model.GetUserBusinessGroups(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    stats,
+	})
+}
+
+func GetBusinessGroupStat(c *gin.Context) {
+	userId := c.GetInt("id")
+	businessGroup := strings.TrimSpace(c.Query("business_group"))
+	if businessGroup == "" {
+		common.ApiErrorMsg(c, "业务分组不能为空")
+		return
+	}
+	totalQuota, err := model.GetBusinessGroupLogStat(userId, businessGroup)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"business_group":   businessGroup,
+			"total_used_quota": totalQuota,
+		},
+	})
+}
+
+type UpdateBusinessGroupPeriodQuotaRequest struct {
+	BusinessGroup string `json:"business_group"`
+	PeriodQuota   int    `json:"period_quota"`
+}
+
+func UpdateBusinessGroupPeriodQuota(c *gin.Context) {
+	userId := c.GetInt("id")
+	req := UpdateBusinessGroupPeriodQuotaRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数格式错误")
+		return
+	}
+	req.BusinessGroup = strings.TrimSpace(req.BusinessGroup)
+	if req.BusinessGroup == "" {
+		common.ApiErrorMsg(c, "业务分组不能为空")
+		return
+	}
+	if req.PeriodQuota < 0 {
+		common.ApiErrorMsg(c, "周期额度不能为负数")
+		return
+	}
+	count, err := model.UpdateUserBusinessGroupPeriodQuota(userId, req.BusinessGroup, req.PeriodQuota)
 	if err != nil {
 		common.ApiError(c, err)
 		return

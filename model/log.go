@@ -41,6 +41,7 @@ type Log struct {
 	ChannelTag       string `json:"channel_tag" gorm:"->"`
 	TokenId          int    `json:"token_id" gorm:"default:0;index"`
 	Group            string `json:"group" gorm:"index"`
+	BusinessGroup    string `json:"business_group" gorm:"type:varchar(128);not null;default:'';index"`
 	Ip               string `json:"ip" gorm:"index;default:''"`
 	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	Other            string `json:"other"`
@@ -340,6 +341,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		UseTime:          useTimeSeconds,
 		IsStream:         isStream,
 		Group:            group,
+		BusinessGroup:    c.GetString("business_group"),
 		Ip: func() string {
 			if needRecordIp {
 				return c.ClientIP()
@@ -367,6 +369,7 @@ type RecordConsumeLogParams struct {
 	UseTimeSeconds   int                    `json:"use_time_seconds"`
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
+	BusinessGroup    string                 `json:"business_group"`
 	Other            map[string]interface{} `json:"other"`
 }
 
@@ -401,6 +404,12 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,
 		Group:            params.Group,
+		BusinessGroup: func() string {
+			if strings.TrimSpace(params.BusinessGroup) != "" {
+				return strings.TrimSpace(params.BusinessGroup)
+			}
+			return c.GetString("business_group")
+		}(),
 		Ip: func() string {
 			if needRecordIp {
 				return c.ClientIP()
@@ -439,9 +448,11 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 	username, _ := GetUsernameById(params.UserId, false)
 	tokenName := ""
+	businessGroup := ""
 	if params.TokenId > 0 {
 		if token, err := GetTokenById(params.TokenId); err == nil {
 			tokenName = token.Name
+			businessGroup = token.BusinessGroup
 		}
 	}
 	log := &Log{
@@ -456,6 +467,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		ChannelId: params.ChannelId,
 		TokenId:   params.TokenId,
 		Group:     params.Group,
+		BusinessGroup: businessGroup,
 		Other:     common.MapToJsonStr(params.Other),
 	}
 	err := LOG_DB.Create(log).Error
@@ -469,8 +481,8 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, err error) {
-	tx, err := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, err error) {
+	tx, err := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -497,7 +509,7 @@ const logExportLimit = 10000
 
 var logExportBatchSize = 500
 
-func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
+func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -544,6 +556,9 @@ func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, 
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
 	}
+	if businessGroup != "" {
+		tx = tx.Where("logs.business_group = ?", businessGroup)
+	}
 	if subscriptionId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_id", subscriptionId)
 	}
@@ -570,7 +585,7 @@ func applyExplicitLogTextFilter(tx *gorm.DB, column string, value string) (*gorm
 	return tx.Where(column+" = ?", value), nil
 }
 
-func buildUserLogsQuery(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
+func buildUserLogsQuery(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -608,6 +623,9 @@ func buildUserLogsQuery(userId int, logType int, startTimestamp int64, endTimest
 	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if businessGroup != "" {
+		tx = tx.Where("logs.business_group = ?", businessGroup)
 	}
 	if subscriptionId > 0 {
 		tx = applySubscriptionJSONIdFilter(tx, "subscription_id", subscriptionId)
@@ -674,8 +692,8 @@ func attachChannelNamesToLogs(logs []*Log) error {
 	return nil
 }
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, err error) {
-	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool) (logs []*Log, total int64, err error) {
+	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -712,6 +730,7 @@ func logExportColumns(compact bool) []string {
 		"logs.is_stream",
 		"logs.channel_id",
 		"logs." + logGroupCol,
+		"logs.business_group",
 		"logs.ip",
 		"logs.request_id",
 	}
@@ -760,8 +779,8 @@ func findLogsForExport(tx *gorm.DB, limit int, compact bool) ([]*Log, error) {
 	return logs, nil
 }
 
-func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool) (logs []*Log, total int64, truncated bool, err error) {
-	tx, err := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool) (logs []*Log, total int64, truncated bool, err error) {
+	tx, err := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, false, err
 	}
@@ -784,8 +803,8 @@ func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, 
 	return logs, total, truncated, nil
 }
 
-func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool) (logs []*Log, total int64, truncated bool, err error) {
-	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool) (logs []*Log, total int64, truncated bool, err error) {
+	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, false, err
 	}
@@ -1400,7 +1419,7 @@ func GetGroupLogHealthStats(query GroupLogHealthStatsQuery) ([]GroupLogHealthSta
 	return stats, nil
 }
 
-func buildLogStatConsumeQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
+func buildLogStatConsumeQuery(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (*gorm.DB, error) {
 	tx := LOG_DB.Table("logs")
 	if username != "" {
 		tx = tx.Where("username = ?", username)
@@ -1429,6 +1448,9 @@ func buildLogStatConsumeQuery(logType int, startTimestamp int64, endTimestamp in
 	}
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
+	}
+	if businessGroup != "" {
+		tx = tx.Where("business_group = ?", businessGroup)
 	}
 	if requestId != "" {
 		tx = tx.Where("request_id = ?", requestId)
@@ -1537,12 +1559,12 @@ func readPositiveInt64FromMap(values map[string]interface{}, key string) int64 {
 	return n
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (stat Stat, err error) {
-	tx, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (stat Stat, err error) {
+	tx, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return stat, err
 	}
-	rpmTpmQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	rpmTpmQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return stat, err
 	}
@@ -1560,7 +1582,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId 
 		return stat, errors.New("查询统计数据失败")
 	}
 
-	cacheQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
+	cacheQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return stat, err
 	}

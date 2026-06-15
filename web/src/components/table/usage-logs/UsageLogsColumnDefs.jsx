@@ -726,6 +726,7 @@ export const getLogsColumns = ({
       dataIndex: 'token_name',
       render: (text, record, index) => {
         const groupName = getLogGroupName(record);
+        const businessGroup = record.business_group || '';
         return record.type === 0 ||
           record.type === 2 ||
           record.type === 5 ||
@@ -743,6 +744,18 @@ export const getLogsColumns = ({
             </Tag>
             {groupName ? (
               <div>{renderGroup(groupName)}</div>
+            ) : null}
+            {businessGroup ? (
+              <Tag
+                color='violet'
+                shape='circle'
+                size='small'
+                onClick={(event) => {
+                  copyText(event, businessGroup);
+                }}
+              >
+                {businessGroup}
+              </Tag>
             ) : null}
           </Space>
         ) : (

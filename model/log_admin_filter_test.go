@@ -27,7 +27,7 @@ func TestGetAllLogsAdminModelFilterExactUnlessWildcard(t *testing.T) {
 		seed(2, "gpt-4-mini")
 
 		countAdmin := func(modelName string) int64 {
-			_, total, err := GetAllLogs(LogTypeConsume, now-10, now+10, 0, modelName, "", "", 0, 100, 0, "", "", "", "", 0, 0, false)
+			_, total, err := GetAllLogs(LogTypeConsume, now-10, now+10, 0, modelName, "", "", 0, 100, 0, "", "", "", "", "", 0, 0, false)
 			require.NoError(t, err)
 			return total
 		}

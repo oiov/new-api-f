@@ -138,6 +138,17 @@ const TokensFilters = ({
               size='small'
             />
           </div>
+
+          <div className='relative w-full'>
+            <Form.Input
+              field='businessGroup'
+              prefix={<IconSearch />}
+              placeholder={t('业务分组')}
+              showClear
+              pure
+              size='small'
+            />
+          </div>
         </div>
 
         <div className='flex gap-2 w-full md:w-auto md:justify-end'>

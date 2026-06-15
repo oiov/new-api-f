@@ -199,6 +199,15 @@ const LogsFilters = ({
               />
 
               <Form.Input
+                field='business_group'
+                prefix={<IconSearch />}
+                placeholder={t('业务分组')}
+                showClear
+                pure
+                size='small'
+              />
+
+              <Form.Input
                 field='request_id'
                 prefix={<IconSearch />}
                 placeholder={t('Request ID')}

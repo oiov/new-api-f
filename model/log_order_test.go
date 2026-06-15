@@ -33,7 +33,7 @@ func idsOf(logs []*Log) []int {
 func TestGetUserLogsOrdersByCreatedAtDesc(t *testing.T) {
 	withLogStatTestDB(t, func() {
 		seedOrderLogs(t)
-		logs, total, err := GetUserLogs(7, LogTypeConsume, 0, 0, "", "", 0, 100, "", "", "", "", 0, 0, false)
+		logs, total, err := GetUserLogs(7, LogTypeConsume, 0, 0, "", "", 0, 100, "", "", "", "", "", 0, 0, false)
 		require.NoError(t, err)
 		require.EqualValues(t, 3, total)
 		require.Equal(t, []int{1, 3, 2}, idsOf(logs), "按 created_at desc 排序: 300,200,100")
@@ -44,7 +44,7 @@ func TestGetAllLogsOrdersByCreatedAtDesc(t *testing.T) {
 	withLogStatTestDB(t, func() {
 		require.NoError(t, DB.AutoMigrate(&Channel{}))
 		seedOrderLogs(t)
-		logs, total, err := GetAllLogs(LogTypeConsume, 0, 0, 0, "", "", "", 0, 100, 0, "", "", "", "", 0, 0, false)
+		logs, total, err := GetAllLogs(LogTypeConsume, 0, 0, 0, "", "", "", 0, 100, 0, "", "", "", "", "", 0, 0, false)
 		require.NoError(t, err)
 		require.EqualValues(t, 3, total)
 		require.Equal(t, []int{1, 3, 2}, idsOf(logs), "按 created_at desc 排序: 300,200,100")

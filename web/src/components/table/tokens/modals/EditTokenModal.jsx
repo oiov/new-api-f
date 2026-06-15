@@ -73,6 +73,8 @@ const EditTokenModal = (props) => {
     model_limits: [],
     allow_ips: '',
     group: [],
+    business_group: '',
+    period_quota: 0,
     cross_group_retry: false,
     tokenCount: 1,
   });
@@ -228,6 +230,7 @@ const EditTokenModal = (props) => {
     if (isEdit) {
       let { tokenCount: _tc, ...localInputs } = values;
       localInputs.remain_quota = parseInt(localInputs.remain_quota);
+      localInputs.period_quota = parseInt(localInputs.period_quota) || 0;
       if (localInputs.expired_time !== -1) {
         let time = Date.parse(localInputs.expired_time);
         if (isNaN(time)) {
@@ -503,6 +506,15 @@ const EditTokenModal = (props) => {
                       </Space>
                     </Form.Slot>
                   </Col>
+                  <Col span={24}>
+                    <Form.Input
+                      field='business_group'
+                      label={t('业务分组')}
+                      placeholder={t('可选，如：研发部、客服部')}
+                      maxLength={128}
+                      showClear
+                    />
+                  </Col>
                   {!isEdit && (
                     <Col span={24}>
                       <Form.InputNumber
@@ -565,6 +577,22 @@ const EditTokenModal = (props) => {
                       extraText={t(
                         '令牌的额度仅用于限制令牌本身的最大额度使用量，实际的使用受到账户的剩余额度限制',
                       )}
+                    />
+                  </Col>
+                  <Col span={24}>
+                    <Form.AutoComplete
+                      field='period_quota'
+                      label={t('每日周期额度')}
+                      placeholder={t('0 表示不限制')}
+                      type='number'
+                      extraText={renderQuotaWithPrompt(values.period_quota, t('每日可用额度，次日自动重置。设为 0 则不限制'))}
+                      data={[
+                        { value: 0, label: t('不限制') },
+                        { value: 500000, label: '1$' },
+                        { value: 5000000, label: '10$' },
+                        { value: 25000000, label: '50$' },
+                        { value: 50000000, label: '100$' },
+                      ]}
                     />
                   </Col>
                 </Row>

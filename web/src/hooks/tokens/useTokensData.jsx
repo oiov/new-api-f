@@ -125,6 +125,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     searchToken: '',
     status: '',
     group: '',
+    businessGroup: '',
     expiredState: '',
     unlimitedState: '',
   };
@@ -229,6 +230,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       searchToken: formValues.searchToken || '',
       status: formValues.status || '',
       group: formValues.group || '',
+      businessGroup: formValues.businessGroup || '',
       expiredState: formValues.expiredState || '',
       unlimitedState: formValues.unlimitedState || '',
     };
@@ -528,6 +530,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       searchToken = '',
       status = '',
       group = '',
+      businessGroup = '',
       expiredState = '',
       unlimitedState = '',
     } = filters || getFormValues();
@@ -536,6 +539,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       searchToken === '' &&
       status === '' &&
       group === '' &&
+      businessGroup === '' &&
       expiredState === '' &&
       unlimitedState === ''
     ) {
@@ -546,7 +550,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     }
     setSearching(true);
     const res = await API.get(
-      `/api/token/search?keyword=${encodeURIComponent(searchKeyword)}&token=${encodeURIComponent(searchToken)}&status=${encodeURIComponent(status)}&group=${encodeURIComponent(group)}&expired_state=${encodeURIComponent(expiredState)}&unlimited_state=${encodeURIComponent(unlimitedState)}&p=${normalizedPage}&size=${normalizedSize}`,
+      `/api/token/search?keyword=${encodeURIComponent(searchKeyword)}&token=${encodeURIComponent(searchToken)}&status=${encodeURIComponent(status)}&group=${encodeURIComponent(group)}&business_group=${encodeURIComponent(businessGroup)}&expired_state=${encodeURIComponent(expiredState)}&unlimited_state=${encodeURIComponent(unlimitedState)}&p=${normalizedPage}&size=${normalizedSize}`,
     );
     const { success, message, data } = res.data;
     if (success) {
@@ -556,6 +560,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
         searchToken,
         status,
         group,
+        businessGroup,
         expiredState,
         unlimitedState,
       });

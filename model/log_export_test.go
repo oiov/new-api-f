@@ -31,7 +31,7 @@ func TestGetAllLogsForExportSupportsCompactBillingRows(t *testing.T) {
 			Other:            `{"messages_preview":"sensitive","cache_tokens":100}`,
 		}).Error)
 
-		logs, total, truncated, err := GetAllLogsForExport(2, now-10, now+10, 43, "", "wqwe159", "", 0, "codex", "", "", "", 0, 0, false, true)
+		logs, total, truncated, err := GetAllLogsForExport(2, now-10, now+10, 43, "", "wqwe159", "", 0, "codex", "", "", "", "", 0, 0, false, true)
 		require.NoError(t, err)
 		require.False(t, truncated)
 		require.EqualValues(t, 1, total)
@@ -64,7 +64,7 @@ func TestGetAllLogsForExportKeepsOrderAcrossBatches(t *testing.T) {
 			}).Error)
 		}
 
-		logs, total, truncated, err := GetAllLogsForExport(2, now, now+10, 43, "", "wqwe159", "", 0, "codex", "", "", "", 0, 0, false, true)
+		logs, total, truncated, err := GetAllLogsForExport(2, now, now+10, 43, "", "wqwe159", "", 0, "codex", "", "", "", "", 0, 0, false, true)
 		require.NoError(t, err)
 		require.False(t, truncated)
 		require.EqualValues(t, 5, total)

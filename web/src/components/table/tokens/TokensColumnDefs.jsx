@@ -656,6 +656,17 @@ export const getTokensColumns = ({
       render: (text, record) => renderGroupColumn(text, record, t),
     },
     {
+      title: t('业务分组'),
+      dataIndex: 'business_group',
+      key: 'business_group',
+      render: (text) =>
+        text ? (
+          <Tag color='violet' shape='circle' size='small'>
+            {text}
+          </Tag>
+        ) : null,
+    },
+    {
       title: t('密钥'),
       key: 'token_key',
       render: (text, record) =>

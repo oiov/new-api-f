@@ -31,6 +31,7 @@ type logQueryParams struct {
 	ModelName          string
 	Channel            int
 	Group              string
+	BusinessGroup      string
 	RequestId          string
 	ErrorMessage       string
 	StatusCode         string
@@ -148,6 +149,7 @@ func getLogQueryParams(c *gin.Context) logQueryParams {
 		ModelName:          c.Query("model_name"),
 		Channel:            channel,
 		Group:              c.Query("group"),
+		BusinessGroup:      c.Query("business_group"),
 		RequestId:          c.Query("request_id"),
 		ErrorMessage:       c.Query("error_message"),
 		StatusCode:         c.Query("status_code"),
@@ -161,7 +163,7 @@ func GetAllLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	query := getLogQueryParams(c)
 	isRootUser := c.GetInt("role") == common.RoleRootUser
-	logs, total, err := model.GetAllLogs(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
+	logs, total, err := model.GetAllLogs(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -177,7 +179,7 @@ func GetUserLogs(c *gin.Context) {
 	userId := c.GetInt("id")
 	query := getLogQueryParams(c)
 	isRootUser := c.GetInt("role") == common.RoleRootUser
-	logs, total, err := model.GetUserLogs(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
+	logs, total, err := model.GetUserLogs(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -218,6 +220,7 @@ func writeLogsCSV(c *gin.Context, logs []*model.Log, total int64, truncated bool
 		"channel_id",
 		"channel_name",
 		"group",
+		"business_group",
 		"ip",
 		"request_id",
 		"content",
@@ -245,6 +248,7 @@ func writeLogsCSV(c *gin.Context, logs []*model.Log, total int64, truncated bool
 			strconv.Itoa(logItem.ChannelId),
 			logItem.ChannelName,
 			logItem.Group,
+			logItem.BusinessGroup,
 			logItem.Ip,
 			logItem.RequestId,
 			logItem.Content,
@@ -264,7 +268,7 @@ func ExportAllLogs(c *gin.Context) {
 	}
 	query := getLogQueryParams(c)
 	isRootUser := c.GetInt("role") == common.RoleRootUser
-	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport)
+	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -280,7 +284,7 @@ func ExportUserLogs(c *gin.Context) {
 	userId := c.GetInt("id")
 	query := getLogQueryParams(c)
 	isRootUser := c.GetInt("role") == common.RoleRootUser
-	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport)
+	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -331,7 +335,7 @@ func GetLogByKey(c *gin.Context) {
 
 func GetLogsStat(c *gin.Context) {
 	query := getLogQueryParams(c)
-	stat, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	stat, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -372,7 +376,7 @@ func GetLogsStat(c *gin.Context) {
 func GetLogsSelfStat(c *gin.Context) {
 	username := c.GetString("username")
 	query := getLogQueryParams(c)
-	quotaNum, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, 0, query.ModelName, username, query.TokenName, query.Channel, query.Group, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	quotaNum, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, 0, query.ModelName, username, query.TokenName, query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

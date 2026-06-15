@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -33,6 +34,10 @@ type Token struct {
 	AllowIps                *string        `json:"allow_ips" gorm:"default:''"`
 	UsedQuota               int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group                   string         `json:"group" gorm:"default:''"`
+	BusinessGroup           string         `json:"business_group" gorm:"type:varchar(128);not null;default:'';index"`
+	PeriodQuota             int            `json:"period_quota" gorm:"default:0"`
+	PeriodUsedQuota         int            `json:"period_used_quota" gorm:"default:0"`
+	PeriodStartAt           int64          `json:"period_start_at" gorm:"bigint;default:0"`
 	CrossGroupRetry         bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
 	LastTestAt              int64          `json:"last_test_at" gorm:"bigint;default:0"`
 	LastTestOK              bool           `json:"last_test_ok" gorm:"default:false"`
@@ -136,14 +141,15 @@ func (token *Token) IsSubscriptionAggregateAccessToken() bool {
 }
 
 type AdminTokenSearchFilters struct {
-	Username     string
-	TokenName    string
-	Token        string
-	Status       string
-	Group        string
-	ExpiredState string
-	StartTime    int64
-	EndTime      int64
+	Username      string
+	TokenName     string
+	Token         string
+	Status        string
+	Group         string
+	BusinessGroup string
+	ExpiredState  string
+	StartTime     int64
+	EndTime       int64
 }
 
 type UserTokenSearchFilters struct {
@@ -151,6 +157,7 @@ type UserTokenSearchFilters struct {
 	Token          string
 	Status         string
 	Group          string
+	BusinessGroup  string
 	ExpiredState   string
 	UnlimitedState string
 }
@@ -527,6 +534,10 @@ func buildAdminTokenSearchQuery(filters AdminTokenSearchFilters) (*gorm.DB, erro
 		baseQuery = applyTokenGroupMemberFilter(baseQuery, qualifiedTokenGroupCol(), filters.Group)
 	}
 
+	if filters.BusinessGroup != "" {
+		baseQuery = baseQuery.Where("tokens.business_group = ?", strings.TrimSpace(filters.BusinessGroup))
+	}
+
 	now := common.GetTimestamp()
 	switch strings.TrimSpace(filters.ExpiredState) {
 	case "expired":
@@ -592,6 +603,10 @@ func buildUserTokenSearchQuery(userId int, filters UserTokenSearchFilters) (*gor
 
 	if group := strings.TrimSpace(filters.Group); group != "" {
 		baseQuery = applyTokenGroupMemberFilter(baseQuery, qualifiedTokenGroupCol(), group)
+	}
+
+	if bg := strings.TrimSpace(filters.BusinessGroup); bg != "" {
+		baseQuery = baseQuery.Where("business_group = ?", bg)
 	}
 
 	now := common.GetTimestamp()
@@ -908,7 +923,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "specific_channel_id", "specific_channel_key_index", "user_subscription_id", "source").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "business_group", "period_quota", "period_used_quota", "period_start_at", "cross_group_retry", "specific_channel_id", "specific_channel_key_index", "user_subscription_id", "source").Updates(token).Error
 	return err
 }
 
@@ -1066,60 +1081,191 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	if common.RedisEnabled {
-		gopool.Go(func() {
-			err := cacheIncrTokenQuota(key, int64(quota))
-			if err != nil {
-				common.SysLog("failed to increase token quota: " + err.Error())
-			}
-		})
-	}
-	if common.BatchUpdateEnabled {
+	if common.BatchUpdateEnabled && !tokenRequiresImmediateQuotaUpdate(tokenId) {
+		if common.RedisEnabled {
+			gopool.Go(func() {
+				err := cacheIncrTokenQuota(key, int64(quota))
+				if err != nil {
+					common.SysLog("failed to increase token quota: " + err.Error())
+				}
+			})
+		}
 		addNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
 		return nil
 	}
-	return increaseTokenQuota(tokenId, quota)
+	err = increaseTokenQuota(tokenId, quota)
+	if err != nil {
+		return err
+	}
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			err := cacheDeleteToken(key)
+			if err != nil {
+				common.SysLog("failed to invalidate token cache after quota increase: " + err.Error())
+			}
+		})
+	}
+	return nil
 }
 
 func increaseTokenQuota(id int, quota int) (err error) {
-	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
-			"remain_quota":  gorm.Expr("remain_quota + ?", quota),
-			"used_quota":    gorm.Expr("used_quota - ?", quota),
-			"accessed_time": common.GetTimestamp(),
-		},
-	).Error
-	return err
+	return adjustTokenQuota(id, quota)
 }
 
 func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	if common.RedisEnabled {
-		gopool.Go(func() {
-			err := cacheDecrTokenQuota(key, int64(quota))
-			if err != nil {
-				common.SysLog("failed to decrease token quota: " + err.Error())
-			}
-		})
-	}
-	if common.BatchUpdateEnabled {
+	if common.BatchUpdateEnabled && !tokenRequiresImmediateQuotaUpdate(id) {
+		if common.RedisEnabled {
+			gopool.Go(func() {
+				err := cacheDecrTokenQuota(key, int64(quota))
+				if err != nil {
+					common.SysLog("failed to decrease token quota: " + err.Error())
+				}
+			})
+		}
 		addNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
 		return nil
 	}
-	return decreaseTokenQuota(id, quota)
+	err = decreaseTokenQuota(id, quota)
+	if err != nil {
+		return err
+	}
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			err := cacheDeleteToken(key)
+			if err != nil {
+				common.SysLog("failed to invalidate token cache after quota decrease: " + err.Error())
+			}
+		})
+	}
+	return nil
 }
 
 func decreaseTokenQuota(id int, quota int) (err error) {
-	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
-			"remain_quota":  gorm.Expr("remain_quota - ?", quota),
-			"used_quota":    gorm.Expr("used_quota + ?", quota),
-			"accessed_time": common.GetTimestamp(),
-		},
-	).Error
-	return err
+	return adjustTokenQuota(id, -quota)
+}
+
+func tokenPeriodWindowStart(now time.Time) int64 {
+	local := now.In(time.Local)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location()).Unix()
+}
+
+func tokenRequiresImmediateQuotaUpdate(id int) bool {
+	if id <= 0 {
+		return true
+	}
+	var token Token
+	err := DB.Select("period_quota").Where("id = ?", id).First(&token).Error
+	if err != nil {
+		return true
+	}
+	return token.PeriodQuota > 0
+}
+
+func adjustTokenQuota(id int, delta int) error {
+	if id <= 0 {
+		return errors.New("id 为空！")
+	}
+	now := time.Now()
+	nowTimestamp := now.Unix()
+	currentWindowStart := tokenPeriodWindowStart(now)
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var token Token
+		query := tx.Where("id = ?", id)
+		if !common.UsingSQLite {
+			query = query.Set("gorm:query_option", "FOR UPDATE")
+		}
+		if err := query.First(&token).Error; err != nil {
+			return err
+		}
+
+		updates := map[string]interface{}{
+			"remain_quota":  gorm.Expr("remain_quota + ?", delta),
+			"used_quota":    gorm.Expr("used_quota - ?", delta),
+			"accessed_time": nowTimestamp,
+		}
+
+		if token.PeriodQuota > 0 {
+			periodUsedQuota := token.PeriodUsedQuota
+			periodStartAt := token.PeriodStartAt
+			if delta < 0 {
+				consumeQuota := -delta
+				if periodStartAt != currentWindowStart {
+					periodUsedQuota = 0
+					periodStartAt = currentWindowStart
+				}
+				if periodUsedQuota+consumeQuota > token.PeriodQuota {
+					return fmt.Errorf("token period quota is not enough, token period remain quota: %s, need quota: %s", loggerFormatQuota(token.PeriodQuota-periodUsedQuota), loggerFormatQuota(consumeQuota))
+				}
+				periodUsedQuota += consumeQuota
+				updates["period_used_quota"] = periodUsedQuota
+				updates["period_start_at"] = periodStartAt
+			} else if delta > 0 && periodStartAt == currentWindowStart {
+				periodUsedQuota -= delta
+				if periodUsedQuota < 0 {
+					periodUsedQuota = 0
+				}
+				updates["period_used_quota"] = periodUsedQuota
+				updates["period_start_at"] = periodStartAt
+			}
+		}
+
+		return tx.Model(&Token{}).Where("id = ?", id).Updates(updates).Error
+	})
+}
+
+func loggerFormatQuota(quota int) string {
+	return fmt.Sprintf("%d", quota)
+}
+
+func UpdateUserBusinessGroupPeriodQuota(userId int, businessGroup string, periodQuota int) (int64, error) {
+	businessGroup = strings.TrimSpace(businessGroup)
+	if userId <= 0 {
+		return 0, errors.New("userId 为空！")
+	}
+	if businessGroup == "" {
+		return 0, errors.New("业务分组不能为空")
+	}
+	if periodQuota < 0 {
+		return 0, errors.New("周期额度不能为负数")
+	}
+	now := time.Now()
+	result := DB.Model(&Token{}).
+		Where("user_id = ? AND business_group = ?", userId, businessGroup).
+		Updates(map[string]interface{}{
+			"period_quota":      periodQuota,
+			"period_used_quota": 0,
+			"period_start_at":   tokenPeriodWindowStart(now),
+		})
+	return result.RowsAffected, result.Error
+}
+
+type BusinessGroupStat struct {
+	BusinessGroup  string `json:"business_group" gorm:"column:business_group"`
+	TokenCount     int64  `json:"token_count" gorm:"column:token_count"`
+	TotalUsedQuota int64  `json:"total_used_quota" gorm:"column:total_used_quota"`
+}
+
+func GetUserBusinessGroups(userId int) ([]BusinessGroupStat, error) {
+	var stats []BusinessGroupStat
+	err := DB.Model(&Token{}).
+		Select("business_group, COUNT(*) as token_count, SUM(used_quota) as total_used_quota").
+		Where("user_id = ? AND business_group != ''", userId).
+		Group("business_group").
+		Order("total_used_quota DESC").
+		Find(&stats).Error
+	return stats, err
+}
+
+func GetBusinessGroupLogStat(userId int, businessGroup string) (int64, error) {
+	var totalQuota int64
+	err := LOG_DB.Table("logs").
+		Select("COALESCE(SUM(quota), 0)").
+		Where("user_id = ? AND business_group = ? AND type = ?", userId, businessGroup, LogTypeConsume).
+		Scan(&totalQuota).Error
+	return totalQuota, err
 }
 
 // CountUserTokens returns total number of tokens for the given user, used for pagination
