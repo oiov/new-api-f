@@ -216,7 +216,7 @@ func TestSupportTicketDetailIncludesTrialApplication(t *testing.T) {
 	user := seedUser(t, db, 7, "alice", common.RoleCommonUser)
 	ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "试用", "想申请")
 	require.NoError(t, err)
-	_, _, _, err = model.CreateSupportTicketTrialApplication(ticket.Id, user.Id, "203.0.113.10")
+	_, _, _, err = model.CreateSupportTicketTrialApplication(ticket.Id, user.Id)
 	require.NoError(t, err)
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/support/tickets/1", nil, user.Id)
@@ -230,10 +230,10 @@ func TestSupportTicketDetailIncludesTrialApplication(t *testing.T) {
 	var detail SupportTicketDetailResponse
 	require.NoError(t, common.Unmarshal(response.Data, &detail))
 	require.NotNil(t, detail.TrialApplication)
-	require.Equal(t, "203.0.113.10", detail.TrialApplication.RequestIP)
+	require.Empty(t, detail.TrialApplication.RequestIP)
 }
 
-func TestSupportTicketCreateTrialApplicationUsesClientIP(t *testing.T) {
+func TestSupportTicketCreateTrialApplicationDoesNotRecordClientIP(t *testing.T) {
 	db := setupSupportTicketControllerTestDB(t)
 	user := seedUser(t, db, 7, "alice", common.RoleCommonUser)
 	ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "试用", "想申请")
@@ -251,7 +251,7 @@ func TestSupportTicketCreateTrialApplicationUsesClientIP(t *testing.T) {
 	var data SupportTicketTrialApplicationResponse
 	require.NoError(t, common.Unmarshal(response.Data, &data))
 	require.Equal(t, model.SupportTicketTrialApplicationStatusPending, data.TrialApplication.Status)
-	require.Equal(t, "203.0.113.10", data.TrialApplication.RequestIP)
+	require.Empty(t, data.TrialApplication.RequestIP)
 	require.Contains(t, data.Message.Content, "$5")
 }
 
@@ -261,7 +261,7 @@ func TestSupportTicketAdminReviewsTrialApplication(t *testing.T) {
 	user := seedUser(t, db, 7, "alice", common.RoleCommonUser)
 	ticket, err := model.CreateSupportTicket(user.Id, model.SupportTicketTypeNormal, "试用", "想申请")
 	require.NoError(t, err)
-	_, _, _, err = model.CreateSupportTicketTrialApplication(ticket.Id, user.Id, "203.0.113.10")
+	_, _, _, err = model.CreateSupportTicketTrialApplication(ticket.Id, user.Id)
 	require.NoError(t, err)
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/support/tickets/1/trial_application/review", map[string]any{

@@ -3,7 +3,6 @@ package model
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
@@ -19,7 +18,7 @@ type SupportTicketTrialApplication struct {
 	Id             int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	TicketId       int    `json:"ticket_id" gorm:"index;not null"`
 	UserId         int    `json:"user_id" gorm:"uniqueIndex;not null"`
-	RequestIP      string `json:"request_ip" gorm:"type:varchar(64);uniqueIndex;not null"`
+	RequestIP      string `json:"request_ip" gorm:"type:varchar(64);not null;default:''"`
 	Status         string `json:"status" gorm:"type:varchar(20);not null;default:pending;index"`
 	ReviewerUserId int    `json:"reviewer_user_id" gorm:"not null;default:0"`
 	RedemptionId   int    `json:"redemption_id" gorm:"not null;default:0"`
@@ -29,15 +28,18 @@ type SupportTicketTrialApplication struct {
 	UpdatedAt      int64  `json:"updated_at" gorm:"bigint;autoUpdateTime"`
 }
 
-func normalizeSupportTicketTrialApplicationIP(requestIP string) (string, error) {
-	requestIP = strings.TrimSpace(requestIP)
-	if requestIP == "" {
-		return "", errors.New("无法获取申请 IP")
+func migrateSupportTicketTrialApplicationRequestIPCompatibility() error {
+	if !DB.Migrator().HasTable(&SupportTicketTrialApplication{}) {
+		return nil
 	}
-	if len([]rune(requestIP)) > 64 {
-		return "", errors.New("申请 IP 过长")
+	for _, indexName := range []string{"RequestIP", "idx_support_ticket_trial_applications_request_ip"} {
+		if DB.Migrator().HasIndex(&SupportTicketTrialApplication{}, indexName) {
+			if err := DB.Migrator().DropIndex(&SupportTicketTrialApplication{}, indexName); err != nil {
+				return err
+			}
+		}
 	}
-	return requestIP, nil
+	return nil
 }
 
 func supportTicketTrialApplicationQuota() int {
@@ -53,16 +55,11 @@ func GetSupportTicketTrialApplicationByTicketId(ticketId int) (*SupportTicketTri
 	return &application, nil
 }
 
-func CreateSupportTicketTrialApplication(ticketId int, userId int, requestIP string) (*SupportTicketTrialApplication, *SupportTicketMessage, *SupportTicket, error) {
-	normalizedIP, err := normalizeSupportTicketTrialApplicationIP(requestIP)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
+func CreateSupportTicketTrialApplication(ticketId int, userId int) (*SupportTicketTrialApplication, *SupportTicketMessage, *SupportTicket, error) {
 	var application *SupportTicketTrialApplication
 	var message *SupportTicketMessage
 	var ticket SupportTicket
-	err = DB.Transaction(func(tx *gorm.DB) error {
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("id = ? AND user_id = ?", ticketId, userId).First(&ticket).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.New("工单不存在")
@@ -81,19 +78,11 @@ func CreateSupportTicketTrialApplication(ticketId int, userId int, requestIP str
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		err = tx.Where("request_ip = ?", normalizedIP).First(&existing).Error
-		if err == nil {
-			return errors.New("当前网络环境已提交过试用额度申请")
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
 
 		application = &SupportTicketTrialApplication{
-			TicketId:  ticket.Id,
-			UserId:    userId,
-			RequestIP: normalizedIP,
-			Status:    SupportTicketTrialApplicationStatusPending,
+			TicketId: ticket.Id,
+			UserId:   userId,
+			Status:   SupportTicketTrialApplicationStatusPending,
 		}
 		if err := tx.Create(application).Error; err != nil {
 			return err

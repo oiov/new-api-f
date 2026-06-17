@@ -9,6 +9,14 @@ import (
 	"gorm.io/gorm"
 )
 
+type legacySupportTicketTrialApplication struct {
+	RequestIP string `gorm:"column:request_ip;type:varchar(64);uniqueIndex"`
+}
+
+func (legacySupportTicketTrialApplication) TableName() string {
+	return "support_ticket_trial_applications"
+}
+
 func withSupportTicketTestDB(t *testing.T, run func()) {
 	t.Helper()
 
@@ -251,7 +259,7 @@ func TestSupportTicketUserCanOnlyCloseOwnTicket(t *testing.T) {
 	})
 }
 
-func TestCreateSupportTicketTrialApplicationEnforcesUserAndIP(t *testing.T) {
+func TestCreateSupportTicketTrialApplicationEnforcesUserOnly(t *testing.T) {
 	withSupportTicketTestDB(t, func() {
 		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
 		require.NoError(t, DB.Create(&User{Id: 8, Username: "bob", AffCode: "bob"}).Error)
@@ -259,24 +267,47 @@ func TestCreateSupportTicketTrialApplicationEnforcesUserAndIP(t *testing.T) {
 		require.NoError(t, err)
 		second, err := CreateSupportTicket(8, SupportTicketTypeNormal, "试用", "也想申请")
 		require.NoError(t, err)
+		third, err := CreateSupportTicket(8, SupportTicketTypeNormal, "试用", "空 IP 也能申请")
+		require.NoError(t, err)
 
-		application, message, updated, err := CreateSupportTicketTrialApplication(first.Id, 7, "203.0.113.10")
+		application, message, updated, err := CreateSupportTicketTrialApplication(first.Id, 7)
 		require.NoError(t, err)
 		require.Equal(t, SupportTicketTrialApplicationStatusPending, application.Status)
-		require.Equal(t, "203.0.113.10", application.RequestIP)
+		require.Empty(t, application.RequestIP)
 		require.Contains(t, message.Content, "$5")
 		require.Contains(t, message.Content, "trial quota application submitted")
 		require.NotContains(t, message.Content, "试用额度申请")
 		require.Equal(t, first.Id, updated.Id)
 
-		_, _, _, err = CreateSupportTicketTrialApplication(first.Id, 7, "203.0.113.11")
+		_, _, _, err = CreateSupportTicketTrialApplication(first.Id, 7)
 		require.EqualError(t, err, "你已经提交过试用额度申请")
 
-		_, _, _, err = CreateSupportTicketTrialApplication(second.Id, 8, "203.0.113.10")
-		require.EqualError(t, err, "当前网络环境已提交过试用额度申请")
+		_, _, _, err = CreateSupportTicketTrialApplication(second.Id, 8)
+		require.NoError(t, err)
 
-		_, _, _, err = CreateSupportTicketTrialApplication(second.Id, 8, "")
-		require.EqualError(t, err, "无法获取申请 IP")
+		require.NoError(t, DB.Delete(&SupportTicketTrialApplication{}, "user_id = ?", 8).Error)
+		_, _, _, err = CreateSupportTicketTrialApplication(third.Id, 8)
+		require.NoError(t, err)
+	})
+}
+
+func TestMigrateSupportTicketTrialApplicationRequestIPCompatibilityDropsUniqueIndex(t *testing.T) {
+	withSupportTicketTestDB(t, func() {
+		require.NoError(t, DB.Migrator().CreateIndex(&legacySupportTicketTrialApplication{}, "RequestIP"))
+		require.NoError(t, migrateSupportTicketTrialApplicationRequestIPCompatibility())
+
+		require.NoError(t, DB.Create(&SupportTicketTrialApplication{
+			TicketId:  1,
+			UserId:    7,
+			RequestIP: "203.0.113.10",
+			Status:    SupportTicketTrialApplicationStatusPending,
+		}).Error)
+		require.NoError(t, DB.Create(&SupportTicketTrialApplication{
+			TicketId:  2,
+			UserId:    8,
+			RequestIP: "203.0.113.10",
+			Status:    SupportTicketTrialApplicationStatusPending,
+		}).Error)
 	})
 }
 
@@ -290,7 +321,7 @@ func TestReviewSupportTicketTrialApplicationApprovesWithRedemption(t *testing.T)
 		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
 		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "试用", "想申请试用")
 		require.NoError(t, err)
-		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7, "203.0.113.10")
+		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7)
 		require.NoError(t, err)
 
 		application, message, updated, err := ReviewSupportTicketTrialApplication(ticket.Id, 1, true)
@@ -318,7 +349,7 @@ func TestReviewSupportTicketTrialApplicationRejectsWithoutRedemption(t *testing.
 		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
 		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "试用", "想申请试用")
 		require.NoError(t, err)
-		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7, "203.0.113.10")
+		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7)
 		require.NoError(t, err)
 
 		application, message, _, err := ReviewSupportTicketTrialApplication(ticket.Id, 1, false)

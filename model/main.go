@@ -315,6 +315,9 @@ func migrateDB() error {
 	if err := migratePaymentProviderColumns(); err != nil {
 		return err
 	}
+	if err := migrateSupportTicketTrialApplicationRequestIPCompatibility(); err != nil {
+		return err
+	}
 	if err := migrateUserCreatedAtCompatibility(); err != nil {
 		return err
 	}
@@ -474,6 +477,9 @@ func migrateDBFast() error {
 		}
 	}
 	if err := migratePaymentProviderColumns(); err != nil {
+		return err
+	}
+	if err := migrateSupportTicketTrialApplicationRequestIPCompatibility(); err != nil {
 		return err
 	}
 	if err := migrateLegacyPeriodicRequestCountPlans(); err != nil {
