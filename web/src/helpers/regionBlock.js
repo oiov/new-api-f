@@ -2,7 +2,7 @@
 // old.nbility.dev 走 CF 橙云，该端点由边缘直接响应、不回源、免费。无逃生口设计。
 //
 // 开关与国家码（改这里后重新构建部署 old web 即生效；old 是独立部署，无 wrangler/worker）：
-const ENABLED = true;
+const ENABLED = false;
 export const COUNTRIES = ['CN', 'HK', 'MO', 'TW']; // 中国大陆，香港，澳门，台湾
 
 export function parseTraceLoc(traceText) {

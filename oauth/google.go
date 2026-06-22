@@ -194,18 +194,11 @@ func resolveGoogleRedirectBase(c *gin.Context) string {
 		if origin := strings.TrimSpace(c.Request.Header.Get("Origin")); origin != "" {
 			return strings.TrimRight(origin, "/")
 		}
-		scheme := strings.TrimSpace(c.Request.Header.Get("X-Forwarded-Proto"))
-		host := strings.TrimSpace(c.Request.Header.Get("X-Forwarded-Host"))
-		if host == "" {
-			host = strings.TrimSpace(c.Request.Host)
-		}
-		if scheme == "" {
-			scheme = "http"
-			if c.Request.TLS != nil {
+		if host := strings.TrimSpace(c.Request.Header.Get("X-Forwarded-Host")); host != "" {
+			scheme := strings.TrimSpace(c.Request.Header.Get("X-Forwarded-Proto"))
+			if scheme == "" {
 				scheme = "https"
 			}
-		}
-		if host != "" {
 			return fmt.Sprintf("%s://%s", scheme, host)
 		}
 	}
