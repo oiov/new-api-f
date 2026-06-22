@@ -724,6 +724,13 @@ func GeminiToOpenAIRequest(geminiRequest *dto.GeminiChatRequest, info *relaycomm
 		if len(toolCalls) > 0 {
 			// 如果有工具调用，设置工具调用
 			message.SetToolCalls(toolCalls)
+			if len(mediaContents) == 1 && mediaContents[0].Type == "text" {
+				message.Content = mediaContents[0].Text
+			} else if len(mediaContents) > 0 {
+				message.SetMediaContent(mediaContents)
+			} else {
+				message.SetStringContent("")
+			}
 		} else if len(mediaContents) == 1 && mediaContents[0].Type == "text" {
 			// 如果只有一个文本内容，直接设置字符串
 			message.Content = mediaContents[0].Text
