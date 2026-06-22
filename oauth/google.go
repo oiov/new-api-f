@@ -189,18 +189,6 @@ func deriveGoogleUsername(email string) string {
 	return strings.TrimSpace(parts[0])
 }
 
-func resolveGoogleRedirectBase(c *gin.Context) string {
-	if c != nil {
-		if origin := strings.TrimSpace(c.Request.Header.Get("Origin")); origin != "" {
-			return strings.TrimRight(origin, "/")
-		}
-		if host := strings.TrimSpace(c.Request.Header.Get("X-Forwarded-Host")); host != "" {
-			scheme := strings.TrimSpace(c.Request.Header.Get("X-Forwarded-Proto"))
-			if scheme == "" {
-				scheme = "https"
-			}
-			return fmt.Sprintf("%s://%s", scheme, host)
-		}
-	}
+func resolveGoogleRedirectBase(_ *gin.Context) string {
 	return strings.TrimRight(system_setting.ServerAddress, "/")
 }
