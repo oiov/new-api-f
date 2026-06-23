@@ -71,7 +71,10 @@ func isSeedance2PerSecondModel(modelName string) bool {
 		"seedance-2-720p",
 		"seedance-2-1080p",
 		"seedance-2-2k",
-		"seedance-2-4k":
+		"seedance-2-4k",
+		"seedance-2-fast-720p",
+		"seedance-2-mini-720p",
+		"seedance-2-pro-720p":
 		return true
 	default:
 		return false

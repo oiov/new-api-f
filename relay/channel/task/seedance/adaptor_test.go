@@ -33,8 +33,15 @@ func TestTaskAdaptor_Seedance2ValidateModel_AcceptsOfficialModels(t *testing.T) 
 	adaptor := &TaskAdaptor{}
 	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeSeedance2}})
 
-	if err := adaptor.validateModelAndRatio("seedance-2-720p", "adaptive"); err != nil {
-		t.Fatalf("expected seedance-2-720p to be accepted: %v", err)
+	for _, model := range []string{
+		"seedance-2-720p",
+		"seedance-2-fast-720p",
+		"seedance-2-mini-720p",
+		"seedance-2-pro-720p",
+	} {
+		if err := adaptor.validateModelAndRatio(model, "adaptive"); err != nil {
+			t.Fatalf("expected %s to be accepted: %v", model, err)
+		}
 	}
 }
 

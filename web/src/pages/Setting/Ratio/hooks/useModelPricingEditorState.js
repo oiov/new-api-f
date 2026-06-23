@@ -30,6 +30,9 @@ const PER_SECOND_MODEL_NAMES = new Set([
   'seedance-2-1080p',
   'seedance-2-2k',
   'seedance-2-4k',
+  'seedance-2-fast-720p',
+  'seedance-2-mini-720p',
+  'seedance-2-pro-720p',
 ]);
 
 const EMPTY_MODEL = {
