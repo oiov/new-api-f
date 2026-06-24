@@ -404,7 +404,7 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.GET("/business-group/stat", controller.GetBusinessGroupStat)
 			tokenRoute.POST("/business-group/period-quota", controller.UpdateBusinessGroupPeriodQuota)
 			tokenRoute.GET("/:id", controller.GetToken)
-			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
+			tokenRoute.POST("/:id/key", middleware.DisableCache(), controller.GetTokenKey)
 			tokenRoute.POST("/:id/test", middleware.TokenTestRateLimit(), middleware.DisableCache(), controller.TestToken)
 			tokenRoute.POST("/batch/invalid", controller.DeleteInvalidTokenBatch)
 			tokenRoute.POST("/", controller.AddToken)
