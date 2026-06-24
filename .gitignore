@@ -27,6 +27,8 @@ plans
 .claude
 .worktrees/
 
+web-worker/
+
 electron/node_modules
 electron/dist
 data/
