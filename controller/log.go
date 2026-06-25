@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -371,6 +372,33 @@ func GetLogsStat(c *gin.Context) {
 		},
 	})
 	return
+}
+
+func GetLeaderboard(c *gin.Context) {
+	now := time.Now()
+	location := now.Location()
+	dateStr := c.Query("date")
+
+	var startTimestamp, endTimestamp int64
+	if dateStr != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", dateStr, location)
+		if err != nil {
+			common.ApiError(c, errors.New("invalid date format, expected YYYY-MM-DD"))
+			return
+		}
+		startTimestamp = parsed.Unix()
+		endTimestamp = parsed.AddDate(0, 0, 1).Unix()
+	} else {
+		startTimestamp = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location).Unix()
+		endTimestamp = 0
+	}
+
+	data, err := model.GetLeaderboard(startTimestamp, endTimestamp)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, data)
 }
 
 func GetLogsSelfStat(c *gin.Context) {

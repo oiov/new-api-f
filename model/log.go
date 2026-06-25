@@ -1194,6 +1194,29 @@ type Stat struct {
 	PromptCacheClaude      PromptCacheStat `gorm:"-"`
 }
 
+type LeaderboardEntry struct {
+	UserId       int    `json:"user_id" gorm:"column:user_id"`
+	Username     string `json:"username" gorm:"-"`
+	TotalQuota   int64  `json:"total_quota" gorm:"column:total_quota"`
+	TotalTokens  int64  `json:"total_tokens" gorm:"column:total_tokens"`
+	RequestCount int64  `json:"request_count" gorm:"column:request_count"`
+	TopModel     string `json:"top_model" gorm:"-"`
+}
+
+type LeaderboardSummary struct {
+	TotalQuota        int64 `json:"total_quota"`
+	TotalTokens       int64 `json:"total_tokens"`
+	TotalRequestCount int64 `json:"total_request_count"`
+	Top10Quota        int64 `json:"top10_quota"`
+	Top10Tokens       int64 `json:"top10_tokens"`
+	Top10RequestCount int64 `json:"top10_request_count"`
+}
+
+type LeaderboardResponse struct {
+	Summary     LeaderboardSummary `json:"summary"`
+	Leaderboard []LeaderboardEntry `json:"leaderboard"`
+}
+
 type GroupLogHealthStatsQuery struct {
 	StartTimestamp        int64
 	EndTimestamp          int64
@@ -1653,4 +1676,104 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 	}
 
 	return total, nil
+}
+
+func GetLeaderboard(startTimestamp, endTimestamp int64) (*LeaderboardResponse, error) {
+	// Top 20 users by quota
+	var entries []LeaderboardEntry
+	tx := LOG_DB.Table("logs").
+		Select("user_id, COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as request_count").
+		Where("type = ? AND created_at >= ?", LogTypeConsume, startTimestamp)
+	if endTimestamp > 0 {
+		tx = tx.Where("created_at < ?", endTimestamp)
+	}
+	if err := tx.Group("user_id").
+		Order("total_quota DESC").
+		Limit(20).
+		Find(&entries).Error; err != nil {
+		return nil, err
+	}
+
+	if len(entries) == 0 {
+		return &LeaderboardResponse{
+			Summary:     LeaderboardSummary{},
+			Leaderboard: []LeaderboardEntry{},
+		}, nil
+	}
+
+	// Resolve usernames from users table
+	userIds := make([]int, len(entries))
+	for i, e := range entries {
+		userIds[i] = e.UserId
+	}
+	var users []struct {
+		Id       int    `gorm:"column:id"`
+		Username string `gorm:"column:username"`
+	}
+	if err := DB.Table("users").
+		Select("id, username").
+		Where("id IN ?", userIds).
+		Find(&users).Error; err != nil {
+		return nil, err
+	}
+	usernameMap := make(map[int]string, len(users))
+	for _, u := range users {
+		usernameMap[u.Id] = u.Username
+	}
+	for i := range entries {
+		entries[i].Username = usernameMap[entries[i].UserId]
+	}
+
+	// Top model per user
+	type modelRow struct {
+		UserId     int    `gorm:"column:user_id"`
+		ModelName  string `gorm:"column:model_name"`
+		ModelQuota int64  `gorm:"column:model_quota"`
+	}
+	var modelRows []modelRow
+	modelTx := LOG_DB.Table("logs").
+		Select("user_id, model_name, COALESCE(SUM(quota), 0) as model_quota").
+		Where("type = ? AND created_at >= ? AND user_id IN ?", LogTypeConsume, startTimestamp, userIds)
+	if endTimestamp > 0 {
+		modelTx = modelTx.Where("created_at < ?", endTimestamp)
+	}
+	if err := modelTx.Group("user_id, model_name").
+		Find(&modelRows).Error; err != nil {
+		return nil, err
+	}
+	topModelMap := make(map[int]string)
+	topModelQuota := make(map[int]int64)
+	for _, r := range modelRows {
+		if r.ModelQuota > topModelQuota[r.UserId] {
+			topModelQuota[r.UserId] = r.ModelQuota
+			topModelMap[r.UserId] = r.ModelName
+		}
+	}
+	for i := range entries {
+		entries[i].TopModel = topModelMap[entries[i].UserId]
+	}
+
+	// Summary (full site for the period)
+	var summary LeaderboardSummary
+	summaryTx := LOG_DB.Table("logs").
+		Select("COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as total_request_count").
+		Where("type = ? AND created_at >= ?", LogTypeConsume, startTimestamp)
+	if endTimestamp > 0 {
+		summaryTx = summaryTx.Where("created_at < ?", endTimestamp)
+	}
+	if err := summaryTx.Scan(&summary).Error; err != nil {
+		return nil, err
+	}
+
+	// Top 20 subtotals
+	for _, e := range entries {
+		summary.Top10Quota += e.TotalQuota
+		summary.Top10Tokens += e.TotalTokens
+		summary.Top10RequestCount += e.RequestCount
+	}
+
+	return &LeaderboardResponse{
+		Summary:     summary,
+		Leaderboard: entries,
+	}, nil
 }
