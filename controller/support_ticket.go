@@ -184,7 +184,7 @@ func CreateSupportTicketTrialApplication(c *gin.Context) {
 		common.ApiErrorMsg(c, "只能为自己的工单提交试用额度申请")
 		return
 	}
-	application, message, updated, err := model.CreateSupportTicketTrialApplication(ticket.Id, c.GetInt("id"))
+	application, message, updated, err := model.CreateSupportTicketTrialApplication(ticket.Id, c.GetInt("id"), c.ClientIP())
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return

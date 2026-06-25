@@ -259,34 +259,43 @@ func TestSupportTicketUserCanOnlyCloseOwnTicket(t *testing.T) {
 	})
 }
 
-func TestCreateSupportTicketTrialApplicationEnforcesUserOnly(t *testing.T) {
+func TestCreateSupportTicketTrialApplicationEnforcesUserAndIP(t *testing.T) {
 	withSupportTicketTestDB(t, func() {
 		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
 		require.NoError(t, DB.Create(&User{Id: 8, Username: "bob", AffCode: "bob"}).Error)
+		require.NoError(t, DB.Create(&User{Id: 9, Username: "carol", AffCode: "carol"}).Error)
 		first, err := CreateSupportTicket(7, SupportTicketTypeNormal, "试用", "想申请试用")
 		require.NoError(t, err)
 		second, err := CreateSupportTicket(8, SupportTicketTypeNormal, "试用", "也想申请")
 		require.NoError(t, err)
-		third, err := CreateSupportTicket(8, SupportTicketTypeNormal, "试用", "空 IP 也能申请")
+		third, err := CreateSupportTicket(9, SupportTicketTypeNormal, "试用", "同 IP 申请")
+		require.NoError(t, err)
+		fourth, err := CreateSupportTicket(8, SupportTicketTypeNormal, "试用", "空 IP 也能申请")
 		require.NoError(t, err)
 
-		application, message, updated, err := CreateSupportTicketTrialApplication(first.Id, 7)
+		application, message, updated, err := CreateSupportTicketTrialApplication(first.Id, 7, "203.0.113.10")
 		require.NoError(t, err)
 		require.Equal(t, SupportTicketTrialApplicationStatusPending, application.Status)
-		require.Empty(t, application.RequestIP)
+		require.Equal(t, "203.0.113.10", application.RequestIP)
 		require.Contains(t, message.Content, "$5")
 		require.Contains(t, message.Content, "trial quota application submitted")
-		require.NotContains(t, message.Content, "试用额度申请")
 		require.Equal(t, first.Id, updated.Id)
 
-		_, _, _, err = CreateSupportTicketTrialApplication(first.Id, 7)
+		// Same user, same IP — blocked by user check
+		_, _, _, err = CreateSupportTicketTrialApplication(first.Id, 7, "203.0.113.10")
 		require.EqualError(t, err, "你已经提交过试用额度申请")
 
-		_, _, _, err = CreateSupportTicketTrialApplication(second.Id, 8)
+		// Different user, same IP — blocked by IP check
+		_, _, _, err = CreateSupportTicketTrialApplication(third.Id, 9, "203.0.113.10")
+		require.EqualError(t, err, "该 IP 地址已提交过试用额度申请")
+
+		// Different user, different IP — allowed
+		_, _, _, err = CreateSupportTicketTrialApplication(second.Id, 8, "198.51.100.20")
 		require.NoError(t, err)
 
+		// After deleting user 8's application, same user can re-apply with empty IP
 		require.NoError(t, DB.Delete(&SupportTicketTrialApplication{}, "user_id = ?", 8).Error)
-		_, _, _, err = CreateSupportTicketTrialApplication(third.Id, 8)
+		_, _, _, err = CreateSupportTicketTrialApplication(fourth.Id, 8, "")
 		require.NoError(t, err)
 	})
 }
@@ -321,7 +330,7 @@ func TestReviewSupportTicketTrialApplicationApprovesWithRedemption(t *testing.T)
 		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
 		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "试用", "想申请试用")
 		require.NoError(t, err)
-		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7)
+		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7, "10.0.0.1")
 		require.NoError(t, err)
 
 		application, message, updated, err := ReviewSupportTicketTrialApplication(ticket.Id, 1, true)
@@ -349,7 +358,7 @@ func TestReviewSupportTicketTrialApplicationRejectsWithoutRedemption(t *testing.
 		require.NoError(t, DB.Create(&User{Id: 7, Username: "alice", AffCode: "alice"}).Error)
 		ticket, err := CreateSupportTicket(7, SupportTicketTypeNormal, "试用", "想申请试用")
 		require.NoError(t, err)
-		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7)
+		_, _, _, err = CreateSupportTicketTrialApplication(ticket.Id, 7, "10.0.0.2")
 		require.NoError(t, err)
 
 		application, message, _, err := ReviewSupportTicketTrialApplication(ticket.Id, 1, false)

@@ -39,6 +39,10 @@ func migrateSupportTicketTrialApplicationRequestIPCompatibility() error {
 			}
 		}
 	}
+	// Fallback: raw SQL drop for PostgreSQL where GORM HasIndex may not match
+	if common.UsingPostgreSQL {
+		DB.Exec("DROP INDEX IF EXISTS idx_support_ticket_trial_applications_request_ip")
+	}
 	return nil
 }
 
@@ -55,7 +59,7 @@ func GetSupportTicketTrialApplicationByTicketId(ticketId int) (*SupportTicketTri
 	return &application, nil
 }
 
-func CreateSupportTicketTrialApplication(ticketId int, userId int) (*SupportTicketTrialApplication, *SupportTicketMessage, *SupportTicket, error) {
+func CreateSupportTicketTrialApplication(ticketId int, userId int, requestIP string) (*SupportTicketTrialApplication, *SupportTicketMessage, *SupportTicket, error) {
 	var application *SupportTicketTrialApplication
 	var message *SupportTicketMessage
 	var ticket SupportTicket
@@ -79,10 +83,21 @@ func CreateSupportTicketTrialApplication(ticketId int, userId int) (*SupportTick
 			return err
 		}
 
+		if requestIP != "" {
+			err = tx.Where("request_ip = ?", requestIP).First(&existing).Error
+			if err == nil {
+				return errors.New("该 IP 地址已提交过试用额度申请")
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+
 		application = &SupportTicketTrialApplication{
-			TicketId: ticket.Id,
-			UserId:   userId,
-			Status:   SupportTicketTrialApplicationStatusPending,
+			TicketId:  ticket.Id,
+			UserId:    userId,
+			RequestIP: requestIP,
+			Status:    SupportTicketTrialApplicationStatusPending,
 		}
 		if err := tx.Create(application).Error; err != nil {
 			return err

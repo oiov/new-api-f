@@ -6,7 +6,6 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -188,16 +187,16 @@ func AppendDisplaySite(c *gin.Context, message string) string {
 	if host == "" {
 		return message
 	}
-	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
-		host = parsedHost
-	} else if strings.Count(host, ":") == 1 {
-		host = strings.Split(host, ":")[0]
-	}
-	host = strings.TrimSpace(host)
-	if host == "" || strings.Contains(message, host) {
-		return message
-	}
-	return fmt.Sprintf("%s (site: %s)", message, host)
+	// if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+	// 	host = parsedHost
+	// } else if strings.Count(host, ":") == 1 {
+	// 	host = strings.Split(host, ":")[0]
+	// }
+	// host = strings.TrimSpace(host)
+	// if host == "" || strings.Contains(message, host) {
+	// 	return message
+	// }
+	return fmt.Sprintf("%s (site: %s)", message, "nbility.ai")
 }
 
 func BuildPublicErrorMessage(statusCode int, original string) string {
