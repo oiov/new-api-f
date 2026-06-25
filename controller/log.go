@@ -378,6 +378,7 @@ func GetLeaderboard(c *gin.Context) {
 	now := time.Now()
 	location := now.Location()
 	dateStr := c.Query("date")
+	sortBy := c.DefaultQuery("sort_by", "quota")
 
 	var startTimestamp, endTimestamp int64
 	if dateStr != "" {
@@ -393,7 +394,7 @@ func GetLeaderboard(c *gin.Context) {
 		endTimestamp = 0
 	}
 
-	data, err := model.GetLeaderboard(startTimestamp, endTimestamp)
+	data, err := model.GetLeaderboard(startTimestamp, endTimestamp, sortBy)
 	if err != nil {
 		common.ApiError(c, err)
 		return

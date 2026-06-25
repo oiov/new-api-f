@@ -1678,8 +1678,15 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 	return total, nil
 }
 
-func GetLeaderboard(startTimestamp, endTimestamp int64) (*LeaderboardResponse, error) {
-	// Top 20 users by quota
+func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string) (*LeaderboardResponse, error) {
+	var orderClause string
+	switch sortBy {
+	case "tokens":
+		orderClause = "total_tokens DESC"
+	default:
+		orderClause = "total_quota DESC"
+	}
+
 	var entries []LeaderboardEntry
 	tx := LOG_DB.Table("logs").
 		Select("user_id, COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as request_count").
@@ -1688,7 +1695,7 @@ func GetLeaderboard(startTimestamp, endTimestamp int64) (*LeaderboardResponse, e
 		tx = tx.Where("created_at < ?", endTimestamp)
 	}
 	if err := tx.Group("user_id").
-		Order("total_quota DESC").
+		Order(orderClause).
 		Limit(20).
 		Find(&entries).Error; err != nil {
 		return nil, err
