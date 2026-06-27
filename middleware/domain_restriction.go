@@ -160,7 +160,8 @@ func abortDirectWebAccessRequest(c *gin.Context, decision ProxyDistributionDecis
 	c.Header("X-Anti-Distribution-Layer", "backend")
 	c.Header("X-Anti-Distribution-Action", "block")
 	c.Header("X-Anti-Distribution-Reason", decision.Reason)
-	c.Status(http.StatusNoContent)
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(apiLandingPageHTML))
 	c.Abort()
 }
 
