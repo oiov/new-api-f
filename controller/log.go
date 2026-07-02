@@ -242,7 +242,6 @@ func logCSVHeaders() []string {
 		"completion_tokens",
 		"use_time",
 		"is_stream",
-		"channel_name",
 		"group",
 		"business_group",
 		"ip",
@@ -254,9 +253,13 @@ func logCSVHeaders() []string {
 
 func logCSVRow(l *model.Log) []string {
 	quotaUsd := strconv.FormatFloat(float64(l.Quota)/common.QuotaPerUnit, 'f', 6, 64)
+	createdAt := ""
+	if l.CreatedAt > 0 {
+		createdAt = time.Unix(l.CreatedAt, 0).Format("2006-01-02 15:04:05")
+	}
 	return []string{
 		strconv.Itoa(l.Id),
-		strconv.FormatInt(l.CreatedAt, 10),
+		createdAt,
 		strconv.Itoa(l.Type),
 		strconv.Itoa(l.UserId),
 		l.Username,
@@ -268,7 +271,6 @@ func logCSVRow(l *model.Log) []string {
 		strconv.Itoa(l.CompletionTokens),
 		strconv.Itoa(l.UseTime),
 		strconv.FormatBool(l.IsStream),
-		l.ChannelName,
 		l.Group,
 		l.BusinessGroup,
 		l.Ip,

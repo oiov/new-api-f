@@ -505,7 +505,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, userId in
 }
 
 const logSearchCountLimit = 10000
-const logExportLimit = 10000
+const logExportLimit = 50000
 
 var logExportBatchSize = 500
 
@@ -854,7 +854,7 @@ func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTime
 		filters.NonChatModels = GetNonChatModelNames()
 	}
 	tx = applyLogExtraFilters(tx, filters, "logs.")
-	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
+	err = tx.Model(&Log{}).Limit(logExportLimit).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count user logs for export: " + err.Error())
 		return nil, 0, false, errors.New("导出日志失败")
