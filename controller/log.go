@@ -227,6 +227,57 @@ func GetUserLogs(c *gin.Context) {
 	return
 }
 
+func logCSVHeaders() []string {
+	return []string{
+		"id",
+		"created_at",
+		"type",
+		"user_id",
+		"username",
+		"token_name",
+		"model_name",
+		"quota",
+		"quota_usd",
+		"prompt_tokens",
+		"completion_tokens",
+		"use_time",
+		"is_stream",
+		"channel_name",
+		"group",
+		"business_group",
+		"ip",
+		"request_id",
+		"content",
+		"other",
+	}
+}
+
+func logCSVRow(l *model.Log) []string {
+	quotaUsd := strconv.FormatFloat(float64(l.Quota)/common.QuotaPerUnit, 'f', 6, 64)
+	return []string{
+		strconv.Itoa(l.Id),
+		strconv.FormatInt(l.CreatedAt, 10),
+		strconv.Itoa(l.Type),
+		strconv.Itoa(l.UserId),
+		l.Username,
+		l.TokenName,
+		l.ModelName,
+		strconv.Itoa(l.Quota),
+		quotaUsd,
+		strconv.Itoa(l.PromptTokens),
+		strconv.Itoa(l.CompletionTokens),
+		strconv.Itoa(l.UseTime),
+		strconv.FormatBool(l.IsStream),
+		l.ChannelName,
+		l.Group,
+		l.BusinessGroup,
+		l.Ip,
+		l.RequestId,
+		l.Content,
+		l.Other,
+	}
+}
+
 func writeLogsCSV(c *gin.Context, logs []*model.Log, total int64, truncated bool, filenamePrefix string) {
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s-%s.csv", filenamePrefix, time.Now().Format("2006-01-02")))
@@ -241,57 +292,13 @@ func writeLogsCSV(c *gin.Context, logs []*model.Log, total int64, truncated bool
 	writer := csv.NewWriter(c.Writer)
 	defer writer.Flush()
 
-	headers := []string{
-		"id",
-		"created_at",
-		"type",
-		"user_id",
-		"username",
-		"token_name",
-		"model_name",
-		"quota",
-		"prompt_tokens",
-		"completion_tokens",
-		"use_time",
-		"is_stream",
-		"channel_id",
-		"channel_name",
-		"group",
-		"business_group",
-		"ip",
-		"request_id",
-		"content",
-		"other",
-	}
-	if err := writer.Write(headers); err != nil {
+	if err := writer.Write(logCSVHeaders()); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
 	for _, logItem := range logs {
-		row := []string{
-			strconv.Itoa(logItem.Id),
-			strconv.FormatInt(logItem.CreatedAt, 10),
-			strconv.Itoa(logItem.Type),
-			strconv.Itoa(logItem.UserId),
-			logItem.Username,
-			logItem.TokenName,
-			logItem.ModelName,
-			strconv.Itoa(logItem.Quota),
-			strconv.Itoa(logItem.PromptTokens),
-			strconv.Itoa(logItem.CompletionTokens),
-			strconv.Itoa(logItem.UseTime),
-			strconv.FormatBool(logItem.IsStream),
-			strconv.Itoa(logItem.ChannelId),
-			logItem.ChannelName,
-			logItem.Group,
-			logItem.BusinessGroup,
-			logItem.Ip,
-			logItem.RequestId,
-			logItem.Content,
-			logItem.Other,
-		}
-		if err := writer.Write(row); err != nil {
+		if err := writer.Write(logCSVRow(logItem)); err != nil {
 			common.ApiError(c, err)
 			return
 		}
