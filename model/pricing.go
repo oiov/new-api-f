@@ -121,6 +121,38 @@ func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
 	return make([]constant.EndpointType, 0)
 }
 
+var chatEndpointTypeSet = map[constant.EndpointType]bool{
+	constant.EndpointTypeOpenAI:                true,
+	constant.EndpointTypeOpenAIResponse:        true,
+	constant.EndpointTypeOpenAIResponseCompact: true,
+	constant.EndpointTypeAnthropic:             true,
+	constant.EndpointTypeGemini:                true,
+}
+
+func hasChatEndpoint(endpoints []constant.EndpointType) bool {
+	for _, ep := range endpoints {
+		if chatEndpointTypeSet[ep] {
+			return true
+		}
+	}
+	return false
+}
+
+// GetNonChatModelNames 返回「不支持任何对话端点」的模型名列表（embeddings/rerank/image/video 等）。
+// 用于账单导出的零输出异常排除：仅对话模型才参与排除，非对话模型永不被剔除。
+func GetNonChatModelNames() []string {
+	GetPricing() // 确保 modelSupportEndpointTypes 已加载/刷新
+	modelSupportEndpointsLock.RLock()
+	defer modelSupportEndpointsLock.RUnlock()
+	nonChat := make([]string, 0)
+	for modelName, endpoints := range modelSupportEndpointTypes {
+		if !hasChatEndpoint(endpoints) {
+			nonChat = append(nonChat, modelName)
+		}
+	}
+	return nonChat
+}
+
 func updatePricing() {
 	//modelRatios := common.GetModelRatios()
 	enableAbilities, err := GetAllEnableAbilityWithChannels()
