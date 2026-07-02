@@ -139,7 +139,7 @@ func TestGetUserLogsForExportExtraFilters(t *testing.T) {
 		seedExportLog(t, 3, 10, "gpt-5", "test", "vip", false, 10, 50)
 
 		count := func(f LogExportFilters) int64 {
-			logs, _, _, err := GetUserLogsForExport(10, LogTypeConsume, now-100, now+100, "", "", "", "", "", "", "", false, f)
+			logs, _, _, err := GetUserLogsForExport(10, LogTypeConsume, now-100, now+100, "", "", "", "", "", "", "", 0, 0, false, false, f)
 			require.NoError(t, err)
 			return int64(len(logs))
 		}
@@ -170,7 +170,7 @@ func TestGetUserLogsForExportExcludeStreamZeroCompletion(t *testing.T) {
 			ExcludeStreamZeroCompletion: true,
 			NonChatModels:               []string{"text-embedding-3-small"}, // 显式注入，绕过定价加载
 		}
-		logs, _, _, err := GetUserLogsForExport(10, LogTypeConsume, now-100, now+100, "", "", "", "", "", "", "", false, f)
+		logs, _, _, err := GetUserLogsForExport(10, LogTypeConsume, now-100, now+100, "", "", "", "", "", "", "", 0, 0, false, false, f)
 		require.NoError(t, err)
 		ids := map[int]bool{}
 		for _, l := range logs {
