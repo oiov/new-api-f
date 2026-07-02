@@ -39,6 +39,12 @@ type logQueryParams struct {
 	SubscriptionId     int
 	SubscriptionPlanId int
 	CompactExport      bool
+	// 账单导出专用 opt-in 多值筛选与零输出排除
+	TokenNames                  []string
+	ModelNames                  []string
+	Groups                      []string
+	BusinessGroups              []string
+	ExcludeStreamZeroCompletion bool
 }
 
 func getLogImageURLs(logItem *model.Log) []string {
@@ -157,6 +163,36 @@ func getLogQueryParams(c *gin.Context) logQueryParams {
 		SubscriptionId:     subscriptionId,
 		SubscriptionPlanId: subscriptionPlanId,
 		CompactExport:      c.Query("compact") == "true" || c.Query("compact") == "1",
+		TokenNames:         cleanStringSlice(c.QueryArray("token_names")),
+		ModelNames:         cleanStringSlice(c.QueryArray("model_names")),
+		Groups:             cleanStringSlice(c.QueryArray("groups")),
+		BusinessGroups:     cleanStringSlice(c.QueryArray("business_groups")),
+		ExcludeStreamZeroCompletion: c.Query("exclude_stream_zero_completion") == "true" ||
+			c.Query("exclude_stream_zero_completion") == "1",
+	}
+}
+
+// cleanStringSlice 归一化重复/逗号分隔的 query 值：去空白、去空项。
+func cleanStringSlice(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
+}
+
+// exportFilters 从 query 组装 model 层的账单导出筛选。
+func (q logQueryParams) exportFilters() model.LogExportFilters {
+	return model.LogExportFilters{
+		TokenNames:                  q.TokenNames,
+		ModelNames:                  q.ModelNames,
+		Groups:                      q.Groups,
+		BusinessGroups:              q.BusinessGroups,
+		ExcludeStreamZeroCompletion: q.ExcludeStreamZeroCompletion,
 	}
 }
 
@@ -269,7 +305,7 @@ func ExportAllLogs(c *gin.Context) {
 	}
 	query := getLogQueryParams(c)
 	isRootUser := c.GetInt("role") == common.RoleRootUser
-	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport)
+	logs, total, truncated, err := model.GetAllLogsForExport(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport, query.exportFilters())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -285,7 +321,7 @@ func ExportUserLogs(c *gin.Context) {
 	userId := c.GetInt("id")
 	query := getLogQueryParams(c)
 	isRootUser := c.GetInt("role") == common.RoleRootUser
-	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport)
+	logs, total, truncated, err := model.GetUserLogsForExport(userId, query.LogType, query.StartTimestamp, query.EndTimestamp, query.ModelName, query.TokenName, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, isRootUser, query.CompactExport, query.exportFilters())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -336,7 +372,7 @@ func GetLogByKey(c *gin.Context) {
 
 func GetLogsStat(c *gin.Context) {
 	query := getLogQueryParams(c)
-	stat, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	stat, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, query.UserId, query.ModelName, query.Username, query.TokenName, query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, query.exportFilters())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -405,7 +441,7 @@ func GetLeaderboard(c *gin.Context) {
 func GetLogsSelfStat(c *gin.Context) {
 	username := c.GetString("username")
 	query := getLogQueryParams(c)
-	quotaNum, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, 0, query.ModelName, username, query.TokenName, query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId)
+	quotaNum, err := model.SumUsedQuota(query.LogType, query.StartTimestamp, query.EndTimestamp, 0, query.ModelName, username, query.TokenName, query.Channel, query.Group, query.BusinessGroup, query.RequestId, query.ErrorMessage, query.StatusCode, query.SubscriptionId, query.SubscriptionPlanId, query.exportFilters())
 	if err != nil {
 		common.ApiError(c, err)
 		return

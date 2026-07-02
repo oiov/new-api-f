@@ -779,11 +779,53 @@ func findLogsForExport(tx *gorm.DB, limit int, compact bool) ([]*Log, error) {
 	return logs, nil
 }
 
-func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool) (logs []*Log, total int64, truncated bool, err error) {
+// LogExportFilters 承载账单导出/统计专用的 opt-in 多值筛选与零输出排除。
+// 现有单值查询构造器不受影响；仅导出与统计路径消费本结构。
+type LogExportFilters struct {
+	TokenNames                  []string
+	ModelNames                  []string
+	Groups                      []string
+	BusinessGroups              []string
+	ExcludeStreamZeroCompletion bool
+	// NonChatModels 为空且 ExcludeStreamZeroCompletion 时，由调用方用 GetNonChatModelNames() 填充。
+	NonChatModels []string
+}
+
+// applyLogExtraFilters 按列前缀（导出用 "logs."，统计用 ""）追加多值 IN 过滤与零输出排除。
+// prefix 之后拼接的均为固定列名/内部常量，非用户输入，无注入风险。
+func applyLogExtraFilters(tx *gorm.DB, f LogExportFilters, prefix string) *gorm.DB {
+	if len(f.TokenNames) > 0 {
+		tx = tx.Where(prefix+"token_name IN ?", f.TokenNames)
+	}
+	if len(f.ModelNames) > 0 {
+		tx = tx.Where(prefix+"model_name IN ?", f.ModelNames)
+	}
+	if len(f.Groups) > 0 {
+		tx = tx.Where(prefix+logGroupCol+" IN ?", f.Groups)
+	}
+	if len(f.BusinessGroups) > 0 {
+		tx = tx.Where(prefix+"business_group IN ?", f.BusinessGroups)
+	}
+	if f.ExcludeStreamZeroCompletion {
+		base := "NOT (" + prefix + "is_stream = ? AND " + prefix + "completion_tokens = 0 AND " + prefix + "quota > 0"
+		if len(f.NonChatModels) > 0 {
+			tx = tx.Where(base+" AND "+prefix+"model_name NOT IN ?)", true, f.NonChatModels)
+		} else {
+			tx = tx.Where(base+")", true)
+		}
+	}
+	return tx
+}
+
+func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool, filters LogExportFilters) (logs []*Log, total int64, truncated bool, err error) {
 	tx, err := buildAdminLogsQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, false, err
 	}
+	if filters.ExcludeStreamZeroCompletion && filters.NonChatModels == nil {
+		filters.NonChatModels = GetNonChatModelNames()
+	}
+	tx = applyLogExtraFilters(tx, filters, "logs.")
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
 		return nil, 0, false, err
@@ -803,11 +845,15 @@ func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, 
 	return logs, total, truncated, nil
 }
 
-func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool) (logs []*Log, total int64, truncated bool, err error) {
+func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, allowSensitivePreview bool, compact bool, filters LogExportFilters) (logs []*Log, total int64, truncated bool, err error) {
 	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return nil, 0, false, err
 	}
+	if filters.ExcludeStreamZeroCompletion && filters.NonChatModels == nil {
+		filters.NonChatModels = GetNonChatModelNames()
+	}
+	tx = applyLogExtraFilters(tx, filters, "logs.")
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count user logs for export: " + err.Error())
@@ -1582,15 +1628,20 @@ func readPositiveInt64FromMap(values map[string]interface{}, key string) int64 {
 	return n
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId int, modelName string, username string, tokenName string, channel int, group string, businessGroup string, requestId string, errorMessage string, statusCode string, subscriptionId int, subscriptionPlanId int, filters LogExportFilters) (stat Stat, err error) {
+	if filters.ExcludeStreamZeroCompletion && filters.NonChatModels == nil {
+		filters.NonChatModels = GetNonChatModelNames()
+	}
 	tx, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return stat, err
 	}
+	tx = applyLogExtraFilters(tx, filters, "")
 	rpmTpmQuery, err := buildLogStatConsumeQuery(logType, startTimestamp, endTimestamp, userId, modelName, username, tokenName, channel, group, businessGroup, requestId, errorMessage, statusCode, subscriptionId, subscriptionPlanId)
 	if err != nil {
 		return stat, err
 	}
+	rpmTpmQuery = applyLogExtraFilters(rpmTpmQuery, filters, "")
 
 	// 只统计最近60秒的rpm和tpm
 	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
@@ -1609,6 +1660,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, userId 
 	if err != nil {
 		return stat, err
 	}
+	cacheQuery = applyLogExtraFilters(cacheQuery, filters, "")
 	cacheStat, cacheOpenAIStat, cacheClaudeStat, err := sumPromptCacheStats(cacheQuery.Where("is_stream = ?", true))
 	if err != nil {
 		common.SysError("failed to query prompt cache stat: " + err.Error())

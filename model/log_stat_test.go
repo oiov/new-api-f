@@ -135,7 +135,7 @@ func TestSumUsedQuotaIncludesPromptCacheStatsForCurrentFilters(t *testing.T) {
 		}
 		require.NoError(t, DB.Create(&logs).Error)
 
-		stat, err := SumUsedQuota(0, now-400, now, 10, "gpt-5", "alice", "prod", 7, "vip", "", "", "", "", 0, 0)
+		stat, err := SumUsedQuota(0, now-400, now, 10, "gpt-5", "alice", "prod", 7, "vip", "", "", "", "", 0, 0, LogExportFilters{})
 		require.NoError(t, err)
 
 		require.EqualValues(t, 100, stat.Quota)
@@ -211,7 +211,7 @@ func TestSumUsedQuotaCountsPeriodTotalsAndStreamingOnlyPromptCacheStats(t *testi
 		}
 		require.NoError(t, DB.Create(&logs).Error)
 
-		stat, err := SumUsedQuota(0, now-400, now, 10, "gpt-5", "alice", "prod", 7, "vip", "", "", "", "", 0, 0)
+		stat, err := SumUsedQuota(0, now-400, now, 10, "gpt-5", "alice", "prod", 7, "vip", "", "", "", "", 0, 0, LogExportFilters{})
 		require.NoError(t, err)
 
 		require.EqualValues(t, 60, stat.Quota)
@@ -326,7 +326,7 @@ func TestSumUsedQuotaSplitsPromptCacheStatsByOpenAIAndClaudeModels(t *testing.T)
 		}
 		require.NoError(t, DB.Create(&logs).Error)
 
-		stat, err := SumUsedQuota(0, now-400, now, 10, "", "alice", "prod", 0, "vip", "", "", "", "", 0, 0)
+		stat, err := SumUsedQuota(0, now-400, now, 10, "", "alice", "prod", 0, "vip", "", "", "", "", 0, 0, LogExportFilters{})
 		require.NoError(t, err)
 
 		require.EqualValues(t, 5, stat.PromptCacheTotalCount)
