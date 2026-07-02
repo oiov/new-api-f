@@ -56,7 +56,9 @@
 - 列名走跨库变量：分组列用 `logGroupCol`（`buildLogStatConsumeQuery` 用非前缀 `"logs"` 表别名时对应 `commonGroupCol` 语境，实施时按该函数既有写法取列名）。
 - **日志列表 / 健康统计端点不发复数参数 → 行为 100% 不变。**
 
-> 注：`model_names` 走精确 `IN`（非 LIKE），因为选项来自 `/user/models` 的真实模型名，无需模糊匹配。
+> 注：`model_names` 走精确 `IN`（非 LIKE），因为选项来自 `/user/models` 的真实模型名，无需模糊匹配。现有单值 `model_name` 在部分查询中走 LIKE（如 `buildLogStatConsumeQuery`）——两种匹配模式互不干扰，因为账单只发复数参数、不发单值参数。
+>
+> ⚠️ **列前缀约定按各函数既有写法**：`buildAdminLogsQuery`/`buildUserLogsQuery` 用 `logs.` 前缀列名；`buildLogStatConsumeQuery` 用 `Table("logs")` + **无前缀**列名。新增的 `IN` 条件与零输出排除条件必须**分别遵循每个函数的本地前缀约定**，否则查询会报错。
 
 ### 3.2 排除异常零输出日志（opt-in）
 
@@ -87,7 +89,7 @@ AND model_name NOT IN (<非对话模型名列表>)
 - **移除** `channel_id` 列（表头 + 行中 `strconv.Itoa(logItem.ChannelId)`）。
   - `channel_name` 列**保留**（用户账单导出本就把 `ChannelName` 置空，无信息泄露；管理员导出仍有值）。
 - **新增** `quota_usd` 列，**紧跟 `quota` 列之后**：
-  - 值 = `logItem.Quota / common.QuotaPerUnit`（`QuotaPerUnit = 500000`）。
+  - 值 = `float64(logItem.Quota) / common.QuotaPerUnit`（`Quota` 是 int、`QuotaPerUnit=500000` 是 float64，需显式 `float64()` 转换）。
   - 格式：`strconv.FormatFloat(usd, 'f', 6, 64)` → 纯数字 6 位小数，无 `$`。
   - 例：`quota=174660` → `quota_usd=0.349320`。
 
@@ -97,7 +99,7 @@ id, created_at, type, user_id, username, token_name, model_name,
 quota, quota_usd, prompt_tokens, completion_tokens, use_time,
 is_stream, channel_name, group, business_group, ip, request_id[, content, other]
 ```
-（`compact=false` 时末尾附 `content, other`，与现状一致。）
+（`content, other` 列**始终**输出——`writeLogsCSV` 表头/行是固定的、不按 compact 分支；账单发 `compact=true` 时这两列取到的值为空字符串，但列仍存在，与现状一致。本次改动只增删 `channel_id`/`quota_usd` 两列，不引入 compact 分支。）
 
 - `logExportColumns(compact)`（`model/log.go`）需**去掉** `logs.channel_id` 的 Select（如导出不再需要该列）；`is_stream`、`completion_tokens`、`quota` 已在 Select 中，无需新增列拉取。
   - ⚠️ 注意：`attachChannelNamesToLogs`（管理员导出）依赖 `logs.channel_id` 关联 `channel_name`。若从 Select 移除 `channel_id`，`channel_name` 将无法关联。**解决**：Select 中**保留 `logs.channel_id`**（用于内部关联），仅在 **CSV 输出层**不写 `channel_id` 列。即「查询保留、输出剔除」。
@@ -123,8 +125,8 @@ is_stream, channel_name, group, business_group, ip, request_id[, content, other]
 |---|---|---|
 | 令牌名 | `GET /token/`（`listTokens`，取足够大 size 覆盖全部；多数用户令牌少） | 取 `name` 字段去重 |
 | 模型名 | `GET /user/models`（`getUserModels`，返回 `string[]`） | 直接用 |
-| 分组 | `GET /user/self/groups`（`getUserGroups`，返回 `Record<string,UserGroupInfo>`） | 取 key |
-| 业务分组 | `GET /token/business-groups`（`getBusinessGroups`，返回 `BusinessGroupStat[]`） | 取 group 名 |
+| 分组 | `GET /user/self/groups`（`getSelfGroups`，返回 `Record<string,UserGroupInfo>`） | 取 key |
+| 业务分组 | `GET /token/business-groups`（`listBusinessGroups`，返回 `BusinessGroupStat[]`） | 取 group 名 |
 
 用 `@tanstack/react-query` 拉取，staleTime 适中，失败降级为空列表（不阻塞导出）。
 
@@ -152,7 +154,7 @@ is_stream, channel_name, group, business_group, ip, request_id[, content, other]
 
 - 新增：`src/components/shared/multi-select.tsx`。
 - 改：`src/components/billing/billing-section.tsx`、`src/lib/billing-export.ts`、`src/api-client/logs.ts`、（按需）`src/api-client/types.ts`。
-- 数据源 hook：复用现有 `listTokens`/`getUserModels`/`getUserGroups`/`getBusinessGroups`。
+- 数据源 hook：复用现有 `listTokens`/`getUserModels`/`getSelfGroups`/`listBusinessGroups`。
 
 ## 5. 数据流
 
