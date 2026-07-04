@@ -849,7 +849,10 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 		if claudeInfo.Usage.CompletionTokens == 0 {
 			claudeInfo.Usage.CompletionTokens = fallback.CompletionTokens
 		}
-		if claudeInfo.Usage.PromptTokens == 0 {
+		// Only fall back to the estimated prompt tokens when output was produced. An empty
+		// response (no upstream usage AND no output text) is an upstream timeout/fluctuation
+		// that produced nothing and must not be billed on the estimate alone.
+		if claudeInfo.Usage.PromptTokens == 0 && claudeInfo.Usage.CompletionTokens > 0 {
 			claudeInfo.Usage.PromptTokens = fallback.PromptTokens
 		}
 		claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens

@@ -19,15 +19,25 @@ import (
 )
 
 const (
-	windowStart = int64(1782729000) // 2026-06-29 18:30:00 CST
-	windowEnd   = int64(1782734400) // 2026-06-29 20:00:00 CST
-	batchTag    = "refund-2026-06-29-1830-2000"
-	reasonCode  = "server_fluctuation_zero_output"
+	defaultWindowStart = int64(1782729000) // 2026-06-29 18:30:00 CST
+	defaultWindowEnd   = int64(1782734400) // 2026-06-29 20:00:00 CST
+	defaultBatchTag    = "refund-2026-06-29-1830-2000"
+	defaultReasonCode  = "server_fluctuation_zero_output"
 )
 
 func main() {
 	apply := flag.Bool("apply", false, "actually perform refunds (default: dry-run)")
+	windowStart := flag.Int64("start", defaultWindowStart, "window start (unix seconds, inclusive)")
+	windowEnd := flag.Int64("end", defaultWindowEnd, "window end (unix seconds, exclusive)")
+	batchTag := flag.String("batch", defaultBatchTag, "batch tag used for idempotency and audit")
+	reasonCode := flag.String("reason", defaultReasonCode, "reason code recorded on refund logs")
 	flag.Parse()
+
+	if *windowEnd <= *windowStart {
+		panic(fmt.Sprintf("invalid window: end (%d) must be greater than start (%d)", *windowEnd, *windowStart))
+	}
+	fmt.Printf("config: start=%d end=%d batch=%q reason=%q apply=%v\n",
+		*windowStart, *windowEnd, *batchTag, *reasonCode, *apply)
 
 	// ---- init (mirror main.InitResources, minus migrations / web bootstrap) ----
 	_ = godotenv.Load(".env")
@@ -44,11 +54,22 @@ func main() {
 	}
 
 	// ---- 1. load candidate consume logs in window ----
+	// Mirror the team's billing-export "stream zero-output" exclusion predicate
+	// (see model/log.go: is_stream = true AND completion_tokens = 0 AND quota > 0,
+	// excluding non-chat models). Only streaming chat/responses/claude requests can
+	// hit the estimated-prompt-token fallback bug; non-chat models (image/tts/embed/
+	// rerank/audio) legitimately report zero completion and must NOT be refunded.
+	nonChatModels := model.GetNonChatModelNames()
+	fmt.Printf("non-chat models excluded: %d\n", len(nonChatModels))
+	q := model.LOG_DB.Where(
+		"type = ? AND is_stream = ? AND created_at >= ? AND created_at < ? AND completion_tokens = 0 AND quota > 0",
+		model.LogTypeConsume, true, *windowStart, *windowEnd,
+	)
+	if len(nonChatModels) > 0 {
+		q = q.Where("model_name NOT IN ?", nonChatModels)
+	}
 	var logs []model.Log
-	if err := model.LOG_DB.Where(
-		"type = ? AND created_at >= ? AND created_at < ? AND completion_tokens = 0 AND quota > 0",
-		model.LogTypeConsume, windowStart, windowEnd,
-	).Find(&logs).Error; err != nil {
+	if err := q.Find(&logs).Error; err != nil {
 		panic(err)
 	}
 
@@ -73,7 +94,7 @@ func main() {
 	}
 
 	// ---- 3. idempotency: collect already-refunded original log ids ----
-	already := loadAlreadyRefunded()
+	already := loadAlreadyRefunded(*batchTag)
 
 	// ---- partition into to-refund vs skipped ----
 	toRefund := make([]model.Log, 0, len(wallet))
@@ -95,8 +116,8 @@ func main() {
 		perUser[lg.UserId] += int64(lg.Quota)
 		perUserCnt[lg.UserId]++
 	}
-	fmt.Printf("window 18:30-20:00 CST | candidates(type=2,comp=0,quota>0): %d | wallet: %d | subscription-skipped: %d\n",
-		len(logs), len(wallet), subSkipped)
+	fmt.Printf("window [%d,%d) | candidates(type=2,comp=0,quota>0): %d | wallet: %d | subscription-skipped: %d\n",
+		*windowStart, *windowEnd, len(logs), len(wallet), subSkipped)
 	fmt.Printf("already-refunded(idempotent skip): %d | TO REFUND: %d | total quota: %d (~$%.2f)\n",
 		dup, len(toRefund), totalQuota, float64(totalQuota)/float64(common.QuotaPerUnit))
 	uids := make([]int, 0, len(perUser))
@@ -162,8 +183,8 @@ func main() {
 			// audit refund log (type=6)
 			otherMap := map[string]any{
 				"refund_for_log_id": lg.Id,
-				"reason":            reasonCode,
-				"batch":             batchTag,
+				"reason":            *reasonCode,
+				"batch":             *batchTag,
 				"refunded_quota":    q,
 			}
 			otherBytes, _ := common.Marshal(otherMap)
@@ -172,8 +193,8 @@ func main() {
 				Username:  lg.Username,
 				CreatedAt: common.GetTimestamp(),
 				Type:      model.LogTypeRefund,
-				Content: fmt.Sprintf("服务器波动导致输出为空(completion_tokens=0)，退还扣费 %d（原消费日志ID %d，模型 %s，时段 18:30-20:00）",
-					q, lg.Id, lg.ModelName),
+				Content: fmt.Sprintf("服务器波动导致输出为空(completion_tokens=0)，退还扣费 %d（原消费日志ID %d，模型 %s，批次 %s）",
+					q, lg.Id, lg.ModelName, *batchTag),
 				ModelName: lg.ModelName,
 				TokenName: lg.TokenName,
 				TokenId:   lg.TokenId,
@@ -219,7 +240,7 @@ func main() {
 
 // loadAlreadyRefunded scans prior type=6 refund logs of this batch and returns
 // the set of original log ids already refunded.
-func loadAlreadyRefunded() map[int]bool {
+func loadAlreadyRefunded(batchTag string) map[int]bool {
 	out := map[int]bool{}
 	var rows []model.Log
 	if err := model.LOG_DB.Where("type = ? AND other LIKE ?", model.LogTypeRefund,

@@ -53,7 +53,9 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			usage.PromptTokensDetails.CachedTokens = responsesResponse.Usage.InputTokensDetails.CachedTokens
 		}
 	}
-	if usage.TotalTokens == 0 && info != nil {
+	if usage.TotalTokens == 0 && info != nil && usage.CompletionTokens > 0 {
+		// Only estimate prompt tokens when the response produced output; a fully-empty
+		// response (no upstream usage, no output) is an upstream failure and must not be billed.
 		usage.PromptTokens = info.GetEstimatePromptTokens()
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
@@ -144,7 +146,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 	}
 
-	if usage.PromptTokens == 0 {
+	if usage.PromptTokens == 0 && usage.CompletionTokens > 0 {
+		// Only estimate prompt tokens when the stream produced output (completion counted
+		// above from responseTextBuilder). An empty stream (upstream timeout/fluctuation)
+		// leaves both at 0 and must not be billed on an estimate.
 		usage.PromptTokens = info.GetEstimatePromptTokens()
 	}
 

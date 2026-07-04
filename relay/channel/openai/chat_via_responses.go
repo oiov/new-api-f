@@ -68,7 +68,13 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	if usage == nil || usage.TotalTokens == 0 {
 		text := service.ExtractOutputTextFromResponses(&responsesResp)
-		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
+		// Only estimate prompt tokens when output was produced; an empty response
+		// (upstream timeout/fluctuation) must not be billed on the estimate.
+		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, 0)
+		if usage.CompletionTokens > 0 {
+			usage.PromptTokens = info.GetEstimatePromptTokens()
+			usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+		}
 		chatResp.Usage = *usage
 	}
 
@@ -506,7 +512,13 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	}
 
 	if usage.TotalTokens == 0 {
-		usage = service.ResponseText2Usage(c, usageText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		// Only estimate prompt tokens when the stream produced output; an empty stream
+		// (upstream timeout/fluctuation) must not be billed on the estimate.
+		usage = service.ResponseText2Usage(c, usageText.String(), info.UpstreamModelName, 0)
+		if usage.CompletionTokens > 0 {
+			usage.PromptTokens = info.GetEstimatePromptTokens()
+			usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+		}
 	}
 
 	if !sentStart {

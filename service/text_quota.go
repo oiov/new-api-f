@@ -116,7 +116,12 @@ func ApplyEstimatedPromptTokensFallback(relayInfo *relaycommon.RelayInfo, usage 
 		return usage
 	}
 	estimatedPromptTokens := relayInfo.GetEstimatePromptTokens()
-	if !usageHasInputBillingSignals(usage) && estimatedPromptTokens > 0 {
+	// Only fall back to the locally-estimated prompt tokens when the request actually
+	// produced output (completion > 0). A fully-empty response (no upstream usage AND no
+	// output) means the upstream produced nothing — typically an upstream timeout/fluctuation
+	// — and must not be billed on an estimate alone. Requests that produced output but whose
+	// upstream omitted usage still fall back so we don't give free rides.
+	if !usageHasInputBillingSignals(usage) && usage.CompletionTokens > 0 && estimatedPromptTokens > 0 {
 		usage.PromptTokens = estimatedPromptTokens
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}

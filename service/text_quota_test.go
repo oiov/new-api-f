@@ -148,7 +148,7 @@ func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t 
 	require.Equal(t, 1488, summary.Quota)
 }
 
-func TestCalculateTextQuotaSummaryFallsBackToEstimatedPromptTokensWhenUsageIsZero(t *testing.T) {
+func TestCalculateTextQuotaSummaryDoesNotBillWhenUsageIsZero(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
@@ -171,11 +171,13 @@ func TestCalculateTextQuotaSummaryFallsBackToEstimatedPromptTokensWhenUsageIsZer
 
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
-	require.Equal(t, 1234, summary.PromptTokens)
+	// Empty response (no upstream usage, no output) must not be billed on the estimate:
+	// this is typically an upstream timeout/fluctuation that produced nothing.
+	require.Equal(t, 0, summary.PromptTokens)
 	require.Equal(t, 0, summary.CompletionTokens)
-	require.Equal(t, 1234, summary.TotalTokens)
+	require.Equal(t, 0, summary.TotalTokens)
 	require.Equal(t, "anthropic", summary.UsageSemantic)
-	require.Equal(t, 9872, summary.Quota)
+	require.Equal(t, 0, summary.Quota)
 }
 
 func TestCalculateTextQuotaSummaryFallsBackToEstimatedPromptTokensWhenOnlyCompletionUsageExists(t *testing.T) {

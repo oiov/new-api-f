@@ -196,8 +196,15 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	}
 
 	if !containStreamUsage {
-		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		// Compute completion tokens (streamed text + tool calls) first, then only estimate
+		// prompt tokens when the stream actually produced output. An empty stream (upstream
+		// timeout/fluctuation) leaves completion at 0 and must not be billed on an estimate.
+		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, 0)
 		usage.CompletionTokens += toolCount * 7
+		if usage.CompletionTokens > 0 {
+			usage.PromptTokens = info.GetEstimatePromptTokens()
+			usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+		}
 	}
 
 	applyUsagePostProcessing(info, usage, common.StringToByteSlice(lastStreamData))
