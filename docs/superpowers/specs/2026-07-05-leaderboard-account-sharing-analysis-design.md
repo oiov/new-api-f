@@ -71,6 +71,7 @@
 
 1. **IP 子网簇 `subnet_clusters`** — IPv4 归并到 /24，IPv6 归并到 /48，去重。抵消「同一人动态 IP」造成的虚高。
 2. **地理分布 `distinct_geo`** — GeoIP 解析出的 distinct (国家, 城市) 数。跨国 > 跨城 > 同城。
+   - **空城市归并**：DB-IP Lite 常返回「有国家、无城市」。`city == ""` 的行**归并到国家级**，同一国家只计 1 个 geo；`distinct_geo` = distinct 国家数（若某国有多个非空城市则按 (国, 城) 细分）。渲染见 §6.5（`city==""` 只显示国家）。
 3. **去重活跃 token 数 `token_count`** — 分发给多人的强信号（每个下游常拿独立 key）。
 4. **并发重叠 `max_concurrency`**（抽屉才算）— 以每条日志的 `[created_at, created_at + use_time]` 建区间，用扫描线求同时并发的最大值。
 5. **输入 token 离散度 `input_dispersion`**（抽屉才算）— 把 `prompt_tokens` 分桶，观察短时间窗（如同一分钟/并发窗口）内是否同时出现量级差异大的请求（如一个 200-token 一个 40k-token 并发 → 强烈暗示不同终端/不同用途）。
@@ -81,21 +82,36 @@
 
 ### 3.1 列表头条估计（仅便宜信号，列表接口内计算）
 
+列表接口**只有便宜信号**：`subnet_clusters`、`distinct_geo`、`token_count`、`request_count`。并发/输入离散度是抽屉才算的贵信号，列表**不得**依赖它们。
+
 ```
 base      = max(subnet_clusters, distinct_geo)
 estimate  = base
-若 token_count > base 且 token_count 各 token 都有实际请求量：
+若 token_count > base 且各 token 请求数均 > 0：
     estimate = token_count            // token 分叉视为独立使用者
 estimate = max(estimate, 1)
+
+// 列表级「疑似中转」廉价代理（不需要并发信号）：
+list_transit_suspected = (subnet_clusters <= 2) && (request_count >= T_LIST)   // T_LIST 默认 200
+estimate_is_min = list_transit_suspected
 ```
 
-- 结果作为「疑似 N 人」。
-- 当有「疑似中转分发」形态时（见 §3.2），列表值以 `estimate_is_min = true` 呈现为「**≥N 人**」，因为单 IP 高并发下真实人数无法从列表信号确定，抽屉才细化。
+- `estimate` 作为「疑似 N 人」。
+- **`estimate_is_min` 只由上面这个廉价代理决定**（IP 高度集中但请求量很大 → 真实人数无法从列表信号确定，故展示为「**≥N 人**」，由抽屉细化）。列表**不**引用 `max_concurrency` / `input_dispersion`。
+- 抽屉里的 §3.2 是**独立、更强**的中转判定，可能得出更高的估计（见 §3.6 口径对齐）。
 
 ### 3.2 中转分发识别（抽屉接口内计算）
 
-信号组合：`subnet_clusters <= 2`（IP 高度集中）且 `max_concurrency >= K`（默认 K=3）且 `input_dispersion` 高。
-→ 抽屉结论标注「疑似自建中转分发；观测到并发 ≥ max_concurrency，输入规模差异显著」，估计以「≥ max_concurrency 人」表达。
+信号组合：`subnet_clusters <= 2`（IP 高度集中）**且** `max_concurrency >= K`（默认 K=3）**且** `input_dispersion_score >= 2`（见 §3.2.1）。
+→ 抽屉结论标注「疑似自建中转分发；观测到并发 ≥ max_concurrency，输入规模差异显著」，估计 `estimate = max(base, max_concurrency)`，`estimate_is_min = true`（以「≥ N 人」表达）。
+
+### 3.2.1 输入离散度量化（`input_dispersion_score`，抽屉内计算）
+
+- `prompt_tokens` 按**数量级分桶**（bucket 边界固定：`[0,100)`、`[100,1k)`、`[1k,10k)`、`[10k,100k)`、`[100k,∞)`），桶即 §5.2 的 `input_buckets`。
+- 定义**并发窗口**：任一时刻并发重叠（区间 `[created_at, created_at+use_time]` 相交）的请求集合。
+- `input_dispersion_score` = 在**存在并发重叠的窗口内**，同时活跃请求所落入的**distinct 数量级桶数**的最大值。
+  - `score >= 2` 即判为「输入规模差异显著」（同一时段并发出现跨 ≥1 个数量级的请求，强烈暗示不同终端/用途）。
+- 该 score 作为标量随抽屉返回，供 §9 单测直接断言。
 
 ### 3.3 置信度（high / medium / low）
 
@@ -108,13 +124,20 @@ estimate = max(estimate, 1)
 ### 3.4 IP 全空的退化路径
 
 当窗口内该用户所有 `ip` 均为空串（用户设置未开启记录）：
-- `subnet_clusters = 0`，`distinct_geo = 0`。
-- 列表 estimate 退化为「基于 token 数/并发的弱提示」，置信度强制 `low`，「分析」列显示「数据不足」灰字（仍可点开抽屉看 token/并发等非地理信号）。
+- `subnet_clusters = 0`，`distinct_geo = 0`，`has_ip_data = false`。
+- 列表 `estimate` 仍按 §3.1 计算（此时 base=0，若有 token 分叉则 estimate=token_count），但**置信度强制 `low`**。
+- 「分析」列**显示优先级**：`has_ip_data = false` 时列表统一显示「数据不足」灰字（**即便 token 信号算出了 estimate 也不在列表展示数字**——避免无地理佐证的数字误导管理员）；用户仍可点开抽屉，抽屉里会展示 token/并发等非地理信号与算出的 estimate。
 - 抽屉顶部明确提示「该账号未开启 IP 记录，地理与 IP 信号不可用」。
 
 ### 3.5 纯函数边界
 
 估计与置信度逻辑封装为**纯函数**（输入：聚合信号结构体；输出：estimate/confidence/flags），不碰 DB、不碰 gin.Context，便于 §9 单测。
+
+### 3.6 列表值 ↔ 抽屉值口径对齐
+
+- 列表 `analysis.estimate` 是**廉价启发式**（只用便宜信号）；抽屉 `estimate` 是**权威值**（含并发/离散度）。
+- 二者可能不一致（列表「疑似 3 人」，抽屉「≥5 人」是**设计允许**的——抽屉信号更强）。
+- 前端口径：**抽屉打开后以抽屉值为准展示**；列表行标签**不回写/不改动**（列表是快速概览，抽屉是深挖）。两者各自独立标注，不视为矛盾。
 
 ---
 
@@ -147,7 +170,8 @@ estimate = max(estimate, 1)
 
 - **A（默认）挂卷**：库文件放宿主 `data/geoip/`（已挂载为容器 `/data/geoip/`）。镜像干净、CI 不动、不进 git。
   - ⚠️ **mmdb 不进 git**：文件 125MB，超 GitHub 单文件 100MB 硬限；`data/` 已在 `.gitignore`（`.gitignore:34`）。
-- **B（自举）启动自下载**：`GEOIP_AUTO_DOWNLOAD=true` 时，若 `GEOIP_DB_PATH` 不存在或过期（按月），后端启动阶段**异步**从 DB-IP 拉当月 `.mmdb.gz` → gunzip → 落到 `/data/geoip/` → 载入。
+- **B（自举）启动自下载**：`GEOIP_AUTO_DOWNLOAD=true` 时，若 `GEOIP_DB_PATH` 不存在或过期（见下），后端启动阶段**异步**从 DB-IP 拉当月 `.mmdb.gz` → gunzip → **原子写到 `GEOIP_DB_PATH`（稳定文件名，不带月份）** → 载入。
+  - **过期判定（明确，不留 or）**：下载成功后在同目录写一个 sidecar `GEOIP_DB_PATH + ".version"`，内容为该库年月字符串（如 `2026-07`）。启动时读 sidecar：缺失或 `!= 当前年月`（`time.Now()` 的 `YYYY-MM`）即判为过期，触发下载；相等则跳过。
   - 下载在后台 goroutine，**不阻塞**服务启动；下载中地理暂降级，完成后热切换 reader。
   - 拉取失败（无外网/URL 变动）→ 记 warn 日志，保持降级，不影响其它功能。
   - 月份计算避免用 `Date.now()` 之类不可复现调用——这是 Go 后端，正常用 `time.Now()`（本约束仅针对 workflow 脚本，不适用后端）。
@@ -155,7 +179,7 @@ estimate = max(estimate, 1)
 
 ### 4.5 首次落地
 
-我已把 `dbip-city-lite-2026-07.mmdb` 下载到仓库 `data/geoip/`（gitignored）。实施时把默认路径对齐到一个稳定文件名（如复制/软链为 `dbip-city-lite.mmdb`），或让 §4.4-B 的自举逻辑统一命名。
+我已把 `dbip-city-lite-2026-07.mmdb` 下载到仓库 `data/geoip/`（gitignored）。实施时**统一到稳定文件名**：把它复制/重命名为 `GEOIP_DB_PATH` 指向的 `dbip-city-lite.mmdb`（默认 `/data/geoip/dbip-city-lite.mmdb`），并写好对应的 `.version` sidecar（`2026-07`）。此后 §4.4-B 的自举逻辑按 sidecar 年月自动维护，不再出现带月份的文件名。
 
 ---
 
@@ -188,35 +212,74 @@ type LeaderboardRegion struct {
 ```
 
 **计算方式（便宜信号，不扫全部原始行）**：
-- 用聚合查询取每个 top-N 用户的：去重 IP 集合（`SELECT DISTINCT ip ... GROUP BY user_id`，IP 数量天然有界，一个用户 distinct IP 通常几十个以内）、去重 token 数（`COUNT(DISTINCT token_id)`）。
-- 子网归并 + GeoIP 解析在 **Go 层**做（不进 SQL，规避跨库函数差异，符合根 Rule 2）。
+- 数据源：**日志读 `LOG_DB.Table("logs")`**（logs 与 users 可能是不同数据库；用户名解析走 `DB`，与既有 `model.GetLeaderboard` 一致）。
+- 用聚合查询取每个 top-N 用户的：
+  - 去重 IP 集合：`... WHERE type=? AND created_at>=? [AND created_at<?] AND user_id IN ? GROUP BY user_id, ip`（每 (user, ip) 一行，IP 天然有界，一个用户 distinct IP 通常几十个内），Go 层按 user 聚合。
+  - 去重 token 数：`SELECT user_id, COUNT(DISTINCT token_id) ... GROUP BY user_id`。
+  - `request_count`：复用主聚合的 `COUNT(*)`。
+- 子网归并（/24、/48）+ GeoIP 解析 + `distinct_geo` 空城市归并均在 **Go 层**做（不进 SQL，规避跨库函数差异，符合根 Rule 2）。
+- `top_regions`：按 `count` 降序取前 3。
 - best-effort：GeoIP 缺失 → `top_regions` 空、`estimate` 照出、`confidence` 降级。
 
 ### 5.2 新增 `GET /api/log/leaderboard/analysis`（抽屉明细）
 
 **Query**：`user_id`（必填）、`start_timestamp`、`end_timestamp`（同上语义）。
 
-**Response `data`**：
+**Response `data`**（所有子结构体字段显式定义，供前端 `types.ts` + Zod 精确对齐，符合 §Rule 7）：
 
 ```go
 type LeaderboardAnalysisDetail struct {
-    UserId        int                  `json:"user_id"`
-    Estimate      int                  `json:"estimate"`
-    EstimateIsMin bool                 `json:"estimate_is_min"`
-    Confidence    string               `json:"confidence"`
-    Conclusion    string               `json:"conclusion"`      // 一句话结论（中转分发/多人分发/单人 等）
-    HasIpData     bool                 `json:"has_ip_data"`
-    Truncated     bool                 `json:"truncated"`       // 采样是否触顶
-    SampledRows   int                  `json:"sampled_rows"`
-    Ips           []AnalysisIpRow      `json:"ips"`             // ip / country / city / subnet / count / first_seen / last_seen
-    Tokens        []AnalysisTokenRow   `json:"tokens"`          // token_name / request_count / prompt_tokens 汇总
-    MaxConcurrency int                 `json:"max_concurrency"`
-    InputBuckets  []AnalysisBucket     `json:"input_buckets"`   // prompt_tokens 分桶直方图
-    Timeline      []AnalysisTimeBucket `json:"timeline"`        // 按时间片的请求数（抽屉画趋势）
+    UserId         int                  `json:"user_id"`
+    Estimate       int                  `json:"estimate"`
+    EstimateIsMin  bool                 `json:"estimate_is_min"`
+    Confidence     string               `json:"confidence"`         // high|medium|low
+    Conclusion     string               `json:"conclusion"`         // 一句话结论（中转分发/多人分发/单人 等）
+    HasIpData      bool                 `json:"has_ip_data"`
+    Truncated      bool                 `json:"truncated"`          // 采样是否触顶
+    SampledRows    int                  `json:"sampled_rows"`       // 实际参与分析的行数
+    SubnetClusters int                  `json:"subnet_clusters"`
+    DistinctGeo    int                  `json:"distinct_geo"`
+    TokenCount     int                  `json:"token_count"`
+    MaxConcurrency int                  `json:"max_concurrency"`
+    InputDispersionScore int            `json:"input_dispersion_score"` // §3.2.1 标量
+    Ips            []AnalysisIpRow      `json:"ips"`
+    Tokens         []AnalysisTokenRow   `json:"tokens"`
+    InputBuckets   []AnalysisBucket     `json:"input_buckets"`      // prompt_tokens 数量级直方图
+    Timeline       []AnalysisTimeBucket `json:"timeline"`           // 按时间片的请求数
+}
+
+type AnalysisIpRow struct {
+    Ip           string `json:"ip"`
+    Country      string `json:"country"`      // 可空（GeoIP 缺失/未命中）
+    City         string `json:"city"`         // 可空
+    Subnet       string `json:"subnet"`       // 归并后的 /24 或 /48 前缀
+    RequestCount int    `json:"request_count"`
+    FirstSeen    int64  `json:"first_seen"`   // unix 秒
+    LastSeen     int64  `json:"last_seen"`    // unix 秒
+}
+
+type AnalysisTokenRow struct {
+    TokenId      int    `json:"token_id"`
+    TokenName    string `json:"token_name"`
+    RequestCount int    `json:"request_count"`
+    PromptTokens int64  `json:"prompt_tokens"`   // 该 token 输入 token 汇总
+}
+
+type AnalysisBucket struct {
+    Label string `json:"label"`   // 如 "0-100" / "100-1k" / "1k-10k" / "10k-100k" / "100k+"
+    Min   int    `json:"min"`      // 桶下界（prompt_tokens）
+    Count int    `json:"count"`    // 落入该桶的请求数
+}
+
+type AnalysisTimeBucket struct {
+    Ts    int64 `json:"ts"`     // 时间片起点 unix 秒
+    Count int   `json:"count"`  // 该时间片请求数
 }
 ```
 
-**采样边界（§7）**：明细拉原始行**封顶 5 万行**，按 `created_at DESC` 取最近 N 行；触顶时 `truncated=true`，UI 提示「基于最近 5 万条」。
+- **时间片粒度**：按窗口跨度自适应（如 ≤1 天用小时片、≤7 天用天片…），实现时取一个固定映射，前端只消费 `ts`+`count` 不关心粒度。
+
+**采样边界（§7）**：明细拉原始行**封顶 5 万行**，按 `created_at DESC` 取最近 N 行；触顶时 `truncated=true`，`sampled_rows` 反映实际行数，UI 提示「基于最近 5 万条」。数据源同为 `LOG_DB.Table("logs")`。
 
 ### 5.3 路由注册（`router/api-router.go`，logRoute 组内）
 
@@ -243,7 +306,7 @@ logRoute.GET("/leaderboard/analysis",
 
 ### 6.1 日期范围筛选（替换单日 Calendar）
 
-- 复用日志列表的 datetime-local 起止选择模式（`web-worker/src/components/log/log-table.tsx` 的 `toDatetimeLocal`/`fromDatetimeLocal`、`rangeInput` 结构）。
+- 复用日志列表的 datetime-local 起止选择模式：`toDatetimeLocal` / `fromDatetimeLocal` 定义在 **`web-worker/src/lib/dashboard-metrics.ts`**（`log-table.tsx:60` 从那里 import），`rangeInput` 结构参考 `log-table.tsx`。
 - 默认当天 00:00 → 现在；提供「今天 / 近 7 天」快捷按钮。
 - 发送 `start_timestamp` / `end_timestamp`（unix 秒），不再发 `date`。
 
@@ -273,7 +336,7 @@ logRoute.GET("/leaderboard/analysis",
 - 结构：
   - 头部：账号名 + 结论文本（`conclusion`）+ 置信度徽标；`!has_ip_data` 时的提示条；`truncated` 时的「基于最近 5 万条」提示。
   - 分块卡片：
-    1. **IP 明细** — 表格：IP / 国家（可加国旗 emoji）/ 城市 / 子网 / 请求数 / 首末见时间。
+    1. **IP 明细** — 表格：IP / 国家（可加国旗 emoji）/ 城市 / 子网 / 请求数 / 首末见时间。`city == ""` 时只显示国家；国家也空时显示「未知」。
     2. **Token 明细** — 每个 token 的请求数 + 输入 token 汇总。
     3. **并发峰值** — `max_concurrency` 数值 + 一句解读。
     4. **输入 token 分布** — recharts 直方图（`input_buckets`）。
@@ -327,8 +390,10 @@ logRoute.GET("/leaderboard/analysis",
 ## §9 · 测试策略
 
 - **后端（优先 TDD）**：
-  - `EstimateAccountSharing` 纯函数单测：构造聚合信号 → 断言 estimate / confidence / estimate_is_min（覆盖单人、多国多 token、单 IP 高并发中转、IP 全空退化）。
-  - GeoIP：Lookup 正常 + reader=nil 降级 + 非法 IP。
+  - `EstimateAccountSharing` 纯函数单测：构造聚合信号 → 断言 estimate / confidence / estimate_is_min（覆盖单人、多国多 token、单 IP 高请求量触发 `list_transit_suspected` 的列表级 `≥N`、IP 全空退化）。
+  - `input_dispersion_score` 纯函数单测：构造并发重叠且 prompt_tokens 跨数量级的请求 → 断言 score>=2；单一量级 → score<2。
+  - 中转识别组合断言：`subnet_clusters<=2 && max_concurrency>=K && score>=2` → conclusion 标中转、estimate_is_min=true。
+  - GeoIP：Lookup 正常 + reader=nil 降级 + 非法 IP + 有国家无城市（空城市归并到国家级）。
   - start/end 参数解析与 date 回落。
   - 并发扫描线纯函数单测（构造重叠区间 → 断言 max_concurrency）。
 - **前端**：
