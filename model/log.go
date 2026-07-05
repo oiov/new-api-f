@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/geoip"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 
@@ -1240,13 +1241,30 @@ type Stat struct {
 	PromptCacheClaude      PromptCacheStat `gorm:"-"`
 }
 
+type LeaderboardRegion struct {
+	Country string `json:"country"`
+	City    string `json:"city"`
+	Count   int    `json:"count"`
+}
+
+type LeaderboardAnalysis struct {
+	Estimate      int                 `json:"estimate"`
+	EstimateIsMin bool                `json:"estimate_is_min"`
+	Confidence    string              `json:"confidence"`
+	IpCount       int                 `json:"ip_count"`
+	TokenCount    int                 `json:"token_count"`
+	TopRegions    []LeaderboardRegion `json:"top_regions"`
+	HasIpData     bool                `json:"has_ip_data"`
+}
+
 type LeaderboardEntry struct {
-	UserId       int    `json:"user_id" gorm:"column:user_id"`
-	Username     string `json:"username" gorm:"-"`
-	TotalQuota   int64  `json:"total_quota" gorm:"column:total_quota"`
-	TotalTokens  int64  `json:"total_tokens" gorm:"column:total_tokens"`
-	RequestCount int64  `json:"request_count" gorm:"column:request_count"`
-	TopModel     string `json:"top_model" gorm:"-"`
+	UserId       int                 `json:"user_id" gorm:"column:user_id"`
+	Username     string              `json:"username" gorm:"-"`
+	TotalQuota   int64               `json:"total_quota" gorm:"column:total_quota"`
+	TotalTokens  int64               `json:"total_tokens" gorm:"column:total_tokens"`
+	RequestCount int64               `json:"request_count" gorm:"column:request_count"`
+	TopModel     string              `json:"top_model" gorm:"-"`
+	Analysis     LeaderboardAnalysis `json:"analysis" gorm:"-"`
 }
 
 type LeaderboardSummary struct {
@@ -1259,8 +1277,11 @@ type LeaderboardSummary struct {
 }
 
 type LeaderboardResponse struct {
-	Summary     LeaderboardSummary `json:"summary"`
-	Leaderboard []LeaderboardEntry `json:"leaderboard"`
+	Summary     *LeaderboardSummary `json:"summary,omitempty"`
+	Leaderboard []LeaderboardEntry  `json:"leaderboard"`
+	Page        int                 `json:"page"`
+	PageSize    int                 `json:"page_size"`
+	Total       int                 `json:"total"`
 }
 
 type GroupLogHealthStatsQuery struct {
@@ -1730,41 +1751,112 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 	return total, nil
 }
 
-func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string) (*LeaderboardResponse, error) {
+// resolveKeywordUserIds：keyword 为纯数字 → user_id 精确 OR 用户名含；否则用户名 LIKE。返回候选 user_id。
+func resolveKeywordUserIds(keyword string) ([]int, error) {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return nil, nil
+	}
+	var ids []int
+	q := DB.Table("users").Select("id")
+	if _, err := strconv.Atoi(keyword); err == nil {
+		q = q.Where("id = ? OR username LIKE ?", keyword, "%"+keyword+"%")
+	} else {
+		q = q.Where("username LIKE ?", "%"+keyword+"%")
+	}
+	if err := q.Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []int{-1}, nil // 哨兵：确保 IN(-1) 命中空集
+	}
+	return ids, nil
+}
+
+func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string, page, pageSize int, keyword string) (*LeaderboardResponse, error) {
+	// 1. 排序列 + 确定性 tiebreaker
 	var orderClause string
 	switch sortBy {
 	case "tokens":
-		orderClause = "total_tokens DESC"
+		orderClause = "total_tokens DESC, user_id ASC"
 	default:
-		orderClause = "total_quota DESC"
+		orderClause = "total_quota DESC, user_id ASC"
 	}
 
-	var entries []LeaderboardEntry
-	tx := LOG_DB.Table("logs").
-		Select("user_id, COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as request_count").
-		Where("type = ? AND created_at >= ?", LogTypeConsume, startTimestamp)
-	if endTimestamp > 0 {
-		tx = tx.Where("created_at < ?", endTimestamp)
+	// 2. keyword → 候选 user_id
+	var candidateIds []int
+	if strings.TrimSpace(keyword) != "" {
+		var err error
+		candidateIds, err = resolveKeywordUserIds(keyword)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if err := tx.Group("user_id").
+
+	// applyBase：type=consume + 时间范围 + keyword IN 过滤
+	applyBase := func(tx *gorm.DB) *gorm.DB {
+		tx = tx.Where("type = ? AND created_at >= ?", LogTypeConsume, startTimestamp)
+		if endTimestamp > 0 {
+			tx = tx.Where("created_at < ?", endTimestamp)
+		}
+		if candidateIds != nil {
+			tx = tx.Where("user_id IN ?", candidateIds)
+		}
+		return tx
+	}
+
+	resp := &LeaderboardResponse{
+		Leaderboard: []LeaderboardEntry{},
+		Page:        page,
+		PageSize:    pageSize,
+	}
+
+	// 3. total：COUNT(DISTINCT user_id)
+	var total int64
+	if err := applyBase(LOG_DB.Table("logs")).
+		Select("COUNT(DISTINCT user_id)").
+		Scan(&total).Error; err != nil {
+		return nil, err
+	}
+	resp.Total = int(total)
+
+	// 4. 当前页聚合
+	var entries []LeaderboardEntry
+	offset := (page - 1) * pageSize
+	if offset < 0 {
+		offset = 0
+	}
+	if err := applyBase(LOG_DB.Table("logs")).
+		Select("user_id, COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as request_count").
+		Group("user_id").
 		Order(orderClause).
-		Limit(20).
+		Limit(pageSize).
+		Offset(offset).
 		Find(&entries).Error; err != nil {
 		return nil, err
 	}
 
-	if len(entries) == 0 {
-		return &LeaderboardResponse{
-			Summary:     LeaderboardSummary{},
-			Leaderboard: []LeaderboardEntry{},
-		}, nil
+	// 8/9. summary（仅首页 & 无搜索）——独立 top-20 聚合，非当前页求和
+	if page == 1 && strings.TrimSpace(keyword) == "" {
+		summary, err := computeLeaderboardSummary(startTimestamp, endTimestamp)
+		if err != nil {
+			return nil, err
+		}
+		resp.Summary = summary
 	}
 
-	// Resolve usernames from users table
+	// 5. 空页直接返回
+	if len(entries) == 0 {
+		return resp, nil
+	}
+
+	// 6. 页内 userIds
 	userIds := make([]int, len(entries))
 	for i, e := range entries {
 		userIds[i] = e.UserId
 	}
+
+	// 6a. 用户名解析
 	var users []struct {
 		Id       int    `gorm:"column:id"`
 		Username string `gorm:"column:username"`
@@ -1783,20 +1875,17 @@ func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string) (*Leaderb
 		entries[i].Username = usernameMap[entries[i].UserId]
 	}
 
-	// Top model per user
+	// 6b. 每用户 top-model
 	type modelRow struct {
 		UserId     int    `gorm:"column:user_id"`
 		ModelName  string `gorm:"column:model_name"`
 		ModelQuota int64  `gorm:"column:model_quota"`
 	}
 	var modelRows []modelRow
-	modelTx := LOG_DB.Table("logs").
+	if err := applyBase(LOG_DB.Table("logs")).
 		Select("user_id, model_name, COALESCE(SUM(quota), 0) as model_quota").
-		Where("type = ? AND created_at >= ? AND user_id IN ?", LogTypeConsume, startTimestamp, userIds)
-	if endTimestamp > 0 {
-		modelTx = modelTx.Where("created_at < ?", endTimestamp)
-	}
-	if err := modelTx.Group("user_id, model_name").
+		Where("user_id IN ?", userIds).
+		Group("user_id, model_name").
 		Find(&modelRows).Error; err != nil {
 		return nil, err
 	}
@@ -1812,7 +1901,116 @@ func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string) (*Leaderb
 		entries[i].TopModel = topModelMap[entries[i].UserId]
 	}
 
-	// Summary (full site for the period)
+	// 7. 便宜信号（仅页内 userIds）
+	// 7a. 每用户 distinct IP
+	type ipRow struct {
+		UserId int    `gorm:"column:user_id"`
+		Ip     string `gorm:"column:ip"`
+		Cnt    int    `gorm:"column:cnt"`
+	}
+	var ipRows []ipRow
+	if err := applyBase(LOG_DB.Table("logs")).
+		Select("user_id, ip, COUNT(*) as cnt").
+		Where("user_id IN ?", userIds).
+		Group("user_id, ip").
+		Find(&ipRows).Error; err != nil {
+		return nil, err
+	}
+
+	type ipAgg struct {
+		subnets     map[string]bool
+		geoSet      map[string]bool
+		regionCount map[LeaderboardRegion]int
+		hasIpData   bool
+	}
+	ipAggMap := make(map[int]*ipAgg, len(userIds))
+	getAgg := func(uid int) *ipAgg {
+		a := ipAggMap[uid]
+		if a == nil {
+			a = &ipAgg{
+				subnets:     make(map[string]bool),
+				geoSet:      make(map[string]bool),
+				regionCount: make(map[LeaderboardRegion]int),
+			}
+			ipAggMap[uid] = a
+		}
+		return a
+	}
+	for _, r := range ipRows {
+		if r.Ip == "" {
+			// 空 IP = 未开启记录，不得计入信号
+			continue
+		}
+		a := getAgg(r.UserId)
+		a.hasIpData = true
+		if subnet := geoip.SubnetOf(r.Ip); subnet != "" {
+			a.subnets[subnet] = true
+		}
+		if country, city, ok := geoip.Lookup(r.Ip); ok {
+			// ok==true 时才记录；无城市（city==""）折叠到国家级
+			a.geoSet[country+"|"+city] = true
+			a.regionCount[LeaderboardRegion{Country: country, City: city}] += r.Cnt
+		}
+	}
+
+	// 7b. 每用户 distinct token 数
+	type tokRow struct {
+		UserId int `gorm:"column:user_id"`
+		Cnt    int `gorm:"column:cnt"`
+	}
+	var tokRows []tokRow
+	if err := applyBase(LOG_DB.Table("logs")).
+		Select("user_id, COUNT(DISTINCT token_id) as cnt").
+		Where("user_id IN ?", userIds).
+		Group("user_id").
+		Find(&tokRows).Error; err != nil {
+		return nil, err
+	}
+	tokenCountMap := make(map[int]int, len(tokRows))
+	for _, r := range tokRows {
+		tokenCountMap[r.UserId] = r.Cnt
+	}
+
+	// 8. 组装 analysis
+	for i := range entries {
+		uid := entries[i].UserId
+		a := ipAggMap[uid]
+		var subnetClusters, distinctGeo int
+		var hasIpData bool
+		var topRegions []LeaderboardRegion
+		if a != nil {
+			subnetClusters = len(a.subnets)
+			distinctGeo = len(a.geoSet)
+			hasIpData = a.hasIpData
+			topRegions = topRegionsByCount(a.regionCount, 3)
+		}
+		tokenCount := tokenCountMap[uid]
+		s := UserSignals{
+			SubnetClusters: subnetClusters,
+			DistinctGeo:    distinctGeo,
+			TokenCount:     tokenCount,
+			RequestCount:   int(entries[i].RequestCount),
+			HasIpData:      hasIpData,
+		}
+		est, isMin := EstimateList(s)
+		conf := ListConfidence(s)
+		entries[i].Analysis = LeaderboardAnalysis{
+			Estimate:      est,
+			EstimateIsMin: isMin,
+			Confidence:    conf,
+			IpCount:       subnetClusters,
+			TokenCount:    tokenCount,
+			TopRegions:    topRegions,
+			HasIpData:     hasIpData,
+		}
+	}
+
+	resp.Leaderboard = entries
+	return resp, nil
+}
+
+// computeLeaderboardSummary：全站 SUM 总量 + 独立 top-20 聚合的 Top10* 小计。
+func computeLeaderboardSummary(startTimestamp, endTimestamp int64) (*LeaderboardSummary, error) {
 	var summary LeaderboardSummary
 	summaryTx := LOG_DB.Table("logs").
 		Select("COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as total_request_count").
@@ -1824,15 +2022,50 @@ func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string) (*Leaderb
 		return nil, err
 	}
 
-	// Top 20 subtotals
-	for _, e := range entries {
+	// 独立 top-20 查询（按 quota 排序，确定性 tiebreaker）
+	var topEntries []LeaderboardEntry
+	topTx := LOG_DB.Table("logs").
+		Select("user_id, COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as request_count").
+		Where("type = ? AND created_at >= ?", LogTypeConsume, startTimestamp)
+	if endTimestamp > 0 {
+		topTx = topTx.Where("created_at < ?", endTimestamp)
+	}
+	if err := topTx.Group("user_id").
+		Order("total_quota DESC, user_id ASC").
+		Limit(20).
+		Find(&topEntries).Error; err != nil {
+		return nil, err
+	}
+	for _, e := range topEntries {
 		summary.Top10Quota += e.TotalQuota
 		summary.Top10Tokens += e.TotalTokens
 		summary.Top10RequestCount += e.RequestCount
 	}
+	return &summary, nil
+}
 
-	return &LeaderboardResponse{
-		Summary:     summary,
-		Leaderboard: entries,
-	}, nil
+// topRegionsByCount：按计数降序取前 n 个地区（计数相同按 country、city 稳定排序）。
+func topRegionsByCount(regionCount map[LeaderboardRegion]int, n int) []LeaderboardRegion {
+	if len(regionCount) == 0 {
+		return nil
+	}
+	regions := make([]LeaderboardRegion, 0, len(regionCount))
+	for r, c := range regionCount {
+		rr := r
+		rr.Count = c
+		regions = append(regions, rr)
+	}
+	sort.Slice(regions, func(i, j int) bool {
+		if regions[i].Count != regions[j].Count {
+			return regions[i].Count > regions[j].Count
+		}
+		if regions[i].Country != regions[j].Country {
+			return regions[i].Country < regions[j].Country
+		}
+		return regions[i].City < regions[j].City
+	})
+	if len(regions) > n {
+		regions = regions[:n]
+	}
+	return regions
 }
