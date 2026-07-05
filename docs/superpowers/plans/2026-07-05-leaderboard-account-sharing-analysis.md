@@ -177,14 +177,20 @@ git commit -m "feat(geoip): SubnetOf + Lookup 单例(优雅降级) + geoip2 依�
 
 - [ ] **Step 1: 实现 `Init` / `load` / `Close`**
 
-追加到 `common/geoip/geoip.go`:
+> ⚠️ **import 合并**：Task 1 的 `geoip.go` 顶部已有 `import ( "net"; "sync"; "github.com/oschwald/geoip2-golang" )`。本 Step 需要 `os` 和 `github.com/QuantumNous/new-api/common` —— **合并进那个顶部 import 块**（Go 要求所有 import 在任何顶层声明之前），不要在文件末尾另起 `import`。合并后：
 ```go
 import (
+	"net"
 	"os"
-	"github.com/QuantumNous/new-api/common"
-)
+	"sync"
 
-// Init 读取配置，尝试载入本地 mmdb；缺失且允许自下载时后台异步拉取。非致命。
+	"github.com/QuantumNous/new-api/common"
+	"github.com/oschwald/geoip2-golang"
+)
+```
+
+函数体（追加到文件已有声明之后）:
+```go
 func Init() {
 	path := common.GetEnvOrDefaultString("GEOIP_DB_PATH", "/data/geoip/dbip-city-lite.mmdb")
 	autoDownload := common.GetEnvOrDefaultString("GEOIP_AUTO_DOWNLOAD", "true") == "true"
@@ -523,10 +529,10 @@ Expected: FAIL（未定义）
 
 - [ ] **Step 3: 最小实现**
 
+> ⚠️ **import 合并**：`leaderboard_analysis.go`（Task 3 创建时无 import）现在需要 `sort`。在文件**顶部 `package model` 之下、任何声明之前**加 `import "sort"`（不要写在文件末尾）。
+
 追加到 `model/leaderboard_analysis.go`:
 ```go
-import "sort"
-
 const (
 	transitK          = 3
 	transitConclusion = "疑似自建中转分发"
@@ -717,8 +723,9 @@ func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string, page, pag
 3. `total` = `COUNT(DISTINCT user_id)`（同筛选）。
 4. 主聚合 `GROUP BY user_id ORDER BY <col> DESC, user_id ASC LIMIT pageSize OFFSET (page-1)*pageSize` → 当页 entries。
 5. 便宜信号：仅对当页 user_ids —— `GROUP BY user_id, ip`（去重 IP）+ `COUNT(DISTINCT token_id)`；Go 层 `geoip.SubnetOf` 归并子网、`geoip.Lookup` 解析地理、空城市归国家级、算 `distinct_geo`、`top_regions`（count 降序取 3）。
+   - ⚠️ **空 IP 必须排除**：`ip == ""`（用户未开记录）的行不计入 `subnet_clusters`/`distinct_geo`（`SubnetOf("")==""` 跳过）。若某用户全为空 IP → `subnet_clusters=0`、`distinct_geo=0`、`HasIpData=false`（spec §3.4），不得被 `""` 桶抬成 1。
 6. 每个 entry：`s := UserSignals{...}`；`est,isMin := EstimateList(s)`；`conf := ListConfidence(s)`；填 `Analysis`。`HasIpData` = 该用户有非空 ip。
-7. Summary 仅 `page==1 && keyword==""` 时算（独立 top-N 聚合，逻辑同原实现），否则 `nil`。
+7. Summary 仅 `page==1 && keyword==""` 时算 —— **独立跑一次 top-20 聚合**（不是把当页 entries 求和，因 `pageSize` 可变、最大 100）：复用原实现的 `Top10*` 从独立 top-20 查询求和的逻辑；否则 `Summary=nil`。
 8. 数据源日志用 `LOG_DB.Table("logs")`，用户名/keyword 解析用 `DB`。
 
 > 完整实现较长，实现时参照原 `GetLeaderboard`（top model / username 解析 / summary 逻辑可复用），仅把「固定 top20」换成「分页 + keyword 过滤」，并在拿到当页 userIds 后补便宜信号 + Analysis 组装。
@@ -977,7 +984,7 @@ export function getLeaderboardAnalysis(userId: number, startTs?: number, endTs?:
 - [ ] **Step 4: 校验**
 
 Run: `cd web-worker && pnpm check && npx tsc --noEmit`
-Expected: Biome + 类型通过（消费方 leaderboard.tsx 下一 Task 改）。若 tsc 报 leaderboard.tsx 旧调用，属预期，Task 11 修。
+Expected: Biome 通过。⚠️ `tsc` 此时会因消费方 `routes/console/leaderboard.tsx` 仍用旧 `getLeaderboard` 调用而报错 —— **属预期**，该路由文件在 **Task 13** 更新；Task 9–12 仅跑 `pnpm check`（Biome），类型在 Task 13 一并转绿。整条 feature 分支合并前 Task 13 的 `tsc --noEmit` 必须通过。
 
 - [ ] **Step 5: Commit**
 
