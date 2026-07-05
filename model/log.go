@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/geoip"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 
@@ -1240,13 +1241,30 @@ type Stat struct {
 	PromptCacheClaude      PromptCacheStat `gorm:"-"`
 }
 
+type LeaderboardRegion struct {
+	Country string `json:"country"`
+	City    string `json:"city"`
+	Count   int    `json:"count"`
+}
+
+type LeaderboardAnalysis struct {
+	Estimate      int                 `json:"estimate"`
+	EstimateIsMin bool                `json:"estimate_is_min"`
+	Confidence    string              `json:"confidence"`
+	IpCount       int                 `json:"ip_count"`
+	TokenCount    int                 `json:"token_count"`
+	TopRegions    []LeaderboardRegion `json:"top_regions"`
+	HasIpData     bool                `json:"has_ip_data"`
+}
+
 type LeaderboardEntry struct {
-	UserId       int    `json:"user_id" gorm:"column:user_id"`
-	Username     string `json:"username" gorm:"-"`
-	TotalQuota   int64  `json:"total_quota" gorm:"column:total_quota"`
-	TotalTokens  int64  `json:"total_tokens" gorm:"column:total_tokens"`
-	RequestCount int64  `json:"request_count" gorm:"column:request_count"`
-	TopModel     string `json:"top_model" gorm:"-"`
+	UserId       int                 `json:"user_id" gorm:"column:user_id"`
+	Username     string              `json:"username" gorm:"-"`
+	TotalQuota   int64               `json:"total_quota" gorm:"column:total_quota"`
+	TotalTokens  int64               `json:"total_tokens" gorm:"column:total_tokens"`
+	RequestCount int64               `json:"request_count" gorm:"column:request_count"`
+	TopModel     string              `json:"top_model" gorm:"-"`
+	Analysis     LeaderboardAnalysis `json:"analysis" gorm:"-"`
 }
 
 type LeaderboardSummary struct {
@@ -1259,8 +1277,11 @@ type LeaderboardSummary struct {
 }
 
 type LeaderboardResponse struct {
-	Summary     LeaderboardSummary `json:"summary"`
-	Leaderboard []LeaderboardEntry `json:"leaderboard"`
+	Summary     *LeaderboardSummary `json:"summary,omitempty"`
+	Leaderboard []LeaderboardEntry  `json:"leaderboard"`
+	Page        int                 `json:"page"`
+	PageSize    int                 `json:"page_size"`
+	Total       int                 `json:"total"`
 }
 
 type GroupLogHealthStatsQuery struct {
@@ -1730,41 +1751,112 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 	return total, nil
 }
 
-func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string) (*LeaderboardResponse, error) {
+// resolveKeywordUserIds：keyword 为纯数字 → user_id 精确 OR 用户名含；否则用户名 LIKE。返回候选 user_id。
+func resolveKeywordUserIds(keyword string) ([]int, error) {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return nil, nil
+	}
+	var ids []int
+	q := DB.Table("users").Select("id")
+	if _, err := strconv.Atoi(keyword); err == nil {
+		q = q.Where("id = ? OR username LIKE ?", keyword, "%"+keyword+"%")
+	} else {
+		q = q.Where("username LIKE ?", "%"+keyword+"%")
+	}
+	if err := q.Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []int{-1}, nil // 哨兵：确保 IN(-1) 命中空集
+	}
+	return ids, nil
+}
+
+func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string, page, pageSize int, keyword string) (*LeaderboardResponse, error) {
+	// 1. 排序列 + 确定性 tiebreaker
 	var orderClause string
 	switch sortBy {
 	case "tokens":
-		orderClause = "total_tokens DESC"
+		orderClause = "total_tokens DESC, user_id ASC"
 	default:
-		orderClause = "total_quota DESC"
+		orderClause = "total_quota DESC, user_id ASC"
 	}
 
-	var entries []LeaderboardEntry
-	tx := LOG_DB.Table("logs").
-		Select("user_id, COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as request_count").
-		Where("type = ? AND created_at >= ?", LogTypeConsume, startTimestamp)
-	if endTimestamp > 0 {
-		tx = tx.Where("created_at < ?", endTimestamp)
+	// 2. keyword → 候选 user_id
+	var candidateIds []int
+	if strings.TrimSpace(keyword) != "" {
+		var err error
+		candidateIds, err = resolveKeywordUserIds(keyword)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if err := tx.Group("user_id").
+
+	// applyBase：type=consume + 时间范围 + keyword IN 过滤
+	applyBase := func(tx *gorm.DB) *gorm.DB {
+		tx = tx.Where("type = ? AND created_at >= ?", LogTypeConsume, startTimestamp)
+		if endTimestamp > 0 {
+			tx = tx.Where("created_at < ?", endTimestamp)
+		}
+		if candidateIds != nil {
+			tx = tx.Where("user_id IN ?", candidateIds)
+		}
+		return tx
+	}
+
+	resp := &LeaderboardResponse{
+		Leaderboard: []LeaderboardEntry{},
+		Page:        page,
+		PageSize:    pageSize,
+	}
+
+	// 3. total：COUNT(DISTINCT user_id)
+	var total int64
+	if err := applyBase(LOG_DB.Table("logs")).
+		Select("COUNT(DISTINCT user_id)").
+		Scan(&total).Error; err != nil {
+		return nil, err
+	}
+	resp.Total = int(total)
+
+	// 4. 当前页聚合
+	var entries []LeaderboardEntry
+	offset := (page - 1) * pageSize
+	if offset < 0 {
+		offset = 0
+	}
+	if err := applyBase(LOG_DB.Table("logs")).
+		Select("user_id, COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as request_count").
+		Group("user_id").
 		Order(orderClause).
-		Limit(20).
+		Limit(pageSize).
+		Offset(offset).
 		Find(&entries).Error; err != nil {
 		return nil, err
 	}
 
-	if len(entries) == 0 {
-		return &LeaderboardResponse{
-			Summary:     LeaderboardSummary{},
-			Leaderboard: []LeaderboardEntry{},
-		}, nil
+	// 8/9. summary（仅首页 & 无搜索）——独立 top-20 聚合，非当前页求和
+	if page == 1 && strings.TrimSpace(keyword) == "" {
+		summary, err := computeLeaderboardSummary(startTimestamp, endTimestamp)
+		if err != nil {
+			return nil, err
+		}
+		resp.Summary = summary
 	}
 
-	// Resolve usernames from users table
+	// 5. 空页直接返回
+	if len(entries) == 0 {
+		return resp, nil
+	}
+
+	// 6. 页内 userIds
 	userIds := make([]int, len(entries))
 	for i, e := range entries {
 		userIds[i] = e.UserId
 	}
+
+	// 6a. 用户名解析
 	var users []struct {
 		Id       int    `gorm:"column:id"`
 		Username string `gorm:"column:username"`
@@ -1783,20 +1875,17 @@ func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string) (*Leaderb
 		entries[i].Username = usernameMap[entries[i].UserId]
 	}
 
-	// Top model per user
+	// 6b. 每用户 top-model
 	type modelRow struct {
 		UserId     int    `gorm:"column:user_id"`
 		ModelName  string `gorm:"column:model_name"`
 		ModelQuota int64  `gorm:"column:model_quota"`
 	}
 	var modelRows []modelRow
-	modelTx := LOG_DB.Table("logs").
+	if err := applyBase(LOG_DB.Table("logs")).
 		Select("user_id, model_name, COALESCE(SUM(quota), 0) as model_quota").
-		Where("type = ? AND created_at >= ? AND user_id IN ?", LogTypeConsume, startTimestamp, userIds)
-	if endTimestamp > 0 {
-		modelTx = modelTx.Where("created_at < ?", endTimestamp)
-	}
-	if err := modelTx.Group("user_id, model_name").
+		Where("user_id IN ?", userIds).
+		Group("user_id, model_name").
 		Find(&modelRows).Error; err != nil {
 		return nil, err
 	}
@@ -1812,7 +1901,116 @@ func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string) (*Leaderb
 		entries[i].TopModel = topModelMap[entries[i].UserId]
 	}
 
-	// Summary (full site for the period)
+	// 7. 便宜信号（仅页内 userIds）
+	// 7a. 每用户 distinct IP
+	type ipRow struct {
+		UserId int    `gorm:"column:user_id"`
+		Ip     string `gorm:"column:ip"`
+		Cnt    int    `gorm:"column:cnt"`
+	}
+	var ipRows []ipRow
+	if err := applyBase(LOG_DB.Table("logs")).
+		Select("user_id, ip, COUNT(*) as cnt").
+		Where("user_id IN ?", userIds).
+		Group("user_id, ip").
+		Find(&ipRows).Error; err != nil {
+		return nil, err
+	}
+
+	type ipAgg struct {
+		subnets     map[string]bool
+		geoSet      map[string]bool
+		regionCount map[LeaderboardRegion]int
+		hasIpData   bool
+	}
+	ipAggMap := make(map[int]*ipAgg, len(userIds))
+	getAgg := func(uid int) *ipAgg {
+		a := ipAggMap[uid]
+		if a == nil {
+			a = &ipAgg{
+				subnets:     make(map[string]bool),
+				geoSet:      make(map[string]bool),
+				regionCount: make(map[LeaderboardRegion]int),
+			}
+			ipAggMap[uid] = a
+		}
+		return a
+	}
+	for _, r := range ipRows {
+		if r.Ip == "" {
+			// 空 IP = 未开启记录，不得计入信号
+			continue
+		}
+		a := getAgg(r.UserId)
+		a.hasIpData = true
+		if subnet := geoip.SubnetOf(r.Ip); subnet != "" {
+			a.subnets[subnet] = true
+		}
+		if country, city, ok := geoip.Lookup(r.Ip); ok {
+			// ok==true 时才记录；无城市（city==""）折叠到国家级
+			a.geoSet[country+"|"+city] = true
+			a.regionCount[LeaderboardRegion{Country: country, City: city}] += r.Cnt
+		}
+	}
+
+	// 7b. 每用户 distinct token 数
+	type tokRow struct {
+		UserId int `gorm:"column:user_id"`
+		Cnt    int `gorm:"column:cnt"`
+	}
+	var tokRows []tokRow
+	if err := applyBase(LOG_DB.Table("logs")).
+		Select("user_id, COUNT(DISTINCT token_id) as cnt").
+		Where("user_id IN ?", userIds).
+		Group("user_id").
+		Find(&tokRows).Error; err != nil {
+		return nil, err
+	}
+	tokenCountMap := make(map[int]int, len(tokRows))
+	for _, r := range tokRows {
+		tokenCountMap[r.UserId] = r.Cnt
+	}
+
+	// 8. 组装 analysis
+	for i := range entries {
+		uid := entries[i].UserId
+		a := ipAggMap[uid]
+		var subnetClusters, distinctGeo int
+		var hasIpData bool
+		var topRegions []LeaderboardRegion
+		if a != nil {
+			subnetClusters = len(a.subnets)
+			distinctGeo = len(a.geoSet)
+			hasIpData = a.hasIpData
+			topRegions = topRegionsByCount(a.regionCount, 3)
+		}
+		tokenCount := tokenCountMap[uid]
+		s := UserSignals{
+			SubnetClusters: subnetClusters,
+			DistinctGeo:    distinctGeo,
+			TokenCount:     tokenCount,
+			RequestCount:   int(entries[i].RequestCount),
+			HasIpData:      hasIpData,
+		}
+		est, isMin := EstimateList(s)
+		conf := ListConfidence(s)
+		entries[i].Analysis = LeaderboardAnalysis{
+			Estimate:      est,
+			EstimateIsMin: isMin,
+			Confidence:    conf,
+			IpCount:       subnetClusters,
+			TokenCount:    tokenCount,
+			TopRegions:    topRegions,
+			HasIpData:     hasIpData,
+		}
+	}
+
+	resp.Leaderboard = entries
+	return resp, nil
+}
+
+// computeLeaderboardSummary：全站 SUM 总量 + 独立 top-20 聚合的 Top10* 小计。
+func computeLeaderboardSummary(startTimestamp, endTimestamp int64) (*LeaderboardSummary, error) {
 	var summary LeaderboardSummary
 	summaryTx := LOG_DB.Table("logs").
 		Select("COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as total_request_count").
@@ -1824,15 +2022,312 @@ func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string) (*Leaderb
 		return nil, err
 	}
 
-	// Top 20 subtotals
-	for _, e := range entries {
+	// 独立 top-20 查询（按 quota 排序，确定性 tiebreaker）
+	var topEntries []LeaderboardEntry
+	topTx := LOG_DB.Table("logs").
+		Select("user_id, COALESCE(SUM(quota), 0) as total_quota, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens, COUNT(*) as request_count").
+		Where("type = ? AND created_at >= ?", LogTypeConsume, startTimestamp)
+	if endTimestamp > 0 {
+		topTx = topTx.Where("created_at < ?", endTimestamp)
+	}
+	if err := topTx.Group("user_id").
+		Order("total_quota DESC, user_id ASC").
+		Limit(20).
+		Find(&topEntries).Error; err != nil {
+		return nil, err
+	}
+	for _, e := range topEntries {
 		summary.Top10Quota += e.TotalQuota
 		summary.Top10Tokens += e.TotalTokens
 		summary.Top10RequestCount += e.RequestCount
 	}
+	return &summary, nil
+}
 
-	return &LeaderboardResponse{
-		Summary:     summary,
-		Leaderboard: entries,
-	}, nil
+// topRegionsByCount：按计数降序取前 n 个地区（计数相同按 country、city 稳定排序）。
+func topRegionsByCount(regionCount map[LeaderboardRegion]int, n int) []LeaderboardRegion {
+	if len(regionCount) == 0 {
+		return nil
+	}
+	regions := make([]LeaderboardRegion, 0, len(regionCount))
+	for r, c := range regionCount {
+		rr := r
+		rr.Count = c
+		regions = append(regions, rr)
+	}
+	sort.Slice(regions, func(i, j int) bool {
+		if regions[i].Count != regions[j].Count {
+			return regions[i].Count > regions[j].Count
+		}
+		if regions[i].Country != regions[j].Country {
+			return regions[i].Country < regions[j].Country
+		}
+		return regions[i].City < regions[j].City
+	})
+	if len(regions) > n {
+		regions = regions[:n]
+	}
+	return regions
+}
+
+// ---- Leaderboard 抽屉明细（Task 6）----
+
+type AnalysisIpRow struct {
+	Ip           string `json:"ip"`
+	Country      string `json:"country"`
+	City         string `json:"city"`
+	Subnet       string `json:"subnet"`
+	RequestCount int    `json:"request_count"`
+	FirstSeen    int64  `json:"first_seen"`
+	LastSeen     int64  `json:"last_seen"`
+}
+
+type AnalysisTokenRow struct {
+	TokenId      int    `json:"token_id"`
+	TokenName    string `json:"token_name"`
+	RequestCount int    `json:"request_count"`
+	PromptTokens int64  `json:"prompt_tokens"`
+}
+
+type AnalysisBucket struct {
+	Label string `json:"label"`
+	Min   int    `json:"min"`
+	Count int    `json:"count"`
+}
+
+type AnalysisTimeBucket struct {
+	Ts    int64 `json:"ts"`
+	Count int   `json:"count"`
+}
+
+type LeaderboardAnalysisDetail struct {
+	UserId               int                  `json:"user_id"`
+	Estimate             int                  `json:"estimate"`
+	EstimateIsMin        bool                 `json:"estimate_is_min"`
+	Confidence           string               `json:"confidence"`
+	Conclusion           string               `json:"conclusion"`
+	HasIpData            bool                 `json:"has_ip_data"`
+	Truncated            bool                 `json:"truncated"`
+	SampledRows          int                  `json:"sampled_rows"`
+	SubnetClusters       int                  `json:"subnet_clusters"`
+	DistinctGeo          int                  `json:"distinct_geo"`
+	TokenCount           int                  `json:"token_count"`
+	MaxConcurrency       int                  `json:"max_concurrency"`
+	InputDispersionScore int                  `json:"input_dispersion_score"`
+	Ips                  []AnalysisIpRow      `json:"ips"`
+	Tokens               []AnalysisTokenRow   `json:"tokens"`
+	InputBuckets         []AnalysisBucket     `json:"input_buckets"`
+	Timeline             []AnalysisTimeBucket `json:"timeline"`
+}
+
+const analysisSampleCap = 50000
+
+// GetLeaderboardAnalysisDetail 拉取单个用户的有界样本原始消费日志，计算完整证据链（抽屉档）。
+func GetLeaderboardAnalysisDetail(userId int, startTimestamp, endTimestamp int64) (*LeaderboardAnalysisDetail, error) {
+	// 1. 拉取原始行（有界样本，按时间倒序）
+	type detailRow struct {
+		Ip           string `gorm:"column:ip"`
+		TokenId      int    `gorm:"column:token_id"`
+		TokenName    string `gorm:"column:token_name"`
+		PromptTokens int    `gorm:"column:prompt_tokens"`
+		UseTime      int    `gorm:"column:use_time"`
+		CreatedAt    int64  `gorm:"column:created_at"`
+	}
+	var rows []detailRow
+	tx := LOG_DB.Table("logs").
+		Select("ip, token_id, token_name, prompt_tokens, use_time, created_at").
+		Where("type = ? AND user_id = ? AND created_at >= ?", LogTypeConsume, userId, startTimestamp)
+	if endTimestamp > 0 {
+		tx = tx.Where("created_at < ?", endTimestamp)
+	}
+	if err := tx.Order("created_at DESC").Limit(analysisSampleCap).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	detail := &LeaderboardAnalysisDetail{
+		UserId:       userId,
+		Truncated:    len(rows) == analysisSampleCap,
+		SampledRows:  len(rows),
+		Ips:          []AnalysisIpRow{},
+		Tokens:       []AnalysisTokenRow{},
+		InputBuckets: []AnalysisBucket{},
+		Timeline:     []AnalysisTimeBucket{},
+	}
+
+	// 2. 逐 IP 聚合（Go 内，跨 DB 安全）
+	type ipAcc struct {
+		ip           string
+		country      string
+		city         string
+		subnet       string
+		geoOk        bool
+		requestCount int
+		firstSeen    int64
+		lastSeen     int64
+	}
+	ipMap := make(map[string]*ipAcc)
+	hasIpData := false
+
+	// 逐 token 聚合
+	type tokAcc struct {
+		tokenId      int
+		tokenName    string
+		requestCount int
+		promptTokens int64
+	}
+	tokMap := make(map[int]*tokAcc)
+
+	// 输入桶（固定 5 个）
+	bucketCounts := [5]int{}
+
+	// 时间线粒度：窗口 <= 24h 用小时桶，否则日桶
+	spanEnd := endTimestamp
+	if spanEnd <= 0 {
+		spanEnd = time.Now().Unix()
+	}
+	granularity := int64(86400)
+	if spanEnd-startTimestamp <= 24*3600 {
+		granularity = 3600
+	}
+	timelineMap := make(map[int64]int)
+
+	intervals := make([]Interval, 0, len(rows))
+	concurRows := make([]ConcurRow, 0, len(rows))
+
+	for _, r := range rows {
+		// IP 聚合（跳过空 IP）
+		if r.Ip != "" {
+			hasIpData = true
+			a := ipMap[r.Ip]
+			if a == nil {
+				a = &ipAcc{ip: r.Ip, subnet: geoip.SubnetOf(r.Ip), firstSeen: r.CreatedAt, lastSeen: r.CreatedAt}
+				if country, city, ok := geoip.Lookup(r.Ip); ok {
+					a.country = country
+					a.city = city
+					a.geoOk = true
+				}
+				ipMap[r.Ip] = a
+			}
+			a.requestCount++
+			if r.CreatedAt < a.firstSeen {
+				a.firstSeen = r.CreatedAt
+			}
+			if r.CreatedAt > a.lastSeen {
+				a.lastSeen = r.CreatedAt
+			}
+		}
+
+		// token 聚合
+		t := tokMap[r.TokenId]
+		if t == nil {
+			t = &tokAcc{tokenId: r.TokenId, tokenName: r.TokenName}
+			tokMap[r.TokenId] = t
+		}
+		if t.tokenName == "" && r.TokenName != "" {
+			t.tokenName = r.TokenName
+		}
+		t.requestCount++
+		t.promptTokens += int64(r.PromptTokens)
+
+		// 输入桶
+		bucketCounts[magnitudeBucket(r.PromptTokens)]++
+
+		// 时间线
+		bucketStart := (r.CreatedAt / granularity) * granularity
+		timelineMap[bucketStart]++
+
+		// 并发 & 离散度
+		end := r.CreatedAt + int64(r.UseTime)
+		intervals = append(intervals, Interval{Start: r.CreatedAt, End: end})
+		concurRows = append(concurRows, ConcurRow{Start: r.CreatedAt, End: end, PromptTokens: r.PromptTokens})
+	}
+
+	detail.HasIpData = hasIpData
+
+	// 3. 组装 IP 行（按 request_count desc 稳定排序）
+	subnetSet := make(map[string]bool)
+	geoSet := make(map[string]bool)
+	for _, a := range ipMap {
+		if a.subnet != "" {
+			subnetSet[a.subnet] = true
+		}
+		if a.geoOk {
+			geoSet[a.country+"|"+a.city] = true
+		}
+		detail.Ips = append(detail.Ips, AnalysisIpRow{
+			Ip:           a.ip,
+			Country:      a.country,
+			City:         a.city,
+			Subnet:       a.subnet,
+			RequestCount: a.requestCount,
+			FirstSeen:    a.firstSeen,
+			LastSeen:     a.lastSeen,
+		})
+	}
+	sort.SliceStable(detail.Ips, func(i, j int) bool {
+		if detail.Ips[i].RequestCount != detail.Ips[j].RequestCount {
+			return detail.Ips[i].RequestCount > detail.Ips[j].RequestCount
+		}
+		return detail.Ips[i].Ip < detail.Ips[j].Ip
+	})
+
+	// token 行（按 request_count desc 稳定排序）
+	for _, t := range tokMap {
+		detail.Tokens = append(detail.Tokens, AnalysisTokenRow{
+			TokenId:      t.tokenId,
+			TokenName:    t.tokenName,
+			RequestCount: t.requestCount,
+			PromptTokens: t.promptTokens,
+		})
+	}
+	sort.SliceStable(detail.Tokens, func(i, j int) bool {
+		if detail.Tokens[i].RequestCount != detail.Tokens[j].RequestCount {
+			return detail.Tokens[i].RequestCount > detail.Tokens[j].RequestCount
+		}
+		return detail.Tokens[i].TokenId < detail.Tokens[j].TokenId
+	})
+
+	// 输入桶（固定 5 个，恒发）
+	bucketLabels := [5]string{"0-100", "100-1k", "1k-10k", "10k-100k", "100k+"}
+	bucketMins := [5]int{0, 100, 1000, 10000, 100000}
+	for i := 0; i < 5; i++ {
+		detail.InputBuckets = append(detail.InputBuckets, AnalysisBucket{
+			Label: bucketLabels[i],
+			Min:   bucketMins[i],
+			Count: bucketCounts[i],
+		})
+	}
+
+	// 时间线（升序）
+	for ts, cnt := range timelineMap {
+		detail.Timeline = append(detail.Timeline, AnalysisTimeBucket{Ts: ts, Count: cnt})
+	}
+	sort.SliceStable(detail.Timeline, func(i, j int) bool {
+		return detail.Timeline[i].Ts < detail.Timeline[j].Ts
+	})
+
+	// 4. 信号 & 估计
+	maxConc := MaxConcurrency(intervals)
+	disp := InputDispersionScore(concurRows)
+	s := UserSignals{
+		SubnetClusters: len(subnetSet),
+		DistinctGeo:    len(geoSet),
+		TokenCount:     len(tokMap),
+		RequestCount:   len(rows),
+		HasIpData:      hasIpData,
+	}
+	est, isMin, concl := EstimateDrawer(s, maxConc, disp)
+	conf := DrawerConfidence(s, maxConc)
+
+	detail.Estimate = est
+	detail.EstimateIsMin = isMin
+	detail.Conclusion = concl
+	detail.Confidence = conf
+	detail.SubnetClusters = s.SubnetClusters
+	detail.DistinctGeo = s.DistinctGeo
+	detail.TokenCount = s.TokenCount
+	detail.MaxConcurrency = maxConc
+	detail.InputDispersionScore = disp
+
+	return detail, nil
 }

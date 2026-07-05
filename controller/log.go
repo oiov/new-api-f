@@ -426,7 +426,12 @@ func GetLeaderboard(c *gin.Context) {
 	sortBy := c.DefaultQuery("sort_by", "quota")
 
 	var startTimestamp, endTimestamp int64
-	if dateStr != "" {
+	queryStart, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	queryEnd, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	if queryStart > 0 {
+		startTimestamp = queryStart
+		endTimestamp = queryEnd
+	} else if dateStr != "" {
 		parsed, err := time.ParseInLocation("2006-01-02", dateStr, location)
 		if err != nil {
 			common.ApiError(c, errors.New("invalid date format, expected YYYY-MM-DD"))
@@ -439,7 +444,30 @@ func GetLeaderboard(c *gin.Context) {
 		endTimestamp = 0
 	}
 
-	data, err := model.GetLeaderboard(startTimestamp, endTimestamp, sortBy)
+	pageInfo := common.GetPageQuery(c)
+	keyword := c.Query("keyword")
+
+	data, err := model.GetLeaderboard(startTimestamp, endTimestamp, sortBy, pageInfo.GetPage(), pageInfo.GetPageSize(), keyword)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, data)
+}
+
+func GetLeaderboardAnalysis(c *gin.Context) {
+	userId, err := strconv.Atoi(c.Query("user_id"))
+	if err != nil || userId <= 0 {
+		common.ApiError(c, errors.New("invalid user_id"))
+		return
+	}
+	start, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	end, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	if start == 0 {
+		now := time.Now()
+		start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	}
+	data, err := model.GetLeaderboardAnalysisDetail(userId, start, end)
 	if err != nil {
 		common.ApiError(c, err)
 		return
