@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/common/geoip"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/i18n"
@@ -299,6 +300,9 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+
+	// Initialize GeoIP (non-fatal; degrades gracefully)
+	geoip.Init()
 
 	// Initialize Redis
 	err = common.InitRedisClient()
