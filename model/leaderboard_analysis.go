@@ -111,21 +111,48 @@ func magnitudeBucket(p int) int {
 	}
 }
 
-// InputDispersionScore：并发重叠窗口内同时活跃请求落入的 distinct 数量级桶数的最大值。
+// InputDispersionScore：并发重叠期间「同时活跃请求」落入的 distinct 数量级桶数的最大值。
+// 扫描线 O(n log n)：半开区间 [Start,End)，同一时刻先减后加。
 func InputDispersionScore(rows []ConcurRow) int {
-	best := 0
-	for i := range rows {
-		buckets := map[int]bool{magnitudeBucket(rows[i].PromptTokens): true}
-		for j := range rows {
-			if i == j {
-				continue
+	if len(rows) == 0 {
+		return 0
+	}
+	type ev struct {
+		t      int64
+		delta  int
+		bucket int
+	}
+	evs := make([]ev, 0, len(rows)*2)
+	for _, r := range rows {
+		end := r.End
+		if end < r.Start {
+			end = r.Start
+		}
+		b := magnitudeBucket(r.PromptTokens)
+		evs = append(evs, ev{r.Start, 1, b}, ev{end, -1, b})
+	}
+	sort.Slice(evs, func(i, j int) bool {
+		if evs[i].t != evs[j].t {
+			return evs[i].t < evs[j].t
+		}
+		return evs[i].delta < evs[j].delta // 同一时刻 -1 先于 +1（半开区间）
+	})
+	var active [5]int
+	distinct, best := 0, 0
+	for _, e := range evs {
+		if e.delta == 1 {
+			if active[e.bucket] == 0 {
+				distinct++
 			}
-			if rows[j].Start < rows[i].End && rows[i].Start < rows[j].End {
-				buckets[magnitudeBucket(rows[j].PromptTokens)] = true
+			active[e.bucket]++
+		} else {
+			active[e.bucket]--
+			if active[e.bucket] == 0 {
+				distinct--
 			}
 		}
-		if len(buckets) > best {
-			best = len(buckets)
+		if distinct > best {
+			best = distinct
 		}
 	}
 	return best

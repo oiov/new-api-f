@@ -2069,3 +2069,265 @@ func topRegionsByCount(regionCount map[LeaderboardRegion]int, n int) []Leaderboa
 	}
 	return regions
 }
+
+// ---- Leaderboard 抽屉明细（Task 6）----
+
+type AnalysisIpRow struct {
+	Ip           string `json:"ip"`
+	Country      string `json:"country"`
+	City         string `json:"city"`
+	Subnet       string `json:"subnet"`
+	RequestCount int    `json:"request_count"`
+	FirstSeen    int64  `json:"first_seen"`
+	LastSeen     int64  `json:"last_seen"`
+}
+
+type AnalysisTokenRow struct {
+	TokenId      int    `json:"token_id"`
+	TokenName    string `json:"token_name"`
+	RequestCount int    `json:"request_count"`
+	PromptTokens int64  `json:"prompt_tokens"`
+}
+
+type AnalysisBucket struct {
+	Label string `json:"label"`
+	Min   int    `json:"min"`
+	Count int    `json:"count"`
+}
+
+type AnalysisTimeBucket struct {
+	Ts    int64 `json:"ts"`
+	Count int   `json:"count"`
+}
+
+type LeaderboardAnalysisDetail struct {
+	UserId               int                  `json:"user_id"`
+	Estimate             int                  `json:"estimate"`
+	EstimateIsMin        bool                 `json:"estimate_is_min"`
+	Confidence           string               `json:"confidence"`
+	Conclusion           string               `json:"conclusion"`
+	HasIpData            bool                 `json:"has_ip_data"`
+	Truncated            bool                 `json:"truncated"`
+	SampledRows          int                  `json:"sampled_rows"`
+	SubnetClusters       int                  `json:"subnet_clusters"`
+	DistinctGeo          int                  `json:"distinct_geo"`
+	TokenCount           int                  `json:"token_count"`
+	MaxConcurrency       int                  `json:"max_concurrency"`
+	InputDispersionScore int                  `json:"input_dispersion_score"`
+	Ips                  []AnalysisIpRow      `json:"ips"`
+	Tokens               []AnalysisTokenRow   `json:"tokens"`
+	InputBuckets         []AnalysisBucket     `json:"input_buckets"`
+	Timeline             []AnalysisTimeBucket `json:"timeline"`
+}
+
+const analysisSampleCap = 50000
+
+// GetLeaderboardAnalysisDetail 拉取单个用户的有界样本原始消费日志，计算完整证据链（抽屉档）。
+func GetLeaderboardAnalysisDetail(userId int, startTimestamp, endTimestamp int64) (*LeaderboardAnalysisDetail, error) {
+	// 1. 拉取原始行（有界样本，按时间倒序）
+	type detailRow struct {
+		Ip           string `gorm:"column:ip"`
+		TokenId      int    `gorm:"column:token_id"`
+		TokenName    string `gorm:"column:token_name"`
+		PromptTokens int    `gorm:"column:prompt_tokens"`
+		UseTime      int    `gorm:"column:use_time"`
+		CreatedAt    int64  `gorm:"column:created_at"`
+	}
+	var rows []detailRow
+	tx := LOG_DB.Table("logs").
+		Select("ip, token_id, token_name, prompt_tokens, use_time, created_at").
+		Where("type = ? AND user_id = ? AND created_at >= ?", LogTypeConsume, userId, startTimestamp)
+	if endTimestamp > 0 {
+		tx = tx.Where("created_at < ?", endTimestamp)
+	}
+	if err := tx.Order("created_at DESC").Limit(analysisSampleCap).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	detail := &LeaderboardAnalysisDetail{
+		UserId:       userId,
+		Truncated:    len(rows) == analysisSampleCap,
+		SampledRows:  len(rows),
+		Ips:          []AnalysisIpRow{},
+		Tokens:       []AnalysisTokenRow{},
+		InputBuckets: []AnalysisBucket{},
+		Timeline:     []AnalysisTimeBucket{},
+	}
+
+	// 2. 逐 IP 聚合（Go 内，跨 DB 安全）
+	type ipAcc struct {
+		ip           string
+		country      string
+		city         string
+		subnet       string
+		geoOk        bool
+		requestCount int
+		firstSeen    int64
+		lastSeen     int64
+	}
+	ipMap := make(map[string]*ipAcc)
+	hasIpData := false
+
+	// 逐 token 聚合
+	type tokAcc struct {
+		tokenId      int
+		tokenName    string
+		requestCount int
+		promptTokens int64
+	}
+	tokMap := make(map[int]*tokAcc)
+
+	// 输入桶（固定 5 个）
+	bucketCounts := [5]int{}
+
+	// 时间线粒度：窗口 <= 24h 用小时桶，否则日桶
+	spanEnd := endTimestamp
+	if spanEnd <= 0 {
+		spanEnd = time.Now().Unix()
+	}
+	granularity := int64(86400)
+	if spanEnd-startTimestamp <= 24*3600 {
+		granularity = 3600
+	}
+	timelineMap := make(map[int64]int)
+
+	intervals := make([]Interval, 0, len(rows))
+	concurRows := make([]ConcurRow, 0, len(rows))
+
+	for _, r := range rows {
+		// IP 聚合（跳过空 IP）
+		if r.Ip != "" {
+			hasIpData = true
+			a := ipMap[r.Ip]
+			if a == nil {
+				a = &ipAcc{ip: r.Ip, subnet: geoip.SubnetOf(r.Ip), firstSeen: r.CreatedAt, lastSeen: r.CreatedAt}
+				if country, city, ok := geoip.Lookup(r.Ip); ok {
+					a.country = country
+					a.city = city
+					a.geoOk = true
+				}
+				ipMap[r.Ip] = a
+			}
+			a.requestCount++
+			if r.CreatedAt < a.firstSeen {
+				a.firstSeen = r.CreatedAt
+			}
+			if r.CreatedAt > a.lastSeen {
+				a.lastSeen = r.CreatedAt
+			}
+		}
+
+		// token 聚合
+		t := tokMap[r.TokenId]
+		if t == nil {
+			t = &tokAcc{tokenId: r.TokenId, tokenName: r.TokenName}
+			tokMap[r.TokenId] = t
+		}
+		if t.tokenName == "" && r.TokenName != "" {
+			t.tokenName = r.TokenName
+		}
+		t.requestCount++
+		t.promptTokens += int64(r.PromptTokens)
+
+		// 输入桶
+		bucketCounts[magnitudeBucket(r.PromptTokens)]++
+
+		// 时间线
+		bucketStart := (r.CreatedAt / granularity) * granularity
+		timelineMap[bucketStart]++
+
+		// 并发 & 离散度
+		end := r.CreatedAt + int64(r.UseTime)
+		intervals = append(intervals, Interval{Start: r.CreatedAt, End: end})
+		concurRows = append(concurRows, ConcurRow{Start: r.CreatedAt, End: end, PromptTokens: r.PromptTokens})
+	}
+
+	detail.HasIpData = hasIpData
+
+	// 3. 组装 IP 行（按 request_count desc 稳定排序）
+	subnetSet := make(map[string]bool)
+	geoSet := make(map[string]bool)
+	for _, a := range ipMap {
+		if a.subnet != "" {
+			subnetSet[a.subnet] = true
+		}
+		if a.geoOk {
+			geoSet[a.country+"|"+a.city] = true
+		}
+		detail.Ips = append(detail.Ips, AnalysisIpRow{
+			Ip:           a.ip,
+			Country:      a.country,
+			City:         a.city,
+			Subnet:       a.subnet,
+			RequestCount: a.requestCount,
+			FirstSeen:    a.firstSeen,
+			LastSeen:     a.lastSeen,
+		})
+	}
+	sort.SliceStable(detail.Ips, func(i, j int) bool {
+		if detail.Ips[i].RequestCount != detail.Ips[j].RequestCount {
+			return detail.Ips[i].RequestCount > detail.Ips[j].RequestCount
+		}
+		return detail.Ips[i].Ip < detail.Ips[j].Ip
+	})
+
+	// token 行（按 request_count desc 稳定排序）
+	for _, t := range tokMap {
+		detail.Tokens = append(detail.Tokens, AnalysisTokenRow{
+			TokenId:      t.tokenId,
+			TokenName:    t.tokenName,
+			RequestCount: t.requestCount,
+			PromptTokens: t.promptTokens,
+		})
+	}
+	sort.SliceStable(detail.Tokens, func(i, j int) bool {
+		if detail.Tokens[i].RequestCount != detail.Tokens[j].RequestCount {
+			return detail.Tokens[i].RequestCount > detail.Tokens[j].RequestCount
+		}
+		return detail.Tokens[i].TokenId < detail.Tokens[j].TokenId
+	})
+
+	// 输入桶（固定 5 个，恒发）
+	bucketLabels := [5]string{"0-100", "100-1k", "1k-10k", "10k-100k", "100k+"}
+	bucketMins := [5]int{0, 100, 1000, 10000, 100000}
+	for i := 0; i < 5; i++ {
+		detail.InputBuckets = append(detail.InputBuckets, AnalysisBucket{
+			Label: bucketLabels[i],
+			Min:   bucketMins[i],
+			Count: bucketCounts[i],
+		})
+	}
+
+	// 时间线（升序）
+	for ts, cnt := range timelineMap {
+		detail.Timeline = append(detail.Timeline, AnalysisTimeBucket{Ts: ts, Count: cnt})
+	}
+	sort.SliceStable(detail.Timeline, func(i, j int) bool {
+		return detail.Timeline[i].Ts < detail.Timeline[j].Ts
+	})
+
+	// 4. 信号 & 估计
+	maxConc := MaxConcurrency(intervals)
+	disp := InputDispersionScore(concurRows)
+	s := UserSignals{
+		SubnetClusters: len(subnetSet),
+		DistinctGeo:    len(geoSet),
+		TokenCount:     len(tokMap),
+		RequestCount:   len(rows),
+		HasIpData:      hasIpData,
+	}
+	est, isMin, concl := EstimateDrawer(s, maxConc, disp)
+	conf := DrawerConfidence(s, maxConc)
+
+	detail.Estimate = est
+	detail.EstimateIsMin = isMin
+	detail.Conclusion = concl
+	detail.Confidence = conf
+	detail.SubnetClusters = s.SubnetClusters
+	detail.DistinctGeo = s.DistinctGeo
+	detail.TokenCount = s.TokenCount
+	detail.MaxConcurrency = maxConc
+	detail.InputDispersionScore = disp
+
+	return detail, nil
+}
