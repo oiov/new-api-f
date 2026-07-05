@@ -215,11 +215,11 @@ estimate_is_min = list_transit_suspected
 ### 5.1a 用户搜索（`keyword`）
 
 - 单一 `keyword` 参数（前端一个输入框）。后端解析：
-  - `keyword` 为纯数字 → 匹配 `user_id` **精确等于**该值，**或**用户名包含该串（先在 `DB.users` 解析出候选 user_id 集合）。
+  - `keyword` 为纯数字 → 匹配 `user_id` **精确等于**该值，**或**用户名包含该串（先在 `DB.users` 解析出候选 user_id 集合）。精确命中的 user_id 若在窗口内有日志，应排在结果前（避免搜短数字串时目标被埋）——实现上可对精确 id 命中给排序优先，或在等值时靠 quota 排序即可，属体验优化非硬要求。
   - `keyword` 非数字 → 在 `DB.users` 按 `username LIKE ?`（`%keyword%`，跨库安全的标准 `LIKE`）解析出候选 user_id 集合。
   - 得到候选 user_id 集合后，在日志聚合查询上加 `AND user_id IN (候选集合)` 过滤；结果仍按 `sort_by` 降序分页。
 - 候选集合为空（无此用户）或该用户在窗口内无消费日志 → 返回空 `leaderboard` + `total=0`。
-- **搜索时**：`summary` 与 podium 由前端隐藏（见 §6.3a）；后端 `summary` 字段仍可返回（前端不展示），或后端在 keyword 非空时省略 summary 计算以省资源（实现择一，推荐后者省一次全站聚合）。
+- **搜索时**：`summary` 与 podium 由前端隐藏（见 §6.4a）；后端在 keyword 非空或 p≥2 时省略 summary 计算并返回 `nil`（省一次全站聚合），仅 `p==1 && keyword==""` 时计算。
 
 **每个 `LeaderboardEntry` 新增 `analysis` 字段**：
 
@@ -244,17 +244,19 @@ type LeaderboardRegion struct {
 
 ```go
 type LeaderboardResponse struct {
-    Summary     LeaderboardSummary `json:"summary"`      // 仅第1页无搜索时前端展示
-    Leaderboard []LeaderboardEntry `json:"leaderboard"`
-    Page        int                `json:"page"`
-    PageSize    int                `json:"page_size"`
-    Total       int                `json:"total"`        // COUNT(DISTINCT user_id)（受 keyword 过滤）
+    Summary     *LeaderboardSummary `json:"summary,omitempty"` // 仅第1页无搜索时计算并返回；否则 nil 省略
+    Leaderboard []LeaderboardEntry  `json:"leaderboard"`
+    Page        int                 `json:"page"`
+    PageSize    int                 `json:"page_size"`
+    Total       int                 `json:"total"`             // COUNT(DISTINCT user_id)（受 keyword 过滤）
 }
 ```
 
 **计算方式（便宜信号，不扫全部原始行）**：
 - 数据源：**日志读 `LOG_DB.Table("logs")`**（logs 与 users 可能是不同数据库；用户名解析走 `DB`，与既有 `model.GetLeaderboard` 一致）。
-- **先分页取当页 user_id**：主聚合查询 `SELECT user_id, SUM(quota), SUM(tokens), COUNT(*) ... WHERE type=? AND created_at 区间 [AND user_id IN 候选] GROUP BY user_id ORDER BY <sort> LIMIT page_size OFFSET (p-1)*page_size`（标准 SQL，跨库安全）。得到当页 ≤ page_size 个 user_id。
+- **先分页取当页 user_id**：主聚合查询 `SELECT user_id, SUM(quota), SUM(tokens), COUNT(*) ... WHERE type=? AND created_at 区间 [AND user_id IN 候选] GROUP BY user_id ORDER BY <sort> LIMIT page_size OFFSET (p-1)*page_size`。
+  - **确定性排序（分页必须）**：`<sort>` 必须带唯一 tiebreaker，否则等值用户在翻页间会跳过/重复。quota 档用 `ORDER BY total_quota DESC, user_id ASC`；tokens 档用 `ORDER BY total_tokens DESC, user_id ASC`。标准 SQL，三库安全。
+  - 得到当页 ≤ page_size 个 user_id。
 - **仅对当页 user_id 算便宜信号**（`user_id IN 当页ids`，有界 ≤100）：
   - 去重 IP 集合：`... AND user_id IN (当页ids) GROUP BY user_id, ip`（每 (user, ip) 一行，Go 层按 user 聚合）。
   - 去重 token 数：`SELECT user_id, COUNT(DISTINCT token_id) ... AND user_id IN (当页ids) GROUP BY user_id`。
@@ -357,7 +359,7 @@ logRoute.GET("/leaderboard/analysis",
 ### 6.2 api-client（`src/api-client/leaderboard.ts` + `types.ts`）
 
 - `getLeaderboard({ startTs?, endTs?, sortBy, p?, pageSize?, keyword? })` 传 `start_timestamp`/`end_timestamp`/`sort_by`/`p`/`page_size`/`keyword`（改为对象入参，避免位置参数膨胀）。
-- `LeaderboardResponse` 类型加 `page` / `page_size` / `total`。
+- `LeaderboardResponse` 类型加 `page` / `page_size` / `total`；`summary` 改为可选（`summary?`，p≥2/搜索时后端省略）。
 - `LeaderboardEntry` 类型加 `analysis: LeaderboardAnalysis`（顶部 `// source: model/log.go:GetLeaderboard` 注释）。
 - 新增 `LeaderboardAnalysisDetail` 类型 + `getLeaderboardAnalysis(userId, startTs?, endTs?)`。
 - 新增 hook `useLeaderboardAnalysis(userId, startTs, endTs, enabled)`（点击行时 enabled）。
@@ -375,11 +377,24 @@ logRoute.GET("/leaderboard/analysis",
   - `has_ip_data && estimate` → 「疑似 N 人」/「≥N 人」（`estimate_is_min`）+ 置信度色点（high=绿 / medium=黄 / low=灰）。
   - `!has_ip_data` → 「数据不足」灰字。
 - 整行可点击（`cursor-pointer` + hover 态）→ 打开抽屉（见 6.5）。
-- 排名列展示全局名次：`(page-1)*page_size + 行内序号`（不是页内序号）。
 
-### 6.3a 搜索框 + 分页控件（页面级）
+**排名与 podium/表格切分（明确，消除既有 `i+4` 硬编码）**：
+- 后端每页按 sort 顺序返回 `page_size` 条 entries（无 top-3 特殊化）。
+- **仅 `p==1 && keyword==""`**：podium = `entries[0:3]`，表格 = `entries[3:]`。
+- **其余情况**（p≥2 或有搜索）：无 podium，表格 = 全部 `entries`。
+- **全局名次**：`rank = (page - 1) * page_size + (entry 在整页数组的 0-based 下标) + 1`。
+  - 故第 1 页表格从 rank 4 起（因前 3 进了 podium）；p≥2 页表格从 `(page-1)*page_size + 1` 起。
+  - **删除** `leaderboard-table.tsx` 现有的 `rank = i + 4` 硬编码，改为传入的全局 rank（表格组件按整页下标算，或由父组件透传 baseRank/offset）。
 
-- **搜索框**：一个输入框（`keyword`），占位符「搜索用户 ID 或用户名」，回车/按钮触发；清空即恢复全量。发 `keyword` 到接口。
+### 6.4 podium 前三（`src/components/leaderboard/podium.tsx`）
+
+- 前三卡片加小徽标：「疑似 N 人」+ 置信度色点，视觉不大改。
+- 点击卡片同样打开抽屉。
+- **不足 3 条时优雅降级**：当第 1 页 entries < 3（含 0/1/2），podium 只渲染实际存在的卡片，不留空位、不报错。
+
+### 6.4a 搜索框 + 分页控件（页面级）
+
+- **搜索框**：一个输入框（`keyword`），占位符「搜索用户 ID 或用户名」，回车/按钮触发；清空即恢复全量。发 `keyword` 到接口，触发时重置 `p=1`。
 - **分页控件**：复用日志页的分页组件模式（`getPaginationItems` / `getTotalPages`，见 `src/lib/*` 与 `log-table.tsx`），基于响应的 `total` / `page_size`。
 - **podium + summary 可见性**：**仅当 `p==1 && keyword==""`** 时渲染 podium 前三 + summary 汇总卡；翻页或搜索时隐藏，只显示分页表格（含被搜索命中的用户，仍带分析列，行可点开抽屉）。
 - 空结果（搜索无命中）→ `StateMessage` empty「未找到匹配用户或该用户在所选时段无使用记录」。
@@ -458,7 +473,7 @@ logRoute.GET("/leaderboard/analysis",
 - **后端（优先 TDD）**：
   - `EstimateAccountSharing` 纯函数单测：构造聚合信号 → 断言 estimate / confidence / estimate_is_min（覆盖单人、多国多 token、单 IP 高请求量触发 `list_transit_suspected` 的列表级 `≥N`、IP 全空退化）。
   - `input_dispersion_score` 纯函数单测：构造并发重叠且 prompt_tokens 跨数量级的请求 → 断言 score>=2；单一量级 → score<2。
-  - 中转识别组合断言：`subnet_clusters<=2 && max_concurrency>=K && score>=2` → conclusion 标中转、estimate_is_min=true。
+  - 中转识别组合断言：`has_ip_data && subnet_clusters>=1 && subnet_clusters<=2 && max_concurrency>=K && score>=2` → conclusion 标中转、estimate_is_min=true；`subnet_clusters==0`（无 IP）即便高并发也**不**判中转。
   - GeoIP：Lookup 正常 + reader=nil 降级 + 非法 IP + 有国家无城市（空城市归并到国家级）。
   - start/end 参数解析与 date 回落。
   - 并发扫描线纯函数单测（构造重叠区间 → 断言 max_concurrency）。
