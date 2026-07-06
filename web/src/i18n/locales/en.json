@@ -2355,6 +2355,8 @@
     "展示价格": "Display Pricing",
     "展示当前筛选窗口内最近完成的充值订单。": "Shows the most recently completed top-up orders in the current filter window.",
     "展示错误日志": "展示错误日志",
+    "展示错误日志（仅管理员可见）": "Show error logs (admin only)",
+    "开启后即使关闭上方『展示错误日志』，管理员在日志页仍可查看错误日志": "When enabled, admins can still view error logs on the log page even if \"Show error logs\" above is turned off",
     "工作表": "Sheet",
     "左侧徽标文案": "",
     "左侧边栏个人设置": "Personal settings in left sidebar",

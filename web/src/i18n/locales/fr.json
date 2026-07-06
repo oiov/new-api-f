@@ -2258,6 +2258,8 @@
     "展示价格": "Prix affiché",
     "展示当前筛选窗口内最近完成的充值订单。": "Affiche les commandes de recharge terminées les plus récentes dans la fenêtre de filtre actuelle.",
     "展示错误日志": "展示错误日志",
+    "展示错误日志（仅管理员可见）": "展示错误日志（仅管理员可见）",
+    "开启后即使关闭上方『展示错误日志』，管理员在日志页仍可查看错误日志": "开启后即使关闭上方『展示错误日志』，管理员在日志页仍可查看错误日志",
     "工作表": "Feuille",
     "左侧徽标文案": "",
     "左侧边栏个人设置": "Paramètres personnels de la barre latérale gauche",
