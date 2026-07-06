@@ -517,7 +517,7 @@ func buildAdminLogsQuery(logType int, startTimestamp int64, endTimestamp int64, 
 	} else {
 		tx = LOG_DB.Where("logs.type = ?", logType)
 	}
-	tx = applyErrorLogVisibilityFilter(tx, logType, !common.ErrorLogDisplayEnabled)
+	tx = applyErrorLogVisibilityFilter(tx, logType, !common.ErrorLogDisplayEnabled && !common.AdminErrorLogDisplayEnabled)
 
 	var err error
 	// 修复 #5097: 文本过滤无显式 % 时精确匹配，有 % 时走转义模糊，

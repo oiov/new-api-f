@@ -82,6 +82,7 @@ var MemoryCacheEnabled bool
 
 var LogConsumeEnabled = true
 var ErrorLogDisplayEnabled = true
+var AdminErrorLogDisplayEnabled = false
 var ErrorDetailsEnabled = true
 
 var TLSInsecureSkipVerify bool

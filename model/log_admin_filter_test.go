@@ -40,3 +40,52 @@ func TestGetAllLogsAdminModelFilterExactUnlessWildcard(t *testing.T) {
 		require.EqualValues(t, 2, countAdmin("gpt%"))
 	})
 }
+
+// 新能力: AdminErrorLogDisplayEnabled=true 时，即使 ErrorLogDisplayEnabled=false，
+// 管理员日志查询(GetAllLogs)仍返回错误日志；用户自查(GetUserLogs)不受该 flag 影响。
+// spec: docs/superpowers/specs/2026-07-06-admin-error-log-display-design.md
+func TestAdminErrorLogDisplayOverride(t *testing.T) {
+	withLogStatTestDB(t, func() {
+		// 保存/还原全局 flag，避免串扰；这些用例不得并行。
+		oldErr := common.ErrorLogDisplayEnabled
+		oldAdmin := common.AdminErrorLogDisplayEnabled
+		oldDetails := common.ErrorDetailsEnabled
+		defer func() {
+			common.ErrorLogDisplayEnabled = oldErr
+			common.AdminErrorLogDisplayEnabled = oldAdmin
+			common.ErrorDetailsEnabled = oldDetails
+		}()
+		common.ErrorDetailsEnabled = true // 排除 user 查询里 ErrorDetailsEnabled 的干扰
+
+		now := common.GetTimestamp()
+		require.NoError(t, LOG_DB.Create(&Log{Id: 1, UserId: 7, Type: LogTypeConsume, ModelName: "gpt-4", CreatedAt: now}).Error)
+		require.NoError(t, LOG_DB.Create(&Log{Id: 2, UserId: 7, Type: LogTypeError, ModelName: "gpt-4", CreatedAt: now}).Error)
+
+		adminErrCount := func() int64 {
+			_, total, err := GetAllLogs(LogTypeError, now-10, now+10, 0, "", "", "", 0, 100, 0, "", "", "", "", "", 0, 0, false)
+			require.NoError(t, err)
+			return total
+		}
+		userErrCount := func() int64 {
+			_, total, err := GetUserLogs(7, LogTypeError, now-10, now+10, "", "", 0, 100, "", "", "", "", "", 0, 0, false)
+			require.NoError(t, err)
+			return total
+		}
+
+		// 组合 1: 主开关关 + admin 关 → 管理员看不到（现状）
+		common.ErrorLogDisplayEnabled = false
+		common.AdminErrorLogDisplayEnabled = false
+		require.EqualValues(t, 0, adminErrCount(), "主关+admin关: 管理员不应看到错误日志")
+
+		// 组合 2: 主开关关 + admin 开 → 管理员能看到（新能力）；用户仍看不到
+		common.AdminErrorLogDisplayEnabled = true
+		require.EqualValues(t, 1, adminErrCount(), "主关+admin开: 管理员应看到错误日志")
+		require.EqualValues(t, 0, userErrCount(), "主关+admin开: 用户自查不受 admin flag 影响，仍不可见")
+
+		// 组合 3: 主开关开 → 两者都能看到（回归）
+		common.ErrorLogDisplayEnabled = true
+		common.AdminErrorLogDisplayEnabled = false
+		require.EqualValues(t, 1, adminErrCount(), "主开: 管理员应看到错误日志")
+		require.EqualValues(t, 1, userErrCount(), "主开: 用户应看到错误日志")
+	})
+}
