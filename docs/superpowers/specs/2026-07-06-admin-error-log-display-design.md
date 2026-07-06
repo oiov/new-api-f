@@ -31,6 +31,9 @@
   - 统计（stat bar）：`buildLogStatConsumeQuery`（L1512）**硬编码
     `WHERE type = LogTypeConsume`**（L1562），从不包含错误日志。
     → 统计栏本就不受错误日志展示影响，**无需改动，天然一致**。
+  - 第 4 处调用点：`GetLogByTokenId`（L136，用户/令牌自查条件），经
+    `GetLogByKey`（`controller/log.go:357`，`TokenAuthReadOnly` 令牌 key 范围自查），
+    **非管理员表**，按 §8 非目标**有意不改**，此处仅登记说明避免误判为遗漏。
 - 路由守卫：`GET /log/` 由 `middleware.AdminAuth()` 保护
   （`router/api-router.go:438`），即 role ≥ 10（`RoleAdminUser`）。
 - web-worker 管理员日志表调用 `GET /log/`（`web-worker/src/api-client/logs.ts:97`
@@ -148,6 +151,9 @@ tx = applyErrorLogVisibilityFilter(tx, logType,
    任选一条组合验证即可）。
 5. 回归：`AdminErrorLogDisplayEnabled=false` 且 `ErrorLogDisplayEnabled=true` 时
    行为与改动前一致。
+
+测试卫生：两个开关是包级全局变量（`common.*`），测试中用 `defer` 保存/还原原值，
+且这些用例**不得** `t.Parallel()`，避免跨用例串扰。
 
 测试后手动验证：旧 web 开关持久化到 option、`GET /log/` 在设置开启后返回 type=5 行。
 
