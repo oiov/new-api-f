@@ -47,6 +47,7 @@ export default function SettingsLog(props) {
   const [inputs, setInputs] = useState({
     LogConsumeEnabled: false,
     ErrorLogDisplayEnabled: true,
+    AdminErrorLogDisplayEnabled: false,
     ErrorDetailsEnabled: true,
     LogExportEnabled: false,
     UpstreamModelNameAlignedToRequestEnabled: true,
@@ -240,6 +241,28 @@ export default function SettingsLog(props) {
                   style={{ display: 'block', marginTop: 4 }}
                 >
                   {t('关闭后仅隐藏日志页面中的错误日志展示，后台仍继续记录')}
+                </Text>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'AdminErrorLogDisplayEnabled'}
+                  label={t('展示错误日志（仅管理员可见）')}
+                  size='default'
+                  checkedText={t('开关开')}
+                  uncheckedText={t('开关关')}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      AdminErrorLogDisplayEnabled: value,
+                    });
+                  }}
+                />
+                <Text
+                  type='tertiary'
+                  size='small'
+                  style={{ display: 'block', marginTop: 4 }}
+                >
+                  {t('开启后即使关闭上方『展示错误日志』，管理员在日志页仍可查看错误日志')}
                 </Text>
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>

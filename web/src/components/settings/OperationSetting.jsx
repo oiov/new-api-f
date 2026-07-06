@@ -75,6 +75,7 @@ const OperationSetting = () => {
     /* 日志设置 */
     LogConsumeEnabled: false,
     ErrorLogDisplayEnabled: true,
+    AdminErrorLogDisplayEnabled: false,
     ErrorDetailsEnabled: true,
     LogExportEnabled: false,
     UpstreamModelNameAlignedToRequestEnabled: true,
