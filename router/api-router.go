@@ -442,6 +442,7 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/stat", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.GetLogsStat)
 		logRoute.GET("/leaderboard", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.GetLeaderboard)
 		logRoute.GET("/leaderboard/analysis", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.GetLeaderboardAnalysis)
+		logRoute.GET("/activity", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.GetActivityStats)
 		logRoute.GET("/group_health", middleware.AdminAuth(), middleware.PermissionAuth(common.PermissionPointLogView), controller.GetGroupLogHealthStats)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
 		logRoute.GET("/image/:request_id/:index/download", middleware.UserAuth(), controller.DownloadLogImage)

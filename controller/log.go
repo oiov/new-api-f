@@ -475,6 +475,21 @@ func GetLeaderboardAnalysis(c *gin.Context) {
 	common.ApiSuccess(c, data)
 }
 
+func GetActivityStats(c *gin.Context) {
+	windowMinutes, _ := strconv.Atoi(c.DefaultQuery("window", "15"))
+	switch windowMinutes {
+	case 5, 15, 60:
+	default:
+		windowMinutes = 15
+	}
+	data, err := model.GetActivityStats(windowMinutes, time.Now())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, data)
+}
+
 func GetLogsSelfStat(c *gin.Context) {
 	username := c.GetString("username")
 	query := getLogQueryParams(c)

@@ -2009,6 +2009,118 @@ func GetLeaderboard(startTimestamp, endTimestamp int64, sortBy string, page, pag
 	return resp, nil
 }
 
+// ActivityHourBucket：近 24h 分时活跃度桶，HourTs 为该小时起点的 unix 秒。
+type ActivityHourBucket struct {
+	HourTs       int64 `json:"hour_ts"`
+	ActiveUsers  int64 `json:"active_users"`
+	RequestCount int64 `json:"request_count"`
+}
+
+// ActivityStats：管理端近实时活跃度面板数据。基于消费日志（type=consume）去重派生，
+// 不是 WebSocket 在线数——"active_tokens/active_ips" 表示窗口内有过调用的去重令牌/IP。
+type ActivityStats struct {
+	WindowMinutes    int                  `json:"window_minutes"`
+	ActiveUsers      int64                `json:"active_users"`
+	ActiveTokens     int64                `json:"active_tokens"`
+	ActiveIps        int64                `json:"active_ips"`
+	RequestCount     int64                `json:"request_count"`
+	Rpm              int64                `json:"rpm"`
+	Tpm              int64                `json:"tpm"`
+	TodayActiveUsers int64                `json:"today_active_users"`
+	TodayRequests    int64                `json:"today_requests"`
+	Hourly           []ActivityHourBucket `json:"hourly"`
+}
+
+// GetActivityStats：聚合近 windowMinutes 分钟的活跃用户/令牌/IP + RPM/TPM，
+// 今日累计，以及近 24 小时分时曲线。三库兼容：分时桶用 created_at/3600 整除在 Go 侧分桶，
+// 不依赖任何数据库时间函数。
+func GetActivityStats(windowMinutes int, now time.Time) (*ActivityStats, error) {
+	if windowMinutes <= 0 {
+		windowMinutes = 15
+	}
+	stats := &ActivityStats{
+		WindowMinutes: windowMinutes,
+		Hourly:        []ActivityHourBucket{},
+	}
+	nowTs := now.Unix()
+	windowStart := nowTs - int64(windowMinutes)*60
+
+	base := func() *gorm.DB {
+		return LOG_DB.Table("logs").Where("type = ?", LogTypeConsume)
+	}
+
+	// 1. 窗口内去重活跃度
+	if err := base().Where("created_at >= ?", windowStart).
+		Select("COUNT(DISTINCT user_id)").Scan(&stats.ActiveUsers).Error; err != nil {
+		return nil, err
+	}
+	if err := base().Where("created_at >= ?", windowStart).
+		Select("COUNT(DISTINCT token_id)").Scan(&stats.ActiveTokens).Error; err != nil {
+		return nil, err
+	}
+	if err := base().Where("created_at >= ? AND ip <> ''", windowStart).
+		Select("COUNT(DISTINCT ip)").Scan(&stats.ActiveIps).Error; err != nil {
+		return nil, err
+	}
+
+	// 2. 窗口内请求量 + tokens → RPM/TPM（按窗口时长归一到每分钟）
+	var windowAgg struct {
+		RequestCount int64
+		TotalTokens  int64
+	}
+	if err := base().Where("created_at >= ?", windowStart).
+		Select("COUNT(*) as request_count, COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens").
+		Scan(&windowAgg).Error; err != nil {
+		return nil, err
+	}
+	stats.RequestCount = windowAgg.RequestCount
+	stats.Rpm = windowAgg.RequestCount / int64(windowMinutes)
+	stats.Tpm = windowAgg.TotalTokens / int64(windowMinutes)
+
+	// 3. 今日累计（本地时区当日 0 点起）
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	if err := base().Where("created_at >= ?", dayStart).
+		Select("COUNT(DISTINCT user_id)").Scan(&stats.TodayActiveUsers).Error; err != nil {
+		return nil, err
+	}
+	if err := base().Where("created_at >= ?", dayStart).
+		Select("COUNT(*)").Scan(&stats.TodayRequests).Error; err != nil {
+		return nil, err
+	}
+
+	// 4. 近 24h 分时曲线：预置 24 个空桶，DB 侧只做 created_at/3600 整除分组（纯算术，三库兼容）
+	hourStart := (nowTs / 3600) * 3600
+	rangeStart := hourStart - 23*3600
+	buckets := make([]ActivityHourBucket, 24)
+	idxByHour := make(map[int64]int, 24)
+	for i := 0; i < 24; i++ {
+		hourTs := rangeStart + int64(i)*3600
+		buckets[i] = ActivityHourBucket{HourTs: hourTs}
+		idxByHour[hourTs] = i
+	}
+
+	var hourlyRows []struct {
+		Bucket       int64
+		ActiveUsers  int64
+		RequestCount int64
+	}
+	if err := base().Where("created_at >= ?", rangeStart).
+		Select("(created_at / 3600) * 3600 as bucket, COUNT(DISTINCT user_id) as active_users, COUNT(*) as request_count").
+		Group("bucket").
+		Scan(&hourlyRows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range hourlyRows {
+		if i, ok := idxByHour[row.Bucket]; ok {
+			buckets[i].ActiveUsers = row.ActiveUsers
+			buckets[i].RequestCount = row.RequestCount
+		}
+	}
+	stats.Hourly = buckets
+
+	return stats, nil
+}
+
 // computeLeaderboardSummary：全站 SUM 总量 + 独立 top-20 聚合的 Top10* 小计。
 func computeLeaderboardSummary(startTimestamp, endTimestamp int64) (*LeaderboardSummary, error) {
 	var summary LeaderboardSummary
