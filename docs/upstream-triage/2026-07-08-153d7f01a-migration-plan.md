@@ -4,6 +4,18 @@
 > 上游终点: `QuantumNous/new-api@153d7f01a` (#5710),但**依赖一整条 commit 链**
 > 状态: **设计文档,未实现**。这是流处理架构级迁移,跨 ~5 个上游 commit、~20 个文件,风险高,需专门排期。
 
+## ❌ 决定(2026-07-08):不做
+
+复核本地 `StreamScannerHandler` 后确认:**本地已具备断连处理的核心保护**,此迁移性价比过低,**决定不做/长期搁置**。
+
+本地 `relay/helper/stream_scanner.go:237-284` 的 scanner 读循环每次读上游前已检查 `c.Request.Context().Done()` → 断连立即 return,**停止读上游 body(不 drain)= 不计费断连后 token**;`wg.Wait()` 有 5 秒超时兜底(慢客户端不永久 hang);写函数 `StringData/FlushWriter/PingData` 已有 context-done 检查。
+
+因此 153d7f01a + 5238f279d 相对本地的**唯一实质增量**是"把流中断原因记入日志(StreamStatus)"——属运营可见性 nice-to-have,**非正确性修复**。用 3-5 天、~20 文件、9 channel 流式回归的高风险迁移换这个,不划算。
+
+> 修正:本文档下方原设计**前提有误**——假设本地断连处理缺失,实际本地早已具备。以下方案仅作存档,若将来只为"中断原因入日志"的运营需求可再评估阶段 A 的最小子集。
+
+---
+
 ## ⚠️ 关键认知:这不是"一个 commit 的 backport"
 
 最初以为迁 `153d7f01a`(断连)即可。核查上游 `main` 完整历史后发现:**签名迁移和 StreamStatus/StreamResult 是更早的 `5238f279d` 引入的**,`153d7f01a` 只是在其之上加断连处理。真正的迁移目标是**上游 main 当前形态**,即以下 commit 链的累积效果:
