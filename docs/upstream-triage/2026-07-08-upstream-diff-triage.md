@@ -210,13 +210,19 @@ Zeabur advanced to `a6db631be`. Most new work overlaps **local's own log/stats/a
 | `48b7f4918`/`d0bd8aac7`/`c9943d37a`/`bae799ccb`/`043720f9b`/`8874d1929` 计费集群 | B | 需和本地 billing/wallet/组织钱包重构对齐,风险高 |
 | `fc1259f58` PriceData 重构 | B | 纯重构,收益低 |
 
-### P3 — 条件性(仅当用到对应能力)
-- `aa334c085` nested usage token — 纯前端 `web/default` 组件,本地 web-worker 不适用,跳过
-- `6ce7305cd`/`2f5f6ba84` GPT-5.6 pricing — 仅当提供 5.6 模型
-- `52858ad1e` Wan2.7 / `e514db20f`+`c8491b41b` doubao seedance — 仅当提供这些供应商
-- `4ae341756` Codex 字段透传 — 仅当用 Codex 渠道
-- `a72e5082e` stale instance cleanup、`45f0484dc` build dns — 低优先运维
-- `90fa6fe6b` wallet reward、`9b93d61b7` subscription quota reset — 与本地订阅/钱包重构冲突,defer
+### P3 — 条件性(仅当用到对应能力) — **2026-07-08 逐项核实并处置**
+
+> 关键事实:本地 `web/` 是**单一前端**(无 `web/default`/`web/classic` 子目录),真正 UI 在独立仓库 `web-worker/`。凡纯 `web/default`/`web/classic` 的 commit 一律不适用。
+
+- `6ce7305cd`+`2f5f6ba84` GPT-5.6 pricing — ✅ **DONE** `d5a60b4a2`。本地已提供 gpt-5 全系(5.4/mini/nano),条件满足。补 defaultModelRatio 4 条(5.5/5.6-sol/terra/luna)+ completion 锁定逻辑对齐(base 8 locked / 5.5+ 6 unlocked)。含内联测试验证无回归,无 schema 变更。
+- `aa334c085` nested usage token — ❌ **跳过**。纯 `web/default` ai-elements 组件,本地无此目录。
+- `4ae341756` Codex 字段透传 — ❌ **跳过**。纯 `web/default` UI。
+- `45f0484dc` build dns — ❌ **跳过**。纯 `web/classic` rsbuild 配置。
+- `a72e5082e` stale instance cleanup — ❌ **跳过**。本地**无 `model/system_instance.go`** 模型,后端前提不存在;其余为 web/default UI。
+- `90fa6fe6b` wallet reward — ❌ **跳过**。纯 web/default,后端零 delta。
+- `9b93d61b7` subscription quota reset — ⏸️ **defer**。有后端(controller/subscription.go +86, model +129)但与本地自定义订阅高冲突,需专门走查。
+- `52858ad1e` Wan2.7 i2v — ⚠️ **需产品决策**。本地 ali 有 wan2.5/2.2/2.1,**无 2.7**;仅当上架 2.7 才做。
+- `e514db20f`+`c8491b41b` doubao seedance 2.0 — ⚠️ **需产品决策**。本地有 seedance 1.0/1.5,**无 2.0**;仅当上架 2.0 才做(注意本地 ali/doubao adaptor 已相对上游改过,届时需处理冲突)。
 
 ---
 
