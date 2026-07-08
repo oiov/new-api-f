@@ -753,7 +753,9 @@ func (user *User) Update(updatePassword bool) error {
 	}
 	newUser := *user
 	DB.First(&user, user.Id)
-	if err = DB.Model(user).Updates(newUser).Error; err != nil {
+	// quota/used_quota/request_count 由独立原子路径维护，更新资料/设置时必须 Omit，
+	// 否则会用读取时的旧快照覆盖并发的 quota 变动，造成账务错乱。
+	if err = DB.Model(user).Omit("quota", "used_quota", "request_count").Updates(newUser).Error; err != nil {
 		return err
 	}
 
