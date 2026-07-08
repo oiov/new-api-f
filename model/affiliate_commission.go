@@ -198,7 +198,7 @@ func grantAffiliateCommissionTx(tx *gorm.DB, source affiliateCommissionSource) e
 	}
 
 	var invitee User
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&invitee, source.inviteeId).Error; err != nil {
+	if err := lockForUpdate(tx).First(&invitee, source.inviteeId).Error; err != nil {
 		return err
 	}
 	commission.InviteeId = invitee.Id
@@ -210,7 +210,7 @@ func grantAffiliateCommissionTx(tx *gorm.DB, source affiliateCommissionSource) e
 	commission.InviterId = invitee.InviterId
 
 	var inviter User
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&inviter, invitee.InviterId).Error; err != nil {
+	if err := lockForUpdate(tx).First(&inviter, invitee.InviterId).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			commission.Reason = AffiliateCommissionReasonInviterNotFound
 			return tx.Create(&commission).Error
@@ -392,7 +392,7 @@ func ApproveAffiliateCommission(id int) (*AffiliateCommission, error) {
 	}
 	var commission AffiliateCommission
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&commission, id).Error; err != nil {
+		if err := lockForUpdate(tx).First(&commission, id).Error; err != nil {
 			return err
 		}
 		if commission.Status != AffiliateCommissionStatusPending {
@@ -402,7 +402,7 @@ func ApproveAffiliateCommission(id int) (*AffiliateCommission, error) {
 			return fmt.Errorf("affiliate commission cannot be approved")
 		}
 		var inviter User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Select("id").First(&inviter, commission.InviterId).Error; err != nil {
+		if err := lockForUpdate(tx).Select("id").First(&inviter, commission.InviterId).Error; err != nil {
 			return err
 		}
 		result := tx.Model(&AffiliateCommission{}).
@@ -447,7 +447,7 @@ func RejectAffiliateCommission(id int, reason string) (*AffiliateCommission, err
 	}
 	var commission AffiliateCommission
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&commission, id).Error; err != nil {
+		if err := lockForUpdate(tx).First(&commission, id).Error; err != nil {
 			return err
 		}
 		if commission.Status != AffiliateCommissionStatusPending {

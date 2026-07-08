@@ -1206,10 +1206,7 @@ func adjustTokenQuota(id int, delta int) error {
 	nowTimestamp := now.Unix()
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var token Token
-		query := tx.Where("id = ?", id)
-		if !common.UsingSQLite {
-			query = query.Set("gorm:query_option", "FOR UPDATE")
-		}
+		query := lockForUpdate(tx.Where("id = ?", id))
 		if err := query.First(&token).Error; err != nil {
 			return err
 		}
