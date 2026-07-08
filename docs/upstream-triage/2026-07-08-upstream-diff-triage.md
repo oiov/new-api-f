@@ -193,7 +193,8 @@ Zeabur advanced to `a6db631be`. Most new work overlaps **local's own log/stats/a
 ### P1 — 有价值·需 inspect 或中等冲突
 | commit | Batch | 关注点 |
 | --- | --- | --- |
-| `153d7f01a` + `32805849d` 流断连 + stream scanner | C | 中继正确性+性能,reshape stream_scanner,**成对** + 流测试。**下一批优先** |
+| `32805849d` stream scanner buffer | C | ✅ **DONE** `b4210d323`(多厂商真实流式验证)。 |
+| `153d7f01a` 断连处理 | C | ⚠️ **非单 commit** — 依赖 `5238f279d`(StreamStatus/StreamResult + 8 channel 签名迁移,17 文件)大链条。迁移 plan 见 `2026-07-08-153d7f01a-migration-plan.md`(全量 4-6 天/wrapper 2.5-3.5 天,建议先做独立的阶段 D)。**暂缓,需专门排期** |
 | `70ea899e3` 集中行锁 | D | 跨库正确性;触及 redemption/subscription/topup,需对比本地自定义订阅 |
 | `56dbaab1d` Secure Cookie | A | 与 web-worker cookie 域策略耦合,需协调 spec §7。**用户决定暂不做,保持现状** |
 
