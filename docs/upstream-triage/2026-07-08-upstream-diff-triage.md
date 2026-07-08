@@ -21,6 +21,18 @@ Prior snapshot: `docs/upstream-triage/2026-06-27-upstream-diff-triage.md`. **Non
 
 未执行的结转候选(`97eadbefa`/`d2f7f9ee3`/`b798e3496`/`933ea0cdd` 等)仍待后续批次。
 
+### Batch 2 (branch `backport/security-batch-2`)
+
+结转的 4 个小修复全部落地(TDD + 编译/回归验证)，均**无 DB schema 变更**：
+
+| commit | 上游源 | 内容 |
+| --- | --- | --- |
+| `c75e690b9` | `933ea0cdd` | RELAY_IDLE_CONN_TIMEOUT 上游连接池空闲超时(默认 90s) |
+| `41c88ae72` | `b798e3496` | AwsClaudeRequest 标量指针化(Rule 6)+ context_management |
+| `c46d79151` | `97eadbefa` | 硬删除用户级联清理 OAuth 绑定(事务) |
+| `5300f84f7` | `d2f7f9ee3` | 未认证关键路由请求体限制(512KB，13 路由，web-worker 无影响) |
+
+
 
 ## Current Refs
 
@@ -78,11 +90,11 @@ New non-merge commits since the 2026-06-27 checkpoint:
 | Commit | Area | Recommendation |
 | --- | --- | --- |
 | `502858d35` | Claude conversion preserves `tool_use` when tool-call arguments are empty (#5543) | ✅ **DONE** `80cbcc18c`. Backported (保持本地 `json.Unmarshal` 风格，未混入 Rule 1 整改)。 |
-| `97eadbefa` | Clear OAuth bindings when hard-deleting users (#5582) | **Backport now/manual.** Small data-hygiene + login correctness. |
-| `d2f7f9ee3` | Anonymous request body limit for unauthenticated critical routes (#5244) | **Backport now/manual.** Adapt to local custom routes + payment callbacks. |
-| `b798e3496` | AWS Bedrock Anthropic DTO context management + pointer scalars (#5547) | **Backport now/manual.** DTO zero-value + provider compat (Rule 6). |
+| `97eadbefa` | Clear OAuth bindings when hard-deleting users (#5582) | ✅ **DONE** `c46d79151`. HardDelete 事务级联删 user_oauth_bindings;无 schema 变更;含级联删除测试。 |
+| `d2f7f9ee3` | Anonymous request body limit for unauthenticated critical routes (#5244) | ✅ **DONE** `5300f84f7`. AnonymousRequestBodyLimit 中间件(512KB,可关);按本地 13 个 POST 匿名路由适配(GET bind 不挂);body 重放不破坏,web-worker 无影响。 |
+| `b798e3496` | AWS Bedrock Anthropic DTO context management + pointer scalars (#5547) | ✅ **DONE** `41c88ae72`. AwsClaudeRequest MaxTokens/TopP/TopK 指针化(Rule 6)+ context_management。 |
 | `83068d115` | GLM Anthropic-compatible pass-through body size (avoid chunked encoding) (#5307) | ✅ **DONE** `f2411bfd7`. ⚠️ **不是上游那一行** — 依赖横跨 relay 层的 `UpstreamRequestBodySize`→`ContentLength` 机制。本地已有 `body_storage`/`ReaderOnly`，仅缺 Content-Length 传递；以聚焦方案落地(字段+`applyUpstreamContentLength`+pass-through 内部设 size)，未移植上游磁盘缓存迁移。真实 slave 实例端到端验证通过。 |
-| `933ea0cdd` | Relay idle connection timeout config (#5309) | Manual backport; include env docs. |
+| `933ea0cdd` | Relay idle connection timeout config (#5309) | ✅ **DONE** `c75e690b9`. RELAY_IDLE_CONN_TIMEOUT(默认 90s),3 处 transport 设 IdleConnTimeout。 |
 | `3a506f50f` | OpenAI Chat-to-Responses compat hardening (prior head) | Inspect/manual; broad. See companion `2d5a04163` below. |
 | `32805849d` | Reuse stream scanner buffer in channel handlers | Inspect together with new `153d7f01a`. |
 | `59a93cf5c` / `d2576ddcd` | OpenAI image streaming relay + image edit governance | Inspect/manual; broad file movement. |
