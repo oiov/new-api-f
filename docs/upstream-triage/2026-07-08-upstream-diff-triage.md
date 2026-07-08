@@ -8,6 +8,20 @@ Purpose: daily monitoring snapshot. Primary upstream tracking is `QuantumNous/ne
 
 Prior snapshot: `docs/upstream-triage/2026-06-27-upstream-diff-triage.md`. **None of the prior backport candidates were executed** — they are carried forward below and re-verified as still absent from local.
 
+## Execution Record (2026-07-08, branch `backport/security-batch-1`)
+
+本轮已落地 4 个 backport(TDD + slave 实例真实验证)，均**无 DB 字段变更、不影响 web-worker 接口**：
+
+| commit | 上游源 | 内容 |
+| --- | --- | --- |
+| `c18ec1b39` | `bfddc5fea` | access_token 泄露：分层修复(admin 列表/搜索/单查堵漏，GetSelf 保留) |
+| `05a673e91` | `0d5995eb6` | 只读令牌鉴权拒绝已禁用令牌 |
+| `80cbcc18c` | `502858d35` | Claude 空 arguments 保留 tool_use 块 |
+| `f2411bfd7` | `83068d115` | pass-through 出站补 Content-Length，消除 chunked(聚焦方案，非上游一行) |
+
+未执行的结转候选(`97eadbefa`/`d2f7f9ee3`/`b798e3496`/`933ea0cdd` 等)仍待后续批次。
+
+
 ## Current Refs
 
 | Role | Ref | Commit | Subject |
@@ -63,11 +77,11 @@ New non-merge commits since the 2026-06-27 checkpoint:
 
 | Commit | Area | Recommendation |
 | --- | --- | --- |
-| `502858d35` | Claude conversion preserves `tool_use` when tool-call arguments are empty (#5543) | **Backport now.** Small focused relay correctness fix with test. |
+| `502858d35` | Claude conversion preserves `tool_use` when tool-call arguments are empty (#5543) | ✅ **DONE** `80cbcc18c`. Backported (保持本地 `json.Unmarshal` 风格，未混入 Rule 1 整改)。 |
 | `97eadbefa` | Clear OAuth bindings when hard-deleting users (#5582) | **Backport now/manual.** Small data-hygiene + login correctness. |
 | `d2f7f9ee3` | Anonymous request body limit for unauthenticated critical routes (#5244) | **Backport now/manual.** Adapt to local custom routes + payment callbacks. |
 | `b798e3496` | AWS Bedrock Anthropic DTO context management + pointer scalars (#5547) | **Backport now/manual.** DTO zero-value + provider compat (Rule 6). |
-| `83068d115` | GLM Anthropic-compatible pass-through body size (avoid chunked encoding) (#5307) | **Backport now.** Small compatibility fix. |
+| `83068d115` | GLM Anthropic-compatible pass-through body size (avoid chunked encoding) (#5307) | ✅ **DONE** `f2411bfd7`. ⚠️ **不是上游那一行** — 依赖横跨 relay 层的 `UpstreamRequestBodySize`→`ContentLength` 机制。本地已有 `body_storage`/`ReaderOnly`，仅缺 Content-Length 传递；以聚焦方案落地(字段+`applyUpstreamContentLength`+pass-through 内部设 size)，未移植上游磁盘缓存迁移。真实 slave 实例端到端验证通过。 |
 | `933ea0cdd` | Relay idle connection timeout config (#5309) | Manual backport; include env docs. |
 | `3a506f50f` | OpenAI Chat-to-Responses compat hardening (prior head) | Inspect/manual; broad. See companion `2d5a04163` below. |
 | `32805849d` | Reuse stream scanner buffer in channel handlers | Inspect together with new `153d7f01a`. |
@@ -83,10 +97,10 @@ New non-merge commits since the 2026-06-27 checkpoint:
 
 | Commit | Area | Local status (verified) | Recommendation |
 | --- | --- | --- | --- |
-| `bfddc5fea` | `fix: omit access_token from user queries` | **CONFIRMED LEAK.** Local `model/user.go` uses `Omit("password")` at lines 354/443/474 — `access_token` (the char(32) system-management token) is NOT omitted, so admin user-list/fetch queries can expose it. | **Backport now.** 3-line fix, highest value/effort ratio. |
+| `bfddc5fea` | `fix: omit access_token from user queries` | ✅ **DONE** `c18ec1b39`. **CONFIRMED LEAK** — local `Omit("password")` 未含 `access_token`。**分层修复**(比上游更精准)：`GetAllUsers`/`SearchUsers` 加 omit；`GetUser`(admin 查他人)controller 层置空；`GetSelf`(查自己)保留，web-worker 个人页零影响。 |
 | `df087b022` | `feat(ssrf): SSRF protection in HTTP clients + validators` | **Not covered.** Local lacks `service/protected_fetch_client.go`; local `common/ssrf_protection.go` is 339 lines vs upstream 391. Touches video_proxy, mjproxy, download, webhook, user_notify. | **Backport (inspect).** High security value; 10 files, adapt to local relay/proxy paths. |
 | `dfc0d6324` | `Merge commit from fork` → harden user-setting cache updates + test isolation | Not covered. Touches `model/user_cache.go`, `controller/user.go`, `model/user.go`. | **Backport (inspect).** Cache-invalidation correctness = explicit scope priority. |
-| `0d5995eb6` | `fix(auth): allow read-only access for non-disabled tokens` | Not covered. Adds `TokenAuthReadOnly` guard so only `TokenStatusDisabled` is denied on read-only routes (e.g. usage logs). | **Backport now.** 11-line auth-correctness fix. Verify local has `TokenAuthReadOnly` middleware first. |
+| `0d5995eb6` | `fix(auth): allow read-only access for non-disabled tokens` | ✅ **DONE** `05a673e91`. `TokenAuthReadOnly` 现对 `TokenStatusDisabled` 返回 401(仅影响 `/api/usage/token`、`/api/log/token` 外部 sk-令牌自查路径；web-worker 走 session，不受影响)。 |
 | `56dbaab1d` | `feat(session): opt-in Secure session cookies` (`SESSION_COOKIE_SECURE`/`_TRUSTED_URL`) | Not covered. | **Backport (inspect).** Relevant to web-worker cookie-domain strategy; medium (env + startup validation). |
 | `5fc35e28a` | `fix(user): harden account email + password handling` (normalize/lowercase, uniqueness, concurrent-writer serialization, single-account reset) | Not covered; broad (`model/user.go` +255). | **Inspect/manual.** High auth value but high conflict with local user model — line-by-line. |
 | `bed4a3f91` | `fix(user): trim whitespace from username + validate` | Not covered. | Backport with `5fc35e28a` (same area). |
