@@ -193,20 +193,24 @@ Zeabur advanced to `a6db631be`. Most new work overlaps **local's own log/stats/a
 ### P1 — 有价值·需 inspect 或中等冲突
 | commit | Batch | 关注点 |
 | --- | --- | --- |
+| `153d7f01a` + `32805849d` 流断连 + stream scanner | C | 中继正确性+性能,reshape stream_scanner,**成对** + 流测试。**下一批优先** |
 | `70ea899e3` 集中行锁 | D | 跨库正确性;触及 redemption/subscription/topup,需对比本地自定义订阅 |
-| `aa334c085` nested usage token | C | 计费/usage 解析正确性,小 |
-| `153d7f01a` + `32805849d` 流断连 + stream scanner | C | 中继正确性,reshape stream_scanner,**成对** + 流测试 |
-| `56dbaab1d` Secure Cookie | A | 与 web-worker cookie 域策略耦合,需协调 spec §7 |
-| `2d5a04163` + `3a506f50f` Responses↔Chat | C | 协议价值,broad,**成对** |
+| `56dbaab1d` Secure Cookie | A | 与 web-worker cookie 域策略耦合,需协调 spec §7。**用户决定暂不做,保持现状** |
+
+> 归类修正(2026-07-08 复核规模后):
+> - `aa334c085` nested usage token → 实际是**纯前端 `web/default`**(ai-elements 组件,1 文件 2 行),本地用 web-worker **不适用,跳过**(见下 P3)。
+> - `2d5a04163` + `3a506f50f` Responses↔Chat → 实际合计 **44 文件 4000+ 行**(含 web/),**降至 P2**(broad)。
 
 ### P2 — broad/高冲突/需产品决策(暂缓)
 | commit(s) | Batch | 为什么缓 |
 | --- | --- | --- |
+| `2d5a04163` + `3a506f50f` Responses↔Chat | C | 合计 44 文件 4000+ 行(含 web/),broad,协议价值高但改动面大,需专门规划 |
 | `5fc35e28a`+`bed4a3f91`+`4a64b8707` 邮箱/密码加固 | A | 价值高但 `model/user.go +255`,与本地用户模型高冲突,需逐行走查 |
 | `48b7f4918`/`d0bd8aac7`/`c9943d37a`/`bae799ccb`/`043720f9b`/`8874d1929` 计费集群 | B | 需和本地 billing/wallet/组织钱包重构对齐,风险高 |
 | `fc1259f58` PriceData 重构 | B | 纯重构,收益低 |
 
 ### P3 — 条件性(仅当用到对应能力)
+- `aa334c085` nested usage token — 纯前端 `web/default` 组件,本地 web-worker 不适用,跳过
 - `6ce7305cd`/`2f5f6ba84` GPT-5.6 pricing — 仅当提供 5.6 模型
 - `52858ad1e` Wan2.7 / `e514db20f`+`c8491b41b` doubao seedance — 仅当提供这些供应商
 - `4ae341756` Codex 字段透传 — 仅当用 Codex 渠道
