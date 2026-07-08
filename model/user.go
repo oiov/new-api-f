@@ -351,7 +351,7 @@ func GetAllUsers(pageInfo *common.PageInfo, status string, sortBy string, sortOr
 		Order(normalizeUserListSort(sortBy, sortOrder)).
 		Limit(pageInfo.GetPageSize()).
 		Offset(pageInfo.GetStartIdx()).
-		Omit("password").
+		Omit("password", "access_token").
 		Find(&users).Error
 	if err != nil {
 		tx.Rollback()
@@ -440,7 +440,7 @@ func SearchUsers(keyword string, group string, status string, startIdx int, num 
 	}
 
 	// 获取分页数据
-	err = query.Omit("password").
+	err = query.Omit("password", "access_token").
 		Order(normalizeUserListSort(sortBy, sortOrder)).
 		Limit(num).
 		Offset(startIdx).

@@ -311,6 +311,9 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+	// 管理员查看他人资料时不下发系统管理令牌(access_token),避免越权获取他人令牌。
+	// 自己的令牌仅通过 GetSelf / GenerateAccessToken 下发。
+	user.AccessToken = nil
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
