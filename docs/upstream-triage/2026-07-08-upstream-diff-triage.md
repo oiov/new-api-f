@@ -178,6 +178,43 @@ Zeabur advanced to `a6db631be`. Most new work overlaps **local's own log/stats/a
 
 ---
 
+## 剩余候选优先级 (2026-07-08 排序，两批结转小修复已全部完成)
+
+排序逻辑：安全/正确性 > 运维 > 功能；低冲突聚焦 > broad/高冲突；成对的一起做。
+
+### P0 — 下一批优先(高价值·低冲突·聚焦)
+| commit | Batch | 理由 | 成本 |
+| --- | --- | --- | --- |
+| `df087b022` SSRF 防护 | A | 安全高价值;本地确认缺 `protected_fetch_client.go`(339 vs 391);web-worker 无关 | 中(10 文件聚焦) |
+| `dfc0d6324` 用户缓存加固 | A | 缓存失效正确性(scope 优先级);本地缺 | 小 |
+| `0977965d9` ollama 非流式工具调用 | C | 中继正确性,独立聚焦 | 小 |
+| `986d90ae0` 优雅关闭 | E | 运维可靠性(重启不中断答复+面板缓存不丢) | 中,独立 |
+
+### P1 — 有价值·需 inspect 或中等冲突
+| commit | Batch | 关注点 |
+| --- | --- | --- |
+| `70ea899e3` 集中行锁 | D | 跨库正确性;触及 redemption/subscription/topup,需对比本地自定义订阅 |
+| `aa334c085` nested usage token | C | 计费/usage 解析正确性,小 |
+| `153d7f01a` + `32805849d` 流断连 + stream scanner | C | 中继正确性,reshape stream_scanner,**成对** + 流测试 |
+| `56dbaab1d` Secure Cookie | A | 与 web-worker cookie 域策略耦合,需协调 spec §7 |
+| `2d5a04163` + `3a506f50f` Responses↔Chat | C | 协议价值,broad,**成对** |
+
+### P2 — broad/高冲突/需产品决策(暂缓)
+| commit(s) | Batch | 为什么缓 |
+| --- | --- | --- |
+| `5fc35e28a`+`bed4a3f91`+`4a64b8707` 邮箱/密码加固 | A | 价值高但 `model/user.go +255`,与本地用户模型高冲突,需逐行走查 |
+| `48b7f4918`/`d0bd8aac7`/`c9943d37a`/`bae799ccb`/`043720f9b`/`8874d1929` 计费集群 | B | 需和本地 billing/wallet/组织钱包重构对齐,风险高 |
+| `fc1259f58` PriceData 重构 | B | 纯重构,收益低 |
+
+### P3 — 条件性(仅当用到对应能力)
+- `6ce7305cd`/`2f5f6ba84` GPT-5.6 pricing — 仅当提供 5.6 模型
+- `52858ad1e` Wan2.7 / `e514db20f`+`c8491b41b` doubao seedance — 仅当提供这些供应商
+- `4ae341756` Codex 字段透传 — 仅当用 Codex 渠道
+- `a72e5082e` stale instance cleanup、`45f0484dc` build dns — 低优先运维
+- `90fa6fe6b` wallet reward、`9b93d61b7` subscription quota reset — 与本地订阅/钱包重构冲突,defer
+
+---
+
 ## Recommended Execution Order
 
 1. **Trivial security wins first** (tiny diffs, confirmed local gaps):
