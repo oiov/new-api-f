@@ -166,6 +166,13 @@ type RelayInfo struct {
 	UseRuntimeHeadersOverride                   bool
 	ParamOverrideAudit                          []string
 
+	// UpstreamRequestBodySize 是发往上游的请求体字节数。仅当出站 body 被包装成
+	// 类型擦除的 io.Reader(如 common.ReaderOnly(BodyStorage))时才需要显式设置，
+	// 以便 DoApiRequest/DoTaskApiRequest 手动填充 http.Request.ContentLength——
+	// net/http 只对 *bytes.Reader/Buffer/strings.Reader 自动探测长度，否则会退化为
+	// chunked transfer encoding，导致 GLM 等 Anthropic 兼容上游报错。0 表示交给 net/http 决定。
+	UpstreamRequestBodySize int64
+
 	PriceData types.PriceData
 
 	Request dto.Request

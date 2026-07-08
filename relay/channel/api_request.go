@@ -287,6 +287,20 @@ func applyHeaderOverrideToRequest(req *http.Request, headerOverride map[string]s
 	}
 }
 
+// applyUpstreamContentLength 在出站 body 被包装成类型擦除的 io.Reader
+// (如 common.ReaderOnly(BodyStorage))时填充 req.ContentLength。net/http 只对
+// *bytes.Reader/Buffer/strings.Reader 自动探测长度，否则会省略 Content-Length 头、
+// 退化为 chunked transfer encoding，破坏 GLM 等要求显式 Content-Length 的上游。
+// 仅在 net/http 未能自探测(ContentLength<=0)时补，不覆盖已有值。
+func applyUpstreamContentLength(req *http.Request, info *common.RelayInfo) {
+	if info == nil {
+		return
+	}
+	if info.UpstreamRequestBodySize > 0 && req.ContentLength <= 0 {
+		req.ContentLength = info.UpstreamRequestBodySize
+	}
+}
+
 func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
@@ -299,6 +313,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
+	applyUpstreamContentLength(req, info)
 	headers := req.Header
 	err = a.SetupRequestHeader(c, &headers, info)
 	if err != nil {
@@ -330,6 +345,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
+	applyUpstreamContentLength(req, info)
 	// set form data
 	req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
 	headers := req.Header
@@ -538,6 +554,7 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
+	applyUpstreamContentLength(req, info)
 	req.GetBody = func() (io.ReadCloser, error) {
 		return io.NopCloser(requestBody), nil
 	}

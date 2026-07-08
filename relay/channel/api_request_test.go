@@ -1,10 +1,12 @@
 package channel
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -190,4 +192,83 @@ func TestProcessHeaderOverride_PassHeadersTemplateSetsRuntimeHeaders(t *testing.
 	require.Equal(t, "Codex CLI", upstreamReq.Header.Get("Originator"))
 	require.Equal(t, "sess-123", upstreamReq.Header.Get("Session_id"))
 	require.Empty(t, upstreamReq.Header.Get("X-Codex-Beta-Features"))
+}
+
+func TestApplyUpstreamContentLength(t *testing.T) {
+	t.Parallel()
+
+	newReq := func() *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "https://example.com/v1/messages", nil)
+		req.ContentLength = 0
+		return req
+	}
+
+	t.Run("sets ContentLength when size>0 and unset", func(t *testing.T) {
+		req := newReq()
+		applyUpstreamContentLength(req, &relaycommon.RelayInfo{UpstreamRequestBodySize: 42})
+		require.EqualValues(t, 42, req.ContentLength)
+	})
+
+	t.Run("no-op when size==0", func(t *testing.T) {
+		req := newReq()
+		applyUpstreamContentLength(req, &relaycommon.RelayInfo{UpstreamRequestBodySize: 0})
+		require.EqualValues(t, 0, req.ContentLength)
+	})
+
+	t.Run("does not overwrite existing ContentLength", func(t *testing.T) {
+		req := newReq()
+		req.ContentLength = 100
+		applyUpstreamContentLength(req, &relaycommon.RelayInfo{UpstreamRequestBodySize: 42})
+		require.EqualValues(t, 100, req.ContentLength)
+	})
+
+	t.Run("nil info is safe", func(t *testing.T) {
+		req := newReq()
+		require.NotPanics(t, func() { applyUpstreamContentLength(req, nil) })
+		require.EqualValues(t, 0, req.ContentLength)
+	})
+}
+
+// TestContentLengthEliminatesChunkedEncoding 是对修复的真实 HTTP 行为验证:
+// 当出站 body 是类型擦除的 io.Reader(common.ReaderOnly 包装,模拟 pass-through)时,
+// 不设 req.ContentLength 会退化为 chunked;设了(applyUpstreamContentLength 的效果)
+// 则上游收到显式 Content-Length 且无 Transfer-Encoding: chunked——这正是 GLM 需要的。
+func TestContentLengthEliminatesChunkedEncoding(t *testing.T) {
+	type received struct {
+		contentLength   int64
+		transferEncoded bool
+	}
+	ch := make(chan received, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ch <- received{contentLength: r.ContentLength, transferEncoded: len(r.TransferEncoding) > 0}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	payload := []byte(`{"model":"glm-4.6","max_tokens":1024,"messages":[{"role":"user","content":"hi"}]}`)
+
+	call := func(setLen bool) received {
+		// common.ReaderOnly 产出 type-erased io.Reader，net/http 无法自探测长度。
+		body := common.ReaderOnly(bytes.NewReader(payload))
+		req, err := http.NewRequest(http.MethodPost, srv.URL, body)
+		require.NoError(t, err)
+		if setLen {
+			info := &relaycommon.RelayInfo{UpstreamRequestBodySize: int64(len(payload))}
+			applyUpstreamContentLength(req, info)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		return <-ch
+	}
+
+	// 对照组:不设长度 → chunked。
+	base := call(false)
+	require.True(t, base.transferEncoded, "type-erased reader without ContentLength should be chunked")
+	require.EqualValues(t, -1, base.contentLength)
+
+	// 修复组:applyUpstreamContentLength 后 → 显式 Content-Length，无 chunked。
+	fixed := call(true)
+	require.False(t, fixed.transferEncoded, "explicit ContentLength must eliminate chunked encoding")
+	require.EqualValues(t, len(payload), fixed.contentLength)
 }

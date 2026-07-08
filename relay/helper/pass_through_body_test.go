@@ -108,3 +108,51 @@ func TestBuildPassThroughRequestBodyDoesNotRewriteForNonClaudeChannel(t *testing
 	require.NoError(t, err)
 	require.Equal(t, "gpt-4o-mini", gjson.GetBytes(bodyBytes, "model").String())
 }
+
+// TestBuildPassThroughRequestBodySetsBodySize 覆盖修复 GLM chunked encoding 的核心:
+// pass-through body 被包成 type-erased io.Reader 后，net/http 无法自探测长度，
+// 需由 BuildPassThroughRequestBody 把字节数记录到 info.UpstreamRequestBodySize。
+func TestBuildPassThroughRequestBodySetsBodySize(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("rewritten json branch", func(t *testing.T) {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-6","max_tokens":1024}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		_, err := common.GetBodyStorage(ctx)
+		require.NoError(t, err)
+
+		info := &relaycommon.RelayInfo{
+			ChannelMeta: &relaycommon.ChannelMeta{
+				ChannelType:       constant.ChannelTypeAnthropic,
+				UpstreamModelName: "mmodel",
+				ChannelSetting:    dto.ChannelSettings{RewriteModelInPassThrough: true},
+			},
+		}
+		bodyReader, err := BuildPassThroughRequestBody(ctx, info)
+		require.NoError(t, err)
+		bodyBytes, err := io.ReadAll(bodyReader)
+		require.NoError(t, err)
+		require.EqualValues(t, len(bodyBytes), info.UpstreamRequestBodySize)
+		require.Positive(t, info.UpstreamRequestBodySize)
+	})
+
+	t.Run("passthrough storage branch", func(t *testing.T) {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest("POST", "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-6","max_tokens":1024}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		_, err := common.GetBodyStorage(ctx)
+		require.NoError(t, err)
+
+		// RewriteModelInPassThrough 未开启 → 走 common.ReaderOnly(storage) 分支
+		info := &relaycommon.RelayInfo{
+			ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "mmodel"},
+		}
+		bodyReader, err := BuildPassThroughRequestBody(ctx, info)
+		require.NoError(t, err)
+		bodyBytes, err := io.ReadAll(bodyReader)
+		require.NoError(t, err)
+		require.EqualValues(t, len(bodyBytes), info.UpstreamRequestBodySize)
+		require.Positive(t, info.UpstreamRequestBodySize)
+	})
+}

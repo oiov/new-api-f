@@ -21,17 +21,27 @@ func BuildPassThroughRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (i
 		return nil, err
 	}
 
+	// storageReader 返回原始 storage body，并把字节数记录到 info.UpstreamRequestBodySize。
+	// storage 经 common.ReaderOnly 包装后是 type-erased io.Reader，net/http 无法自探测
+	// 长度，需据此手动填充 Content-Length，否则退化为 chunked encoding(GLM 等上游会报错)。
+	storageReader := func() io.Reader {
+		if info != nil {
+			info.UpstreamRequestBodySize = storage.Size()
+		}
+		return common.ReaderOnly(storage)
+	}
+
 	if c == nil || c.Request == nil || !strings.HasPrefix(c.Request.Header.Get("Content-Type"), "application/json") {
-		return common.ReaderOnly(storage), nil
+		return storageReader(), nil
 	}
 
 	if !shouldRewritePassThroughModel(info) {
-		return common.ReaderOnly(storage), nil
+		return storageReader(), nil
 	}
 
 	upstreamModelName := strings.TrimSpace(info.UpstreamModelName)
 	if upstreamModelName == "" {
-		return common.ReaderOnly(storage), nil
+		return storageReader(), nil
 	}
 
 	bodyBytes, err := storage.Bytes()
@@ -41,9 +51,12 @@ func BuildPassThroughRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (i
 
 	patchedBody, err := sjson.SetBytes(bodyBytes, "model", upstreamModelName)
 	if err != nil {
-		return common.ReaderOnly(storage), nil
+		return storageReader(), nil
 	}
 
+	if info != nil {
+		info.UpstreamRequestBodySize = int64(len(patchedBody))
+	}
 	return bytes.NewReader(patchedBody), nil
 }
 
