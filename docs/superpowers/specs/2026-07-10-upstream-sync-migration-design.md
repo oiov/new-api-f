@@ -59,6 +59,8 @@ AutoMigrate 对纯新增字段安全；接口返回只增不减，web-worker 解
 
 ## 4. 实施设计（5 阶段）
 
+阶段 2（订阅嫁接）与阶段 4.1（自研管理页重写）本身各是一个计划级子项目：其任务清单依赖前置的"清单提取"步骤（阶段 2 的 diff 分组清单、阶段 4 的管理页面清单），编写实施计划时应把清单提取列为显式的早期任务和检查点。
+
 ### 阶段 0 — 基线与安全网
 
 1. fish-new-api 打 tag（如 `pre-upstream-sync-20260710`）并推送备份
@@ -117,11 +119,13 @@ AutoMigrate 对纯新增字段安全；接口返回只增不减，web-worker 解
 2. `web-worker/`：代码原样保留在仓库中（独立构建，不受根目录影响）
    - 对 46 个依赖接口逐一回归（登录/鉴权 → 用户信息 → 订阅购买全链路 → 各支付渠道 → 签到/抽奖/工单 → 日志导出 → playground 转发）
    - 接口行为有变的（鉴权头、错误码格式、分页结构、字段语义）改 web-worker 适配
-   - 重点回归项：passkey 登录 finish 流程、epay/stripe/creem webhook 与 notify 路径、`/api/chat*` 转发
+   - 重点回归项：passkey 登录 finish 流程、epay/stripe/creem webhook 与 notify 路径（需支付渠道沙箱环境，排期前确认沙箱凭据可用）、`/api/chat*` 转发
 
 阶段完成标准：管理后台核心操作可用；web-worker 46 接口回归通过。
 
 ### 阶段 5 — 数据停机迁移
+
+前提确认：`NEW_SQL_DSN` 新库与旧库为同一数据库引擎（迁移 runbook 编写前确认引擎类型，dump/import 命令随引擎而定）。
 
 1. 停机窗口开始，旧服务停写
 2. 旧库全量导出 → 导入 `NEW_SQL_DSN` 新库
