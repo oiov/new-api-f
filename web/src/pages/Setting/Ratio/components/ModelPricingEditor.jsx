@@ -50,6 +50,7 @@ import {
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
+import TieredPricingEditor from './TieredPricingEditor';
 
 const { Text } = Typography;
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
@@ -58,12 +59,18 @@ const getBillingModeLabel = (billingMode, t) => {
   if (billingMode === 'per-second') {
     return t('按秒计费');
   }
+  if (billingMode === 'tiered_expr') {
+    return t('分档计费');
+  }
   return billingMode === 'per-request' ? t('按次计费') : t('按量计费');
 };
 
 const getBillingModeTagColor = (billingMode) => {
   if (billingMode === 'per-second') {
     return 'orange';
+  }
+  if (billingMode === 'tiered_expr') {
+    return 'amber';
   }
   return billingMode === 'per-request' ? 'teal' : 'violet';
 };
@@ -138,6 +145,8 @@ export default function ModelPricingEditor({
     handleOptionalFieldToggle,
     handleNumericFieldChange,
     handleBillingModeChange,
+    handleBillingExprChange,
+    handleRequestRuleExprChange,
     handleSubmit,
     addModel,
     deleteModel,
@@ -396,7 +405,9 @@ export default function ModelPricingEditor({
                     {selectedModel.billingMode === 'per-second' ||
                     isPerSecondModelName(selectedModel.name) ? (
                       <Radio value='per-second'>{t('按秒计费')}</Radio>
-                    ) : null}
+                    ) : (
+                      <Radio value='tiered_expr'>{t('分档计费')}</Radio>
+                    )}
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
                     {selectedModel.billingMode === 'per-second'
@@ -453,6 +464,14 @@ export default function ModelPricingEditor({
                           )
                         : t('适合 MJ / 任务类等按次收费模型。')
                     }
+                  />
+                ) : selectedModel.billingMode === 'tiered_expr' ? (
+                  <TieredPricingEditor
+                    model={selectedModel}
+                    onExprChange={handleBillingExprChange}
+                    requestRuleExpr={selectedModel.requestRuleExpr}
+                    onRequestRuleExprChange={handleRequestRuleExprChange}
+                    t={t}
                   />
                 ) : (
                   <>
