@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 export const SOURCE_PARAM = 'param';
 export const SOURCE_HEADER = 'header';
 export const SOURCE_TIME = 'time';
@@ -154,8 +172,19 @@ export function splitTopLevelMultiply(expr) {
   const parts = [];
   let start = 0;
   let depth = 0;
+  let inString = false;
   for (let index = 0; index < expr.length; index += 1) {
     const char = expr[index];
+    // Skip over string literals so quoted `(`/`)`/` * ` don't corrupt splitting
+    if (inString) {
+      if (char === '\\') index += 1;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
     if (char === '(') depth += 1;
     if (char === ')') depth -= 1;
     if (depth === 0 && expr.slice(index, index + 3) === ' * ') {
@@ -172,8 +201,19 @@ function splitTopLevelAnd(expr) {
   const parts = [];
   let start = 0;
   let depth = 0;
+  let inString = false;
   for (let i = 0; i < expr.length; i += 1) {
     const c = expr[i];
+    // Skip over string literals so quoted `(`/`)`/` && ` don't corrupt splitting
+    if (inString) {
+      if (c === '\\') i += 1;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
     if (c === '(') depth += 1;
     if (c === ')') depth -= 1;
     if (depth === 0 && expr.slice(i, i + 4) === ' && ') {
@@ -360,8 +400,22 @@ function tryParseRuleGroupFactor(part) {
 
   const andParts = splitTopLevelAnd(conditionStr);
   const conditions = [];
-  for (const ap of andParts) {
-    const cond = tryParseRequestCondition(ap.trim());
+  for (let i = 0; i < andParts.length; i += 1) {
+    const ap = andParts[i].trim();
+    // buildRequestConditionExpr emits contains/gt/gte/lt/lte on param as a
+    // single `param("x") != nil && <check>` condition, which splitTopLevelAnd
+    // breaks apart; re-join the nil guard with the following check first.
+    if (i + 1 < andParts.length && /^param\("[^"]+"\) != nil$/.test(ap)) {
+      const combined = tryParseRequestCondition(
+        `${ap} && ${andParts[i + 1].trim()}`,
+      );
+      if (combined) {
+        conditions.push(normalizeCondition(combined));
+        i += 1;
+        continue;
+      }
+    }
+    const cond = tryParseRequestCondition(ap);
     if (!cond) return null;
     conditions.push(normalizeCondition(cond));
   }

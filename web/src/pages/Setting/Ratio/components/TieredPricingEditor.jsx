@@ -24,6 +24,7 @@ import {
   Collapsible,
   Input,
   InputNumber,
+  Modal,
   Radio,
   RadioGroup,
   Select,
@@ -71,9 +72,9 @@ function priceToUnitCost(price) {
 
 const OPS = ['<', '<=', '>', '>='];
 const VAR_OPTIONS = [
-  { value: 'len', label: 'len (长度)' },
-  { value: 'p', label: 'p (输入)' },
-  { value: 'c', label: 'c (输出)' },
+  { value: 'len', labelKey: '长度' },
+  { value: 'p', labelKey: '输入' },
+  { value: 'c', labelKey: '输出' },
 ];
 
 const CACHE_MODE_TIMED = 'timed';
@@ -82,10 +83,10 @@ const CACHE_MODE_GENERIC = 'generic';
 function formatTokenHint(n) {
   if (n == null || n === '' || Number.isNaN(Number(n))) return '';
   const v = Number(n);
-  if (v === 0) return '= 0';
-  if (v >= 1000000) return `= ${(v / 1000000).toLocaleString()}M tokens`;
-  if (v >= 1000) return `= ${(v / 1000).toLocaleString()}K tokens`;
-  return `= ${v.toLocaleString()} tokens`;
+  if (v === 0) return '0';
+  if (v >= 1000000) return `${(v / 1000000).toLocaleString()}M tokens`;
+  if (v >= 1000) return `${(v / 1000).toLocaleString()}K tokens`;
+  return `${v.toLocaleString()} tokens`;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +160,8 @@ function buildTierBodyExpr(tier) {
   return parts.join(' + ');
 }
 
+// Returns null when the config cannot produce a valid expression
+// (a non-last tier without any valid condition would emit `body : cond ? body`).
 function generateExprFromVisualConfig(config) {
   if (!config || !config.tiers || config.tiers.length === 0)
     return 'p * 0 + c * 0';
@@ -167,7 +170,7 @@ function generateExprFromVisualConfig(config) {
   if (tiers.length === 1) {
     const t = tiers[0];
     const label = t.label || 'default';
-    const body = `tier("${label}", ${buildTierBodyExpr(t)})`;
+    const body = `tier(${JSON.stringify(label)}, ${buildTierBodyExpr(t)})`;
     const cond = buildConditionStr(t.conditions);
     if (cond) {
       return `${cond} ? ${body} : p * 0 + c * 0`;
@@ -179,10 +182,11 @@ function generateExprFromVisualConfig(config) {
   for (let i = 0; i < tiers.length; i++) {
     const t = tiers[i];
     const label = t.label || `第${i + 1}档`;
-    const body = `tier("${label}", ${buildTierBodyExpr(t)})`;
+    const body = `tier(${JSON.stringify(label)}, ${buildTierBodyExpr(t)})`;
     const cond = buildConditionStr(t.conditions);
 
-    if (i < tiers.length - 1 && cond) {
+    if (i < tiers.length - 1) {
+      if (!cond) return null;
       parts.push(`${cond} ? ${body}`);
     } else {
       parts.push(body);
@@ -208,15 +212,15 @@ function tryParseVisualConfig(exprStr) {
     // Body pattern: p * X + c * Y [+ cr * A] [+ cc * B] [+ cc1h * C]
     const bodyPat = `p\\s*\\*\\s*([\\d.eE+-]+)\\s*\\+\\s*c\\s*\\*\\s*([\\d.eE+-]+)${optCacheStr}`;
 
-    // Single-tier: tier("label", body)
-    const singleRe = new RegExp(`^tier\\("([^"]*)",\\s*${bodyPat}\\)$`);
+    // Single-tier: tier("label", body) — label may contain escaped quotes
+    const singleRe = new RegExp(`^tier\\("((?:[^"\\\\]|\\\\.)*)",\\s*${bodyPat}\\)$`);
     const simple = exprStr.match(singleRe);
     if (simple) {
       const tier = {
         conditions: [],
         input_unit_cost: Number(simple[2]),
         output_unit_cost: Number(simple[3]),
-        label: simple[1],
+        label: JSON.parse(`"${simple[1]}"`),
       };
       CACHE_VAR_MAP.forEach((cv, i) => {
         const val = simple[4 + i];
@@ -228,7 +232,7 @@ function tryParseVisualConfig(exprStr) {
     // Multi-tier: cond1 ? tier(body) : cond2 ? tier(body) : tier(body)
     const condGroup = `((?:(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)(?:\\s*&&\\s*(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)*)`;
     const tierRe = new RegExp(
-      `(?:${condGroup}\\s*\\?\\s*)?tier\\("([^"]*)",\\s*${bodyPat}\\)`,
+      `(?:${condGroup}\\s*\\?\\s*)?tier\\("((?:[^"\\\\]|\\\\.)*)",\\s*${bodyPat}\\)`,
       'g',
     );
     const tiers = [];
@@ -249,7 +253,7 @@ function tryParseVisualConfig(exprStr) {
         conditions,
         input_unit_cost: Number(match[3]),
         output_unit_cost: Number(match[4]),
-        label: match[2],
+        label: JSON.parse(`"${match[2]}"`),
       };
       CACHE_VAR_MAP.forEach((cv, i) => {
         const val = match[5 + i];
@@ -261,6 +265,7 @@ function tryParseVisualConfig(exprStr) {
 
     const cfg = normalizeVisualConfig({ tiers });
     const regenerated = generateExprFromVisualConfig(cfg);
+    if (!regenerated) return null;
     if (regenerated.replace(/\s+/g, '') !== exprStr.replace(/\s+/g, ''))
       return null;
     return cfg;
@@ -290,7 +295,7 @@ function ConditionRow({ cond, onChange, onRemove, t }) {
       >
         {VAR_OPTIONS.map((v) => (
           <Select.Option key={v.value} value={v.value}>
-            {v.label}
+            {`${v.value} (${t(v.labelKey)})`}
           </Select.Option>
         ))}
       </Select>
@@ -620,6 +625,15 @@ function VisualTierCard({ tier, index, isLast, isOnly, onUpdate, onRemove, t }) 
               {t('添加条件')}
             </Button>
           )}
+          {!isLast && !buildConditionStr(conditions) && (
+            <Text
+              type='danger'
+              size='small'
+              style={{ display: 'block', marginTop: 4 }}
+            >
+              {t('非兜底档位需要至少一个有效条件，修正前不会更新计费表达式。')}
+            </Text>
+          )}
         </div>
       ) : (
         <div
@@ -863,7 +877,7 @@ function PresetSection({ applyPreset, t }) {
             </Tag>
             {g.presets.map((p) => (
               <Button key={p.key} size='small' theme='light' onClick={() => applyPreset(p)}>
-                {p.label}
+                {t(p.label)}
               </Button>
             ))}
           </div>
@@ -964,6 +978,22 @@ function CacheTokenEstimatorInputs({
 // Cost estimator (works with any Expr string)
 // ---------------------------------------------------------------------------
 
+// Translate expr-lang syntax to JS equivalents (outside string literals) so
+// the local estimator matches backend semantics for valid expressions.
+function translateExprToJs(exprStr) {
+  return exprStr
+    .split(/("(?:[^"\\]|\\.)*")/)
+    .map((seg, i) => {
+      if (i % 2 === 1) return seg; // string literal — keep as-is
+      return seg
+        .replace(/\^/g, '**')
+        .replace(/\bnil\b/g, 'null')
+        .replace(/\band\b/g, '&&')
+        .replace(/\bor\b/g, '||');
+    })
+    .join('');
+}
+
 function evalExprLocally(exprStr, p, c, extraTokenValues) {
   try {
     let matchedTier = '';
@@ -981,7 +1011,7 @@ function evalExprLocally(exprStr, p, c, extraTokenValues) {
     }
     const fn = new Function(
       ...Object.keys(env),
-      `"use strict"; return (${exprStr});`,
+      `"use strict"; return (${translateExprToJs(exprStr)});`,
     );
     return { cost: fn(...Object.values(env)), matchedTier, error: null };
   } catch (e) {
@@ -1434,7 +1464,9 @@ export default function TieredPricingEditor({ model, onExprChange, requestRuleEx
   }, [editorMode, visualConfig, rawExpr]);
 
   useEffect(() => {
-    if (effectiveExpr !== currentExpr) {
+    // null means the visual config is in an invalid state (e.g. a non-last
+    // tier without conditions) — keep the last valid expression in the parent.
+    if (effectiveExpr != null && effectiveExpr !== currentExpr) {
       onExprChange(effectiveExpr);
     }
   }, [effectiveExpr]);
@@ -1455,22 +1487,34 @@ export default function TieredPricingEditor({ model, onExprChange, requestRuleEx
       if (newMode === 'visual') {
         const { billingExpr, requestRuleExpr: ruleStr } = splitBillingExprAndRequestRules(rawExpr);
         const parsed = tryParseVisualConfig(billingExpr);
+        const applyVisual = (config) => {
+          setVisualConfig(config);
+          const parsedGroups = tryParseRequestRuleExpr(ruleStr);
+          setRequestRuleGroups(parsedGroups || []);
+          onRequestRuleExprChange(ruleStr);
+          setEditorMode('visual');
+        };
         if (parsed) {
-          setVisualConfig(parsed);
-        } else {
-          setVisualConfig(createDefaultVisualConfig());
+          applyVisual(parsed);
+          return;
         }
-        const parsedGroups = tryParseRequestRuleExpr(ruleStr);
-        setRequestRuleGroups(parsedGroups || []);
-        onRequestRuleExprChange(ruleStr);
-      } else {
-        const expr = generateExprFromVisualConfig(visualConfig);
-        const ruleExpr = buildRequestRuleExpr(requestRuleGroups);
-        setRawExpr(combineBillingExpr(expr, ruleExpr) || expr);
+        // Unparseable expression: confirm before discarding it; cancelling
+        // keeps raw mode so the original expression is never silently lost.
+        Modal.confirm({
+          title: t('切换到可视化模式'),
+          content: t('当前表达式无法转换为可视化模式，切换将丢失原表达式并重置为空白配置'),
+          okText: t('确认切换'),
+          cancelText: t('取消'),
+          onOk: () => applyVisual(createDefaultVisualConfig()),
+        });
+        return;
       }
+      const expr = generateExprFromVisualConfig(visualConfig) ?? currentExpr;
+      const ruleExpr = buildRequestRuleExpr(requestRuleGroups);
+      setRawExpr(combineBillingExpr(expr, ruleExpr) || expr);
       setEditorMode(newMode);
     },
-    [rawExpr, visualConfig, requestRuleGroups, onRequestRuleExprChange],
+    [rawExpr, visualConfig, requestRuleGroups, currentExpr, onRequestRuleExprChange, t],
   );
 
   const applyPreset = useCallback(
@@ -1504,6 +1548,9 @@ export default function TieredPricingEditor({ model, onExprChange, requestRuleEx
   };
 
   const evalResult = useMemo(() => {
+      if (effectiveExpr == null) {
+        return { cost: 0, matchedTier: '', error: t('非兜底档位需要至少一个有效条件') };
+      }
       const result = evalExprLocally(effectiveExpr, promptTokens, completionTokens, extraTokenValues);
       if (!result.error) {
         result.cost = result.cost / 1000000 * (parseFloat(localStorage.getItem('quota_per_unit')) || 500000);
