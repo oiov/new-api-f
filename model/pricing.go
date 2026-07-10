@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 )
@@ -32,6 +33,8 @@ type Pricing struct {
 	EnableGroup            []string                `json:"enable_groups"`
 	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
 	PricingVersion         string                  `json:"pricing_version,omitempty"`
+	BillingMode            string                  `json:"billing_mode,omitempty"`
+	BillingExpr            string                  `json:"billing_expr,omitempty"`
 }
 
 type PricingVendor struct {
@@ -53,6 +56,16 @@ var (
 	modelQuotaTypeMap     = make(map[string]int)
 	modelEnableGroupsLock = sync.RWMutex{}
 )
+
+// InvalidatePricingCache forces the next GetPricing() call to rebuild the
+// pricing snapshot immediately, instead of waiting for the 1-minute TTL. Called
+// after billing-related option updates (e.g. tiered_expr billing) so admin
+// changes take effect right away.
+func InvalidatePricingCache() {
+	updatePricingLock.Lock()
+	defer updatePricingLock.Unlock()
+	lastGetPricingTime = time.Time{}
+}
 
 func modelBillingUnit(modelName string, quotaType int) string {
 	if quotaType == 0 {
@@ -361,6 +374,12 @@ func updatePricing() {
 			pricing.QuotaType = 0
 		}
 		pricing.BillingUnit = modelBillingUnit(model, pricing.QuotaType)
+		if billingMode := billing_setting.GetBillingMode(model); billingMode == billing_setting.BillingModeTieredExpr {
+			if expr, ok := billing_setting.GetBillingExpr(model); ok && strings.TrimSpace(expr) != "" {
+				pricing.BillingMode = billingMode
+				pricing.BillingExpr = expr
+			}
+		}
 		if cacheRatio, ok := ratio_setting.GetCacheRatio(model); ok {
 			pricing.CacheRatio = &cacheRatio
 		}

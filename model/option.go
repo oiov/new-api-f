@@ -717,6 +717,10 @@ func handleConfigUpdate(key, value string) bool {
 	if configName == "performance_setting" {
 		// 同步磁盘缓存配置到 common 包
 		performance_setting.UpdateAndSync()
+	} else if configName == "billing_setting" {
+		// 分档计费(tiered_expr)配置变更后，立即刷新定价快照与倍率导出缓存
+		InvalidatePricingCache()
+		ratio_setting.InvalidateExposedDataCache()
 	}
 
 	return true // 已处理

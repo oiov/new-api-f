@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -249,6 +250,10 @@ func validateOptionUpdate(key string, value string) error {
 		err = ratio_setting.UpdateCreateCacheRatioByJSONString(value)
 		if err != nil {
 			return fmt.Errorf("缓存创建倍率设置失败: %s", err.Error())
+		}
+	case "billing_setting.billing_expr":
+		if err = billing_setting.ValidateBillingExprJSON(value); err != nil {
+			return err
 		}
 	case "ModelRequestRateLimitGroup":
 		err = setting.CheckModelRequestRateLimitGroup(value)
