@@ -11,6 +11,11 @@
 **Spec:** `docs/superpowers/specs/2026-07-10-upstream-sync-migration-design.md`
 
 **关键事实（动手前必读）：**
+- **执行约束（2026-07-10 用户确认）：**
+  - 旧数据库在线上使用中，**开发全程不得触碰生产库**；所有开发/测试连本地或测试库；数据迁移（阶段 5）放到最后执行
+  - Task 0.2 的生产备份与校验值记录**推迟到阶段 5 开始前**执行，不作为前置
+  - web-worker 是独立部署的 git 仓库；迁移适配后的新版 web-worker 推送到新仓库 `https://github.com/oiov/nbility-client`
+  - 迁移完成的新版主项目推送到新仓库 `https://github.com/oiov/nbility`
 - 仓库：`/Users/songjunxi/Desktop/repos/new-api/fish-new-api`，**起始分支 `fishxcode`**（所有冲突数字均基于该分支 HEAD 实测），remote `quantumnous` = 官方，已 fetch 到 `4e570389d`
 - 对照参考：`/Users/songjunxi/Desktop/repos/new-api/new-api-latest`（官方最新的干净克隆，含 .env 可直接跑，作为"官方行为基准"）
 - merge 冲突实测（`git merge-tree quantumnous/main HEAD`）：240 文件 = web/ 131 + 订阅支付区 10 + 其余后端 99
@@ -47,10 +52,10 @@ Expected: 构建通过。若有既有失败测试，记录到 `docs/superpowers/
 git add docs/superpowers/plans/migration-notes.md && git commit -m "docs(migration): 迁移前基线测试状态记录"
 ```
 
-### Task 0.2: 生产数据校验值记录（人工步骤，可与代码任务并行）
+### Task 0.2: 生产数据校验值记录（**推迟到阶段 5 开始前执行**——生产库在线使用中，开发期间不碰）
 
-- [ ] **Step 1:** 提醒用户执行：生产库全量备份（`scripts/backup_postgres.sh` 或对应引擎的 dump）
-- [ ] **Step 2:** 提醒用户确认：`NEW_SQL_DSN` 新库与旧库是**同一引擎**
+- [ ] **Step 1:** （阶段 5 前）提醒用户执行：生产库全量备份（`scripts/backup_postgres.sh` 或对应引擎的 dump）
+- [ ] **Step 2:** （阶段 5 前）提醒用户确认：`NEW_SQL_DSN` 新库与旧库是**同一引擎**
 - [ ] **Step 3:** 在 `migration-notes.md` 记录校验值 SQL（用户数 `SELECT COUNT(*) FROM users`、令牌数、订阅订单数、近 7 天日志 quota 合计），执行结果由用户在停机迁移当天填入
 
 ---
@@ -293,5 +298,7 @@ wc -l /tmp/web_changes.txt   # ~334
 ## 收尾
 
 - [ ] merge 分支合回主分支，打 tag `post-upstream-sync`
+- [ ] 主项目推送到新仓库：`git remote add nbility https://github.com/oiov/nbility.git && git push nbility upgrade/sync-upstream:main`
+- [ ] web-worker 推送到新仓库：适配完成后的 web-worker 以独立 git 仓库推送到 `https://github.com/oiov/nbility-client`（main 分支）
 - [ ] 基于新代码重新生成 CLAUDE.md/AGENTS.md
 - [ ] 清理：`new-api-latest` 对照目录按需保留或删除
