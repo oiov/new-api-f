@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -52,6 +53,12 @@ type textQuotaSummary struct {
 	FileSearchCallCount      int
 	AudioInputPrice          float64
 	ImageGenerationCallPrice float64
+	// ToolCallSurchargeQuota is the group-ratio-adjusted quota sum of all
+	// per-call tool surcharges (web search, file search, audio input,
+	// image generation). Under ratio billing it is already folded into Quota;
+	// tiered settlement re-adds it on top of the expression result, since the
+	// expression only prices tokens.
+	ToolCallSurchargeQuota decimal.Decimal
 }
 
 func cacheWriteTokensTotal(summary textQuotaSummary) int {
@@ -342,7 +349,57 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		summary.Quota = 1
 	}
 
+	summary.ToolCallSurchargeQuota = dWebSearchQuota.
+		Add(dClaudeWebSearchQuota).
+		Add(dFileSearchQuota).
+		Add(audioInputQuota).
+		Add(dImageGenerationCallQuota)
+
 	return summary
+}
+
+// noteQuotaClamp records the first quota saturation event onto relayInfo so it
+// can later be attached to the consume/task log for admin auditing. First
+// non-nil clamp wins (a single request may hit multiple conversions).
+func noteQuotaClamp(relayInfo *relaycommon.RelayInfo, clamp *common.QuotaClamp) {
+	if clamp == nil || relayInfo == nil {
+		return
+	}
+	if relayInfo.QuotaClamp == nil {
+		relayInfo.QuotaClamp = clamp
+	}
+}
+
+func composeTieredTextQuota(relayInfo *relaycommon.RelayInfo, summary textQuotaSummary, tieredQuota int, tieredResult *billingexpr.TieredResult) int {
+	if summary.ToolCallSurchargeQuota.IsZero() {
+		return tieredQuota
+	}
+
+	if tieredResult != nil {
+		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
+			raw := tieredResult.ActualQuotaBeforeGroup
+			// Guard the float re-computation path: NaN/Inf would panic inside
+			// decimal.NewFromFloat, and a negative token part must not offset
+			// the tool surcharge (billing never credits). Fall through to the
+			// already-saturated integer path instead.
+			if !math.IsNaN(raw) && !math.IsInf(raw, 0) && raw >= 0 {
+				quota, clamp := common.QuotaFromDecimalChecked(decimal.NewFromFloat(raw).
+					Mul(decimal.NewFromFloat(snap.GroupRatio)).
+					Add(summary.ToolCallSurchargeQuota))
+				noteQuotaClamp(relayInfo, clamp)
+				return quota
+			}
+		}
+	}
+
+	// Saturate the final sum, not just the surcharge: tieredQuota can be near
+	// MaxQuota and adding the surcharge could push the total past the int32
+	// quota policy bound (persisted quota columns are 32-bit).
+	total, clamp := common.QuotaFromDecimalChecked(
+		decimal.NewFromInt(int64(tieredQuota)).Add(summary.ToolCallSurchargeQuota),
+	)
+	noteQuotaClamp(relayInfo, clamp)
+	return total
 }
 
 func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) string {
@@ -375,11 +432,16 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
 			tieredUsedVars = billingexpr.UsedVars(snap.ExprString)
 		}
-		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(usage, summary.IsClaudeUsageSemantic, tieredUsedVars))
+		// Legacy Claude-derived OpenAI usage reports Claude-style text-only
+		// prompt tokens (see the ratio path's legacyClaudeDerived handling);
+		// treat it as Claude semantics so len includes cache tokens and the
+		// sub-category subtraction is skipped.
+		claudeLikeUsage := summary.IsClaudeUsageSemantic || isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage)
+		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(usage, claudeLikeUsage, tieredUsedVars))
 		if tieredOk {
 			tieredBillingApplied = true
 			tieredResult = tieredRes
-			summary.Quota = tieredQuota
+			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
 		}
 	}
 
@@ -499,6 +561,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if tieredBillingApplied {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
+	attachQuotaSaturation(ctx, relayInfo, other)
 
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,

@@ -1,6 +1,10 @@
 package billingexpr
 
-import "github.com/QuantumNous/new-api/common"
+import (
+	"math"
+
+	"github.com/QuantumNous/new-api/common"
+)
 
 // quotaConversion converts raw expression output to quota based on the
 // expression version. This is the central dispatch point for future versions
@@ -25,7 +29,29 @@ func ComputeTieredQuotaWithRequest(snap *BillingSnapshot, params TokenParams, re
 	}
 
 	quotaBeforeGroup := quotaConversion(cost, snap)
-	afterGroup, clamp := common.QuotaRoundChecked(quotaBeforeGroup * snap.GroupRatio)
+	rawAfterGroup := quotaBeforeGroup * snap.GroupRatio
+
+	// Billing must never credit the user: a negative expression result (e.g.
+	// a differential expression like `(p - c) * k` that the smoke vectors,
+	// which all have p == c, cannot catch) is floored at 0 and surfaced as an
+	// underflow clamp so it lands in the admin_info audit trail. NaN/Inf are
+	// handled by the saturating conversion below and also audited.
+	if !math.IsNaN(rawAfterGroup) && rawAfterGroup < 0 {
+		return TieredResult{
+			ActualQuotaBeforeGroup: quotaBeforeGroup,
+			ActualQuotaAfterGroup:  0,
+			MatchedTier:            trace.MatchedTier,
+			CrossedTier:            trace.MatchedTier != snap.EstimatedTier,
+			Clamp: &common.QuotaClamp{
+				Op:       "tiered_settle",
+				Kind:     common.QuotaClampUnderflow,
+				Original: rawAfterGroup,
+				Clamped:  0,
+			},
+		}, nil
+	}
+
+	afterGroup, clamp := common.QuotaRoundChecked(rawAfterGroup)
 	crossed := trace.MatchedTier != snap.EstimatedTier
 
 	return TieredResult{

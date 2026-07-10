@@ -1,6 +1,9 @@
 package service
 
 import (
+	"fmt"
+
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -25,7 +28,12 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	cc5m := float64(usage.PromptTokensDetails.CachedCreationTokens)
 	cc1h := float64(0)
 
-	if usage.UsageSemantic == "anthropic" {
+	// Take the 5m/1h split whenever the split fields are actually present,
+	// not only under the "anthropic" usage semantic: legacy Claude-derived
+	// OpenAI-format usage (Claude channel behind OpenAI format) carries the
+	// split fields with an empty semantic, and billing 1h writes at the 5m
+	// coefficient would undercharge (~2x) when the expr distinguishes cc1h.
+	if usage.UsageSemantic == "anthropic" || usage.ClaudeCacheCreation5mTokens > 0 || usage.ClaudeCacheCreation1hTokens > 0 {
 		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
 		cc5m = float64(usage.ClaudeCacheCreation5mTokens)
 	}
@@ -109,8 +117,18 @@ func TryTieredSettle(relayInfo *relaycommon.RelayInfo, params billingexpr.TokenP
 		if quota <= 0 {
 			quota = snap.EstimatedQuotaAfterGroup
 		}
+		// A settle-time expression failure silently bills the pre-consume
+		// estimate; without this log the degradation is invisible to
+		// operators (and deliberately triggerable via param() type abuse).
+		common.SysError(fmt.Sprintf("tiered settle expr failed, billing pre-consume estimate: model=%s exprHash=%s fallbackQuota=%d err=%s",
+			snap.ModelName, snap.ExprHash, quota, err.Error()))
 		return true, quota, nil
 	}
+
+	// Surface any int32 saturation from settlement onto RelayInfo so the
+	// consume log records it under admin_info, regardless of which caller
+	// (text, audio, WSS) consumes the returned quota. First non-nil wins.
+	noteQuotaClamp(relayInfo, tr.Clamp)
 
 	return true, tr.ActualQuotaAfterGroup, &tr
 }

@@ -2,6 +2,7 @@ package helper
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -57,9 +58,14 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	// Check if this model uses tiered_expr billing
+	// Check if this model uses tiered_expr billing. An empty/whitespace
+	// expression (the validator allows clearing it) must not hard-fail the
+	// request; fall through to the regular ratio/price path instead, matching
+	// model.GetPricing's TrimSpace guard.
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
-		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
+		if expr, ok := billing_setting.GetBillingExpr(info.OriginModelName); ok && strings.TrimSpace(expr) != "" {
+			return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
+		}
 	}
 
 	var preConsumedQuota int
@@ -273,6 +279,12 @@ func ContainPriceOrRatio(modelName string) bool {
 	_, ok, _ = ratio_setting.GetModelRatio(modelName)
 	if ok {
 		return true
+	}
+	// tiered_expr models carry neither price nor ratio; a non-empty
+	// expression counts as billing config (mirrors upstream HasModelBillingConfig).
+	if billing_setting.GetBillingMode(modelName) == billing_setting.BillingModeTieredExpr {
+		expr, ok := billing_setting.GetBillingExpr(modelName)
+		return ok && strings.TrimSpace(expr) != ""
 	}
 	return false
 }

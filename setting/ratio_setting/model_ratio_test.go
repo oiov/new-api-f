@@ -12,8 +12,10 @@ func TestGPT55CompletionRatioMatchesOfficialPricing(t *testing.T) {
 	}
 
 	info := GetCompletionRatioInfo("gpt-5.5")
-	if !info.Locked {
-		t.Fatalf("GetCompletionRatioInfo(gpt-5.5).Locked = false, want true")
+	// d5a60b4a2 对齐锁定逻辑：gpt-5.5 及以后的模型不再锁定补全倍率
+	// （见 getHardcodedCompletionModelRatio 中 "gpt-5.5 and later models are unlocked"）。
+	if info.Locked {
+		t.Fatalf("GetCompletionRatioInfo(gpt-5.5).Locked = true, want false (gpt-5.5+ unlocked)")
 	}
 	if info.Ratio != want {
 		t.Fatalf("GetCompletionRatioInfo(gpt-5.5).Ratio = %v, want %v", info.Ratio, want)

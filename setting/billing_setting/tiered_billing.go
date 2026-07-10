@@ -2,6 +2,7 @@ package billing_setting
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -100,11 +101,19 @@ func ValidateBillingExprJSON(jsonStr string) error {
 }
 
 func smokeTestExpr(exprStr string) error {
+	// Vectors deliberately include asymmetric p/c and populated cache/media
+	// fields: with only p == c vectors, differential expressions like
+	// `(p - c) * k` evaluate to exactly 0 on every vector and a
+	// negative-at-runtime expression would pass validation.
 	vectors := []billingexpr.TokenParams{
 		{P: 0, C: 0, Len: 0},
 		{P: 1000, C: 1000, Len: 1000},
 		{P: 100000, C: 100000, Len: 100000},
 		{P: 1000000, C: 1000000, Len: 1000000},
+		{P: 500000, C: 0, Len: 500000},
+		{P: 0, C: 500000, Len: 0},
+		{P: 1000, C: 200000, Len: 1000},
+		{P: 300000, C: 500, Len: 400000, CR: 80000, CC: 15000, CC1h: 5000, Img: 2000, ImgO: 1000, AI: 3000, AO: 1500},
 	}
 	requests := []billingexpr.RequestInput{
 		{},
@@ -121,6 +130,12 @@ func smokeTestExpr(exprStr string) error {
 			result, _, err := billingexpr.RunExprWithRequest(exprStr, v, request)
 			if err != nil {
 				return fmt.Errorf("vector {p=%g, c=%g}: run failed: %w", v.P, v.C, err)
+			}
+			// NaN compares false with everything and +Inf is > 0, so an
+			// explicit check is required: at settle time NaN bills 0 (free
+			// rides) and +Inf saturates to int32 max (a ~$4k charge).
+			if math.IsNaN(result) || math.IsInf(result, 0) {
+				return fmt.Errorf("vector {p=%g, c=%g}: result is not a finite number (NaN/Inf, e.g. division by zero)", v.P, v.C)
 			}
 			if result < 0 {
 				return fmt.Errorf("vector {p=%g, c=%g}: result %f < 0", v.P, v.C, result)
